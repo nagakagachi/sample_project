@@ -96,7 +96,7 @@ Compileによってリソーススケジューリングが確定されるため,
 RTGリソース以外の部分でのマルチスレッド対応はユーザの責任となります.<br/>
 
 ## Rendering RTG
-Execute で呼び出されるPassのレンダリング処理Run()で, rtg_builderからリソースを取得できます.<br/>
+Execute で呼び出されるPassのレンダリング処理Run()で, 割当済みリソースをrtg_builderから取得できます.<br/>
 これらのリソースのステート解決はRTGの役割であるため, Pass側でStateBarrierCommandを発行する必要はありません.<br/>
 (GetAllocatedResourceの戻り値が curr_state_ を持っているため, 最終的にそのステートになるようにすれば独自のステート遷移も可能です.)<br/>
 
@@ -126,7 +126,7 @@ struct TaskGBufferPass : public rtg::IGraphicsTaskNode
 graphics_test/graphics_test/src/ngl/render/test_pass.h
 ```
 
-レンダリングパイプラインの構築の実行は以下.<br/>
+レンダリングパイプラインの構築と実行は以下.<br/>
 ```c++
 graphics_test/graphics_test/src/ngl/render/test_render_path.cpp
 ```
