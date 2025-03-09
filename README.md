@@ -51,6 +51,7 @@ auto* task_gbuffer = rtg_builder.AppendTaskNode<TaskGBufferPass>();
 task_gbuffer->Setup(rtg_builder, task_depth->h_depth_);
 ```
 上記のように, Passのメンバ変数(例えば h_depth_)を利用して, 直接的にわかりやすくPass間のリソース依存関係を記述できます.<br/>
+ここで h_depth_ はリソース登録の単なる整数IDです. 後述するCompile後にこのIDでこのPassに割り当てられた実際のリソースを取得できます.<br/>
 https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_render_path.cpp#L76
 
 ## Setup RTG
