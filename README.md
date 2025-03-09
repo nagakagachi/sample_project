@@ -27,6 +27,18 @@ UE5のRDGに類似したシンプルなRenderGraphのようなものになりま
 レンダリングパス間のリソース依存解決を簡単にコーディングすることを目的にしています.<br/>
 ![Image](https://github.com/user-attachments/assets/2178ba19-f7b9-4730-bdf7-e3d6db524eda)
 
+現行では
+- Grphicsパス
+  - IGraphicsTaskNode
+- 非同期Computeパス
+  - IComputeTaskNode
+- リソースの外部化
+  - PropagateResouceToNextFrame
+  - 過去フレームのリソース利用(ヒストリバッファ等)
+  - 別のGraphからリソース利用(マルチビューレンダリング等)
+ 
+に対応.<br/>
+
 以下は単純な依存関係を持つレンダリングパイプライン構築のコードです.<br/>
 DepthPassで描画したDepthTextureを, 引き続き利用するGBufferPassという構成です.<br/>
 ```c++
