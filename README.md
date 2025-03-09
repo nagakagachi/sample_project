@@ -27,7 +27,7 @@ UE5のRDGに類似したシンプルなRenderGraphのようなものになりま
 レンダリングパス間のリソース依存解決を簡単にコーディングすることを目的にしています.<br/>
 ![Image](https://github.com/user-attachments/assets/2178ba19-f7b9-4730-bdf7-e3d6db524eda)
 
-以下は単純な依存関係を持つレンダリングパイプラインの擬似コードです.<br/>
+以下は単純な依存関係を持つレンダリングパイプライン構築のコードです.<br/>
 DepthPassで描画したDepthTextureを, 引き続き利用するGBufferPassという構成です.<br/>
 ```c++
 // 1. register depth pass.
