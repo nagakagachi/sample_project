@@ -39,6 +39,7 @@ DirectX12世代で必要になるリソースステート追跡を含めた, レ
  
 に対応.<br/>
 
+## Rendering Pipeline
 以下は単純な依存関係を持つレンダリングパイプライン構築のコードです.<br/>
 DepthPassで描画したDepthTextureを, 引き続き利用するGBufferPassという構成です.<br/>
 ```c++
