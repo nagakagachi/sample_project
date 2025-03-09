@@ -28,7 +28,7 @@ UE5のRDGに類似したシンプルなRenderGraphのようなものになりま
 ![Image](https://github.com/user-attachments/assets/2178ba19-f7b9-4730-bdf7-e3d6db524eda)
 
 現行では
-- Grphicsパス
+- Graphicsパス
   - IGraphicsTaskNode
 - 非同期Computeパス
   - IComputeTaskNode
