@@ -51,6 +51,7 @@ auto* task_gbuffer = rtg_builder.AppendTaskNode<TaskGBufferPass>();
 task_gbuffer->Setup(rtg_builder, task_depth->h_depth_);
 ```
 上記のように, Passのメンバ変数(例えば h_depth_)を利用して, 直接的にわかりやすくPass間のリソース依存関係を記述できます.<br/>
+https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_render_path.cpp#L76
 
 ## Setup RTG
 Passが利用するリソースをrtg_builderにレコードします.<br/>
@@ -83,6 +84,7 @@ struct TaskGBufferPass : public rtg::IGraphicsTaskNode
 };
 ```
 Setup時点では実際のリソースは割り当てられていません. スケジューリング用の情報が登録されるだけです.<br/>
+https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_pass.h#L36
 
 ## Compile And Execute
 "Compile" と "Execute" によって登録情報から適切なリソース割り当てと, Passのレンダリング処理が実行されます.<br/>
@@ -94,6 +96,7 @@ rtg_builder.Execute(out_graphics_cmd, out_compute_cmd, p_job_system);
 ```
 Compileによってリソーススケジューリングが確定されるため, Pass毎に並列でマルチスレッドレンダリングが可能です.<br/>
 RTGリソース以外の部分でのマルチスレッド対応はユーザの責任となります.<br/>
+https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_render_path.cpp#L300
 
 ## Rendering RTG
 Execute で呼び出されるPassのレンダリング処理Run()で, 割当済みリソースをrtg_builderから取得できます.<br/>
@@ -119,18 +122,14 @@ struct TaskGBufferPass : public rtg::IGraphicsTaskNode
   }
 };
 ```
+https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_pass.h#L64
 
 ## Sample Code
 個々のレンダリングパスの実装は以下.<br/>
-```c++
-graphics_test/graphics_test/src/ngl/render/test_pass.h
-```
+https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_pass.h#L36
 
 レンダリングパイプラインの構築と実行は以下.<br/>
-```c++
-graphics_test/graphics_test/src/ngl/render/test_render_path.cpp
-```
-
+https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_render_path.cpp#L76
 
 # Third Party
   - Assimp
