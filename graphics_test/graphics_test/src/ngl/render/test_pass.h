@@ -55,7 +55,6 @@ namespace ngl::render
 				
 				// Rtgリソースセットアップ.
 				{
-					//rtg::RtgResourceDesc2D depth_desc = rtg::RtgResourceDesc2D::CreateAsRelative(1.0f, 1.0f, gfx::MaterialPassPsoCreator_depth::k_depth_format);
 					rtg::RtgResourceDesc2D depth_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, gfx::MaterialPassPsoCreator_depth::k_depth_format);
 					h_depth_ = builder.RecordResourceAccess(*this, builder.CreateResource(depth_desc), rtg::access_type::DEPTH_TARGET);
 				}

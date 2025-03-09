@@ -199,6 +199,8 @@ namespace ngl
 					if (0 > table_index || 0 >= src_count)
 						return;
 
+					// Copy時に無効なDescriptorがあるとエラーになるため, 無効要素にはダミーのDesctirptorを詰めたバッファを作る.
+					//	DescriptorSetDep側で歯抜けの部分にダミーDescriptorを詰めて置くことでそのままコピーできるはずなので, 高速化のため検討.
 					for (u32 i = 0; i < src_count; i++)
 					{
 						tmp[i] = (src_handle[i].ptr > 0) ? src_handle[i] : def_descriptor.cpu_handle;
@@ -231,12 +233,14 @@ namespace ngl
 			{
 				const auto cvbsrvuav_desc_heap_type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 
-				D3D12_CPU_DESCRIPTOR_HANDLE tmp[k_srv_table_size];
+				D3D12_CPU_DESCRIPTOR_HANDLE tmp[k_srv_table_size];// cbv, srv, uav のテーブルサイズで最大の k_srv_table_size でワーク確保して再利用.
 				auto SetViewDescriptor = [&](u32 count, const D3D12_CPU_DESCRIPTOR_HANDLE* handles, u8 table_index)
 				{
 					if (0 > table_index || 0 >= count)
 						return;
 
+					// Copy時に無効なDescriptorがあるとエラーになるため, 無効要素にはダミーのDesctirptorを詰めたバッファを作る.
+					//	DescriptorSetDep側で歯抜けの部分にダミーDescriptorを詰めて置くことでそのままコピーできるはずなので, 高速化のため検討.
 					for (u32 i = 0; i < count; i++)
 					{
 						tmp[i] = (handles[i].ptr > 0) ? handles[i] : def_descriptor.cpu_handle;
