@@ -103,7 +103,7 @@ struct TaskGBufferPass : public rtg::IGraphicsTaskNode
   void Run(rtg::RenderTaskGraphBuilder& rtg_builder, rhi::GraphicsCommandListDep* gfx_commandlist) override
   {
     auto res_depth = rtg_builder.GetAllocatedResource(this, h_depth_);
-    auto res_gb0 = rtg_builder.GetAllocatedResource(this, h_gb0_);
+    auto res_gb_a = rtg_builder.GetAllocatedResource(this, h_gbuffer_a_);
   }
 };
 ```
