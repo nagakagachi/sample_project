@@ -1,14 +1,11 @@
 # sample_projct
 
 DirectX12 Toy Renderer (WIP).
+![Image](https://github.com/user-attachments/assets/31ded6f9-f69a-4df2-b1c3-23433d0c02af)
 
-![d3d12_sample_img00](https://github.com/nagakagachi/sample_projct/assets/25050933/a756e23e-f47d-4291-ab49-fed4edb95f81)
-
-This repository is currently implementing the RenderGraph mechanism ( Render Task Graph, rtg ). </br>
+This repository is currently implementing the RenderTaskGraph (RenderGraph). </br>
 The following reference materials are available on RenderGraph. </br>
 https://nagakagachi.notion.site/RenderGraph-54f0cf4284c7466697b99cc0df81be80
-
-
 </br>
 
  
@@ -23,10 +20,6 @@ https://nagakagachi.notion.site/RenderGraph-54f0cf4284c7466697b99cc0df81be80
     - cmake CMakeLists.txt 
     - cmake --build . --config Release
   - build graphics_test.sln (Visual Studio 2022)
-
-# Other
-  - camera operation
-    - Fly-through camera operation with right mouse button down and WASD (UE5-like)
 
 # Render Task Graph
 マルチスレッド対応レンダリングパイプラインを構築するためにRenderTaskGraph(RTG)というものを実装しています.<br/>
