@@ -81,7 +81,7 @@ void rayGen()
 	const int ray_flag = 0;
 	// HItGroupIndex計算時に加算される値. ShadowやAO等のPass毎のシェーダを切り替える際のインデックスに使うなど.
 	const int ray_contribution_to_hitgroup = 0;
-	// BLAS中のSubGeometryIndexに乗算される値. 結果はHitGroupIndex計算時に加算される.
+	// BLAS中のSubGeometryIndexに乗算される値(一般的には 1). 結果はHitGroupIndex計算時に加算される.
 	// BLAS中のSubGeometryIndexがそれぞれ別のHitGroupを利用する場合は1等, BLAS中のすべてが同じHitGroupなら0を指定するなどが考えられる.
 	// 1に設定する場合はShaderTable構築時にBLAS内Geom分考慮したEntry登録が必要.
 	const int multiplier_for_subgeometry_index = 1;
