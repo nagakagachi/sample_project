@@ -62,7 +62,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	{
 		if(cb_final_screen_pass.enable_raytrace_result)
 		{
-			const float2 debug_area_size = float2(0.3, 0.3);
+			const float2 debug_area_size = float2(0.5, 0.5);
 			const float2 debug_area_lt = float2(0.0, 0.5);
 			const float2 debug_area_br = debug_area_lt + debug_area_size;
 			if (all(debug_area_lt <= input.uv) && all(debug_area_br >= input.uv))

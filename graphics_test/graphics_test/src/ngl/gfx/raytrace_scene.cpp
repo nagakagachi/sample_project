@@ -220,7 +220,7 @@ namespace ngl
 		bool RtTlas::Setup(rhi::DeviceDep* p_device, std::vector<RtBlas*>& blas_array,
 			const std::vector<uint32_t>& instance_geom_id_array,
 			const std::vector<math::Mat34>& instance_transform_array,
-			const std::vector<uint32_t>& instance_hitgroup_id_array
+			int hitgroup_count
 		)
 		{
 			if (is_built_)
@@ -264,8 +264,8 @@ namespace ngl
 			{
 				instance_blas_id_array_.clear();
 				transform_array_.clear();
-				hitgroup_id_array_.clear();
 
+				int instance_contribution_to_hitgroup = 0;
 				// 参照BLASが有効なInstanceのみ収集.
 				for (int i = 0; i < instance_geom_id_array.size(); ++i)
 				{
@@ -277,21 +277,16 @@ namespace ngl
 
 					
 					instance_blas_id_array_.push_back(blas_id);
+					
+					instance_hitgroup_index_offset_array_.push_back(instance_contribution_to_hitgroup);
+					instance_contribution_to_hitgroup += blas_array[blas_id]->NumGeometry() * hitgroup_count;
 
-					if (instance_transform_array.size() > i)
-						transform_array_.push_back(instance_transform_array[i]);
-
-					if (instance_hitgroup_id_array.size() > i)
-						hitgroup_id_array_.push_back(instance_hitgroup_id_array[i]);
+					transform_array_.push_back(instance_transform_array[i]);
 				}
 			}
 
 			assert(0 < blas_array_.size());
 			assert(0 < instance_blas_id_array_.size());
-
-			// BLASはSetup済みである必要がある(Setupでバッファ確保等までは完了している必要がある. BLASのBuildはこの時点では不要.)
-			//assert(p_blas_ && p_blas_->IsSetuped());
-			//assert(0 < transform_array_.size());
 
 			// Instance Desc Buffer.
 			const uint32_t num_instance_total = (uint32_t)transform_array_.size();
@@ -310,19 +305,16 @@ namespace ngl
 			// Instance情報をBufferに書き込み.
 			if (D3D12_RAYTRACING_INSTANCE_DESC* mapped = (D3D12_RAYTRACING_INSTANCE_DESC*)instance_buffer_->Map())
 			{
-				int total_geom_index = 0;
+				//int instance_contribution_to_hitgroup = 0;
 				for (auto inst_i = 0; inst_i < transform_array_.size(); ++inst_i)
 				{
-					// Instance毎Geom毎にShaderTableを割り当てるた, 全Instance全Geomを直列に並べた際のInstance先頭Geomインデックスを使用する.
-					//	シェーダ側ではInstanceのHitGroupIndexに TraceRay()のRayContributionToHitGroupIndex でGeom毎のインデックス加算をすることでInstance毎Geom毎のTable参照を実現する.
-					const auto instance_shader_table_head_per_geom = total_geom_index;
-					total_geom_index += blas_array_[instance_blas_id_array_[inst_i]]->NumGeometry();
-
 					// 一応ID入れておく
 					mapped[inst_i].InstanceID = inst_i;
-					// このInstanceのHitGroupを示すベースインデックス. Instanceのマテリアル情報に近い.
-					mapped[inst_i].InstanceContributionToHitGroupIndex = instance_shader_table_head_per_geom;
 
+					// このInstanceのHitGroupを示すベースインデックス. Instanceのマテリアル情報に近い.
+					// DXRではTraceRay()でHitGroupIndex計算時にInstanceに対する乗算パラメータが無いため, Instance毎のHitGroupIndexContributionにHitGroup数を考慮した絶対インデックス指定が必要.
+					mapped[inst_i].InstanceContributionToHitGroupIndex = instance_hitgroup_index_offset_array_[inst_i];// instance_contribution_to_hitgroup;
+					
 					mapped[inst_i].Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;
 					mapped[inst_i].InstanceMask = ~0u;// 0xff;
 					
@@ -467,7 +459,7 @@ namespace ngl
 		}
 		uint32_t RtTlas::NumInstance() const
 		{
-			return static_cast<uint32_t>(hitgroup_id_array_.size());
+			return static_cast<uint32_t>(transform_array_.size());
 		}
 		const std::vector<uint32_t>& RtTlas::GetInstanceBlasIndexArray() const
 		{
@@ -477,9 +469,9 @@ namespace ngl
 		{
 			return transform_array_;
 		}
-		const std::vector<uint32_t>& RtTlas::GetInstanceHitgroupIndexArray() const
+		const std::vector<uint32_t>& RtTlas::GetInstanceHitgroupIndexOffsetArray() const
 		{
-			return hitgroup_id_array_;
+			return instance_hitgroup_index_offset_array_;
 		}
 		// -------------------------------------------------------------------------------
 
@@ -1261,7 +1253,8 @@ namespace ngl
 		// BLAS内Geometryは個別のShaderRecordを持つ(multiplier_for_subgeometry_index = 1)
 		bool CreateShaderTable(RtShaderTable& out, rhi::DeviceDep* p_device,
 			rhi::DynamicDescriptorStackAllocatorInterface& desc_alloc_interface,
-			const RtTlas& tlas, 
+			const RtTlas& tlas,
+			uint32_t tlas_hitgroup_count_max,
 			const RtStateObject& state_object, const char* raygen_name)
 		{
 			out = {};
@@ -1272,7 +1265,7 @@ namespace ngl
 
 			// NOTE. 固定のDescriptorTableで CVBとSRVの2テーブルをLocalRootSignatureのリソースとして定義している.
 			const uint32_t per_entry_descriptor_table_count = 2;
-
+			
 			const auto num_instance = tlas.NumInstance();
 			uint32_t num_all_instance_geometry = 0;
 			{
@@ -1300,8 +1293,14 @@ namespace ngl
 			constexpr uint32_t num_raygen = 1;
 			// Missは複数登録可能とする.
 			const uint32_t num_miss = state_object.NumMissShader();
-			// Hitgroupのrecordは全Instanceの全Geometry分としている.
-			const uint32_t shader_table_byte_size = shader_record_byte_size * (num_raygen + num_miss + num_all_instance_geometry);
+			// HitGroup.
+			const uint32_t hit_group_count = state_object.NumHitGroup();
+			// 現在の実装ではTLAS側のInstance毎のHitgroupIndex決定時に最大Hitgroup数が必要なため, 実際のShaderTable側のHitgroup数はそれよりも多くなることは許可されない.
+			assert(hit_group_count <= tlas_hitgroup_count_max);
+			
+			// Hitgroupのrecordは全Instanceの全Geometry*Hitgourp数としている.
+			const uint32_t table_hitgroup_count = (num_all_instance_geometry * tlas_hitgroup_count_max);
+			const uint32_t shader_table_byte_size = shader_record_byte_size * (num_raygen + num_miss + table_hitgroup_count);
 
 
 			// あとで書き込み位置調整に使うので保存.
@@ -1360,103 +1359,105 @@ namespace ngl
 				// InstanceのBLASに複数のGeometryが含まれる場合はここでその分のrecordが書き込まれる.
 
 				const auto table_hitgroup_offset = shader_record_byte_size * table_cnt;
-				// hitgroupの総数カウント.
-				uint32_t hitgroup_count = 0;
 				for (uint32_t inst_i = 0u; inst_i < num_instance; ++inst_i)
 				{
-					// 現状はBLAS内Geometryは すべて同じHitgroup としている(Entryは別にして異なるテクスチャ等を設定できるようにはなっている).
-					// Geometry毎に別マテリアル等とする場合はここをGeomety毎とする.
-					const uint32_t hitgroup_id = tlas.GetInstanceHitgroupIndexArray()[inst_i];
-					const char* hitgroup_name = state_object.GetHitgroupName(hitgroup_id);
-					assert(nullptr != hitgroup_name);
-
-
 					// 内部Geometry毎にRecord.
 					const auto& blas_index = tlas.GetInstanceBlasIndexArray()[inst_i];
 					const auto& blas = tlas.GetBlasArray()[blas_index];
+
+					const auto hitgroup_table_index_offset = tlas.GetInstanceHitgroupIndexOffsetArray()[inst_i];
+					
 					for (uint32_t geom_i = 0; geom_i < blas->NumGeometry(); ++geom_i)
 					{
-						auto* geom_hit_group_name = hitgroup_name;
-						
-
-						// hitGroup
+						// Geometry毎に連続領域にHitGroup書き込み. ShaderObject側のHitGroup定義主導でTable作成.
+						for(uint32_t hitgroup_index = 0; hitgroup_index < hit_group_count; ++hitgroup_index)
 						{
-							// 固定LocalRootSigにより
-							//	DescriptorTable0 -> b1000からCBV最大16
-							//	DescriptorTable1 -> t1000からSRV最大16
-							// というレイアウトで登録する.
-
-							// Entry毎のSrvセットアップ.
-							int l_srv_count = 0;
-							std::array<D3D12_CPU_DESCRIPTOR_HANDLE, k_rt_local_descriptor_cbvsrvuav_table_size> l_srv_handles;
+							const auto inst_geom_hitgroup_table_index =  hitgroup_table_index_offset + (geom_i * tlas_hitgroup_count_max) + hitgroup_index;
+							
+							const char* hitgroup_name = state_object.GetHitgroupName(hitgroup_index);
+							assert(nullptr != hitgroup_name);
+							
+							auto* geom_hit_group_name = hitgroup_name;
+							
+							// hitGroup
 							{
-								const auto geom_data = blas->GetGeometryData(geom_i);
-								assert(geom_data.vertex_srv);
-								assert(geom_data.index_srv);
+								// 固定LocalRootSigにより
+								//	DescriptorTable0 -> b1000からCBV最大16
+								//	DescriptorTable1 -> t1000からSRV最大16
+								// というレイアウトで登録する.
 
-								l_srv_handles[l_srv_count++] = geom_data.vertex_srv->GetView().cpu_handle;
-								l_srv_handles[l_srv_count++] = geom_data.index_srv->GetView().cpu_handle;
-							}
-
-							// Entry毎のCbvセットアップ.
-							int l_cbv_count = 0;
-							std::array<D3D12_CPU_DESCRIPTOR_HANDLE, k_rt_local_descriptor_cbvsrvuav_table_size> l_cbv_handles;
-							{
-								// TODO.
-							}
-
-
-							DescriptorHandleSet desc_handle_srv;
-							DescriptorHandleSet desc_handle_cbv;
-							// 描画用HeapにDescriptorコピー.
-							{
-								const auto desc_stride = desc_alloc_interface.GetManager()->GetHandleIncrementSize();
-								auto func_get_offseted_desc_handle = [](const D3D12_CPU_DESCRIPTOR_HANDLE& h_cpu, uint32_t offset)
+								// Entry毎のSrvセットアップ.
+								int l_srv_count = 0;
+								std::array<D3D12_CPU_DESCRIPTOR_HANDLE, k_rt_local_descriptor_cbvsrvuav_table_size> l_srv_handles;
 								{
-									D3D12_CPU_DESCRIPTOR_HANDLE ret = h_cpu;
-									ret.ptr += offset;
-									return ret;
-								};
+									const auto geom_data = blas->GetGeometryData(geom_i);
+									assert(geom_data.vertex_srv);
+									assert(geom_data.index_srv);
 
-								// 少なくとも1つは確保する.
-								const bool result_alloc_desc_srv = desc_alloc_interface.Allocate(std::max(l_srv_count, 1), desc_handle_srv.h_cpu, desc_handle_srv.h_gpu);
-								assert(result_alloc_desc_srv);
-								// 有効なViewをコピー.
-								for (int l_srv_i = 0; l_srv_i < l_srv_count; ++l_srv_i)
-								{
-									p_device->GetD3D12Device()->CopyDescriptorsSimple(1, func_get_offseted_desc_handle(desc_handle_srv.h_cpu, desc_stride * l_srv_i), l_srv_handles[l_srv_i], D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+									l_srv_handles[l_srv_count++] = geom_data.vertex_srv->GetView().cpu_handle;
+									l_srv_handles[l_srv_count++] = geom_data.index_srv->GetView().cpu_handle;
 								}
 
-								// 少なくとも1つは確保する.
-								const bool result_alloc_desc_cbv = desc_alloc_interface.Allocate(std::max(l_cbv_count, 1), desc_handle_cbv.h_cpu, desc_handle_cbv.h_gpu);
-								assert(result_alloc_desc_cbv);
-								// 有効なViewをコピー.
-								for (int l_cbv_i = 0; l_cbv_i < l_cbv_count; ++l_cbv_i)
+								// Entry毎のCbvセットアップ.
+								int l_cbv_count = 0;
+								std::array<D3D12_CPU_DESCRIPTOR_HANDLE, k_rt_local_descriptor_cbvsrvuav_table_size> l_cbv_handles;
 								{
-									p_device->GetD3D12Device()->CopyDescriptorsSimple(1, func_get_offseted_desc_handle(desc_handle_cbv.h_cpu, desc_stride * l_cbv_i), l_cbv_handles[l_cbv_i], D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+									// TODO.
 								}
+
+
+								DescriptorHandleSet desc_handle_srv;
+								DescriptorHandleSet desc_handle_cbv;
+								// 描画用HeapにDescriptorコピー.
+								{
+									const auto desc_stride = desc_alloc_interface.GetManager()->GetHandleIncrementSize();
+									auto func_get_offseted_desc_handle = [](const D3D12_CPU_DESCRIPTOR_HANDLE& h_cpu, uint32_t offset)
+									{
+										D3D12_CPU_DESCRIPTOR_HANDLE ret = h_cpu;
+										ret.ptr += offset;
+										return ret;
+									};
+
+									// 少なくとも1つは確保する.
+									const bool result_alloc_desc_srv = desc_alloc_interface.Allocate(std::max(l_srv_count, 1), desc_handle_srv.h_cpu, desc_handle_srv.h_gpu);
+									assert(result_alloc_desc_srv);
+									// 有効なViewをコピー.
+									for (int l_srv_i = 0; l_srv_i < l_srv_count; ++l_srv_i)
+									{
+										p_device->GetD3D12Device()->CopyDescriptorsSimple(1, func_get_offseted_desc_handle(desc_handle_srv.h_cpu, desc_stride * l_srv_i), l_srv_handles[l_srv_i], D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+									}
+
+									// 少なくとも1つは確保する.
+									const bool result_alloc_desc_cbv = desc_alloc_interface.Allocate(std::max(l_cbv_count, 1), desc_handle_cbv.h_cpu, desc_handle_cbv.h_gpu);
+									assert(result_alloc_desc_cbv);
+									// 有効なViewをコピー.
+									for (int l_cbv_i = 0; l_cbv_i < l_cbv_count; ++l_cbv_i)
+									{
+										p_device->GetD3D12Device()->CopyDescriptorsSimple(1, func_get_offseted_desc_handle(desc_handle_cbv.h_cpu, desc_stride * l_cbv_i), l_cbv_handles[l_cbv_i], D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+									}
+								}
+
+								// 書き込み
+							
+								// Shader Identifier
+								memcpy(mapped + (table_hitgroup_offset + shader_record_byte_size * inst_geom_hitgroup_table_index), p_rt_so_prop->GetShaderIdentifier(str_to_wstr(geom_hit_group_name).c_str()), D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
+							
+								auto record_res_offset = (table_hitgroup_offset + shader_record_byte_size * inst_geom_hitgroup_table_index) + D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
+
+								// CBV Table
+								memcpy(mapped + record_res_offset, &desc_handle_cbv.h_gpu, sizeof(D3D12_GPU_DESCRIPTOR_HANDLE));
+								record_res_offset += sizeof(D3D12_GPU_DESCRIPTOR_HANDLE);
+
+								// SRV Table
+								memcpy(mapped + record_res_offset, &desc_handle_srv.h_gpu, sizeof(D3D12_GPU_DESCRIPTOR_HANDLE));
+								record_res_offset += sizeof(D3D12_GPU_DESCRIPTOR_HANDLE);
 							}
-
-							// 書き込み
-							
-							// Shader Identifier
-							memcpy(mapped + (table_hitgroup_offset + shader_record_byte_size * hitgroup_count), p_rt_so_prop->GetShaderIdentifier(str_to_wstr(geom_hit_group_name).c_str()), D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES);
-							
-							auto record_res_offset = (table_hitgroup_offset + shader_record_byte_size * hitgroup_count) + D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
-
-							// CBV Table
-							memcpy(mapped + record_res_offset, &desc_handle_cbv.h_gpu, sizeof(D3D12_GPU_DESCRIPTOR_HANDLE));
-							record_res_offset += sizeof(D3D12_GPU_DESCRIPTOR_HANDLE);
-
-							// SRV Table
-							memcpy(mapped + record_res_offset, &desc_handle_srv.h_gpu, sizeof(D3D12_GPU_DESCRIPTOR_HANDLE));
-							record_res_offset += sizeof(D3D12_GPU_DESCRIPTOR_HANDLE);
 						}
-						++hitgroup_count;
+						
 					}
 				}
 				out.table_hitgroup_offset_ = table_hitgroup_offset;
-				out.table_hitgroup_count_ = hitgroup_count;
+				out.table_hitgroup_count_ = table_hitgroup_count;
 
 				out.shader_table_->Unmap();
 			}
@@ -1521,7 +1522,8 @@ namespace ngl
 			if (!CreateShaderTable(shader_table_,
 				p_device_,
 				desc_alloc_interface_,
-				*p_rt_scene->GetSceneTlas(), state_object_, ray_gen_name))
+				*p_rt_scene->GetSceneTlas(), p_rt_scene->NumHitGroupCountMax(),
+				state_object_, ray_gen_name))
 			{
 				assert(false);
 				return false;
@@ -1674,6 +1676,29 @@ namespace ngl
 				p_command_list->ResourceBarrier(ray_result_.Get(), ray_result_state_, rhi::EResourceState::UnorderedAccess);
 				ray_result_state_ = rhi::EResourceState::UnorderedAccess;
 			}
+			
+			struct RaytraceInfo
+			{
+				// レイタイプの種類数, (== hitgroup数). ShaderTable構築時に登録されたHitgroup数.
+				//	TraceRay()での multiplier_for_subgeometry_index に使用するために必要とされる.
+				//		ex) Primary, Shadow の2種であれば 2.
+				int num_ray_type;
+			};
+			rhi::RefBufferDep tmp_cb_raytrace = new rhi::BufferDep();
+			{
+				rhi::BufferDep::Desc cb_desc{};
+				cb_desc.SetupAsConstantBuffer(sizeof(RaytraceInfo));
+				tmp_cb_raytrace->Initialize(p_device, cb_desc);
+
+				auto* mapped = tmp_cb_raytrace->MapAs<RaytraceInfo>();
+				{
+					mapped->num_ray_type = p_rt_scene_->NumHitGroupCountMax();
+				}
+				tmp_cb_raytrace->Unmap();
+			}
+			rhi::RefCbvDep tmp_cbv_raytrace = new rhi::ConstantBufferViewDep();
+			tmp_cbv_raytrace->Initialize(tmp_cb_raytrace.Get(), {});
+			
 
 			// Ray Dispatch.
 			{
@@ -1683,6 +1708,7 @@ namespace ngl
 				// global resourceのセット.
 				{
 					param.cbv_slot[0] = p_rt_scene_->GetSceneViewCbv();// View.
+					param.cbv_slot[1] = tmp_cbv_raytrace.Get();// Raytrace.
 				}
 				{
 					param.srv_slot;
@@ -1716,13 +1742,16 @@ namespace ngl
 			// 内部で使用しているDescriptorのDeallocをDescriptorAllocatorInterfaceの解放より先に明示的に実行.
 			dynamic_tlas_.reset();
 		}
-		bool RtSceneManager::Initialize(rhi::DeviceDep* p_device)
+		bool RtSceneManager::Initialize(rhi::DeviceDep* p_device, int hitgroup_count_max)
 		{
 			if(!p_device->IsSupportDxr())
 			{
 				is_initialized_ = false;
 				return false;
 			}
+
+			assert(0 < hitgroup_count_max);
+			hitgroup_count_max_ = hitgroup_count_max;
 			
 			// Descriptor確保用Interface初期化.
 			{
@@ -1827,7 +1856,6 @@ namespace ngl
 			std::vector<RtBlas*> scene_blas_array;
 			std::vector<math::Mat34> scene_inst_transform_array;
 			std::vector<uint32_t> scene_inst_blas_id_array;
-			std::vector<uint32_t> scene_inst_hitgroup_id_array;
 			for (auto e : scene_mesh_blas_id_array)
 			{
 				scene_blas_array.push_back(dynamic_scene_blas_array_[e].get());
@@ -1838,15 +1866,12 @@ namespace ngl
 
 				scene_inst_transform_array.push_back(e->transform_);
 				scene_inst_blas_id_array.push_back(scene_inst_mesh_id_array[i]);
-
-				int hitgroup_id = 0;
-				scene_inst_hitgroup_id_array.push_back(hitgroup_id);
 			}
 
 			// 新規TLAS. DynamicTlasSet内部のRHIオブジェクトは全てRhiRef管理で安全に遅延破棄されるはず.
 			dynamic_tlas_.reset(new RtTlas());
 			// TLAS Setup.
-			if (!dynamic_tlas_->Setup(p_device, scene_blas_array, scene_inst_blas_id_array, scene_inst_transform_array, scene_inst_hitgroup_id_array))
+			if (!dynamic_tlas_->Setup(p_device, scene_blas_array, scene_inst_blas_id_array, scene_inst_transform_array, hitgroup_count_max_))
 			{
 				assert(false);
 			}
@@ -1932,6 +1957,12 @@ namespace ngl
 				return nullptr;
 			return dynamic_tlas_.get();
 		}
+		
+		int RtSceneManager::NumHitGroupCountMax() const
+		{
+			return hitgroup_count_max_;
+		}
+		
 		rhi::ConstantBufferViewDep* RtSceneManager::GetSceneViewCbv()
 		{
 			if(!is_initialized_)

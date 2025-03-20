@@ -1173,6 +1173,30 @@ namespace ngl::render
 				// Rt ShaderTable更新.
 				rt_pass_core_.UpdateScene(desc_.p_rt_scene, "rayGen");
 
+
+				struct RaytraceInfo
+				{
+					// レイタイプの種類数, (== hitgroup数). ShaderTable構築時に登録されたHitgroup数.
+					//	TraceRay()での multiplier_for_subgeometry_index に使用するために必要とされる.
+					//		ex) Primary, Shadow の2種であれば 2.
+					int num_ray_type;
+				};
+				rhi::RefBufferDep tmp_cb_raytrace = new rhi::BufferDep();
+				{
+					rhi::BufferDep::Desc cb_desc{};
+					cb_desc.SetupAsConstantBuffer(sizeof(RaytraceInfo));
+					tmp_cb_raytrace->Initialize(gfx_commandlist->GetDevice(), cb_desc);
+
+					auto* mapped = tmp_cb_raytrace->MapAs<RaytraceInfo>();
+					{
+						mapped->num_ray_type = desc_.p_rt_scene->NumHitGroupCountMax();
+					}
+					tmp_cb_raytrace->Unmap();
+				}
+				rhi::RefCbvDep tmp_cbv_raytrace = new rhi::ConstantBufferViewDep();
+				tmp_cbv_raytrace->Initialize(tmp_cb_raytrace.Get(), {});
+
+				
 				// Ray Dispatch.
 				{
 					gfx::RtPassCore::DispatchRayParam param = {};
@@ -1181,6 +1205,7 @@ namespace ngl::render
 					// global resourceのセット.
 					{
 						param.cbv_slot[0] = desc_.p_rt_scene->GetSceneViewCbv();// View.
+						param.cbv_slot[1] = tmp_cbv_raytrace.Get();// Raytrace.
 					}
 					{
 						param.srv_slot;

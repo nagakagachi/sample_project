@@ -38,6 +38,16 @@
 #include "include/scene_view_struct.hlsli"
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview : register(b0);
 
+struct RaytraceInfo
+{
+	// レイタイプの種類数, (== hitgroup数). ShaderTable構築時に登録されたHitgroup数.
+	//	TraceRay()での multiplier_for_subgeometry_index に使用するために必要とされる.
+	//		ex) Primary, Shadow の2種であれば 2.
+	int num_ray_type;
+
+	int padding[3];
+};
+ConstantBuffer<RaytraceInfo> ngl_cb_raytrace : register(b1);
 
 // Global Srv.
 // システム供給のASはGlobalRootで衝突しないと思われるレジスタで供給.
@@ -79,14 +89,14 @@ void rayGen()
 
 	Payload payload;
 	const int ray_flag = 0;
-	// HItGroupIndex計算時に加算される値. ShadowやAO等のPass毎のシェーダを切り替える際のインデックスに使うなど.
-	const int ray_contribution_to_hitgroup = 0;
-	// BLAS中のSubGeometryIndexに乗算される値(一般的には 1). 結果はHitGroupIndex計算時に加算される.
-	// BLAS中のSubGeometryIndexがそれぞれ別のHitGroupを利用する場合は1等, BLAS中のすべてが同じHitGroupなら0を指定するなどが考えられる.
-	// 1に設定する場合はShaderTable構築時にBLAS内Geom分考慮したEntry登録が必要.
-	const int multiplier_for_subgeometry_index = 1;
-	const int miss_shader_index = (launch_index.x/20+launch_index.y/20)&1;//0;// ２つMissShaderが登録されている体で適当に切り替え.
-	TraceRay(rt_as, ray_flag, 0xff, ray_contribution_to_hitgroup, multiplier_for_subgeometry_index, miss_shader_index, ray, payload );
+	// BLAS中のSubGeometryIndexに乗算される値(PrimaryとShadowの2つのHitgroupがある場合は 2). 結果はHitGroupIndex計算時に加算される.
+	const int multiplier_for_subgeometry_index = ngl_cb_raytrace.num_ray_type;
+	
+	const int hitgroup_debug_index = (launch_index.x/512+launch_index.y/512)&1;
+	// HItGroupIndex計算時に加算される値. Primary=0, Shadow=1 のシェーダを切り替える際のインデックスに使うなど.
+	const int ray_contribution_to_hitgroup = hitgroup_debug_index;//1;
+	const int miss_shader_debug_index = (launch_index.x/20+launch_index.y/20)&1;//0;// ２つMissShaderが登録されている体で適当に切り替え.
+	TraceRay(rt_as, ray_flag, 0xff, ray_contribution_to_hitgroup, multiplier_for_subgeometry_index, miss_shader_debug_index, ray, payload );
 
 	float3 col = payload.color.xyz;
 
@@ -138,10 +148,8 @@ void closestHit(inout Payload payload, in BuiltInTriangleIntersectionAttributes 
 	float3 tri_n_ls = normalize(cross(tri_vetex_pos[1] - tri_vetex_pos[0], tri_vetex_pos[2] - tri_vetex_pos[0]));
 
 	// ワールド空間法線に変換.
-	// 不均等スケールの場合に対応するため余因子行列変換(この場で計算せずに構造化バッファにすることを検討)
+	// 不均等スケールの場合に対応するため余因子行列変換(この場で計算せずに構造化バッファにすることを検討)(ObjectToWorld3x4は不均等スケールで正しくない)
 	float3 tri_n_ws = mul( Matrix3x3_Cofactor((float3x3)ObjectToWorld3x4()), tri_n_ls);
-	//// builtin ObjectToWorld3x4() をそのまま法線変換に使用すると不均等スケールの場合に正しくない.
-	////float3 tri_n_ws = mul((float3x3)ObjectToWorld3x4(), tri_n_ls);
 	
 	// ワールド法線の可視化.
 	payload.color = float4((normalize(tri_n_ws)*0.5+0.5), 0.0);
@@ -149,7 +157,7 @@ void closestHit(inout Payload payload, in BuiltInTriangleIntersectionAttributes 
 
 	// デバッグ用に距離で色変化.
 	float distance_color = frac(ray_t / 20.0);
-	payload.color = float4(distance_color, distance_color, distance_color, 0.0);
+	payload.color = float4(distance_color, 0, 0, 0.0);
 #endif
 }
 
@@ -160,11 +168,16 @@ void closestHit2(inout Payload payload, in BuiltInTriangleIntersectionAttributes
 	float ray_t = RayTCurrent();
 	uint instanceId = InstanceID();
 	uint geomIndex = GeometryIndex();
-
+	
+#if 1
 	// デバッグ用に重心座標の可視化テスト.
 	float3 bary = float3(1.0 - attribs.barycentrics.x - attribs.barycentrics.y, attribs.barycentrics.x, attribs.barycentrics.y);
-	//payload.color = float4(bary, 0.0);
+	payload.color = float4(bary, 0.0);
+#else
 
-	payload.color = float4(ray_t*0.01, 0, 0, 0);
+// デバッグ用に距離で色変化.
+	float distance_color = frac(ray_t / 20.0);
+payload.color = float4(0, distance_color, 0, 0.0);
+#endif
 	
 }

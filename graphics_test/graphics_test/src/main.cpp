@@ -410,6 +410,7 @@ bool AppGame::Initialize()
 		// Mesh Component
 		{
 			// 基本シーンモデル読み込み.
+			if(true)
 			{
 				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
 				mesh_comp_array_.push_back(mc);
@@ -421,6 +422,7 @@ bool AppGame::Initialize()
 			}
 
 			// その他モデル.
+			if(true)
 			{
 				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
 				mesh_comp_array_.push_back(mc);
@@ -433,7 +435,8 @@ bool AppGame::Initialize()
 
 				mc->transform_ = ngl::math::Mat34(tr);
 			}
-			
+
+			if(true)
 			{
 				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
 				mesh_comp_array_.push_back(mc);
@@ -447,6 +450,7 @@ bool AppGame::Initialize()
 
 				mc->transform_ = ngl::math::Mat34(tr);
 			}
+			if(true)
 			{
 				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
 				mesh_comp_array_.push_back(mc);
@@ -460,6 +464,7 @@ bool AppGame::Initialize()
 
 				mc->transform_ = ngl::math::Mat34(tr);
 			}
+			if(true)
 			{
 				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
 				mesh_comp_array_.push_back(mc);
@@ -473,7 +478,7 @@ bool AppGame::Initialize()
 
 				mc->transform_ = ngl::math::Mat34(tr);
 			}
-			
+#if 1
 			for(int i = 0; i < 100; ++i)
 			{
 				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
@@ -499,11 +504,14 @@ bool AppGame::Initialize()
 				// 移動テスト用.
 				test_move_mesh_comp_array_.push_back(mc.get());
 			}
+#endif
 		}
 	}
 	
-	// AS他.
-	if (!rt_scene_.Initialize(&device_))
+	// Raytrace.
+	//	TLAS構築時にShaderTableの最大Hitgroup数が必要な設計であるため初期化時に最大数指定する. PrimayとShadowの2種であれば 2.
+	constexpr int k_system_hitgroup_count_max = 3;
+	if (!rt_scene_.Initialize(&device_, k_system_hitgroup_count_max))
 	{
 		std::cout << "[ERROR] Initialize gfx::RtSceneManager" << std::endl;
 	}

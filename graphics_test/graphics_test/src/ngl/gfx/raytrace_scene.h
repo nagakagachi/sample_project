@@ -152,7 +152,7 @@ namespace ngl
 			bool Setup(rhi::DeviceDep* p_device, std::vector<RtBlas*>& blas_array,
 				const std::vector<uint32_t>& instance_geom_id_array,
 				const std::vector<math::Mat34>& instance_transform_array,
-				const std::vector<uint32_t>& instance_hitgroup_id_array
+				int hitgroup_count
 			);
 
 			// SetupAs... の情報を元に構造構築コマンドを発行する.
@@ -174,7 +174,7 @@ namespace ngl
 			uint32_t NumInstance() const;
 			const std::vector<uint32_t>& GetInstanceBlasIndexArray() const;
 			const std::vector<math::Mat34>& GetInstanceTransformArray() const;
-			const std::vector<uint32_t>& GetInstanceHitgroupIndexArray() const;
+			const std::vector<uint32_t>& GetInstanceHitgroupIndexOffsetArray() const;
 
 
 			uint32_t NumBlas() const;
@@ -189,9 +189,7 @@ namespace ngl
 			std::vector<RtBlas*> blas_array_ = {};
 			std::vector<uint32_t> instance_blas_id_array_;
 			std::vector<math::Mat34> transform_array_;
-			// Instance毎のHitgroupID.
-			// 現状はBLAS内のGeometryはすべて同じHitgroupとしているが後で異なるものを設定できるようにしたい.
-			std::vector<uint32_t> hitgroup_id_array_;
+			std::vector<uint32_t> instance_hitgroup_index_offset_array_;
 
 			// build info.
 			// Setupでバッファや設定を登録される. これを用いてRenderThreadでCommandListにビルドタスクを発行する.
@@ -266,6 +264,10 @@ namespace ngl
 				return ref_shader_object_set_->global_root_signature_.Get();
 			}
 
+			int NumHitGroup() const
+			{
+				return static_cast<int>(hitgroup_database_.size());
+			}
 			const char* GetHitgroupName(uint32_t hitgroup_id) const 
 			{
 				assert(hitgroup_database_.size() > hitgroup_id);
@@ -346,7 +348,8 @@ namespace ngl
 			RtShaderTable& out,
 			rhi::DeviceDep* p_device,
 			rhi::DynamicDescriptorStackAllocatorInterface& desc_alloc_interface,
-			const RtTlas& tlas, const RtStateObject& state_object, const char* raygen_name);
+			const RtTlas& tlas, uint32_t tlas_hitgroup_count_max,
+			const RtStateObject& state_object, const char* raygen_name);
 
 
 		// Raytraceの基本部分を担当するクラス.
@@ -432,7 +435,8 @@ namespace ngl
 			RtSceneManager();
 			~RtSceneManager();
 
-			bool Initialize(rhi::DeviceDep* p_device);
+			// hitgroup_count_max : 現在の設計ではInstanceのHitGroupIndexの設定でhitgroup数が必要が必要なため
+			bool Initialize(rhi::DeviceDep* p_device, int hitgroup_count_max);
 			bool IsValid() const {return is_initialized_;}
 
 			void UpdateOnRender(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_command_list, const SceneRepresentation& scene);
@@ -465,6 +469,8 @@ namespace ngl
 			RtTlas* GetSceneTlas();
 			const RtTlas* GetSceneTlas() const;
 
+			int NumHitGroupCountMax() const;
+			
 			rhi::ConstantBufferViewDep* GetSceneViewCbv();
 			const rhi::ConstantBufferViewDep* GetSceneViewCbv() const;
 
@@ -481,6 +487,7 @@ namespace ngl
 
 			// 動的更新TLAS.
 			std::shared_ptr<RtTlas> dynamic_tlas_ = {};
+			uint32_t hitgroup_count_max_ = 1;
 			
 			rhi::DynamicDescriptorStackAllocatorInterface	desc_alloc_interface_ = {};
 
