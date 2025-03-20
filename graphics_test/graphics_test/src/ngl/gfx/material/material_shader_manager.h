@@ -119,7 +119,7 @@ namespace gfx
         rhi::GraphicsPipelineStateDep* Create(rhi::DeviceDep* p_device, const MaterialPassPsoDesc& pass_pso_desc) override;
         
         // Depth.
-        static constexpr auto k_depth_format = rhi::EResourceFormat::Format_D32_FLOAT;
+        static constexpr auto k_depth_format = MaterialPassPsoCreator_depth::k_depth_format;// rhi::EResourceFormat::Format_D32_FLOAT;
         // GBuffer0 BaseColor, Occlusion
         static constexpr auto k_gbuffer0_format = rhi::EResourceFormat::Format_R8G8B8A8_UNORM_SRGB;
         // GBuffer1 WorldNormal.xyz, 1bitOption.w
