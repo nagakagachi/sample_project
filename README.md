@@ -22,12 +22,25 @@ https://nagakagachi.notion.site/RenderGraph-54f0cf4284c7466697b99cc0df81be80
   - build graphics_test.sln (Visual Studio 2022)
 
 # Render Task Graph
-マルチスレッド対応レンダリングパイプラインを構築するためにRenderTaskGraph(RTG)というものを実装しています.<br/>
+マルチスレッド/非同期Compute対応レンダリングパイプラインを構築するためにRenderTaskGraph(RTG)というものを実装しています.<br/>
 UE5のRDGに類似したシンプルなRenderGraphのようなものになります.<br/>
-レンダリングパス間のリソース依存解決を簡単にコーディングすることを目的にしています.<br/>
+DirectX12世代で必要になるリソースステート追跡を含めた, レンダリングリソース依存解決を簡単にコーディングすることを目的にしています.<br/>
 ![Image](https://github.com/user-attachments/assets/2178ba19-f7b9-4730-bdf7-e3d6db524eda)
 
-以下は単純な依存関係を持つレンダリングパイプラインの擬似コードです.<br/>
+現行では
+- Graphicsパス
+  - IGraphicsTaskNode
+- 非同期Computeパス
+  - IComputeTaskNode
+- リソースの外部化
+  - PropagateResouceToNextFrame
+  - 過去フレームのリソース利用(ヒストリバッファ等)
+  - 別のGraphからリソース利用(マルチビューレンダリング等)
+ 
+に対応.<br/>
+
+## Rendering Pipeline
+以下は単純な依存関係を持つレンダリングパイプライン構築のコードです.<br/>
 DepthPassで描画したDepthTextureを, 引き続き利用するGBufferPassという構成です.<br/>
 ```c++
 // 1. register depth pass.
@@ -39,6 +52,8 @@ auto* task_gbuffer = rtg_builder.AppendTaskNode<TaskGBufferPass>();
 task_gbuffer->Setup(rtg_builder, task_depth->h_depth_);
 ```
 上記のように, Passのメンバ変数(例えば h_depth_)を利用して, 直接的にわかりやすくPass間のリソース依存関係を記述できます.<br/>
+ここで h_depth_ は内部的に割り当てられる単なるIDです. 後述するCompileによってこのIDに実際のリソースが割り当てられ, Passが問い合わせできるようになります.<br/>
+https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_render_path.cpp#L76
 
 ## Setup RTG
 Passが利用するリソースをrtg_builderにレコードします.<br/>
@@ -71,6 +86,7 @@ struct TaskGBufferPass : public rtg::IGraphicsTaskNode
 };
 ```
 Setup時点では実際のリソースは割り当てられていません. スケジューリング用の情報が登録されるだけです.<br/>
+https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_pass.h#L36
 
 ## Compile And Execute
 "Compile" と "Execute" によって登録情報から適切なリソース割り当てと, Passのレンダリング処理が実行されます.<br/>
@@ -82,9 +98,10 @@ rtg_builder.Execute(out_graphics_cmd, out_compute_cmd, p_job_system);
 ```
 Compileによってリソーススケジューリングが確定されるため, Pass毎に並列でマルチスレッドレンダリングが可能です.<br/>
 RTGリソース以外の部分でのマルチスレッド対応はユーザの責任となります.<br/>
+https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_render_path.cpp#L300
 
 ## Rendering RTG
-Execute で呼び出されるPassのレンダリング処理Run()で, rtg_builderからリソースを取得できます.<br/>
+Execute で呼び出されるPassのレンダリング処理Run()で, 割当済みリソースをrtg_builderから取得できます.<br/>
 これらのリソースのステート解決はRTGの役割であるため, Pass側でStateBarrierCommandを発行する必要はありません.<br/>
 (GetAllocatedResourceの戻り値が curr_state_ を持っているため, 最終的にそのステートになるようにすれば独自のステート遷移も可能です.)<br/>
 
@@ -103,22 +120,18 @@ struct TaskGBufferPass : public rtg::IGraphicsTaskNode
   void Run(rtg::RenderTaskGraphBuilder& rtg_builder, rhi::GraphicsCommandListDep* gfx_commandlist) override
   {
     auto res_depth = rtg_builder.GetAllocatedResource(this, h_depth_);
-    auto res_gb0 = rtg_builder.GetAllocatedResource(this, h_gb0_);
+    auto res_gb_a = rtg_builder.GetAllocatedResource(this, h_gbuffer_a_);
   }
 };
 ```
+https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_pass.h#L64
 
 ## Sample Code
 個々のレンダリングパスの実装は以下.<br/>
-```c++
-graphics_test/graphics_test/src/ngl/render/test_pass.h
-```
+https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_pass.h#L36
 
-レンダリングパイプラインの構築の実行は以下.<br/>
-```c++
-graphics_test/graphics_test/src/ngl/render/test_render_path.cpp
-```
-
+レンダリングパイプラインの構築と実行は以下.<br/>
+https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_render_path.cpp#L76
 
 # Third Party
   - Assimp
