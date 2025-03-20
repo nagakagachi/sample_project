@@ -65,15 +65,15 @@ void rayGen()
 	const float2 screen_size_f = float2(launch_dim.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
 
-	float3 ray_dir;
+	float3 ray_dir_ws;
 	{
 		float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, ngl_cb_sceneview.cb_proj_mtx);
-		ray_dir = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4(to_pixel_ray_vs, 0.0));
+		ray_dir_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4(to_pixel_ray_vs, 0.0));
 	}
 
 	RayDesc ray;
 	ray.Origin = float3(ngl_cb_sceneview.cb_view_inv_mtx._m03, ngl_cb_sceneview.cb_view_inv_mtx._m13, ngl_cb_sceneview.cb_view_inv_mtx._m23);// View逆行列からRay始点取得.
-	ray.Direction = ray_dir;
+	ray.Direction = ray_dir_ws;
 	ray.TMin = 0.0;
 	ray.TMax = 1e38;
 
@@ -161,30 +161,10 @@ void closestHit2(inout Payload payload, in BuiltInTriangleIntersectionAttributes
 	uint instanceId = InstanceID();
 	uint geomIndex = GeometryIndex();
 
-#if 0
-	// ジオメトリ情報収集テスト
-	uint tri_index_head = PrimitiveIndex() * 3;
-	const uint3 tri_index = { srv_prim_index[tri_index_head + 0], srv_prim_index[tri_index_head + 1], srv_prim_index[tri_index_head + 2] };
-
-	// Retrieve vertices for the hit triangle.
-	float3 tri_vetex_pos[3] = {
-		srv_prim_vertex_pos[tri_index[0]],
-		srv_prim_vertex_pos[tri_index[1]],
-		srv_prim_vertex_pos[tri_index[2]] };
-	// 頂点データに無いのでここで法線計算.
-	float3 tri_n_ls = normalize(cross(tri_vetex_pos[1] - tri_vetex_pos[0], tri_vetex_pos[2] - tri_vetex_pos[0]));
-	// builtin ObjectToWorld3x4() でWorld変換可能. Object空間のRayDirなどもBuildinがある.
-	float3 tri_n_ws = mul((float3x3)ObjectToWorld3x4(), tri_n_ls);
-
-	// ワールド法線の可視化.
-	payload.color = float4(abs(tri_n_ws), 0.0);
-#else
 	// デバッグ用に重心座標の可視化テスト.
-	//float3 bary = float3(1.0 - attribs.barycentrics.x - attribs.barycentrics.y, attribs.barycentrics.x, attribs.barycentrics.y);
+	float3 bary = float3(1.0 - attribs.barycentrics.x - attribs.barycentrics.y, attribs.barycentrics.x, attribs.barycentrics.y);
 	//payload.color = float4(bary, 0.0);
 
-	// デバッグ用に距離で色変化.
-	float distance_color = frac(ray_t / 20.0);
-	payload.color = float4(distance_color, distance_color, distance_color, 0.0);
-#endif
+	payload.color = float4(ray_t*0.01, 0, 0, 0);
+	
 }

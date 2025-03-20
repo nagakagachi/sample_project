@@ -364,7 +364,7 @@ namespace ngl_test
 			ngl::rhi::ShaderReflectionDep reflect00;
 			{
 				ngl::rhi::ShaderDep::InitFileDesc shader_desc = {};
-				shader_desc.shader_file_path = "./src/ngl/data/shader/sample_ps.hlsl";
+				shader_desc.shader_file_path = "./src/ngl/data/shader/test/sample_ps.hlsl";
 				shader_desc.entry_point_name = "main_ps";
 				shader_desc.stage = ngl::rhi::EShaderStage::Pixel;
 				shader_desc.shader_model_version = "5_0";
@@ -392,7 +392,7 @@ namespace ngl_test
 			ngl::rhi::ShaderReflectionDep reflect01;
 			{
 				ngl::rhi::ShaderDep::InitFileDesc shader_desc = {};
-				shader_desc.shader_file_path = "./src/ngl/data/shader/sample_ps.hlsl";
+				shader_desc.shader_file_path = "./src/ngl/data/shader/test/sample_ps.hlsl";
 				shader_desc.entry_point_name = "main_ps";
 				shader_desc.stage = ngl::rhi::EShaderStage::Pixel;
 				shader_desc.shader_model_version = "6_0";

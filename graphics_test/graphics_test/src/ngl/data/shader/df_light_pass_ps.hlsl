@@ -6,6 +6,7 @@
  */
 
 #include "include/brdf.hlsli"
+#include "include/math_util.hlsli"
 
 struct VS_OUTPUT
 {

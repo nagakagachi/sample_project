@@ -27,23 +27,6 @@ struct SceneViewInfo
 	float	cb_time_sec;
 };
 
-
-// ピクセルへのView空間レイ方向を, ピクセルのスクリーン上UVとProjection行列から計算する.
-// ViewZを利用してView空間座標を復元する場合はzが1になるように修正して計算が必要な点に注意( pos_vs.z == ViewZ となるように).
-//		pos_view = ViewSpaceRay.xyz/abs(ViewSpaceRay.z) * ViewZ
-float3 CalcViewSpaceRay(float2 screen_uv, float4x4 proj_mtx)
-{
-	float2 ndc_xy = (screen_uv * 2.0 - 1.0) * float2(1.0, -1.0);
-	// 逆行列を使わずにProj行列の要素からレイ方向計算.
-	const float inv_tan_horizontal = proj_mtx._m00; // m00 = 1/tan(fov_x*0.5)
-	const float inv_tan_vertical = proj_mtx._m11; // m11 = 1/tan(fov_y*0.5)
-	
-	const float3 ray_dir_view = normalize( float3(ndc_xy.x / inv_tan_horizontal, ndc_xy.y / inv_tan_vertical, 1.0) );
-	// View空間でのRay方向. World空間へ変換する場合は InverseViewMatrix * ray_dir_view とすること.
-	return ray_dir_view;
-}
-
-
 // 十分なサイズ指定.
 #define k_directional_shadow_cascade_cb_max 8
 // Directional Cascade Shadow Sampling用 定数バッファ構造定義.

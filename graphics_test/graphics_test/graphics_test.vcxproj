@@ -300,16 +300,16 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="src\ngl\data\shader\include\scene_view_struct.hlsli" />
+    <None Include="src\ngl\data\shader\test\sample_ps.hlsl">
+      <FileType>Document</FileType>
+    </None>
+    <None Include="src\ngl\data\shader\test\sample_vs.hlsl">
+      <FileType>Document</FileType>
+    </None>
     <None Include="src\ngl\text\hash_text.inl" />
   </ItemGroup>
   <ItemGroup>
     <None Include="src\ngl\data\shader\dxr_sample_lib.hlsl">
-      <FileType>Document</FileType>
-    </None>
-    <None Include="src\ngl\data\shader\sample_ps.hlsl">
-      <FileType>Document</FileType>
-    </None>
-    <None Include="src\ngl\data\shader\sample_vs.hlsl">
       <FileType>Document</FileType>
     </None>
   </ItemGroup>

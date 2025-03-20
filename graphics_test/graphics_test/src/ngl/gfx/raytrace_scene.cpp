@@ -1360,6 +1360,7 @@ namespace ngl
 				// InstanceのBLASに複数のGeometryが含まれる場合はここでその分のrecordが書き込まれる.
 
 				const auto table_hitgroup_offset = shader_record_byte_size * table_cnt;
+				// hitgroupの総数カウント.
 				uint32_t hitgroup_count = 0;
 				for (uint32_t inst_i = 0u; inst_i < num_instance; ++inst_i)
 				{
