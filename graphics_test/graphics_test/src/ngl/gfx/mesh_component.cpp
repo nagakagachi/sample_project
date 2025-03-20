@@ -18,7 +18,7 @@ namespace gfx
 		if (auto* mapped = cb_instance_[cb_index]->MapAs<InstanceInfo>())
 		{
 			mapped->mtx = transform_;
-			mapped->mtx_cofactor = math::Mat44(math::Mat33::Cofactor(transform_.GetMat33()));// 余因子行列.
+			mapped->mtx_cofactor = math::Mat34(math::Mat33::Cofactor(transform_.GetMat33()));// 余因子行列.
 				
 			cb_instance_[cb_index]->Unmap();
 		}

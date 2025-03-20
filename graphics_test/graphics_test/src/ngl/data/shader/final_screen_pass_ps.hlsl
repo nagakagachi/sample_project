@@ -63,7 +63,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		if(cb_final_screen_pass.enable_raytrace_result)
 		{
 			const float2 debug_area_size = float2(0.3, 0.3);
-			const float2 debug_area_lt = float2(0.7, 0.4);
+			const float2 debug_area_lt = float2(0.0, 0.5);
 			const float2 debug_area_br = debug_area_lt + debug_area_size;
 			if (all(debug_area_lt <= input.uv) && all(debug_area_br >= input.uv))
 			{
@@ -144,7 +144,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		}
 		if(cb_final_screen_pass.enable_dshadow)
 		{
-			const float2 k_lt = float2(0.0, k_gbuffer_debug_height*2.0);
+			const float2 k_lt = float2(k_gbuffer_debug_height*2.0 + 0.01, 0.0);
 			const float2 k_size = float2(0.25, 0.25) * float2(1, 16.0/9.0);// アスペクト比キャンセルして正方形アトラスをそのまま描画.
 			const float2 area_rate = (input.uv - k_lt)/(k_size);
 			if(all(0.0 < area_rate) && all(1.0 > area_rate))

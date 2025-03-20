@@ -186,6 +186,7 @@
     <ClCompile Include="third_party\imgui\imgui_widgets.cpp" />
     <ClCompile Include="third_party\tinyxml2\tinyxml2.cpp" />
     <ClInclude Include="src\ngl\data\shader\include\brdf.hlsli" />
+    <ClInclude Include="src\ngl\data\shader\include\math_util.hlsli" />
     <ClInclude Include="src\ngl\data\shader\include\tonemap.hlsli" />
     <ClInclude Include="src\ngl\data\shader\material\pass\d_shadow.hlsli" />
     <ClInclude Include="src\ngl\gfx\material\material_shader_common.h" />

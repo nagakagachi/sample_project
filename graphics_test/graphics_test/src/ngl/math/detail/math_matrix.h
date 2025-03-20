@@ -781,7 +781,7 @@ namespace ngl
 			}
 			// from Mat33.
 			explicit constexpr Mat34(const Mat33& m)
-				: r0(m.r0.x, m.r0.y, m.r0.z, 0.0f), r1(m.r1.x, m.r1.y, m.r1.z, 0.0f), r2(m.r2.x, m.r2.y, m.r2.z)
+				: r0(m.r0.x, m.r0.y, m.r0.z, 0.0f), r1(m.r1.x, m.r1.y, m.r1.z, 0.0f), r2(m.r2.x, m.r2.y, m.r2.z, 0.0f)
 			{
 			}
 			// to Mat33.

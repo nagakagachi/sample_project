@@ -15,7 +15,7 @@
         VsInputWrapper input_wrap = ConstructVsInputWrapper(input);
         
         const float3x4 instance_mtx = NglGetInstanceTransform(0);
-        const float3x3 instance_mtx_cofactor = NglGetInstanceTransformCofactor(0);
+        const float3x4 instance_mtx_cofactor = NglGetInstanceTransformCofactor(0);
         
         float3 pos_ws = mul(instance_mtx, float4(input_wrap.pos, 1.0)).xyz;
         float3 pos_vs = mul(ngl_cb_sceneview.cb_view_mtx, float4(pos_ws, 1.0));

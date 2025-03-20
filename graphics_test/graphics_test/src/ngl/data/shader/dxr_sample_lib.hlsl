@@ -29,9 +29,10 @@
 #endif
 //
 
-		
 // nglのmatrix系ははrow-majorメモリレイアウトであるための指定.
 #pragma pack_matrix( row_major )
+
+#include "include/math_util.hlsli"
 
 // SceneView定数バッファ構造定義.
 #include "include/scene_view_struct.hlsli"
@@ -135,11 +136,15 @@ void closestHit(inout Payload payload, in BuiltInTriangleIntersectionAttributes 
 		srv_prim_vertex_pos[tri_index[2]] };
 	// 頂点データに無いのでここで法線計算.
 	float3 tri_n_ls = normalize(cross(tri_vetex_pos[1] - tri_vetex_pos[0], tri_vetex_pos[2] - tri_vetex_pos[0]));
-	// builtin ObjectToWorld3x4() でWorld変換可能. Object空間のRayDirなどもBuildinがある.
-	float3 tri_n_ws = mul((float3x3)ObjectToWorld3x4(), tri_n_ls);
+
+	// ワールド空間法線に変換.
+	// 不均等スケールの場合に対応するため余因子行列変換(この場で計算せずに構造化バッファにすることを検討)
+	float3 tri_n_ws = mul( Matrix3x3_Cofactor((float3x3)ObjectToWorld3x4()), tri_n_ls);
+	//// builtin ObjectToWorld3x4() をそのまま法線変換に使用すると不均等スケールの場合に正しくない.
+	////float3 tri_n_ws = mul((float3x3)ObjectToWorld3x4(), tri_n_ls);
 	
 	// ワールド法線の可視化.
-	payload.color = float4(abs(normalize(tri_n_ws)), 0.0);
+	payload.color = float4((normalize(tri_n_ws)*0.5+0.5), 0.0);
 #else
 
 	// デバッグ用に距離で色変化.
