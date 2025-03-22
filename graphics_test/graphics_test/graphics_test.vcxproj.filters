@@ -99,9 +99,6 @@
     <ClCompile Include="src\test\test.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="src\ngl\render\graph_builder.cpp">
-      <Filter>ソース ファイル</Filter>
-    </ClCompile>
     <ClCompile Include="src\ngl\gfx\render\global_render_resource.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
@@ -115,6 +112,51 @@
       <Filter>ソース ファイル</Filter>
     </ClCompile>
     <ClCompile Include="src\ngl\resource\resource_manager_impl.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ngl\gfx\material\material_shader_generator.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ngl\gfx\material\material_shader_manager.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ngl\gfx\rtg\graph_builder.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ngl\imgui\imgui_interface.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ngl\math\math.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ngl\render\test_render_path.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="src\ngl\thread\job_thread.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\backends\imgui_impl_dx12.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\backends\imgui_impl_win32.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\imgui.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_demo.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_draw.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_tables.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\imgui\imgui_widgets.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="third_party\tinyxml2\tinyxml2.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
   </ItemGroup>
@@ -254,9 +296,6 @@
     <ClInclude Include="src\ngl\render\test_pass.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="src\ngl\render\graph_builder.h">
-      <Filter>ヘッダー ファイル</Filter>
-    </ClInclude>
     <ClInclude Include="src\ngl\gfx\render\global_render_resource.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
@@ -269,22 +308,75 @@
     <ClInclude Include="src\ngl\gfx\texture_loader_directxtex.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="src\ngl\render\rtg_command_list_pool.h">
-      <Filter>ヘッダー ファイル</Filter>
-    </ClInclude>
     <ClInclude Include="src\ngl\data\shader\material\impl\opaque_standard.hlsli" />
     <ClInclude Include="src\ngl\data\shader\material\mtl_header.hlsli" />
     <ClInclude Include="src\ngl\data\shader\material\mtl_instance_transform_buffer.hlsli" />
-    <ClInclude Include="src\ngl\data\shader\material\pass\depth_pass.hlsli" />
-    <ClInclude Include="src\ngl\data\shader\material\pass\gbuffer_pass.hlsli" />
+    <ClInclude Include="src\ngl\data\shader\include\brdf.hlsli" />
+    <ClInclude Include="src\ngl\data\shader\include\math_util.hlsli" />
+    <ClInclude Include="src\ngl\data\shader\include\tonemap.hlsli" />
+    <ClInclude Include="src\ngl\data\shader\material\pass\d_shadow.hlsli" />
+    <ClInclude Include="src\ngl\gfx\material\material_shader_common.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ngl\gfx\material\material_shader_generator.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ngl\gfx\material\material_shader_manager.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ngl\gfx\rtg\graph_builder.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ngl\gfx\rtg\rtg_command_list_pool.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ngl\imgui\imgui_interface.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ngl\math\detail\math_util.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ngl\render\test_render_path.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ngl\thread\job_thread.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\imgui\backends\imgui_impl_dx12.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\imgui\backends\imgui_impl_win32.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\imgui\imconfig.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\imgui\imgui.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\imgui\imgui_internal.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\imgui\imstb_rectpack.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\imgui\imstb_textedit.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\imgui\imstb_truetype.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="third_party\tinyxml2\tinyxml2.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="src\ngl\data\shader\material\pass\depth.hlsli" />
+    <ClInclude Include="src\ngl\data\shader\material\pass\gbuffer.hlsli" />
   </ItemGroup>
   <ItemGroup>
     <None Include="src\ngl\text\hash_text.inl">
       <Filter>ヘッダー ファイル</Filter>
     </None>
     <None Include="src\ngl\data\shader\dxr_sample_lib.hlsl" />
-    <None Include="src\ngl\data\shader\sample_ps.hlsl" />
-    <None Include="src\ngl\data\shader\sample_vs.hlsl" />
     <None Include="src\ngl\data\shader\include\scene_view_struct.hlsli" />
     <None Include="src\ngl\data\shader\screen\generate_lineardepth_cs.hlsl" />
     <None Include="src\ngl\data\shader\screen\copy_tex_to_screen_ps.hlsl" />
@@ -293,9 +385,7 @@
     <None Include="src\ngl\data\shader\df_light_pass_ps.hlsl" />
     <None Include="src\ngl\data\shader\test\async_task_test_cs.hlsl" />
     <None Include="packages.config" />
-    <None Include="src\ngl\data\shader\material\generated\opaque_standard\opaque_standard.depth.s000.u000.ps.hlsl" />
-    <None Include="src\ngl\data\shader\material\generated\opaque_standard\opaque_standard.depth.s000.u000.vs.hlsl" />
-    <None Include="src\ngl\data\shader\material\generated\opaque_standard\opaque_standard.gbuffer.s000.u000.ps.hlsl" />
-    <None Include="src\ngl\data\shader\material\generated\opaque_standard\opaque_standard.gbuffer.s000.u000.vs.hlsl" />
+    <None Include="src\ngl\data\shader\test\sample_ps.hlsl" />
+    <None Include="src\ngl\data\shader\test\sample_vs.hlsl" />
   </ItemGroup>
 </Project>

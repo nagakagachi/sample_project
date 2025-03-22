@@ -15,6 +15,13 @@
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
 
+#if 1
+// for Agility SDK. NuGetパッケージに対応したバージョン値を以下の公式ページを参考に指定(1.615.1 は 615 となっている).
+// https://devblogs.microsoft.com/directx/directx12agility/
+// https://devblogs.microsoft.com/directx/gettingstarted-dx12agility/
+extern "C" { __declspec(dllexport) extern const UINT D3D12SDKVersion = 615;}
+extern "C" { __declspec(dllexport) extern const char* D3D12SDKPath = u8".\\D3D12\\"; }
+#endif
 
 
 namespace ngl
