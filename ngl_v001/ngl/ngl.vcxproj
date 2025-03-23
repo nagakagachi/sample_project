@@ -1,0 +1,251 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="..\packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\Microsoft.Direct3D.D3D12.props" Condition="Exists('..\packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\Microsoft.Direct3D.D3D12.props')" />
+  <Import Project="..\packages\Microsoft.Direct3D.DXC.1.8.2502.8\build\native\Microsoft.Direct3D.DXC.props" Condition="Exists('..\packages\Microsoft.Direct3D.DXC.1.8.2502.8\build\native\Microsoft.Direct3D.DXC.props')" />
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{bbe1d3c3-65f7-4441-9167-58d9a341d930}</ProjectGuid>
+    <RootNamespace>ngl</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>StaticLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>.\include;.\external\assimp\include;.\external\DirectXTex;.\external\imgui;.\external\tinyxml2;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <ForcedIncludeFiles>pch.h</ForcedIncludeFiles>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>
+      </SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+    <Lib>
+      <AdditionalDependencies>assimp-vc143-mt.lib;DirectXTex.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>.\external\assimp\lib\Release;.\external\DirectXTex\lib\$(Configuration);</AdditionalLibraryDirectories>
+    </Lib>
+    <PreBuildEvent>
+      <Command>copy .\external\assimp\bin\Release\\*.dll $(TargetDir)</Command>
+      <Message>third_partyのAssimpからdllをコピーする.</Message>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <AdditionalIncludeDirectories>.\include;.\external\assimp\include;.\external\DirectXTex;.\external\imgui;.\external\tinyxml2;</AdditionalIncludeDirectories>
+      <ForcedIncludeFiles>pch.h</ForcedIncludeFiles>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+    </ClCompile>
+    <Link>
+      <SubSystem>
+      </SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+    <Lib>
+      <AdditionalDependencies>assimp-vc143-mt.lib;DirectXTex.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>.\external\assimp\lib\Release;.\external\DirectXTex\lib\$(Configuration);</AdditionalLibraryDirectories>
+    </Lib>
+    <PreBuildEvent>
+      <Command>copy .\external\assimp\bin\Release\\*.dll $(TargetDir)</Command>
+      <Message>third_partyのAssimpからdllをコピーする.</Message>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="external\imgui\backends\imgui_impl_dx12.h" />
+    <ClInclude Include="external\imgui\backends\imgui_impl_win32.h" />
+    <ClInclude Include="external\imgui\imconfig.h" />
+    <ClInclude Include="external\imgui\imgui.h" />
+    <ClInclude Include="external\imgui\imgui_internal.h" />
+    <ClInclude Include="external\imgui\imstb_rectpack.h" />
+    <ClInclude Include="external\imgui\imstb_textedit.h" />
+    <ClInclude Include="external\imgui\imstb_truetype.h" />
+    <ClInclude Include="external\tinyxml2\tinyxml2.h" />
+    <ClInclude Include="framework.h" />
+    <ClInclude Include="include\boot\boot_application.h" />
+    <ClInclude Include="include\boot\win\boot_application.win.h" />
+    <ClInclude Include="include\file\file.h" />
+    <ClInclude Include="include\gfx\command_helper.h" />
+    <ClInclude Include="include\gfx\common_struct.h" />
+    <ClInclude Include="include\gfx\material\material_shader_common.h" />
+    <ClInclude Include="include\gfx\material\material_shader_generator.h" />
+    <ClInclude Include="include\gfx\material\material_shader_manager.h" />
+    <ClInclude Include="include\gfx\mesh_component.h" />
+    <ClInclude Include="include\gfx\mesh_loader_assimp.h" />
+    <ClInclude Include="include\gfx\raytrace_scene.h" />
+    <ClInclude Include="include\gfx\render\global_render_resource.h" />
+    <ClInclude Include="include\gfx\render\mesh_renderer.h" />
+    <ClInclude Include="include\gfx\render\standard_render_model.h" />
+    <ClInclude Include="include\gfx\resource\resource_mesh.h" />
+    <ClInclude Include="include\gfx\resource\resource_shader.h" />
+    <ClInclude Include="include\gfx\resource\resource_texture.h" />
+    <ClInclude Include="include\gfx\rtg\graph_builder.h" />
+    <ClInclude Include="include\gfx\rtg\rtg_command_list_pool.h" />
+    <ClInclude Include="include\gfx\texture_loader_directxtex.h" />
+    <ClInclude Include="include\imgui\imgui_interface.h" />
+    <ClInclude Include="include\math\detail\math_matrix.h" />
+    <ClInclude Include="include\math\detail\math_util.h" />
+    <ClInclude Include="include\math\detail\math_vector.h" />
+    <ClInclude Include="include\math\math.h" />
+    <ClInclude Include="include\memory\boundary_tag_block.h" />
+    <ClInclude Include="include\memory\tlsf_allocator.h" />
+    <ClInclude Include="include\memory\tlsf_allocator_core.h" />
+    <ClInclude Include="include\memory\tlsf_memory_pool.h" />
+    <ClInclude Include="include\platform\window.h" />
+    <ClInclude Include="include\platform\win\window.win.h" />
+    <ClInclude Include="include\render\test_pass.h" />
+    <ClInclude Include="include\render\test_render_path.h" />
+    <ClInclude Include="include\resource\resource.h" />
+    <ClInclude Include="include\resource\resource_manager.h" />
+    <ClInclude Include="include\rhi\d3d12\command_list.d3d12.h" />
+    <ClInclude Include="include\rhi\d3d12\descriptor.d3d12.h" />
+    <ClInclude Include="include\rhi\d3d12\device.d3d12.h" />
+    <ClInclude Include="include\rhi\d3d12\resource.d3d12.h" />
+    <ClInclude Include="include\rhi\d3d12\resource_view.d3d12.h" />
+    <ClInclude Include="include\rhi\d3d12\rhi_util.d3d12.h" />
+    <ClInclude Include="include\rhi\d3d12\shader.d3d12.h" />
+    <ClInclude Include="include\rhi\rhi.h" />
+    <ClInclude Include="include\rhi\rhi_object_garbage_collect.h" />
+    <ClInclude Include="include\rhi\rhi_ref.h" />
+    <ClInclude Include="include\text\hash_text.h" />
+    <ClInclude Include="include\text\hash_text.inl" />
+    <ClInclude Include="include\thread\job_thread.h" />
+    <ClInclude Include="include\thread\lockfree_stack_intrusive.h" />
+    <ClInclude Include="include\thread\lockfree_stack_intrusive_test.h" />
+    <ClInclude Include="include\util\bit_operation.h" />
+    <ClInclude Include="include\util\instance_handle.h" />
+    <ClInclude Include="include\util\noncopyable.h" />
+    <ClInclude Include="include\util\shared_count.h" />
+    <ClInclude Include="include\util\shared_ptr.h" />
+    <ClInclude Include="include\util\singleton.h" />
+    <ClInclude Include="include\util\time\timer.h" />
+    <ClInclude Include="include\util\types.h" />
+    <ClInclude Include="pch.h" />
+    <ClInclude Include="src\text\hash_text.inl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="external\imgui\backends\imgui_impl_dx12.cpp" />
+    <ClCompile Include="external\imgui\backends\imgui_impl_win32.cpp" />
+    <ClCompile Include="external\imgui\imgui.cpp" />
+    <ClCompile Include="external\imgui\imgui_demo.cpp" />
+    <ClCompile Include="external\imgui\imgui_draw.cpp" />
+    <ClCompile Include="external\imgui\imgui_tables.cpp" />
+    <ClCompile Include="external\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="external\tinyxml2\tinyxml2.cpp" />
+    <ClCompile Include="ngl.cpp" />
+    <ClCompile Include="pch.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="src\boot\win\boot_application.win.cpp" />
+    <ClCompile Include="src\file\file.cpp" />
+    <ClCompile Include="src\gfx\command_helper.cpp" />
+    <ClCompile Include="src\gfx\material\material_shader_generator.cpp" />
+    <ClCompile Include="src\gfx\material\material_shader_manager.cpp" />
+    <ClCompile Include="src\gfx\mesh_component.cpp" />
+    <ClCompile Include="src\gfx\mesh_loader_assimp.cpp" />
+    <ClCompile Include="src\gfx\raytrace_scene.cpp" />
+    <ClCompile Include="src\gfx\render\global_render_resource.cpp" />
+    <ClCompile Include="src\gfx\render\mesh_renderer.cpp" />
+    <ClCompile Include="src\gfx\render\standard_render_model.cpp" />
+    <ClCompile Include="src\gfx\resource\resource_mesh.cpp" />
+    <ClCompile Include="src\gfx\resource\resource_texture.cpp" />
+    <ClCompile Include="src\gfx\rtg\graph_builder.cpp" />
+    <ClCompile Include="src\gfx\texture_loader_directxtex.cpp" />
+    <ClCompile Include="src\imgui\imgui_interface.cpp" />
+    <ClCompile Include="src\math\math.cpp" />
+    <ClCompile Include="src\memory\boundary_tag_block.cpp" />
+    <ClCompile Include="src\memory\tlsf_allocator_core.cpp" />
+    <ClCompile Include="src\memory\tlsf_memory_pool.cpp" />
+    <ClCompile Include="src\platform\win\window.win.cpp" />
+    <ClCompile Include="src\render\test_render_path.cpp" />
+    <ClCompile Include="src\resource\resource.cpp" />
+    <ClCompile Include="src\resource\resource_manager.cpp" />
+    <ClCompile Include="src\resource\resource_manager_impl.cpp" />
+    <ClCompile Include="src\rhi\d3d12\command_list.d3d12.cpp" />
+    <ClCompile Include="src\rhi\d3d12\descriptor.d3d12.cpp" />
+    <ClCompile Include="src\rhi\d3d12\device.d3d12.cpp" />
+    <ClCompile Include="src\rhi\d3d12\resource.d3d12.cpp" />
+    <ClCompile Include="src\rhi\d3d12\resource_view.d3d12.cpp" />
+    <ClCompile Include="src\rhi\d3d12\rhi_util.d3d12.cpp" />
+    <ClCompile Include="src\rhi\d3d12\shader.d3d12.cpp" />
+    <ClCompile Include="src\rhi\rhi_object_garbage_collect.cpp" />
+    <ClCompile Include="src\rhi\rhi_ref.cpp" />
+    <ClCompile Include="src\thread\job_thread.cpp" />
+    <ClCompile Include="src\thread\lockfree_stack_intrusive_test.cpp" />
+    <ClCompile Include="src\util\bit_operation.cpp" />
+    <ClCompile Include="src\util\time\timer.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="src\math\detail\" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+    <Import Project="..\packages\Microsoft.Direct3D.DXC.1.8.2502.8\build\native\Microsoft.Direct3D.DXC.targets" Condition="Exists('..\packages\Microsoft.Direct3D.DXC.1.8.2502.8\build\native\Microsoft.Direct3D.DXC.targets')" />
+    <Import Project="..\packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\Microsoft.Direct3D.D3D12.targets" Condition="Exists('..\packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\Microsoft.Direct3D.D3D12.targets')" />
+    <Import Project="..\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets" Condition="Exists('..\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets')" />
+  </ImportGroup>
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>このプロジェクトは、このコンピューター上にない NuGet パッケージを参照しています。それらのパッケージをダウンロードするには、[NuGet パッケージの復元] を使用します。詳細については、http://go.microsoft.com/fwlink/?LinkID=322105 を参照してください。見つからないファイルは {0} です。</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\packages\Microsoft.Direct3D.DXC.1.8.2502.8\build\native\Microsoft.Direct3D.DXC.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Direct3D.DXC.1.8.2502.8\build\native\Microsoft.Direct3D.DXC.props'))" />
+    <Error Condition="!Exists('..\packages\Microsoft.Direct3D.DXC.1.8.2502.8\build\native\Microsoft.Direct3D.DXC.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Direct3D.DXC.1.8.2502.8\build\native\Microsoft.Direct3D.DXC.targets'))" />
+    <Error Condition="!Exists('..\packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\Microsoft.Direct3D.D3D12.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\Microsoft.Direct3D.D3D12.props'))" />
+    <Error Condition="!Exists('..\packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\Microsoft.Direct3D.D3D12.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\Microsoft.Direct3D.D3D12.targets'))" />
+    <Error Condition="!Exists('..\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\WinPixEventRuntime.1.0.240308001\build\WinPixEventRuntime.targets'))" />
+  </Target>
+</Project>

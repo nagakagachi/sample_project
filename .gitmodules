@@ -1,15 +1,12 @@
-[submodule "graphics_test/graphics_test/third_party/assimp"]
-	path = graphics_test/graphics_test/third_party/assimp
+[submodule "ngl_v001/ngl/external/assimp"]
+	path = ngl_v001/ngl/external/assimp
 	url = https://github.com/assimp/assimp.git
-	ignore = dirty
-[submodule "graphics_test/graphics_test/third_party/DirectXTex"]
-	path = graphics_test/graphics_test/third_party/DirectXTex
+[submodule "ngl_v001/ngl/external/DirectXTex"]
+	path = ngl_v001/ngl/external/DirectXTex
 	url = https://github.com/microsoft/DirectXTex.git
-	ignore = dirty
-[submodule "graphics_test/graphics_test/third_party/tinyxml2"]
-	path = graphics_test/graphics_test/third_party/tinyxml2
+[submodule "ngl_v001/ngl/external/tinyxml2"]
+	path = ngl_v001/ngl/external/tinyxml2
 	url = https://github.com/leethomason/tinyxml2.git
-	ignore = dirty
-[submodule "graphics_test/graphics_test/third_party/imgui"]
-	path = graphics_test/graphics_test/third_party/imgui
+[submodule "ngl_v001/ngl/external/imgui"]
+	path = ngl_v001/ngl/external/imgui
 	url = https://github.com/ocornut/imgui.git

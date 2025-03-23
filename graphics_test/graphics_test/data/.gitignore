@@ -1,8 +1,0 @@
-
-# Modelデータとしてのobjをgitignoreから除外するため.
-!*.obj
-
-# glTFの外部バイナリファイルであるbinをgitignoreから除外するため.
-!*.bin
-
-##
