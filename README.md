@@ -142,8 +142,13 @@ https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0de
     - https://github.com/leethomason/tinyxml2
   - Dear ImGui
     - https://github.com/ocornut/imgui
-
-
+# NuGet
+- DirectX Shader Compiler
+  - https://www.nuget.org/packages/Microsoft.Direct3D.DXC
+- WinPixEventRuntime
+  - https://www.nuget.org/packages/WinPixEventRuntime
+- DirectX Agility SDK
+  - https://www.nuget.org/packages/Microsoft.Direct3D.D3D12
 
 
 
