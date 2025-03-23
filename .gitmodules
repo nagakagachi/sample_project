@@ -1,12 +1,12 @@
 [submodule "ngl_v001/ngl/external/assimp"]
 	path = ngl_v001/ngl/external/assimp
 	url = https://github.com/assimp/assimp.git
-[submodule "ngl_v001/ngl/external/DirectXTex"]
-	path = ngl_v001/ngl/external/DirectXTex
-	url = https://github.com/microsoft/DirectXTex.git
 [submodule "ngl_v001/ngl/external/tinyxml2"]
 	path = ngl_v001/ngl/external/tinyxml2
 	url = https://github.com/leethomason/tinyxml2.git
 [submodule "ngl_v001/ngl/external/imgui"]
 	path = ngl_v001/ngl/external/imgui
 	url = https://github.com/ocornut/imgui.git
+[submodule "ngl_v001/ngl/external/DirectXTex"]
+	path = ngl_v001/ngl/external/DirectXTex
+	url = https://github.com/microsoft/DirectXTex.git
