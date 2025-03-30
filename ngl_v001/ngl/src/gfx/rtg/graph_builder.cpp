@@ -255,14 +255,14 @@ namespace ngl
 
 
 		// GraphicsTask用のRender処理登録. IGraphicsTaskNode派生Taskはこの関数で自身のRender処理を登録する.
-		void RenderTaskGraphBuilder::RegisterTaskNodeRenderFunction(IGraphicsTaskNode* node, const std::function<void(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)>& render_function)
+		void RenderTaskGraphBuilder::RegisterTaskNodeRenderFunction(const IGraphicsTaskNode* node, const std::function<void(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)>& render_function)
 		{
 			// 念の為二重登録チェック.
 			assert(node_function_graphics_.end() == node_function_graphics_.find(node));
 			node_function_graphics_.insert(std::pair(node, render_function));
 		}
 		// AsyncComputeTask用のRender処理登録. IComputeTaskNode派生Taskはこの関数で自身の非同期Compute Render処理を登録する.
-		void RenderTaskGraphBuilder::RegisterTaskNodeRenderFunction(IComputeTaskNode* node, const std::function<void(rtg::RenderTaskGraphBuilder& builder, rhi::ComputeCommandListDep* gfx_commandlist)>& render_function)
+		void RenderTaskGraphBuilder::RegisterTaskNodeRenderFunction(const IComputeTaskNode* node, const std::function<void(rtg::RenderTaskGraphBuilder& builder, rhi::ComputeCommandListDep* gfx_commandlist)>& render_function)
 		{
 			// 念の為二重登録チェック.
 			assert(node_function_compute_.end() == node_function_compute_.find(node));

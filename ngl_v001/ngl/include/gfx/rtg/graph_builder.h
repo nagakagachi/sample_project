@@ -161,14 +161,11 @@ namespace ngl
 		{
 			struct Desc
 			{
-				union
+				struct AbsSize
 				{
-					struct AbsSize
-					{
-						int w;// 要求するバッファのWidth (例 1920).
-						int h;// 要求するバッファのHeight (例 1080).
-					} abs_size;
-				};
+					int w;// 要求するバッファのWidth (例 1920).
+					int h;// 要求するバッファのHeight (例 1080).
+				} abs_size;
 				rhi::EResourceFormat format {};
 				
 				// サイズ直接指定. その他データはEmpty.
@@ -339,12 +336,12 @@ namespace ngl
 			static constexpr TaskStage k_frontmost_stage()
 			{
 				return TaskStage{std::numeric_limits<int>::min()};
-			};
+			}
 			// 最終端のStage.
 			static constexpr TaskStage k_endmost_stage()
 			{
 				return TaskStage{std::numeric_limits<int>::max()};
-			};
+			}
 			
 			// オペレータ.
 			constexpr bool operator<(const TaskStage arg) const;
@@ -453,9 +450,9 @@ namespace ngl
 			}
 
 			// GraphicsTask用のRender処理登録. IGraphicsTaskNode派生Taskはこの関数で自身のRender処理を登録する.
-			void RegisterTaskNodeRenderFunction(IGraphicsTaskNode* node, const TaskNodeRenderFunctionType_Graphics& render_function);
+			void RegisterTaskNodeRenderFunction(const IGraphicsTaskNode* node, const TaskNodeRenderFunctionType_Graphics& render_function);
 			// AsyncComputeTask用のRender処理登録. IComputeTaskNode派生Taskはこの関数で自身のAsyncCompute Render処理を登録する.
-			void RegisterTaskNodeRenderFunction(IComputeTaskNode* node, const TaskNodeRenderFunctionType_Compute& render_function);
+			void RegisterTaskNodeRenderFunction(const IComputeTaskNode* node, const TaskNodeRenderFunctionType_Compute& render_function);
 
 		public:
 			// リソースハンドルを生成.
