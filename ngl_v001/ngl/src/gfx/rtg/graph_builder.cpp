@@ -252,6 +252,22 @@ namespace ngl
 			// Passメンバに保持するコードを短縮するためHandleをそのままリターン.
 			return res_handle;
 		}
+
+
+		// GraphicsTask用のRender処理登録. IGraphicsTaskNode派生Taskはこの関数で自身のRender処理を登録する.
+		void RenderTaskGraphBuilder::RegisterTaskNodeRenderFunction(IGraphicsTaskNode* node, const std::function<void(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)>& render_function)
+		{
+			// 念の為二重登録チェック.
+			assert(node_function_graphics_.end() == node_function_graphics_.find(node));
+			node_function_graphics_.insert(std::pair(node, render_function));
+		}
+		// AsyncComputeTask用のRender処理登録. IComputeTaskNode派生Taskはこの関数で自身の非同期Compute Render処理を登録する.
+		void RenderTaskGraphBuilder::RegisterTaskNodeRenderFunction(IComputeTaskNode* node, const std::function<void(rtg::RenderTaskGraphBuilder& builder, rhi::ComputeCommandListDep* gfx_commandlist)>& render_function)
+		{
+			// 念の為二重登録チェック.
+			assert(node_function_compute_.end() == node_function_compute_.find(node));
+			node_function_compute_.insert(std::pair(node, render_function));
+		}
 		
 		// グラフからリソース割当と状態遷移を確定.
 		// CompileされたGraphは必ずExecuteが必要.
@@ -1037,7 +1053,11 @@ namespace ngl
 						
 						auto render_func = [this, e, p_cmdlist]()
 						{
-							e->Run(*this, p_cmdlist);
+							// TaskNodeはそれぞれ自身のポインタをキーとして適切なシグネチャのLambdaを登録する.
+							if(auto render_func = node_function_graphics_.find(e); render_func != node_function_graphics_.end())
+							{
+								render_func->second(*this, p_cmdlist);// 登録されていれば実行.
+							}
 						};
 						// JobリストにTaskのレンダリング処理を登録.
 						render_jobs.push_back(render_func);
@@ -1071,7 +1091,11 @@ namespace ngl
 					
 						auto render_func = [this, e, p_cmdlist]()
 						{
-							e->Run(*this, p_cmdlist);
+							// TaskNodeはそれぞれ自身のポインタをキーとして適切なシグネチャのLambdaを登録する.
+							if(auto render_func = node_function_compute_.find(e); render_func != node_function_compute_.end())
+							{
+								render_func->second(*this, p_cmdlist);// 登録されていれば実行.
+							}
 						};
 						// JobリストにTaskのレンダリング処理を登録.
 						render_jobs.push_back(render_func);
@@ -1286,6 +1310,9 @@ namespace ngl
 				}
 			}
 			node_sequence_.clear();
+
+			node_function_graphics_.clear();
+			node_function_compute_.clear();
 		}
 
 		// Sequence上でのノードの位置を返す.

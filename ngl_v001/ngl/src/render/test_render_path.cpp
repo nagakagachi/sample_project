@@ -300,9 +300,9 @@ namespace ngl::test
 			rtg_manager.Compile(rtg_builder);
 			out_frame_out.stat_rtg_compile_sec = static_cast<float>(time::Timer::Instance().GetElapsedSec("rtg_manager_compile"));
 				
-			// Rtgを実行し構成Taskの Run() を実行, CommandListを生成する.
+			// Rtgを実行し構成TaskのRender処理Lambdaを実行, CommandListを生成する.
 			//	Compileによってリソースプールのステートが更新され, その後にCompileされたGraphはそれを前提とするため, Graphは必ずExecuteする必要がある.
-			//	各TaskのRun()はそれぞれ別スレッドで並列実行される可能性がある.
+			//	各TaskのRender処理Lambdaはそれぞれ別スレッドで並列実行される可能性がある.
 			thread::JobSystem* p_job_system = (render_frame_desc.debug_pass_render_parallel)? rtg_manager.GetJobSystem() : nullptr;
 			time::Timer::Instance().StartTimer("rtg_builder_execute");
 			rtg_builder.Execute(out_graphics_cmd, out_compute_cmd, p_job_system);

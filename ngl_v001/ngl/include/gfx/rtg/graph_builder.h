@@ -13,22 +13,24 @@
 			rtg::ResourceDesc2D depth_desc = rtg::ResourceDesc2D::CreateAsAbsoluteSize(1920, 1080, gfx::MaterialPassPsoCreator_depth::k_depth_format);
 			// 新規作成したDepthBufferリソースをDepthTarget使用としてレコード.
 			h_depth_ = builder.RecordResourceAccess(*this, builder.CreateResource(depth_desc), rtg::access_type::DEPTH_TARGET);
-		}
-		// 実際のレンダリング処理.
-		void Run(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist) override
-		{
-			// ハンドルからリソース取得. 必要なBarrier/ステート遷移はRTGシステムが担当するため, 個々のTaskは必要な状態になっているリソースを使用できる.
-			auto res_depth = builder.GetAllocatedResource(this, h_depth_);
-			assert(res_depth.tex_.IsValid() && res_depth.dsv_.IsValid());
 
-			// 例:クリア
-			gfx_commandlist->ClearDepthTarget(res_depth.dsv_.Get(), 0.0f, 0, true, true);// とりあえずクリアだけ.ReverseZなので0クリア.
+			// 実際のレンダリング処理をLambda登録. RTGのCompile後ExecuteでTaskNode毎のLambdaが並列実行されCommandList生成される.
+			builder.RegisterTaskNodeRenderFunction(this,
+				[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+				{
+					// ハンドルからリソース取得. 必要なBarrier/ステート遷移はRTGシステムが担当するため, 個々のTaskは必要な状態になっているリソースを使用できる.
+					auto res_depth = builder.GetAllocatedResource(this, h_depth_);
+					assert(res_depth.tex_.IsValid() && res_depth.dsv_.IsValid());
 
-			// 例:DepthRenderTagetとして設定してレンダリング.
-			gfx_commandlist->SetRenderTargets(nullptr, 0, res_depth.dsv_.Get());
-			ngl::gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_depth.tex_->GetWidth(), res_depth.tex_->GetHeight());
-			// TODO. 描画.
-			// ....
+					// 例:クリア
+					gfx_commandlist->ClearDepthTarget(res_depth.dsv_.Get(), 0.0f, 0, true, true);// とりあえずクリアだけ.ReverseZなので0クリア.
+
+					// 例:DepthRenderTagetとして設定してレンダリング.
+					gfx_commandlist->SetRenderTargets(nullptr, 0, res_depth.dsv_.Get());
+					ngl::gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_depth.tex_->GetWidth(), res_depth.tex_->GetHeight());
+					// TODO. 描画.
+					// ....
+				});
 		}
 	};
 
@@ -49,15 +51,17 @@
 			
 			// 先行するDepth書き込みTaskの出力先リソースハンドルを利用し, 読み取り使用としてレコード.
 			h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::access_type::SHADER_READ);
-		}
-		// 実際のレンダリング処理.
-		void Run(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist) override
-		{
-			// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
-			auto res_depth = builder.GetAllocatedResource(this, h_depth_);
-			auto res_linear_depth = builder.GetAllocatedResource(this, h_linear_depth_);
-			// TODO. depthからlinear_depthを生成するシェーダディスパッチ.
-			// ...
+
+			// 実際のレンダリング処理をLambda登録. RTGのCompile後ExecuteでTaskNode毎のLambdaが並列実行されCommandList生成される.
+			builder.RegisterTaskNodeRenderFunction(this,
+				[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+				{
+					// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
+					auto res_depth = builder.GetAllocatedResource(this, h_depth_);
+					auto res_linear_depth = builder.GetAllocatedResource(this, h_linear_depth_);
+					// TODO. depthからlinear_depthを生成するシェーダディスパッチ.
+					// ...
+				});
 		}
 	};
 
@@ -83,7 +87,7 @@
 	//		また複数のGraphをCompileした場合はその順番でGpu-Submitしなければならない
 	rtg_manager.Compile(rtg_builder);
 		
-	// Graphを構成するTaskの Run() を実行して, CommandListを生成する.
+	// Graphを構成するTaskの Render処理Lambda を実行し, CommandListを生成する.
 	rtg_builder.Execute(out_graphics_cmd, out_compute_cmd);
 
 	// out_graphics_cmd と out_compute_cmd は非同期コンピュートを考慮したコマンドリスト列.
@@ -257,18 +261,24 @@ namespace ngl
 		static constexpr auto sizeof_ResourceHandle = sizeof(RtgResourceHandle);
 
 		
-		// Taskの基底.
-		// 直接このクラスを継承することは出来ない.
-		//	IGraphicsTaskBase または IAsyncComputeTaskBase を継承すること.
+		/*
+		Taskの基底.
+		直接このクラスを継承することは出来ない.
+		IGraphicsTaskBase または IAsyncComputeTaskBase を継承すること.
+
+		TaskNode派生クラスは自身のRender処理LambdaをBuilderに登録することでRTGから呼び出しをうける.
+			builder.RegisterTaskNodeRenderFunction(this,
+						[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+						{
+							Do Render
+						});
+		*/
 		struct ITaskNode
 		{
 		public:
 			virtual ~ITaskNode() {}
 			// Type.
 			virtual ETASK_TYPE TaskType() const = 0;
-			// レンダリングの実装部.
-			virtual void Run(RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* commandlist) = 0;
-			virtual void Run(RenderTaskGraphBuilder& builder, rhi::ComputeCommandListDep* commandlist) = 0;
 		public:
 			const RtgNameType& GetDebugNodeName() const { return debug_node_name_; }
 		protected:
@@ -285,12 +295,6 @@ namespace ngl
 			// Type Graphics.
 			ETASK_TYPE TaskType() const final
 			{ return ETASK_TYPE::GRAPHICS; }
-
-			// 念の為に空で継承も禁止.
-			void Run(RenderTaskGraphBuilder& builder, rhi::ComputeCommandListDep* commandlist) final
-			{
-				assert(false);
-			};
 		};
 		// ComputeTaskの基底クラス.
 		// GraphicsでもAsyncComputeでも実行可能なもの. UAVバリア以外のバリアは出来ないようにComputeCommandListのみ利用可能とする.
@@ -302,17 +306,11 @@ namespace ngl
 			// Type AsyncCompute.
 			ETASK_TYPE TaskType() const final
 			{ return ETASK_TYPE::COMPUTE; }
-			
-			// 念の為に空で継承も禁止.
-			void Run(RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* commandlist) final
-			{
-				assert(false);
-			};
 		};
 
 		// -------------------------------------------------------------------------------------------
 		// Compileで割り当てられたHandleのリソース情報.
-		//	TaskNode派生クラスのRun()でハンドル経由で取得できるリソース情報.
+		//	TaskNode派生クラスのRender処理内からハンドル経由で取得できるリソース情報.
 		struct RtgAllocatedResourceInfo
 		{
 			RtgAllocatedResourceInfo() = default;
@@ -427,6 +425,10 @@ namespace ngl
 		class RenderTaskGraphBuilder
 		{
 			friend class RenderTaskGraphManager;
+			
+			using TaskNodeRenderFunctionType_Graphics = const std::function<void(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)>;
+			using TaskNodeRenderFunctionType_Compute = const std::function<void(rtg::RenderTaskGraphBuilder& builder, rhi::ComputeCommandListDep* gfx_commandlist)>;
+			
 		public:
 			RenderTaskGraphBuilder() = default;
 			RenderTaskGraphBuilder(int base_resolution_width, int base_resolution_height)
@@ -449,6 +451,11 @@ namespace ngl
 				node_sequence_.push_back(new_node);
 				return new_node;
 			}
+
+			// GraphicsTask用のRender処理登録. IGraphicsTaskNode派生Taskはこの関数で自身のRender処理を登録する.
+			void RegisterTaskNodeRenderFunction(IGraphicsTaskNode* node, const TaskNodeRenderFunctionType_Graphics& render_function);
+			// AsyncComputeTask用のRender処理登録. IComputeTaskNode派生Taskはこの関数で自身のAsyncCompute Render処理を登録する.
+			void RegisterTaskNodeRenderFunction(IComputeTaskNode* node, const TaskNodeRenderFunctionType_Compute& render_function);
 
 		public:
 			// リソースハンドルを生成.
@@ -523,6 +530,9 @@ namespace ngl
 			int res_base_width_ = static_cast<int>( static_cast<float>(k_base_height) * 16.0f/9.0f);
 			
 			std::vector<ITaskNode*> node_sequence_{};// Graph構成ノードシーケンス. 生成順がGPU実行順で, AsyncComputeもFenceで同期をする以外は同様.
+			std::unordered_map<const ITaskNode*, TaskNodeRenderFunctionType_Graphics> node_function_graphics_{};// Node毎のRender処理Lambda登録用(Graphics Queue).
+			std::unordered_map<const ITaskNode*, TaskNodeRenderFunctionType_Compute> node_function_compute_{};// Node毎のRender処理Lambda登録用(Compute Queue).
+
 			std::unordered_map<RtgResourceHandleKeyType, RtgResourceDesc2D> handle_2_desc_{};// Handleからその定義のMap.
 			
 			struct NodeHandleUsageInfo

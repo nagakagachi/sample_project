@@ -130,33 +130,37 @@ namespace  ngl::imgui
                 
                 // Swapchainの使用を登録.
                 h_swapchain_ = builder.RecordResourceAccess(*this, h_swapchain, rtg::access_type::RENDER_TARTGET);
-            }
-
-            void Run(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* commandlist) override
-            {
-                // スケジュール済みリソース(Swapchain)取得.
-                auto res_swapchain = builder.GetAllocatedResource(this, h_swapchain_);
-                assert(res_swapchain.swapchain_.IsValid());
                 
-#if NGL_IMGUI_ENABLE
-                // ------------------------------------------------------------------------------------------
-                ImGui::Render();
-                // ------------------------------------------------------------------------------------------
+                // Render処理のLambdaをRTGに登録.
+                builder.RegisterTaskNodeRenderFunction(this,
+                    [this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* commandlist)
+                    {
+                        NGL_RHI_GPU_SCOPED_EVENT_MARKER(commandlist, "ImGui");
+                            
+                        // スケジュール済みリソース(Swapchain)取得.
+                        auto res_swapchain = builder.GetAllocatedResource(this, h_swapchain_);
+                        assert(res_swapchain.swapchain_.IsValid());
+                            
+                        #if NGL_IMGUI_ENABLE
+                            // ------------------------------------------------------------------------------------------
+                            ImGui::Render();
+                            // ------------------------------------------------------------------------------------------
 
-                // ImGui用のDescriptorHeap.
-                ID3D12DescriptorHeap* d3d_desc_heap = p_parent_->descriptor_heap_interface_.GetD3D12DescriptorHeap();
-                D3D12_CPU_DESCRIPTOR_HANDLE rtv_desc_handle_cpu =  res_swapchain.rtv_.Get()->GetD3D12DescriptorHandle();
-                ID3D12GraphicsCommandList* d3d_command_list = commandlist->GetD3D12GraphicsCommandList();
+                            // ImGui用のDescriptorHeap.
+                            ID3D12DescriptorHeap* d3d_desc_heap = p_parent_->descriptor_heap_interface_.GetD3D12DescriptorHeap();
+                            D3D12_CPU_DESCRIPTOR_HANDLE rtv_desc_handle_cpu =  res_swapchain.rtv_.Get()->GetD3D12DescriptorHandle();
+                            ID3D12GraphicsCommandList* d3d_command_list = commandlist->GetD3D12GraphicsCommandList();
 
-                // RTV設定.
-                d3d_command_list->OMSetRenderTargets(1, &rtv_desc_handle_cpu, FALSE, nullptr);
-                d3d_command_list->SetDescriptorHeaps(1, &d3d_desc_heap);
+                            // RTV設定.
+                            d3d_command_list->OMSetRenderTargets(1, &rtv_desc_handle_cpu, FALSE, nullptr);
+                            d3d_command_list->SetDescriptorHeaps(1, &d3d_desc_heap);
 
-                // ------------------------------------------------------------------------------------------
-                // Imguiレンダリング.
-                ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandlist->GetD3D12GraphicsCommandList());
-                // ------------------------------------------------------------------------------------------
-#endif
+                            // ------------------------------------------------------------------------------------------
+                            // Imguiレンダリング.
+                            ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandlist->GetD3D12GraphicsCommandList());
+                            // ------------------------------------------------------------------------------------------
+                        #endif
+                    });
             }
         };
         

@@ -172,9 +172,9 @@ namespace ngl
 }
 
 // https://www.jpcert.or.jp/sc-rules/c-pre05-c.html
-#define JOIN_AGAIN_NGL_SCOPED_EVENT_MARKER(a,b) a ## b
-#define JOIN_NGL_SCOPED_EVENT_MARKER(a,b) JOIN_AGAIN_NGL_SCOPED_EVENT_MARKER(a, b)
-// Scoped Event Marker 定義用マクロ.
-//	ex. NGL_SCOPED_EVENT_MARKER(p_command_list, "BasePass");
-#define NGL_SCOPED_EVENT_MARKER(p_command_list, label) const ngl::rhi::ScopedEventMarker JOIN_NGL_SCOPED_EVENT_MARKER(scoped_event_arg_ , __LINE__) (p_command_list, label);
+#define NGL_RHI_JOIN_AGAIN_NGL_GPU_SCOPED_EVENT_MARKER(a,b) a ## b
+#define NGL_RHI_JOIN_NGL_GPU_SCOPED_EVENT_MARKER(a,b) NGL_RHI_JOIN_AGAIN_NGL_GPU_SCOPED_EVENT_MARKER(a, b)
+// GPU Scoped Event Marker 定義用マクロ.
+//	ex. NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BasePass");
+#define NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, label) const ngl::rhi::ScopedEventMarker NGL_RHI_JOIN_NGL_GPU_SCOPED_EVENT_MARKER(scoped_event_arg_ , __LINE__) (p_command_list, label);
 

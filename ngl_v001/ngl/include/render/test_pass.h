@@ -56,35 +56,30 @@ namespace ngl::render
 			void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info, const SetupDesc& desc)
 			{
 				desc_ = desc;
-				
 				// Rtgリソースセットアップ.
 				{
 					rtg::RtgResourceDesc2D depth_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, gfx::MaterialPassPsoCreator_depth::k_depth_format);
 					h_depth_ = builder.RecordResourceAccess(*this, builder.CreateResource(depth_desc), rtg::access_type::DEPTH_TARGET);
 				}
-			}
-
-			// レンダリング処理.
-			void Run(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist) override
-			{
-				NGL_SCOPED_EVENT_MARKER(gfx_commandlist, "DepthPass");
 				
-				// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
-				auto res_depth = builder.GetAllocatedResource(this, h_depth_);
-				assert(res_depth.tex_.IsValid() && res_depth.dsv_.IsValid());
+				// Render処理のLambdaをRtgに登録.
+				builder.RegisterTaskNodeRenderFunction(this,
+					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+					{
+						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "DepthPass");
+						
+						auto res_depth = builder.GetAllocatedResource(this, h_depth_);
+						assert(res_depth.tex_.IsValid() && res_depth.dsv_.IsValid());
 
-				gfx_commandlist->ClearDepthTarget(res_depth.dsv_.Get(), 0.0f, 0, true, true);// とりあえずクリアだけ.ReverseZなので0クリア.
-				// Set RenderTarget.
-				gfx_commandlist->SetRenderTargets(nullptr, 0, res_depth.dsv_.Get());
-				// Set Viewport and Scissor.
-				ngl::gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_depth.tex_->GetWidth(), res_depth.tex_->GetHeight());
-				
-				// Mesh Rendering.
-				gfx::RenderMeshResource render_mesh_res = {};
-				{
-					render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", desc_.ref_scene_cbv.Get()};
-				}
-				ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_depth::k_name, *desc_.p_mesh_list, render_mesh_res);
+						gfx_commandlist->ClearDepthTarget(res_depth.dsv_.Get(), 0.0f, 0, true, true);// とりあえずクリアだけ.ReverseZなので0クリア.
+						gfx_commandlist->SetRenderTargets(nullptr, 0, res_depth.dsv_.Get());
+						ngl::gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_depth.tex_->GetWidth(), res_depth.tex_->GetHeight());
+						gfx::RenderMeshResource render_mesh_res = {};
+						{
+							render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", desc_.ref_scene_cbv.Get()};
+						}
+						ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_depth::k_name, *desc_.p_mesh_list, render_mesh_res);
+					});
 			}
 		};
 
@@ -153,48 +148,50 @@ namespace ngl::render
 					h_gb3_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer3_desc), rtg::access_type::RENDER_TARTGET);
 					h_velocity_ = builder.RecordResourceAccess(*this, builder.CreateResource(velocity_desc), rtg::access_type::RENDER_TARTGET);
 				}
-			}
 
-			// レンダリング処理.
-			void Run(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist) override
-			{
-				NGL_SCOPED_EVENT_MARKER(gfx_commandlist, "GBuffer");
+				// Render処理のLambdaをRTGに登録.
+				builder.RegisterTaskNodeRenderFunction(this,
+					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+					{
+						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "GBuffer");
 				
-				// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
-				auto res_depth = builder.GetAllocatedResource(this, h_depth_);
-				auto res_gb0 = builder.GetAllocatedResource(this, h_gb0_);
-				auto res_gb1 = builder.GetAllocatedResource(this, h_gb1_);
-				auto res_gb2 = builder.GetAllocatedResource(this, h_gb2_);
-				auto res_gb3 = builder.GetAllocatedResource(this, h_gb3_);
-				auto res_velocity = builder.GetAllocatedResource(this, h_velocity_);
+						// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
+						auto res_depth = builder.GetAllocatedResource(this, h_depth_);
+						auto res_gb0 = builder.GetAllocatedResource(this, h_gb0_);
+						auto res_gb1 = builder.GetAllocatedResource(this, h_gb1_);
+						auto res_gb2 = builder.GetAllocatedResource(this, h_gb2_);
+						auto res_gb3 = builder.GetAllocatedResource(this, h_gb3_);
+						auto res_velocity = builder.GetAllocatedResource(this, h_velocity_);
 
-				assert(res_depth.tex_.IsValid() && res_depth.dsv_.IsValid());
-				assert(res_gb0.tex_.IsValid() && res_gb0.rtv_.IsValid());
-				assert(res_gb1.tex_.IsValid() && res_gb1.rtv_.IsValid());
-				assert(res_gb2.tex_.IsValid() && res_gb2.rtv_.IsValid());
-				assert(res_gb3.tex_.IsValid() && res_gb3.rtv_.IsValid());
-				assert(res_velocity.tex_.IsValid() && res_velocity.rtv_.IsValid());
+						assert(res_depth.tex_.IsValid() && res_depth.dsv_.IsValid());
+						assert(res_gb0.tex_.IsValid() && res_gb0.rtv_.IsValid());
+						assert(res_gb1.tex_.IsValid() && res_gb1.rtv_.IsValid());
+						assert(res_gb2.tex_.IsValid() && res_gb2.rtv_.IsValid());
+						assert(res_gb3.tex_.IsValid() && res_gb3.rtv_.IsValid());
+						assert(res_velocity.tex_.IsValid() && res_velocity.rtv_.IsValid());
 
-				const rhi::RenderTargetViewDep* p_targets[] =
-				{
-					res_gb0.rtv_.Get(),
-					res_gb1.rtv_.Get(),
-					res_gb2.rtv_.Get(),
-					res_gb3.rtv_.Get(),
-					res_velocity.rtv_.Get(),
-				};
+						const rhi::RenderTargetViewDep* p_targets[] =
+						{
+							res_gb0.rtv_.Get(),
+							res_gb1.rtv_.Get(),
+							res_gb2.rtv_.Get(),
+							res_gb3.rtv_.Get(),
+							res_velocity.rtv_.Get(),
+						};
 				
-				// Set RenderTarget.
-				gfx_commandlist->SetRenderTargets(p_targets, (int)std::size(p_targets), res_depth.dsv_.Get());
-				// Set Viewport and Scissor.
-				ngl::gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_depth.tex_->GetWidth(), res_depth.tex_->GetHeight());
+						// Set RenderTarget.
+						gfx_commandlist->SetRenderTargets(p_targets, (int)std::size(p_targets), res_depth.dsv_.Get());
+						// Set Viewport and Scissor.
+						ngl::gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_depth.tex_->GetWidth(), res_depth.tex_->GetHeight());
 
-				// Mesh Rendering.
-				gfx::RenderMeshResource render_mesh_res = {};
-				{
-					render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", desc_.ref_scene_cbv.Get()};
-				}
-				ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_gbuffer::k_name, *desc_.p_mesh_list, render_mesh_res);
+						// Mesh Rendering.
+						gfx::RenderMeshResource render_mesh_res = {};
+						{
+							render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", desc_.ref_scene_cbv.Get()};
+						}
+						ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_gbuffer::k_name, *desc_.p_mesh_list, render_mesh_res);
+					}
+				);
 			}
 		};
 
@@ -436,67 +433,68 @@ namespace ngl::render
 					
 					ref_d_shadow_sample_cb_->Unmap();
 				}
-			}
-
-			// レンダリング処理.
-			void Run(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist) override
-			{
-				NGL_SCOPED_EVENT_MARKER(gfx_commandlist, "Shadow");
 				
-				// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
-				auto res_shadow_depth_atlas = builder.GetAllocatedResource(this, h_shadow_depth_atlas_);
-				assert(res_shadow_depth_atlas.tex_.IsValid() && res_shadow_depth_atlas.dsv_.IsValid());
+				// Render処理のLambdaをRTGに登録.
+				builder.RegisterTaskNodeRenderFunction(this,
+					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+					{
+						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "Shadow");
+							
+						// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
+						auto res_shadow_depth_atlas = builder.GetAllocatedResource(this, h_shadow_depth_atlas_);
+						assert(res_shadow_depth_atlas.tex_.IsValid() && res_shadow_depth_atlas.dsv_.IsValid());
 
-				
-				// Atlas全域クリア.
-				gfx_commandlist->ClearDepthTarget(res_shadow_depth_atlas.dsv_.Get(), 0.0f, 0, true, true);// とりあえずクリアだけ.ReverseZなので0クリア.
-				// Set RenderTarget.
-				gfx_commandlist->SetRenderTargets(nullptr, 0, res_shadow_depth_atlas.dsv_.Get());
-				
-				// 描画するCascadeIndex.
-				for(int cascade_index = 0; cascade_index < csm_param_.k_cascade_count; ++cascade_index)
-				{
-					NGL_SCOPED_EVENT_MARKER(gfx_commandlist, text::FixedString<64>("Cascade_%d", cascade_index));
-					
-					// Cascade用の定数バッファを都度生成.
-					rhi::RefBufferDep ref_shadow_render_cb = new rhi::BufferDep();
-					rhi::RefCbvDep ref_shadow_render_cbv = new rhi::ConstantBufferViewDep();
-					{
-						rhi::BufferDep::Desc cb_desc{};
-						cb_desc.SetupAsConstantBuffer(sizeof(SceneDirectionalShadowRenderInfo));
-						ref_shadow_render_cb->Initialize(gfx_commandlist->GetDevice(), cb_desc);
-					}
-					{
-						rhi::ConstantBufferViewDep::Desc cbv_desc{};
-						ref_shadow_render_cbv->Initialize(ref_shadow_render_cb.Get(), cbv_desc);
-					}
-					if (auto* mapped = ref_shadow_render_cb->MapAs<SceneDirectionalShadowRenderInfo>())
-					{
-						const auto csm_info_index = cascade_index;
-						
-						assert(csm_info_index < csm_param_.k_cascade_count);// 不正なIndexでないか.
-						mapped->cb_shadow_view_mtx = csm_param_.light_view_mtx[csm_info_index];
-						mapped->cb_shadow_proj_mtx = csm_param_.light_ortho_mtx[csm_info_index];
-						mapped->cb_shadow_view_inv_mtx = ngl::math::Mat34::Inverse(csm_param_.light_view_mtx[csm_info_index]);
-						mapped->cb_shadow_proj_inv_mtx = ngl::math::Mat44::Inverse(csm_param_.light_ortho_mtx[csm_info_index]);
-					
-						ref_d_shadow_sample_cb_->Unmap();
-					}
+							
+						// Atlas全域クリア.
+						gfx_commandlist->ClearDepthTarget(res_shadow_depth_atlas.dsv_.Get(), 0.0f, 0, true, true);// とりあえずクリアだけ.ReverseZなので0クリア.
+						// Set RenderTarget.
+						gfx_commandlist->SetRenderTargets(nullptr, 0, res_shadow_depth_atlas.dsv_.Get());
+							
+						// 描画するCascadeIndex.
+						for(int cascade_index = 0; cascade_index < csm_param_.k_cascade_count; ++cascade_index)
+						{
+							NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, text::FixedString<64>("Cascade_%d", cascade_index));
+								
+							// Cascade用の定数バッファを都度生成.
+							rhi::RefBufferDep ref_shadow_render_cb = new rhi::BufferDep();
+							rhi::RefCbvDep ref_shadow_render_cbv = new rhi::ConstantBufferViewDep();
+							{
+								rhi::BufferDep::Desc cb_desc{};
+								cb_desc.SetupAsConstantBuffer(sizeof(SceneDirectionalShadowRenderInfo));
+								ref_shadow_render_cb->Initialize(gfx_commandlist->GetDevice(), cb_desc);
+							}
+							{
+								rhi::ConstantBufferViewDep::Desc cbv_desc{};
+								ref_shadow_render_cbv->Initialize(ref_shadow_render_cb.Get(), cbv_desc);
+							}
+							if (auto* mapped = ref_shadow_render_cb->MapAs<SceneDirectionalShadowRenderInfo>())
+							{
+								const auto csm_info_index = cascade_index;
+									
+								assert(csm_info_index < csm_param_.k_cascade_count);// 不正なIndexでないか.
+								mapped->cb_shadow_view_mtx = csm_param_.light_view_mtx[csm_info_index];
+								mapped->cb_shadow_proj_mtx = csm_param_.light_ortho_mtx[csm_info_index];
+								mapped->cb_shadow_view_inv_mtx = ngl::math::Mat34::Inverse(csm_param_.light_view_mtx[csm_info_index]);
+								mapped->cb_shadow_proj_inv_mtx = ngl::math::Mat44::Inverse(csm_param_.light_ortho_mtx[csm_info_index]);
+								
+								ref_d_shadow_sample_cb_->Unmap();
+							}
 
-					const auto cascade_tile_w = csm_param_.cascade_tile_size_x[cascade_index];
-					const auto cascade_tile_h = csm_param_.cascade_tile_size_y[cascade_index];
-					const auto cascade_tile_offset_x = csm_param_.cascade_tile_offset_x[cascade_index];
-					const auto cascade_tile_offset_y = csm_param_.cascade_tile_offset_y[cascade_index];
-					ngl::gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, cascade_tile_offset_x, cascade_tile_offset_y, cascade_tile_w, cascade_tile_h);
+							const auto cascade_tile_w = csm_param_.cascade_tile_size_x[cascade_index];
+							const auto cascade_tile_h = csm_param_.cascade_tile_size_y[cascade_index];
+							const auto cascade_tile_offset_x = csm_param_.cascade_tile_offset_x[cascade_index];
+							const auto cascade_tile_offset_y = csm_param_.cascade_tile_offset_y[cascade_index];
+							ngl::gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, cascade_tile_offset_x, cascade_tile_offset_y, cascade_tile_w, cascade_tile_h);
 
-					// Mesh Rendering.
-					gfx::RenderMeshResource render_mesh_res = {};
-					{
-						render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", desc_.ref_scene_cbv.Get()};
-						render_mesh_res.cbv_d_shadowview = {"ngl_cb_shadowview", ref_shadow_render_cbv.Get()};
-					}
-					ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_d_shadow::k_name, *desc_.p_mesh_list, render_mesh_res);
-				}
+							// Mesh Rendering.
+							gfx::RenderMeshResource render_mesh_res = {};
+							{
+								render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", desc_.ref_scene_cbv.Get()};
+								render_mesh_res.cbv_d_shadowview = {"ngl_cb_shadowview", ref_shadow_render_cbv.Get()};
+							}
+							ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_d_shadow::k_name, *desc_.p_mesh_list, render_mesh_res);
+						}
+					});
 			}
 		};
 		
@@ -557,31 +555,32 @@ namespace ngl::render
 						assert(false);
 					}
 				}
-			}
-
-			// レンダリング処理.
-			void Run(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist) override
-			{
-				NGL_SCOPED_EVENT_MARKER(gfx_commandlist, "LinearDepth");
 				
-				// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
-				auto res_depth = builder.GetAllocatedResource(this, h_depth_);
-				auto res_linear_depth = builder.GetAllocatedResource(this, h_linear_depth_);
+				// Render処理のLambdaをRTGに登録.
+				builder.RegisterTaskNodeRenderFunction(this,
+					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+					{
+						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "LinearDepth");
+							
+						// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
+						auto res_depth = builder.GetAllocatedResource(this, h_depth_);
+						auto res_linear_depth = builder.GetAllocatedResource(this, h_linear_depth_);
 
-				assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
-				assert(res_linear_depth.tex_.IsValid() && res_linear_depth.uav_.IsValid());
+						assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
+						assert(res_linear_depth.tex_.IsValid() && res_linear_depth.uav_.IsValid());
 
-				ngl::rhi::DescriptorSetDep desc_set = {};
-				pso_->SetView(&desc_set, "TexHardwareDepth", res_depth.srv_.Get());
-				pso_->SetView(&desc_set, "RWTexLinearDepth", res_linear_depth.uav_.Get());
-				pso_->SetView(&desc_set, "ngl_cb_sceneview", desc_.ref_scene_cbv.Get());
-				
-				gfx_commandlist->SetPipelineState(pso_.Get());
-				gfx_commandlist->SetDescriptorSet(pso_.Get(), &desc_set);
+						ngl::rhi::DescriptorSetDep desc_set = {};
+						pso_->SetView(&desc_set, "TexHardwareDepth", res_depth.srv_.Get());
+						pso_->SetView(&desc_set, "RWTexLinearDepth", res_linear_depth.uav_.Get());
+						pso_->SetView(&desc_set, "ngl_cb_sceneview", desc_.ref_scene_cbv.Get());
+							
+						gfx_commandlist->SetPipelineState(pso_.Get());
+						gfx_commandlist->SetDescriptorSet(pso_.Get(), &desc_set);
 
-				pso_->DispatchHelper(gfx_commandlist, res_linear_depth.tex_->GetWidth(), res_linear_depth.tex_->GetHeight(), 1);
+						pso_->DispatchHelper(gfx_commandlist, res_linear_depth.tex_->GetWidth(), res_linear_depth.tex_->GetHeight(), 1);
+					}
+				);
 			}
-
 		};
 
 
@@ -689,70 +688,71 @@ namespace ngl::render
 						assert(false);
 					}
 				}
-			}
-
-			// レンダリング処理.
-			void Run(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist) override
-			{
-				NGL_SCOPED_EVENT_MARKER(gfx_commandlist, "Lighting");
 				
-				auto& global_res = gfx::GlobalRenderResource::Instance();
-				
-				// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
-				auto res_gb0 = builder.GetAllocatedResource(this, h_gb0_);
-				auto res_gb1 = builder.GetAllocatedResource(this, h_gb1_);
-				auto res_gb2 = builder.GetAllocatedResource(this, h_gb2_);
-				auto res_gb3 = builder.GetAllocatedResource(this, h_gb3_);
-				auto res_velocity = builder.GetAllocatedResource(this, h_velocity_);
+				// Render処理のLambdaをRTGに登録.
+				builder.RegisterTaskNodeRenderFunction(this,
+					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+					{
+						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "Lighting");
+							
+						auto& global_res = gfx::GlobalRenderResource::Instance();
+							
+						// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
+						auto res_gb0 = builder.GetAllocatedResource(this, h_gb0_);
+						auto res_gb1 = builder.GetAllocatedResource(this, h_gb1_);
+						auto res_gb2 = builder.GetAllocatedResource(this, h_gb2_);
+						auto res_gb3 = builder.GetAllocatedResource(this, h_gb3_);
+						auto res_velocity = builder.GetAllocatedResource(this, h_velocity_);
 
-				auto res_linear_depth = builder.GetAllocatedResource(this, h_linear_depth_);
-				auto res_prev_light = builder.GetAllocatedResource(this, h_prev_light_);// 前回フレームリソースのテスト.
-				auto res_light = builder.GetAllocatedResource(this, h_light_);
-				auto res_shadowmap = builder.GetAllocatedResource(this, h_shadowmap_);
-				
-				assert(res_gb0.tex_.IsValid() && res_gb0.srv_.IsValid());
-				assert(res_gb1.tex_.IsValid() && res_gb1.srv_.IsValid());
-				assert(res_gb2.tex_.IsValid() && res_gb2.srv_.IsValid());
-				assert(res_gb3.tex_.IsValid() && res_gb3.srv_.IsValid());
-				assert(res_velocity.tex_.IsValid() && res_velocity.srv_.IsValid());
-				assert(res_linear_depth.tex_.IsValid() && res_linear_depth.srv_.IsValid());
-				assert(res_light.tex_.IsValid() && res_light.rtv_.IsValid());
-				assert(res_shadowmap.tex_.IsValid() && res_shadowmap.srv_.IsValid());
+						auto res_linear_depth = builder.GetAllocatedResource(this, h_linear_depth_);
+						auto res_prev_light = builder.GetAllocatedResource(this, h_prev_light_);// 前回フレームリソースのテスト.
+						auto res_light = builder.GetAllocatedResource(this, h_light_);
+						auto res_shadowmap = builder.GetAllocatedResource(this, h_shadowmap_);
+							
+						assert(res_gb0.tex_.IsValid() && res_gb0.srv_.IsValid());
+						assert(res_gb1.tex_.IsValid() && res_gb1.srv_.IsValid());
+						assert(res_gb2.tex_.IsValid() && res_gb2.srv_.IsValid());
+						assert(res_gb3.tex_.IsValid() && res_gb3.srv_.IsValid());
+						assert(res_velocity.tex_.IsValid() && res_velocity.srv_.IsValid());
+						assert(res_linear_depth.tex_.IsValid() && res_linear_depth.srv_.IsValid());
+						assert(res_light.tex_.IsValid() && res_light.rtv_.IsValid());
+						assert(res_shadowmap.tex_.IsValid() && res_shadowmap.srv_.IsValid());
 
-				rhi::RefSrvDep ref_prev_lit = (res_prev_light.srv_.IsValid())? res_prev_light.srv_ : global_res.default_resource_.tex_black->ref_view_;
-				
-				// Viewport.
-				gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_light.tex_->GetWidth(), res_light.tex_->GetHeight());
+						rhi::RefSrvDep ref_prev_lit = (res_prev_light.srv_.IsValid())? res_prev_light.srv_ : global_res.default_resource_.tex_black->ref_view_;
+							
+						// Viewport.
+						gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_light.tex_->GetWidth(), res_light.tex_->GetHeight());
 
-				// Rtv, Dsv セット.
-				{
-					const auto* p_rtv = res_light.rtv_.Get();
-					gfx_commandlist->SetRenderTargets(&p_rtv, 1, nullptr);
-				}
+						// Rtv, Dsv セット.
+						{
+							const auto* p_rtv = res_light.rtv_.Get();
+							gfx_commandlist->SetRenderTargets(&p_rtv, 1, nullptr);
+						}
 
-				gfx_commandlist->SetPipelineState(pso_.Get());
-				ngl::rhi::DescriptorSetDep desc_set = {};
+						gfx_commandlist->SetPipelineState(pso_.Get());
+						ngl::rhi::DescriptorSetDep desc_set = {};
 
-				pso_->SetView(&desc_set, "ngl_cb_sceneview", desc_.ref_scene_cbv.Get());
-				pso_->SetView(&desc_set, "ngl_cb_shadowview", desc_.ref_shadow_cbv.Get());
-				
-				pso_->SetView(&desc_set, "tex_lineardepth", res_linear_depth.srv_.Get());
-				pso_->SetView(&desc_set, "tex_gbuffer0", res_gb0.srv_.Get());
-				pso_->SetView(&desc_set, "tex_gbuffer1", res_gb1.srv_.Get());
-				pso_->SetView(&desc_set, "tex_gbuffer2", res_gb2.srv_.Get());
-				pso_->SetView(&desc_set, "tex_gbuffer3", res_gb3.srv_.Get());
-				
-				pso_->SetView(&desc_set, "tex_prev_light", ref_prev_lit.Get());
+						pso_->SetView(&desc_set, "ngl_cb_sceneview", desc_.ref_scene_cbv.Get());
+						pso_->SetView(&desc_set, "ngl_cb_shadowview", desc_.ref_shadow_cbv.Get());
+							
+						pso_->SetView(&desc_set, "tex_lineardepth", res_linear_depth.srv_.Get());
+						pso_->SetView(&desc_set, "tex_gbuffer0", res_gb0.srv_.Get());
+						pso_->SetView(&desc_set, "tex_gbuffer1", res_gb1.srv_.Get());
+						pso_->SetView(&desc_set, "tex_gbuffer2", res_gb2.srv_.Get());
+						pso_->SetView(&desc_set, "tex_gbuffer3", res_gb3.srv_.Get());
+							
+						pso_->SetView(&desc_set, "tex_prev_light", ref_prev_lit.Get());
 
-				pso_->SetView(&desc_set, "tex_shadowmap", res_shadowmap.srv_.Get());
-				
-				pso_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_wrap.Get());
-				pso_->SetView(&desc_set, "samp_shadow", gfx::GlobalRenderResource::Instance().default_resource_.sampler_shadow_linear.Get());
-				
-				gfx_commandlist->SetDescriptorSet(pso_.Get(), &desc_set);
+						pso_->SetView(&desc_set, "tex_shadowmap", res_shadowmap.srv_.Get());
+							
+						pso_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_wrap.Get());
+						pso_->SetView(&desc_set, "samp_shadow", gfx::GlobalRenderResource::Instance().default_resource_.sampler_shadow_linear.Get());
+							
+						gfx_commandlist->SetDescriptorSet(pso_.Get(), &desc_set);
 
-				gfx_commandlist->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
-				gfx_commandlist->DrawInstanced(3, 1, 0, 0);
+						gfx_commandlist->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
+						gfx_commandlist->DrawInstanced(3, 1, 0, 0);
+					});
 			}
 		};
 
@@ -880,122 +880,123 @@ namespace ngl::render
 						assert(false);
 					}
 				}
-			}
-
-			// レンダリング処理.
-			void Run(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist) override
-			{
-				NGL_SCOPED_EVENT_MARKER(gfx_commandlist, "Final");
 				
-				auto& global_res = gfx::GlobalRenderResource::Instance();
-				
-				// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
-				auto res_depth = builder.GetAllocatedResource(this, h_depth_);
-				auto res_linear_depth = builder.GetAllocatedResource(this, h_linear_depth_);
-				auto res_light = builder.GetAllocatedResource(this, h_light_);
-				auto res_swapchain = builder.GetAllocatedResource(this, h_swapchain_);
-				auto res_tmp = builder.GetAllocatedResource(this, h_tmp_);
-				auto res_other_rtg_out = builder.GetAllocatedResource(this, h_other_rtg_out_);
-				auto res_rt_result = builder.GetAllocatedResource(this, h_rt_result_);
-				
-				auto res_gbuffer0 = builder.GetAllocatedResource(this, h_gbuffer0_);
-				auto res_gbuffer1 = builder.GetAllocatedResource(this, h_gbuffer1_);
-				auto res_gbuffer2 = builder.GetAllocatedResource(this, h_gbuffer2_);
-				auto res_gbuffer3 = builder.GetAllocatedResource(this, h_gbuffer3_);
-				auto res_dshadow = builder.GetAllocatedResource(this, h_dshadow_);
-
-				assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
-				assert(res_linear_depth.tex_.IsValid() && res_linear_depth.srv_.IsValid());
-				assert(res_light.tex_.IsValid() && res_light.srv_.IsValid());
-				assert(res_swapchain.swapchain_.IsValid() && res_swapchain.rtv_.IsValid());
-				assert(res_tmp.tex_.IsValid() && res_tmp.rtv_.IsValid());
-
-				rhi::RefSrvDep ref_other_rtg_out{};
-				if(res_other_rtg_out.srv_.IsValid())
-				{
-					ref_other_rtg_out = res_other_rtg_out.srv_;
-				}
-				else
-				{
-					ref_other_rtg_out = global_res.default_resource_.tex_red->ref_view_;
-				}
-				
-				rhi::RefSrvDep ref_rt_result{};
-				if(res_rt_result.srv_.IsValid())
-				{
-					ref_rt_result = res_rt_result.srv_;
-				}
-				else
-				{
-					ref_rt_result = global_res.default_resource_.tex_green->ref_view_;
-				}
-
-				rhi::RefSrvDep ref_gbuffer0 = (res_gbuffer0.srv_.IsValid())? res_gbuffer0.srv_ : global_res.default_resource_.tex_black->ref_view_;
-				rhi::RefSrvDep ref_gbuffer1 = (res_gbuffer1.srv_.IsValid())? res_gbuffer1.srv_ : global_res.default_resource_.tex_black->ref_view_;
-				rhi::RefSrvDep ref_gbuffer2 = (res_gbuffer2.srv_.IsValid())? res_gbuffer2.srv_ : global_res.default_resource_.tex_black->ref_view_;
-				rhi::RefSrvDep ref_gbuffer3 = (res_gbuffer3.srv_.IsValid())? res_gbuffer3.srv_ : global_res.default_resource_.tex_black->ref_view_;
-				rhi::RefSrvDep ref_dshadow = (res_dshadow.srv_.IsValid())? res_dshadow.srv_ : global_res.default_resource_.tex_black->ref_view_;
-
-				
-				struct CbFinalScreenPass
-				{
-					int enable_halfdot_gray;
-					int enable_subview_result;
-					int enable_raytrace_result;
-					int enable_gbuffer;
-					int enable_dshadow;
-				};
-				rhi::RefBufferDep ref_cb = new rhi::BufferDep();
-				rhi::RefCbvDep ref_cbv = new rhi::ConstantBufferViewDep();
-				{
+				// Render処理のLambdaをRTGに登録.
+				builder.RegisterTaskNodeRenderFunction(this,
+					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
 					{
-						rhi::BufferDep::Desc cb_desc{};
-						cb_desc.SetupAsConstantBuffer(sizeof(CbFinalScreenPass));
-						ref_cb->Initialize(gfx_commandlist->GetDevice(), cb_desc);
-					}
-					{
-						rhi::ConstantBufferViewDep::Desc cbv_desc{};
-						ref_cbv->Initialize(ref_cb.Get(), cbv_desc);
-					}
-					if(auto* p_mapped = ref_cb->MapAs<CbFinalScreenPass>())
-					{
-						p_mapped->enable_halfdot_gray = desc_.debugview_halfdot_gray;
-						p_mapped->enable_subview_result = desc_.debugview_subview_result;
-						p_mapped->enable_raytrace_result = desc_.debugview_raytrace_result;
+						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "Final");
+							
+						auto& global_res = gfx::GlobalRenderResource::Instance();
+							
+						// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
+						auto res_depth = builder.GetAllocatedResource(this, h_depth_);
+						auto res_linear_depth = builder.GetAllocatedResource(this, h_linear_depth_);
+						auto res_light = builder.GetAllocatedResource(this, h_light_);
+						auto res_swapchain = builder.GetAllocatedResource(this, h_swapchain_);
+						auto res_tmp = builder.GetAllocatedResource(this, h_tmp_);
+						auto res_other_rtg_out = builder.GetAllocatedResource(this, h_other_rtg_out_);
+						auto res_rt_result = builder.GetAllocatedResource(this, h_rt_result_);
+							
+						auto res_gbuffer0 = builder.GetAllocatedResource(this, h_gbuffer0_);
+						auto res_gbuffer1 = builder.GetAllocatedResource(this, h_gbuffer1_);
+						auto res_gbuffer2 = builder.GetAllocatedResource(this, h_gbuffer2_);
+						auto res_gbuffer3 = builder.GetAllocatedResource(this, h_gbuffer3_);
+						auto res_dshadow = builder.GetAllocatedResource(this, h_dshadow_);
 
-						p_mapped->enable_gbuffer = desc_.debugview_gbuffer;
-						p_mapped->enable_dshadow = desc_.debugview_dshadow;
+						assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
+						assert(res_linear_depth.tex_.IsValid() && res_linear_depth.srv_.IsValid());
+						assert(res_light.tex_.IsValid() && res_light.srv_.IsValid());
+						assert(res_swapchain.swapchain_.IsValid() && res_swapchain.rtv_.IsValid());
+						assert(res_tmp.tex_.IsValid() && res_tmp.rtv_.IsValid());
 
-						ref_cb->Unmap();
-					}
-				}
-				
-				gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_swapchain.swapchain_->GetWidth(), res_swapchain.swapchain_->GetHeight());
+						rhi::RefSrvDep ref_other_rtg_out{};
+						if(res_other_rtg_out.srv_.IsValid())
+						{
+							ref_other_rtg_out = res_other_rtg_out.srv_;
+						}
+						else
+						{
+							ref_other_rtg_out = global_res.default_resource_.tex_red->ref_view_;
+						}
+							
+						rhi::RefSrvDep ref_rt_result{};
+						if(res_rt_result.srv_.IsValid())
+						{
+							ref_rt_result = res_rt_result.srv_;
+						}
+						else
+						{
+							ref_rt_result = global_res.default_resource_.tex_green->ref_view_;
+						}
 
-				// Rtv, Dsv セット.
-				{
-					const auto* p_rtv = res_swapchain.rtv_.Get();
-					gfx_commandlist->SetRenderTargets(&p_rtv, 1, nullptr);
-				}
+						rhi::RefSrvDep ref_gbuffer0 = (res_gbuffer0.srv_.IsValid())? res_gbuffer0.srv_ : global_res.default_resource_.tex_black->ref_view_;
+						rhi::RefSrvDep ref_gbuffer1 = (res_gbuffer1.srv_.IsValid())? res_gbuffer1.srv_ : global_res.default_resource_.tex_black->ref_view_;
+						rhi::RefSrvDep ref_gbuffer2 = (res_gbuffer2.srv_.IsValid())? res_gbuffer2.srv_ : global_res.default_resource_.tex_black->ref_view_;
+						rhi::RefSrvDep ref_gbuffer3 = (res_gbuffer3.srv_.IsValid())? res_gbuffer3.srv_ : global_res.default_resource_.tex_black->ref_view_;
+						rhi::RefSrvDep ref_dshadow = (res_dshadow.srv_.IsValid())? res_dshadow.srv_ : global_res.default_resource_.tex_black->ref_view_;
 
-				gfx_commandlist->SetPipelineState(pso_.Get());
-				ngl::rhi::DescriptorSetDep desc_set = {};
-				pso_->SetView(&desc_set, "cb_final_screen_pass", ref_cbv.Get());
-				pso_->SetView(&desc_set, "tex_light", res_light.srv_.Get());
-				pso_->SetView(&desc_set, "tex_rt", ref_rt_result.Get());
-				pso_->SetView(&desc_set, "tex_res_data", ref_other_rtg_out.Get());
+							
+						struct CbFinalScreenPass
+						{
+							int enable_halfdot_gray;
+							int enable_subview_result;
+							int enable_raytrace_result;
+							int enable_gbuffer;
+							int enable_dshadow;
+						};
+						rhi::RefBufferDep ref_cb = new rhi::BufferDep();
+						rhi::RefCbvDep ref_cbv = new rhi::ConstantBufferViewDep();
+						{
+							{
+								rhi::BufferDep::Desc cb_desc{};
+								cb_desc.SetupAsConstantBuffer(sizeof(CbFinalScreenPass));
+								ref_cb->Initialize(gfx_commandlist->GetDevice(), cb_desc);
+							}
+							{
+								rhi::ConstantBufferViewDep::Desc cbv_desc{};
+								ref_cbv->Initialize(ref_cb.Get(), cbv_desc);
+							}
+							if(auto* p_mapped = ref_cb->MapAs<CbFinalScreenPass>())
+							{
+								p_mapped->enable_halfdot_gray = desc_.debugview_halfdot_gray;
+								p_mapped->enable_subview_result = desc_.debugview_subview_result;
+								p_mapped->enable_raytrace_result = desc_.debugview_raytrace_result;
 
-				pso_->SetView(&desc_set, "tex_gbuffer0", ref_gbuffer0.Get());
-				pso_->SetView(&desc_set, "tex_gbuffer1", ref_gbuffer1.Get());
-				pso_->SetView(&desc_set, "tex_gbuffer2", ref_gbuffer2.Get());
-				pso_->SetView(&desc_set, "tex_gbuffer3", ref_gbuffer3.Get());
-				pso_->SetView(&desc_set, "tex_dshadow", ref_dshadow.Get());
-				
-				pso_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_wrap.Get());
-				gfx_commandlist->SetDescriptorSet(pso_.Get(), &desc_set);
+								p_mapped->enable_gbuffer = desc_.debugview_gbuffer;
+								p_mapped->enable_dshadow = desc_.debugview_dshadow;
 
-				gfx_commandlist->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
-				gfx_commandlist->DrawInstanced(3, 1, 0, 0);
+								ref_cb->Unmap();
+							}
+						}
+							
+						gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_swapchain.swapchain_->GetWidth(), res_swapchain.swapchain_->GetHeight());
+
+						// Rtv, Dsv セット.
+						{
+							const auto* p_rtv = res_swapchain.rtv_.Get();
+							gfx_commandlist->SetRenderTargets(&p_rtv, 1, nullptr);
+						}
+
+						gfx_commandlist->SetPipelineState(pso_.Get());
+						ngl::rhi::DescriptorSetDep desc_set = {};
+						pso_->SetView(&desc_set, "cb_final_screen_pass", ref_cbv.Get());
+						pso_->SetView(&desc_set, "tex_light", res_light.srv_.Get());
+						pso_->SetView(&desc_set, "tex_rt", ref_rt_result.Get());
+						pso_->SetView(&desc_set, "tex_res_data", ref_other_rtg_out.Get());
+
+						pso_->SetView(&desc_set, "tex_gbuffer0", ref_gbuffer0.Get());
+						pso_->SetView(&desc_set, "tex_gbuffer1", ref_gbuffer1.Get());
+						pso_->SetView(&desc_set, "tex_gbuffer2", ref_gbuffer2.Get());
+						pso_->SetView(&desc_set, "tex_gbuffer3", ref_gbuffer3.Get());
+						pso_->SetView(&desc_set, "tex_dshadow", ref_dshadow.Get());
+							
+						pso_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_wrap.Get());
+						gfx_commandlist->SetDescriptorSet(pso_.Get(), &desc_set);
+
+						gfx_commandlist->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
+						gfx_commandlist->DrawInstanced(3, 1, 0, 0);
+					});
 			}
 		};
 
@@ -1052,25 +1053,26 @@ namespace ngl::render
 						pso_->Initialize(p_device, cpso_desc);
 					}
 				}
-			}
-
-			// レンダリング処理.
-			void Run(rtg::RenderTaskGraphBuilder& builder, rhi::ComputeCommandListDep* p_commandlist) override
-			{
-				NGL_SCOPED_EVENT_MARKER(p_commandlist, "ComputeTest");
 				
-				// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
-				auto res_work_tex = builder.GetAllocatedResource(this, h_work_tex_);
+				// Render処理のLambdaをRTGに登録.
+				builder.RegisterTaskNodeRenderFunction(this,
+					[this](rtg::RenderTaskGraphBuilder& builder, rhi::ComputeCommandListDep* commandlist)
+					{
+						NGL_RHI_GPU_SCOPED_EVENT_MARKER(commandlist, "ComputeTest");
+							
+						// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
+						auto res_work_tex = builder.GetAllocatedResource(this, h_work_tex_);
 
-				assert(res_work_tex.tex_.IsValid() && res_work_tex.uav_.IsValid());
+						assert(res_work_tex.tex_.IsValid() && res_work_tex.uav_.IsValid());
 
-				p_commandlist->SetPipelineState(pso_.Get());
-				
-				ngl::rhi::DescriptorSetDep desc_set = {};
-				pso_->SetView(&desc_set, "rwtex_out", res_work_tex.uav_.Get());
-				p_commandlist->SetDescriptorSet(pso_.Get(), &desc_set);
-				
-				pso_->DispatchHelper(p_commandlist, res_work_tex.tex_->GetWidth(), res_work_tex.tex_->GetHeight(), 1);
+						commandlist->SetPipelineState(pso_.Get());
+							
+						ngl::rhi::DescriptorSetDep desc_set = {};
+						pso_->SetView(&desc_set, "rwtex_out", res_work_tex.uav_.Get());
+						commandlist->SetDescriptorSet(pso_.Get(), &desc_set);
+							
+						pso_->DispatchHelper(commandlist, res_work_tex.tex_->GetWidth(), res_work_tex.tex_->GetHeight(), 1);
+					});
 			}
 		};
 
@@ -1159,71 +1161,72 @@ namespace ngl::render
 						assert(false);
 					}
 				}
-			}
-
-			// レンダリング処理.
-			void Run(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist) override
-			{
-				NGL_SCOPED_EVENT_MARKER(gfx_commandlist, "RtPass");
 				
-				// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
-				auto res_rt_result = builder.GetAllocatedResource(this, h_rt_result_);
-				assert(res_rt_result.tex_.IsValid() && res_rt_result.uav_.IsValid());
-
-				// 正常に初期化されていなければ終了.
-				if(!desc_.p_rt_scene->IsValid())
-					return;
-				
-				// Rt ShaderTable更新.
-				rt_pass_core_.UpdateScene(desc_.p_rt_scene, "rayGen");
-
-
-				struct RaytraceInfo
-				{
-					// レイタイプの種類数, (== hitgroup数). ShaderTable構築時に登録されたHitgroup数.
-					//	TraceRay()での multiplier_for_subgeometry_index に使用するために必要とされる.
-					//		ex) Primary, Shadow の2種であれば 2.
-					int num_ray_type;
-				};
-				rhi::RefBufferDep tmp_cb_raytrace = new rhi::BufferDep();
-				{
-					rhi::BufferDep::Desc cb_desc{};
-					cb_desc.SetupAsConstantBuffer(sizeof(RaytraceInfo));
-					tmp_cb_raytrace->Initialize(gfx_commandlist->GetDevice(), cb_desc);
-
-					auto* mapped = tmp_cb_raytrace->MapAs<RaytraceInfo>();
+				// Render処理のLambdaをRTGに登録.
+				builder.RegisterTaskNodeRenderFunction(this,
+					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
 					{
-						mapped->num_ray_type = desc_.p_rt_scene->NumHitGroupCountMax();
-					}
-					tmp_cb_raytrace->Unmap();
-				}
-				rhi::RefCbvDep tmp_cbv_raytrace = new rhi::ConstantBufferViewDep();
-				tmp_cbv_raytrace->Initialize(tmp_cb_raytrace.Get(), {});
+						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RtPass");
+							
+						// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
+						auto res_rt_result = builder.GetAllocatedResource(this, h_rt_result_);
+						assert(res_rt_result.tex_.IsValid() && res_rt_result.uav_.IsValid());
 
-				
-				// Ray Dispatch.
-				{
-					gfx::RtPassCore::DispatchRayParam param = {};
-					param.count_x = res_rt_result.tex_->GetWidth();
-					param.count_y = res_rt_result.tex_->GetHeight();
-					// global resourceのセット.
-					{
-						param.cbv_slot[0] = desc_.p_rt_scene->GetSceneViewCbv();// View.
-						param.cbv_slot[1] = tmp_cbv_raytrace.Get();// Raytrace.
-					}
-					{
-						param.srv_slot;
-					}
-					{
-						param.uav_slot[0] = res_rt_result.uav_.Get();//出力UAV.
-					}
-					{
-						param.sampler_slot;
-					}
+						// 正常に初期化されていなければ終了.
+						if(!desc_.p_rt_scene->IsValid())
+							return;
+							
+						// Rt ShaderTable更新.
+						rt_pass_core_.UpdateScene(desc_.p_rt_scene, "rayGen");
 
-					// dispatch.
-					rt_pass_core_.DispatchRay(gfx_commandlist, param);
-				}
+
+						struct RaytraceInfo
+						{
+							// レイタイプの種類数, (== hitgroup数). ShaderTable構築時に登録されたHitgroup数.
+							//	TraceRay()での multiplier_for_subgeometry_index に使用するために必要とされる.
+							//		ex) Primary, Shadow の2種であれば 2.
+							int num_ray_type;
+						};
+						rhi::RefBufferDep tmp_cb_raytrace = new rhi::BufferDep();
+						{
+							rhi::BufferDep::Desc cb_desc{};
+							cb_desc.SetupAsConstantBuffer(sizeof(RaytraceInfo));
+							tmp_cb_raytrace->Initialize(gfx_commandlist->GetDevice(), cb_desc);
+
+							auto* mapped = tmp_cb_raytrace->MapAs<RaytraceInfo>();
+							{
+								mapped->num_ray_type = desc_.p_rt_scene->NumHitGroupCountMax();
+							}
+							tmp_cb_raytrace->Unmap();
+						}
+						rhi::RefCbvDep tmp_cbv_raytrace = new rhi::ConstantBufferViewDep();
+						tmp_cbv_raytrace->Initialize(tmp_cb_raytrace.Get(), {});
+
+							
+						// Ray Dispatch.
+						{
+							gfx::RtPassCore::DispatchRayParam param = {};
+							param.count_x = res_rt_result.tex_->GetWidth();
+							param.count_y = res_rt_result.tex_->GetHeight();
+							// global resourceのセット.
+							{
+								param.cbv_slot[0] = desc_.p_rt_scene->GetSceneViewCbv();// View.
+								param.cbv_slot[1] = tmp_cbv_raytrace.Get();// Raytrace.
+							}
+							{
+								param.srv_slot;
+							}
+							{
+								param.uav_slot[0] = res_rt_result.uav_.Get();//出力UAV.
+							}
+							{
+								param.sampler_slot;
+							}
+
+							// dispatch.
+							rt_pass_core_.DispatchRay(gfx_commandlist, param);
+						}
+					});
 			}
 		};
 
