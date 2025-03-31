@@ -19,7 +19,7 @@ https://nagakagachi.notion.site/RenderGraph-54f0cf4284c7466697b99cc0df81be80
     - cd DirectXTex
     - cmake CMakeLists.txt 
     - cmake --build . --config Release
-  - build graphics_test.sln (Visual Studio 2022)
+  - build ngl_v001.sln (Visual Studio 2022)
 
 # Render Task Graph
 マルチスレッド/非同期Compute対応レンダリングパイプラインを構築するためにRenderTaskGraph(RTG)というものを実装しています.<br/>
