@@ -53,11 +53,12 @@ task_gbuffer->Setup(rtg_builder, task_depth->h_depth_);
 ```
 上記のように, Passのメンバ変数(例えば h_depth_)を利用して, 直接的にわかりやすくPass間のリソース依存関係を記述できます.<br/>
 ここで h_depth_ は内部的に割り当てられる単なるIDです. 後述するCompileによってこのIDに実際のリソースが割り当てられ, Passが問い合わせできるようになります.<br/>
-https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_render_path.cpp#L76
+https://github.com/nagakagachi/sample_projct/blob/2517e77d16df00e03a779febc52884ade85293eb/ngl_v001/ngl/src/render/test_render_path.cpp#L76
 
 ## Setup RTG
-Passが利用するリソースをrtg_builderにレコードします.<br/>
-(新規リソース/別Pass由来リソース, dsv/rtv/uav).<br/>
+Pass毎に利用するリソースを宣言, 登録しそのハンドルを保持します.<br/>
+リソースハンドルに対してレンダリング処理でどのように利用するかをrtg_builderにレコードします.<br/>
+リソースを使用する実際のレンダリング処理をLambdaで登録します(後述).<br/>
 ```c++
 struct TaskDepthPass : public rtg::IGraphicsTaskNode
 {
@@ -67,6 +68,13 @@ struct TaskDepthPass : public rtg::IGraphicsTaskNode
   {
     // use new (on currend frame) texture resouce used for DEPTH_TARGET. 
     h_depth_ = rtg_builder.RecordResourceAccess(*this, rtg_builder.CreateResource(depth_desc), rtg::access_type::DEPTH_TARGET);
+
+    // Register RenderFunction.
+    builder.RegisterTaskNodeRenderFunction(this,
+      [this](rtg::RenderTaskGraphBuilder& rtg_builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+      {
+        // Do Render.
+      });
   }
 };
 
@@ -82,11 +90,18 @@ struct TaskGBufferPass : public rtg::IGraphicsTaskNode
 
     // use new (on currend frame) texture resouce used for DEPTH_TARGET. 
     h_gbuffer_a_ = rtg_builder.RecordResourceAccess(*this, rtg_builder.CreateResource(gbuffer_a_desc), rtg::access_type::RENDER_TARGET);
+
+    // Register RenderFunction.
+    builder.RegisterTaskNodeRenderFunction(this,
+      [this](rtg::RenderTaskGraphBuilder& rtg_builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+      {
+        // Do Render.
+      });
   }
 };
 ```
-Setup時点では実際のリソースは割り当てられていません. スケジューリング用の情報が登録されるだけです.<br/>
-https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_pass.h#L36
+Setup時点では実際のリソースは割り当てられず, アクセスもできません. スケジューリング用の情報が登録されるだけです.<br/>
+https://github.com/nagakagachi/sample_projct/blob/2517e77d16df00e03a779febc52884ade85293eb/ngl_v001/ngl/include/render/test_pass.h#L41
 
 ## Compile And Execute
 "Compile" と "Execute" によって登録情報から適切なリソース割り当てと, Passのレンダリング処理が実行されます.<br/>
@@ -98,40 +113,61 @@ rtg_builder.Execute(out_graphics_cmd, out_compute_cmd, p_job_system);
 ```
 Compileによってリソーススケジューリングが確定されるため, Pass毎に並列でマルチスレッドレンダリングが可能です.<br/>
 RTGリソース以外の部分でのマルチスレッド対応はユーザの責任となります.<br/>
-https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_render_path.cpp#L300
+https://github.com/nagakagachi/sample_projct/blob/2517e77d16df00e03a779febc52884ade85293eb/ngl_v001/ngl/src/render/test_render_path.cpp#L300
 
 ## Rendering RTG
-Execute で呼び出されるPassのレンダリング処理Run()で, 割当済みリソースをrtg_builderから取得できます.<br/>
-これらのリソースのステート解決はRTGの役割であるため, Pass側でStateBarrierCommandを発行する必要はありません.<br/>
-(GetAllocatedResourceの戻り値が curr_state_ を持っているため, 最終的にそのステートになるようにすれば独自のステート遷移も可能です.)<br/>
+Passのレンダリング処理はLambdaとして RegisterTaskNodeRenderFunction() で登録します.(Pass自身のポインタは登録キー).<br/>
+登録したLambdaはRTGによってExecute()中に呼び出され, Lambda内ではハンドルに割り当てられたリソースにアクセスできます.<br/>
+これらのリソースのステート遷移はRTGシステムの責任で実行されるため, Pass側ではRecordで宣言したステートとなっている前提でレンダリングを記述します.<br/>
+なお, Passのレンダリング完了の段階で終了ステートになってさえいればRTGとして破綻はしないため, 手動でステート遷移をすることも可能です.<br/>
 
 ```c++
 struct TaskDepthPass : public rtg::IGraphicsTaskNode
 {
-  void Run(rtg::RenderTaskGraphBuilder& rtg_builder, rhi::GraphicsCommandListDep* gfx_commandlist) override
+  void Setup(rtg::RenderTaskGraphBuilder& rtg_builder)
   {
-    auto res_depth = rtg_builder.GetAllocatedResource(this, h_depth_);
-    // rendering mesh to res_depth.tex_
+    ...
+
+    // Register RenderFunction.
+    builder.RegisterTaskNodeRenderFunction(this,
+      [this](rtg::RenderTaskGraphBuilder& rtg_builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+      {
+        // Get allocated resources via handle.
+        auto res_depth = rtg_builder.GetAllocatedResource(this, h_depth_);
+        // Do Render.
+
+      });
   }
 };
 
 struct TaskGBufferPass : public rtg::IGraphicsTaskNode
 {
-  void Run(rtg::RenderTaskGraphBuilder& rtg_builder, rhi::GraphicsCommandListDep* gfx_commandlist) override
+  void Setup(rtg::RenderTaskGraphBuilder& rtg_builder)
   {
-    auto res_depth = rtg_builder.GetAllocatedResource(this, h_depth_);
-    auto res_gb_a = rtg_builder.GetAllocatedResource(this, h_gbuffer_a_);
+    ...
+
+    // Register RenderFunction.
+    builder.RegisterTaskNodeRenderFunction(this,
+      [this](rtg::RenderTaskGraphBuilder& rtg_builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+      {
+        // Get allocated resources via handle.
+        auto res_depth = rtg_builder.GetAllocatedResource(this, h_depth_);
+        auto res_gb_a = rtg_builder.GetAllocatedResource(this, h_gbuffer_a_);
+        // Do Render.
+
+      });
   }
 };
 ```
-https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_pass.h#L64
+https://github.com/nagakagachi/sample_projct/blob/2517e77d16df00e03a779febc52884ade85293eb/ngl_v001/ngl/include/render/test_pass.h#L66
+https://github.com/nagakagachi/sample_projct/blob/2517e77d16df00e03a779febc52884ade85293eb/ngl_v001/ngl/include/render/test_pass.h#L153
 
 ## Sample Code
 個々のレンダリングパスの実装は以下.<br/>
-https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_pass.h#L36
+https://github.com/nagakagachi/sample_projct/blob/2517e77d16df00e03a779febc52884ade85293eb/ngl_v001/ngl/include/render/test_pass.h#L41
 
 レンダリングパイプラインの構築と実行は以下.<br/>
-https://github.com/nagakagachi/sample_projct/blob/b04d2f1f881c190715f92f694ef0dea8a549b092/graphics_test/graphics_test/src/ngl/render/test_render_path.cpp#L76
+https://github.com/nagakagachi/sample_projct/blob/2517e77d16df00e03a779febc52884ade85293eb/ngl_v001/ngl/src/render/test_render_path.cpp#L76
 
 # Third Party
   - Assimp
