@@ -78,7 +78,7 @@
 
 
 	// 次回フレームへの伝搬. このGraphで生成されたハンドルとそのリソースを次フレームでも利用できるようにする. ヒストリバッファ用の機能.
-	h_propagate_lit = rtg_builder.PropagateResouceToNextFrame(task_light->h_light_);
+	h_propagate_lit = rtg_builder.PropagateResourceToNextFrame(task_light->h_light_);
 
 
 	// Compile.
@@ -133,7 +133,7 @@ namespace ngl
 		{
 			static constexpr ACCESS_TYPE INVALID		= {0};
 			
-			static constexpr ACCESS_TYPE RENDER_TARTGET	= {1};
+			static constexpr ACCESS_TYPE RENDER_TARGET	= {1};
 			static constexpr ACCESS_TYPE DEPTH_TARGET	= {2};
 			static constexpr ACCESS_TYPE SHADER_READ	= 3;
 			static constexpr ACCESS_TYPE UAV			= 4;
@@ -143,14 +143,14 @@ namespace ngl
 		using ACCESS_TYPE_MASK = int;
 		struct access_type_mask
 		{
-			static constexpr ACCESS_TYPE_MASK RENDER_TARTGET	= 1 << (access_type::RENDER_TARTGET);
+			static constexpr ACCESS_TYPE_MASK RENDER_TARGET	= 1 << (access_type::RENDER_TARGET);
 			static constexpr ACCESS_TYPE_MASK DEPTH_TARGET		= 1 << (access_type::DEPTH_TARGET);
 			static constexpr ACCESS_TYPE_MASK SHADER_READ		= 1 << (access_type::SHADER_READ);
 			static constexpr ACCESS_TYPE_MASK UAV				= 1 << (access_type::UAV);
 		};
 		inline bool RtgIsWriteAccess(ACCESS_TYPE type)
 		{
-			constexpr auto k_write_assecc_mask = access_type_mask::RENDER_TARTGET | access_type_mask::DEPTH_TARGET | access_type_mask::UAV;
+			constexpr auto k_write_assecc_mask = access_type_mask::RENDER_TARGET | access_type_mask::DEPTH_TARGET | access_type_mask::UAV;
 			const ACCESS_TYPE_MASK mask = 1 << type;
 			return 0 != (k_write_assecc_mask & mask);
 		}
@@ -461,7 +461,7 @@ namespace ngl
 
 			// 次のフレームへ寿命を延長する.
 			//	TAA等で前回フレームのリソースを利用したい場合に, この関数で寿命を次回フレームまで延長することで同じハンドルで同じリソースを利用できる.
-			RtgResourceHandle PropagateResouceToNextFrame(RtgResourceHandle handle);
+			RtgResourceHandle PropagateResourceToNextFrame(RtgResourceHandle handle);
 
 			// 外部リソースを登録してハンドルを生成. 一般.
 			//	rtv,dsv,srv,uavはそれぞれ登録するものだけ有効な参照を指定する.

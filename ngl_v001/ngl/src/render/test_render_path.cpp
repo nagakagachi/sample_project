@@ -289,7 +289,7 @@ namespace ngl::test
 					
 				// 次回フレームへの伝搬. 次回フレームでは h_prev_light によって前回フレームリソースを利用できる.
 				{
-					out_frame_out.h_propagate_lit = rtg_builder.PropagateResouceToNextFrame(task_light->h_light_);
+					out_frame_out.h_propagate_lit = rtg_builder.PropagateResourceToNextFrame(task_light->h_light_);
 				}
 			}
 			out_frame_out.stat_rtg_construct_sec = static_cast<float>(time::Timer::Instance().GetElapsedSec("rtg_pass_construct"));

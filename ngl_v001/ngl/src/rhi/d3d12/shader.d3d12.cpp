@@ -1356,7 +1356,7 @@ namespace rhi
 				v = v ^ ((u64)c);
 			}
 			return v;
-		};
+		}
 
 		// RootSig Cache.
 		std::shared_ptr<PipelineResourceViewLayoutDep> Cache(DeviceDep* p_device, const PipelineResourceViewLayoutDep::Desc& sig_desc)

@@ -59,7 +59,7 @@ namespace ngl
 
 		// 次のフレームへ寿命を延長する.
 		//	前回フレームのハンドルのリソースを利用する場合に, この関数で寿命を延長した上で次フレームで同じハンドルを使うことでアクセス可能にする予定.
-		RtgResourceHandle RenderTaskGraphBuilder::PropagateResouceToNextFrame(RtgResourceHandle handle)
+		RtgResourceHandle RenderTaskGraphBuilder::PropagateResourceToNextFrame(RtgResourceHandle handle)
 		{
 			// Compile前のRecordフェーズでのみ許可.
 			assert(IsRecordable());
@@ -494,7 +494,7 @@ namespace ngl
 				for(auto handle_access : handle_access_info_array)
 				{
 					if(
-						handle_access.access_pattern_[access_type::RENDER_TARTGET]
+						handle_access.access_pattern_[access_type::RENDER_TARGET]
 						&&
 						handle_access.access_pattern_[access_type::DEPTH_TARGET]
 						)
@@ -606,8 +606,8 @@ namespace ngl
 							// アクセスタイプでUsageを決定. 同時指定が不可能なパターンのチェックはこれ以前に実行している予定.
 							ACCESS_TYPE_MASK usage_mask = 0;
 							{
-								if(handle_access.access_pattern_[access_type::RENDER_TARTGET])
-									usage_mask |= access_type_mask::RENDER_TARTGET;
+								if(handle_access.access_pattern_[access_type::RENDER_TARGET])
+									usage_mask |= access_type_mask::RENDER_TARGET;
 								if(handle_access.access_pattern_[access_type::DEPTH_TARGET])
 									usage_mask |= access_type_mask::DEPTH_TARGET;
 								if(handle_access.access_pattern_[access_type::UAV])
@@ -723,7 +723,7 @@ namespace ngl
 							{
 								// Handleへのアクセスタイプから次のrhiステートを決定.
 								rhi::EResourceState next_state = {};
-								if(access_type::RENDER_TARTGET == handle.access)
+								if(access_type::RENDER_TARGET == handle.access)
 								{
 									next_state = rhi::EResourceState::RenderTarget;
 								}
@@ -1587,7 +1587,7 @@ namespace ngl
 				if(internal_resource_pool_[i].tex_->GetHeight() < static_cast<uint32_t>(key.require_height_))
 					continue;
 				// RTV要求している場合.
-				if(key.usage_ & access_type_mask::RENDER_TARTGET)
+				if(key.usage_ & access_type_mask::RENDER_TARGET)
 				{
 					if(!internal_resource_pool_[i].rtv_.IsValid())
 						continue;
@@ -1636,7 +1636,7 @@ namespace ngl
 							
 					desc.bind_flag = 0;
 					{
-						if(key.usage_ & access_type_mask::RENDER_TARTGET)
+						if(key.usage_ & access_type_mask::RENDER_TARGET)
 							desc.bind_flag |= rhi::ResourceBindFlag::RenderTarget;
 						if(key.usage_ & access_type_mask::DEPTH_TARGET)
 							desc.bind_flag |= rhi::ResourceBindFlag::DepthStencil;
@@ -1661,7 +1661,7 @@ namespace ngl
 					return -1;
 				}
 				// Rtv.
-				if(key.usage_ & access_type_mask::RENDER_TARTGET)
+				if(key.usage_ & access_type_mask::RENDER_TARGET)
 				{
 					new_rtv = new rhi::RenderTargetViewDep();
 					if (!new_rtv->Initialize(p_device_, new_tex.Get(), 0, 0, 1))
