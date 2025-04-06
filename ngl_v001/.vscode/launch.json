@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Sample App [Debug]",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/x64/Debug/sample_app.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/sample_app",
+            "environment": [],
+            "console": "externalTerminal",
+            "preLaunchTask": "Build [Debug] ngl_v001.sln"
+        },
+        {
+            "name": "Debug Sample App [Release]",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/x64/Release/sample_app.exe",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}/sample_app",
+            "environment": [],
+            "console": "externalTerminal",
+            "preLaunchTask": "Build [Release] ngl_v001.sln"
+        }
+    ]
+}
