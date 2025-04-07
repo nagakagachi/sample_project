@@ -6,7 +6,7 @@
             "type": "shell",
             "command": "msbuild",
             "args": [
-                "ngl_v001.sln",
+                "ngl_v001/ngl_v001.sln",
                 "/p:Configuration=Debug",
                 "/m"
             ],
@@ -22,7 +22,7 @@
             "type": "shell",
             "command": "msbuild",
             "args": [
-                "ngl_v001.sln",
+                "ngl_v001/ngl_v001.sln",
                 "/p:Configuration=Release",
                 "/m"
             ],
