@@ -141,27 +141,10 @@ namespace ngl
 			auto def_descriptor = parent_device_->GetPersistentDescriptorAllocator()->GetDefaultPersistentDescriptor();
 			auto&& resource_table = p_pso->GetPipelineResourceViewLayout()->GetResourceTable();
 
-			struct DescriptorSetInfo
-			{
-				DescriptorSetInfo(int max_register, const D3D12_CPU_DESCRIPTOR_HANDLE* p_handle, s8 table_index)
-					: max_register_(max_register)
-					, p_src_handle_(p_handle)
-					, table_index_(table_index)
-				{
-				}
-				int max_register_;
-				const D3D12_CPU_DESCRIPTOR_HANDLE* p_src_handle_;
-				int table_index_;
-			};
-			const DescriptorSetInfo sampler_set_info[] =
-			{
-				DescriptorSetInfo(p_desc_set->GetCsSampler().max_use_register_index, p_desc_set->GetCsSampler().cpu_handles, resource_table.cs_sampler_table),
-			};
-
-			// Sampler用のFrameDescriptorHeapに必要分確保するため総数計算.
-			auto total_samp_count = 0;
-			for (const auto& e : sampler_set_info)
-				total_samp_count += e.max_register_ + 1;
+			const auto& cs_sampler_desc_set_handle_array = p_desc_set->GetCsSampler();
+			const auto cs_sampler_table = resource_table.cs_sampler_table;
+			// Sampler用のFrameDescriptorHeapに必要な数. 設定された最大のレジスタ番号+1を個数とする.
+			auto total_samp_count = cs_sampler_desc_set_handle_array.max_use_register_index + 1;
 
 			// Sampler用のFrameDescriptor確保. ここでPageが足りなければ新規Pageが確保されてHeapが切り替わるので, SetDescriptorHeaps() の前に実行する必要がある.
 			const auto sampler_desc_heap_type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
@@ -170,7 +153,6 @@ namespace ngl
 			// Heap確保. 現在のPageで必要分確保できなければ新規Page(Heap)に自動で切り替わる.
 			frame_desc_page_interface_for_sampler_.Allocate(total_samp_count, cpu_sampler_handle_start, gpu_sampler_handle_start);
 			const u64 sampler_handle_increment_size = frame_desc_page_interface_for_sampler_.GetPool()->GetHandleIncrementSize(sampler_desc_heap_type);
-
 
 			// DescriptorHeapの設定.
 			// Cbv Srv Uav用とSampler用.
@@ -214,19 +196,8 @@ namespace ngl
 					p_command_list_->SetComputeRootDescriptorTable(table_index, dst_gpu_handle_start);
 				};
 
-				{
-					for (const auto& e : sampler_set_info)
-					{
-						const auto copy_count = e.max_register_ + 1;
-						// 指定のFrameDescriptor開始位置から始まる範囲にDescriptorをコピーしてCommandListに設定.
-						SetSamplerDescriptor(sampler_desc_heap_type, cpu_sampler_handle_start, gpu_sampler_handle_start, copy_count, e.p_src_handle_, e.table_index_);
-
-						// FrameDescriptor上のポインタを進行.
-						const auto offset_size = sampler_handle_increment_size * static_cast<u64>(copy_count);
-						cpu_sampler_handle_start.ptr += offset_size;
-						gpu_sampler_handle_start.ptr += offset_size;
-					}
-				}
+				// 指定のFrameDescriptor開始位置から始まる範囲にDescriptorをコピーしてCommandListに設定.
+				SetSamplerDescriptor(sampler_desc_heap_type, cpu_sampler_handle_start, gpu_sampler_handle_start, total_samp_count, cs_sampler_desc_set_handle_array.cpu_handles, cs_sampler_table);
 			}
 
 			// CBV, SRV, UAVのコミット.

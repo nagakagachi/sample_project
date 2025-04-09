@@ -13,6 +13,7 @@
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 
 Texture2D			TexHardwareDepth;
+SamplerState		SmpHardwareDepth;
 RWTexture2D<float>	RWTexLinearDepth;
 
 
@@ -24,7 +25,16 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
-	float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
+		float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
+
+		// Samplerを使うテストなのであまり意味はない.
+		#if 1
+			uint w, h;
+			TexHardwareDepth.GetDimensions(w, h);
+			const float d_samp = TexHardwareDepth.SampleLevel(SmpHardwareDepth, dtid.xy / float2(w, h), 0).r;
+			if(0.0 > d_samp)
+				d = 0.0;
+		#endif
 
 	float view_z = ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.x / (d * ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.y + ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.z);
 

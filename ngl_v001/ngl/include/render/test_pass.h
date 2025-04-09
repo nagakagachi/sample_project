@@ -561,6 +561,8 @@ namespace ngl::render
 					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
 					{
 						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "LinearDepth");
+
+						auto& global_res = gfx::GlobalRenderResource::Instance();
 							
 						// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
 						auto res_depth = builder.GetAllocatedResource(this, h_depth_);
@@ -571,6 +573,8 @@ namespace ngl::render
 
 						ngl::rhi::DescriptorSetDep desc_set = {};
 						pso_->SetView(&desc_set, "TexHardwareDepth", res_depth.srv_.Get());
+						// Samplerを設定するテスト. シェーダコード側ではほぼ意味はない.
+						pso_->SetView(&desc_set, "SmpHardwareDepth", global_res.default_resource_.sampler_shadow_point.Get());
 						pso_->SetView(&desc_set, "RWTexLinearDepth", res_linear_depth.uav_.Get());
 						pso_->SetView(&desc_set, "ngl_cb_sceneview", desc_.ref_scene_cbv.Get());
 							

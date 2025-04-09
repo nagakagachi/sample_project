@@ -35,7 +35,7 @@ namespace ngl
 			struct Handles
 			{
 				D3D12_CPU_DESCRIPTOR_HANDLE	cpu_handles[SIZE] = {};
-				// 設定された最大のレジスタインデックス. このシステムでは必ず0開始連番でバインドするため, 最大レジスタインデックスを保持しておいてCommandListに積む際にDynamicDescriptorを確保する.
+				// ランタイムで設定された最大のレジスタインデックス. このシステムでは必ず0開始連番でバインドするため, 最大レジスタインデックス+1分だけDynamicDescriptorを確保してCommandListに積む.
 				int							max_use_register_index = -1;
 
 				void Reset()
