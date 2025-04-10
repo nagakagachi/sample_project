@@ -5,6 +5,11 @@
 		}
 	],
 	"settings": {
-		"project.documentation": "README.md"
+		"project.documentation": "README.md",
+		"files.associations": {
+			"*.gso": "hexdump",
+			"charconv": "cpp",
+			"xmemory": "cpp"
+		}
 	}
 }

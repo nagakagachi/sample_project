@@ -11,6 +11,7 @@
 #include "rhi/rhi.h"
 #include "rhi/d3d12/rhi_util.d3d12.h"
 
+
 #include "text/hash_text.h"
 #include "util/types.h"
 
@@ -34,22 +35,14 @@ namespace ngl
 			template<u32 SIZE>
 			struct Handles
 			{
+				// 0ベースのレジスタに対応するように書き込まれたDescriptorHandleを保持する.
+				// 0 はnull相当の無効ハンドルとなる.
 				D3D12_CPU_DESCRIPTOR_HANDLE	cpu_handles[SIZE] = {};
 				// ランタイムで設定された最大のレジスタインデックス. このシステムでは必ず0開始連番でバインドするため, 最大レジスタインデックス+1分だけDynamicDescriptorを確保してCommandListに積む.
 				int							max_use_register_index = -1;
 
-				void Reset()
-				{
-					memset(cpu_handles, 0, sizeof(cpu_handles));
-					max_use_register_index = -1;
-				}
-
-				void SetHandle(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-				{
-					assert(index < SIZE);
-					cpu_handles[index] = handle;
-					max_use_register_index = std::max<int>(max_use_register_index, static_cast<int>(index));
-				}
+				void Reset();
+				void SetHandle(u32 register_index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle);
 			};
 
 		public:
@@ -124,111 +117,7 @@ namespace ngl
 			Handles<k_sampler_table_size>	cs_sampler_;
 			Handles<k_uav_table_size>		cs_uav_;
 		};
-
-		inline void DescriptorSetDep::Reset()
-		{
-			vs_cbv_.Reset();
-			vs_srv_.Reset();
-			vs_sampler_.Reset();
-			ps_cbv_.Reset();
-			ps_srv_.Reset();
-			ps_sampler_.Reset();
-			ps_uav_.Reset();
-			gs_cbv_.Reset();
-			gs_srv_.Reset();
-			gs_sampler_.Reset();
-			hs_cbv_.Reset();
-			hs_srv_.Reset();
-			hs_sampler_.Reset();
-			ds_cbv_.Reset();
-			ds_srv_.Reset();
-			ds_sampler_.Reset();
-			cs_cbv_.Reset();
-			cs_srv_.Reset();
-			cs_sampler_.Reset();
-			cs_uav_.Reset();
-		}
-
-		inline void DescriptorSetDep::SetVsCbv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			vs_cbv_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetVsSrv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			vs_srv_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetVsSampler(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			vs_sampler_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetPsCbv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			ps_cbv_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetPsSrv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			ps_srv_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetPsSampler(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			ps_sampler_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetPsUav(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			ps_uav_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetGsCbv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			gs_cbv_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetGsSrv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			gs_srv_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetGsSampler(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			gs_sampler_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetHsCbv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			hs_cbv_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetHsSrv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			hs_srv_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetHsSampler(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			hs_sampler_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetDsCbv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			ds_cbv_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetDsSrv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			ds_srv_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetDsSampler(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			ds_sampler_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetCsCbv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			cs_cbv_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetCsSrv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			cs_srv_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetCsSampler(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			cs_sampler_.SetHandle(index, handle);
-		}
-		inline void DescriptorSetDep::SetCsUav(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
-		{
-			cs_uav_.SetHandle(index, handle);
-		}
+		static constexpr auto k_sizeof_DescriptorSetDep = sizeof(DescriptorSetDep);
 
 
 		// DescriptorHeadpの管理Wrapper.
@@ -313,6 +202,35 @@ namespace ngl
 			D3D12_CPU_DESCRIPTOR_HANDLE	cpu_handle = {};
 			D3D12_GPU_DESCRIPTOR_HANDLE	gpu_handle = {};
 		};
+
+
+		// DescriptorSetDepにViewを設定した際に抜けインデックスにその場でDummy Descriptorを設定する最適化のため, グローバル変数としてDefaultDescriptor保持する.
+		struct DefaultPersistentDescriptorInfoHolder
+		{
+			// 想定外の箇所から設定されないようにDeviceDepに許可.
+			friend class DeviceDep;
+
+			// DescriptorSetDepへのView設定時にその場で抜けインデックスへ設定するためにのみ使用されるメソッド.
+			static const PersistentDescriptorInfo& GetGlobalDefaultPersistentDescriptor_CbvSrvUav();
+			// DescriptorSetDepへのView設定時にその場で抜けインデックスへ設定するためにのみ使用されるメソッド.
+			static const PersistentDescriptorInfo& GetGlobalDefaultPersistentDescriptor_Sampler();
+
+			// 設定については外部からのアクセス禁止.
+		private:
+			#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+				// DescriptorSetDepへのセット時に抜けインデックスへその場で設定するためのグローバルstaticなdummy default descriptor.
+				// 	PersistentDescriptorAllocator によって起動時に設定される.
+				static PersistentDescriptorInfo global_default_persistent_descriptor_cbvsrvuav;
+				static PersistentDescriptorInfo global_default_persistent_descriptor_sampler;// 一応Samplerも別で用意(今のところcbvsrvuavのデフォルトハンドルを設定するコードで動いているが).
+			#endif
+
+			// PersistentDescriptorAllocatorから起動時に設定するためのメソッド.
+			static void SetGlobalDefaultPersistentDescriptor_CbvSrvUav(const PersistentDescriptorInfo& v);
+			// PersistentDescriptorAllocatorから起動時に設定するためのメソッド.
+			static void SetGlobalDefaultPersistentDescriptor_Sampler(const PersistentDescriptorInfo& v);
+			
+		};
+
 
 		/*
 			リソースのDescriptorを配置する目的のグローバルなHeapを管理する
@@ -668,6 +586,144 @@ namespace ngl
 			D3D12_CPU_DESCRIPTOR_HANDLE		cur_cpu_handle_start_ = {};
 			D3D12_GPU_DESCRIPTOR_HANDLE		cur_gpu_handle_start_ = {};
 		};
+
+
+
+		// DescriptorSetDep::Handles の実装.
+		template<u32 SIZE>
+		inline void DescriptorSetDep::Handles<SIZE>::SetHandle(u32 register_index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			assert(register_index < SIZE);
+			// ターゲットのレジスタに対応する位置にDescriptor設定.
+			cpu_handles[register_index] = handle;
+			
+			#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+				// Commandlistへの設定時に一時バッファに歯抜けの無効DescriptorにDefaultDescriptorをコピーする処理を省略するための最適化.
+				// この時点で設定されるレジスタインデックスまでの無効DescriptorにDefaultDescriptorを設定しておくことで, CommandListへの設定時にDefaultDescriptorをコピーする必要がなくなる.
+				for(u32 i = max_use_register_index + 1; i < register_index; ++i)
+				{
+					if(cpu_handles[i].ptr == 0)
+					{
+						// 現状はエラーにならないため, CbvSrvUabでもSamplerでも関係なく, 常にCbvSrvUavのDefaultDescriptorを設定している.
+						cpu_handles[i] = DefaultPersistentDescriptorInfoHolder::GetGlobalDefaultPersistentDescriptor_CbvSrvUav().cpu_handle;
+					}
+				}
+			#endif
+
+			// Commandlistへの設定時のコピー範囲最適化などのために設定された最大インデックスを保持.
+			max_use_register_index = std::max<int>(max_use_register_index, static_cast<int>(register_index));
+		}
+		template<u32 SIZE>
+		void DescriptorSetDep::Handles<SIZE>::Reset()
+		{
+			memset(cpu_handles, 0, sizeof(cpu_handles));
+			max_use_register_index = -1;
+		}
+
+		inline void DescriptorSetDep::Reset()
+		{
+			vs_cbv_.Reset();
+			vs_srv_.Reset();
+			vs_sampler_.Reset();
+			ps_cbv_.Reset();
+			ps_srv_.Reset();
+			ps_sampler_.Reset();
+			ps_uav_.Reset();
+			gs_cbv_.Reset();
+			gs_srv_.Reset();
+			gs_sampler_.Reset();
+			hs_cbv_.Reset();
+			hs_srv_.Reset();
+			hs_sampler_.Reset();
+			ds_cbv_.Reset();
+			ds_srv_.Reset();
+			ds_sampler_.Reset();
+			cs_cbv_.Reset();
+			cs_srv_.Reset();
+			cs_sampler_.Reset();
+			cs_uav_.Reset();
+		}
+
+		inline void DescriptorSetDep::SetVsCbv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			vs_cbv_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetVsSrv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			vs_srv_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetVsSampler(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			vs_sampler_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetPsCbv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			ps_cbv_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetPsSrv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			ps_srv_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetPsSampler(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			ps_sampler_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetPsUav(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			ps_uav_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetGsCbv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			gs_cbv_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetGsSrv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			gs_srv_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetGsSampler(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			gs_sampler_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetHsCbv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			hs_cbv_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetHsSrv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			hs_srv_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetHsSampler(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			hs_sampler_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetDsCbv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			ds_cbv_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetDsSrv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			ds_srv_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetDsSampler(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			ds_sampler_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetCsCbv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			cs_cbv_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetCsSrv(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			cs_srv_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetCsSampler(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			cs_sampler_.SetHandle(index, handle);
+		}
+		inline void DescriptorSetDep::SetCsUav(u32 index, const D3D12_CPU_DESCRIPTOR_HANDLE& handle)
+		{
+			cs_uav_.SetHandle(index, handle);
+		}
 
 
 	}

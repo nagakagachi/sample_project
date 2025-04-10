@@ -196,7 +196,7 @@ namespace rhi
 
 		// RootSignatureで定義されたあるシェーダステージのあるリソースタイプのテーブルインデックスを保持
 		//	commandlist->SetGraphicsRootDescriptorTable での書き込み先テーブル番号となる.
-		struct ResourceTable
+		struct DescriptorTableBindInfo
 		{
 			// 何番目のDescriptorTableがVSのCBVテーブルか
 			s8		vs_cbv_table		= -1;
@@ -255,7 +255,7 @@ namespace rhi
 		bool Initialize(DeviceDep* p_device, const Desc& desc);
 		void Finalize();
 
-		const ResourceTable& GetResourceTable() const
+		const DescriptorTableBindInfo& GetResourceTable() const
 		{
 			return resource_table_;
 		}
@@ -276,7 +276,7 @@ namespace rhi
 		std::unordered_map<ResourceViewName, Slot> slot_map_;
 
 		// CommandListにDescriptorをセットする際の各シェーダステージ/リソースタイプの対応するRootTableインデックス.
-		ResourceTable					resource_table_;
+		DescriptorTableBindInfo					resource_table_;
 	};
 
 	// PipelineStateヘルパ基底.

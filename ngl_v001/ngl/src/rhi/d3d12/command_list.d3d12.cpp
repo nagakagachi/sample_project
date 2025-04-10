@@ -510,16 +510,30 @@ namespace ngl
 			{
 				const auto cvbsrvuav_desc_heap_type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 
-				D3D12_CPU_DESCRIPTOR_HANDLE tmp[k_srv_table_size];
+				#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+					// 事前に歯抜けにデフォルトのDescriptorを埋めておく場合は一時バッファ不要.
+				#else
+					D3D12_CPU_DESCRIPTOR_HANDLE tmp[k_srv_table_size];
+				#endif
+
 				auto SetViewDescriptor = [&](u32 count, const D3D12_CPU_DESCRIPTOR_HANDLE* handles, u8 table_index)
 				{
 					if (0 > table_index || 0 >= count)
 						return;
 
-					for (u32 i = 0; i < count; i++)
-					{
-						tmp[i] = (handles[i].ptr > 0) ? handles[i] : def_descriptor.cpu_handle;
-					}
+					#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+						// 最適化案.
+						//	DescriptorSetへの設定時点でそのバッファの歯抜け部にデフォルトDescriptorを詰めておくことで, ここでの一時バッファへのコピーを省略する.
+						const D3D12_CPU_DESCRIPTOR_HANDLE* src_handle_buffer = handles;
+					#else
+						// 歯抜けで設定されていない要素はデフォルトDescriptorを詰める.
+						for (u32 i = 0; i < count; i++)
+						{
+							tmp[i] = (handles[i].ptr > 0) ? handles[i] : def_descriptor.cpu_handle;
+						}
+						const D3D12_CPU_DESCRIPTOR_HANDLE* src_handle_buffer = tmp;
+					#endif
+
 
 					D3D12_CPU_DESCRIPTOR_HANDLE dst_cpu;
 					D3D12_GPU_DESCRIPTOR_HANDLE dst_gpu;
@@ -528,7 +542,7 @@ namespace ngl
 					// FrameDescriptorHeapから連続したDescriptorを確保してコピー,CommandListへセットする.
 					parent_device_->GetD3D12Device()->CopyDescriptors(
 						1, &dst_cpu, &count,
-						count, tmp, nullptr,
+						count, src_handle_buffer, nullptr,
 						cvbsrvuav_desc_heap_type);
 					p_command_list_->SetGraphicsRootDescriptorTable(table_index, dst_gpu);
 				};

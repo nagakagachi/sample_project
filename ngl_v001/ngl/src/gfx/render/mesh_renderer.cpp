@@ -57,19 +57,25 @@ namespace gfx
 					// テクスチャ設定テスト. このあたりはDescriptorSetDepに事前にセットしておきたい.
 					{
 						auto tex_basecolor = (mat_data.tex_basecolor.IsValid())? mat_data.tex_basecolor->ref_view_ : default_white_tex_srv;
-						pso->SetView(&desc_set, "tex_basecolor", tex_basecolor.Get());
-						
 						auto tex_normal = (mat_data.tex_normal.IsValid())? mat_data.tex_normal->ref_view_ : default_normal_tex_srv;
-						pso->SetView(&desc_set, "tex_normal", tex_normal.Get());
-						
 						auto tex_occlusion = (mat_data.tex_occlusion.IsValid())? mat_data.tex_occlusion->ref_view_ : default_white_tex_srv;
-						pso->SetView(&desc_set, "tex_occlusion", tex_occlusion.Get());
-						
 						auto tex_roughness = (mat_data.tex_roughness.IsValid())? mat_data.tex_roughness->ref_view_ : default_white_tex_srv;
-						pso->SetView(&desc_set, "tex_roughness", tex_roughness.Get());
-						
 						auto tex_metalness = (mat_data.tex_metalness.IsValid())? mat_data.tex_metalness->ref_view_ : default_black_tex_srv;
-						pso->SetView(&desc_set, "tex_metalness", tex_metalness.Get());
+
+						#if 1
+							pso->SetView(&desc_set, "tex_basecolor", tex_basecolor.Get());
+							pso->SetView(&desc_set, "tex_occlusion", tex_occlusion.Get());
+							pso->SetView(&desc_set, "tex_normal", tex_normal.Get());
+							pso->SetView(&desc_set, "tex_roughness", tex_roughness.Get());
+							pso->SetView(&desc_set, "tex_metalness", tex_metalness.Get());
+						#else
+							// DescriptorSetへの設定時に歯抜けをデフォルトDescriptorで埋めておく最適化の確認用に逆順になりやすい順序で設定する. やっていることは↑と同じ.
+							pso->SetView(&desc_set, "tex_metalness", tex_metalness.Get());
+							pso->SetView(&desc_set, "tex_roughness", tex_roughness.Get());
+							pso->SetView(&desc_set, "tex_occlusion", tex_occlusion.Get());
+							pso->SetView(&desc_set, "tex_normal", tex_normal.Get());
+							pso->SetView(&desc_set, "tex_basecolor", tex_basecolor.Get());
+						#endif
 					}
 
 					// DescriptorSetでViewを設定.

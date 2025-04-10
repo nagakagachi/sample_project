@@ -14,6 +14,64 @@ namespace ngl
 {
 	namespace rhi
 	{
+		
+		#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+			PersistentDescriptorInfo DefaultPersistentDescriptorInfoHolder::global_default_persistent_descriptor_cbvsrvuav = {};
+			PersistentDescriptorInfo DefaultPersistentDescriptorInfoHolder::global_default_persistent_descriptor_sampler = {};
+		#endif
+
+		void DefaultPersistentDescriptorInfoHolder::SetGlobalDefaultPersistentDescriptor_CbvSrvUav(const PersistentDescriptorInfo& v)
+		{
+			#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+				// この設定は一度しか呼ばれない想定であるため, すでに有効なDefault Descriptorが設定されている場合はエラー.
+				assert(!global_default_persistent_descriptor_cbvsrvuav.IsValid());
+				global_default_persistent_descriptor_cbvsrvuav = v;
+			#else
+				//
+			#endif
+		}
+		void DefaultPersistentDescriptorInfoHolder::SetGlobalDefaultPersistentDescriptor_Sampler(const PersistentDescriptorInfo& v)
+		{
+			#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+				// この設定は一度しか呼ばれない想定であるため, すでに有効なDefault Descriptorが設定されている場合はエラー.
+				assert(!global_default_persistent_descriptor_sampler.IsValid());
+				global_default_persistent_descriptor_sampler = v;
+			#else
+				//
+			#endif
+		}
+		const PersistentDescriptorInfo& DefaultPersistentDescriptorInfoHolder::GetGlobalDefaultPersistentDescriptor_CbvSrvUav()
+		{
+			#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+				// 取得する時点では必ずDefault Descriptorが設定されているはず.
+				// もし設定されていない場合はエラー.
+				// DeviceDepなどが保持するPersistentDescriptorAllocatorの初期化と同時に設定することを想定.
+				assert(global_default_persistent_descriptor_cbvsrvuav.IsValid());
+				return global_default_persistent_descriptor_cbvsrvuav;
+			#else
+				// この場合は呼ばれるはずがない.
+				assert(false);
+				static PersistentDescriptorInfo dummy = {};
+				return dummy;
+			#endif
+		}
+		const PersistentDescriptorInfo& DefaultPersistentDescriptorInfoHolder::GetGlobalDefaultPersistentDescriptor_Sampler()
+		{
+			#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+				// 取得する時点では必ずDefault Descriptorが設定されているはず.
+				// もし設定されていない場合はエラー.
+				// DeviceDepなどが保持するPersistentDescriptorAllocatorの初期化と同時に設定することを想定.
+				assert(global_default_persistent_descriptor_sampler.IsValid());
+				return global_default_persistent_descriptor_sampler;
+			#else
+				// この場合は呼ばれるはずがない.
+				assert(false);
+				static PersistentDescriptorInfo dummy = {};
+				return dummy;
+			#endif
+		}
+
+
 		namespace dynamic_descriptor_allocator
 		{
 			// 実装部.

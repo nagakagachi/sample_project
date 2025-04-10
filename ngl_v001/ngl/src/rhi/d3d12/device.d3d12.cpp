@@ -192,6 +192,10 @@ namespace ngl
 					std::cout << "[ERROR] Create PersistentDescriptorAllocator" << std::endl;
 					return false;
 				}
+
+				// global変数のdefault descriptor変数に設定(CbvSrvUav用).
+				DefaultPersistentDescriptorInfoHolder::SetGlobalDefaultPersistentDescriptor_CbvSrvUav(p_persistent_descriptor_allocator_->GetDefaultPersistentDescriptor());
+
 			}
 
 			// Sampler用PersistentDescriptorManager初期化
@@ -208,6 +212,10 @@ namespace ngl
 					std::cout << "[ERROR] Create PersistentDescriptorAllocator" << std::endl;
 					return false;
 				}
+
+				// global変数のdefault descriptor変数に設定(Sampler用).
+				DefaultPersistentDescriptorInfoHolder::SetGlobalDefaultPersistentDescriptor_Sampler(p_persistent_sampler_descriptor_allocator_->GetDefaultPersistentDescriptor());
+
 			}
 
 			// DynamicDescriptorManager初期化

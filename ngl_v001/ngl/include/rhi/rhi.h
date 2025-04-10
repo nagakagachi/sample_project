@@ -8,6 +8,10 @@
 #include "text/hash_text.h"
 
 
+// DescriptorSetのCommandListへの設定時のコピーを削減する最適化用マクロ.
+#define NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION 1
+
+
 namespace ngl
 {
 	namespace rhi
