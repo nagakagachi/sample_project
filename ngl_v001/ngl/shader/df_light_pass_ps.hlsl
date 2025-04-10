@@ -33,7 +33,7 @@ SamplerComparisonState samp_shadow;
 float4 main_ps(VS_OUTPUT input) : SV_TARGET
 {	
 	// リニアView深度.
-	float ld = tex_lineardepth.Load(int3(input.pos.xy, 0)).r;// LightingBufferとGBufferが同じ解像度前提でLoad.
+	const float ld = tex_lineardepth.Load(int3(input.pos.xy, 0)).r;// LightingBufferとGBufferが同じ解像度前提でLoad.
 	if(1e7 <= ld)
 	{
 		// 天球扱い.
@@ -42,10 +42,10 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	float depth_visualize = pow(saturate(ld / 200.0), 1.0/0.8);
 	
 	// LightingBufferとGBufferが同じ解像度前提でLoad.
-	float4 gb0 = tex_gbuffer0.Load(int3(input.pos.xy, 0));
-	float4 gb1 = tex_gbuffer1.Load(int3(input.pos.xy, 0));
-	float4 gb2 = tex_gbuffer2.Load(int3(input.pos.xy, 0));
-	float4 gb3 = tex_gbuffer3.Load(int3(input.pos.xy, 0));
+	const float4 gb0 = tex_gbuffer0.Load(int3(input.pos.xy, 0));
+	const float4 gb1 = tex_gbuffer1.Load(int3(input.pos.xy, 0));
+	const float4 gb2 = tex_gbuffer2.Load(int3(input.pos.xy, 0));
+	const float4 gb3 = tex_gbuffer3.Load(int3(input.pos.xy, 0));
 
 	// GBuffer Decode.
 	float3 gb_base_color = gb0.xyz;

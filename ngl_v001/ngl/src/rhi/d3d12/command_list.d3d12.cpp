@@ -491,18 +491,16 @@ namespace ngl
 					p_command_list_->SetGraphicsRootDescriptorTable(table_index, dst_gpu_handle_start);
 				};
 
+				for (const auto& e : sampler_set_info)
 				{
-					for (const auto& e : sampler_set_info)
-					{
-						const auto copy_count = e.max_register_ + 1;
-						// 指定のFrameDescriptor開始位置から始まる範囲にDescriptorをコピーしてCommandListに設定.
-						SetSamplerDescriptor(sampler_desc_heap_type, cpu_sampler_handle_start, gpu_sampler_handle_start, copy_count, e.p_src_handle_, e.table_index_);
+					const auto copy_count = e.max_register_ + 1;
+					// 指定のFrameDescriptor開始位置から始まる範囲にDescriptorをコピーしてCommandListに設定.
+					SetSamplerDescriptor(sampler_desc_heap_type, cpu_sampler_handle_start, gpu_sampler_handle_start, copy_count, e.p_src_handle_, e.table_index_);
 
-						// FrameDescriptor上のポインタを進行.
-						const auto offset_size = sampler_handle_increment_size * static_cast<u64>(copy_count);
-						cpu_sampler_handle_start.ptr += offset_size;
-						gpu_sampler_handle_start.ptr += offset_size;
-					}
+					// FrameDescriptor上のポインタを進行.
+					const auto offset_size = sampler_handle_increment_size * static_cast<u64>(copy_count);
+					cpu_sampler_handle_start.ptr += offset_size;
+					gpu_sampler_handle_start.ptr += offset_size;
 				}
 			}
 

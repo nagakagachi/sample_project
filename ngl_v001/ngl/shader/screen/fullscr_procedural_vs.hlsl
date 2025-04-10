@@ -30,14 +30,14 @@ VS_OUTPUT main_vs(uint sv_vtx_id : SV_VertexID)
 {
 	VS_OUTPUT output = (VS_OUTPUT)0;
 
-	float2 out_pos[] =
+	const float2 out_pos[] =
 	{
 		float2(-3.0, 1.0),
 		float2(1.0, 1.0),
 		float2(1.0, -3.0),
 	};
 
-	float2 out_uv[] =
+	const float2 out_uv[] =
 	{
 		float2(-1.0, 0.0),
 		float2(1.0, 0.0),

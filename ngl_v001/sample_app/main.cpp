@@ -704,11 +704,11 @@ bool AppGame::Execute()
 		ImGui::SetNextItemOpen(true, ImGuiCond_Once);
 		if (ImGui::CollapsingHeader("Debug Perf"))
 		{
-			ImGui::Text("Delta: %f [sec]", delta_sec);
+			ImGui::Text("Delta: %f [ms]", delta_sec*1000.0f);
 			
-			ImGui::Text("Rtg Construct: %f [sec]", dbgw_stat_primary_rtg_construct);
-			ImGui::Text("Rtg Compile  : %f [sec]", dbgw_stat_primary_rtg_compile);
-			ImGui::Text("Rtg Execute  : %f [sec]", dbgw_stat_primary_rtg_execute);
+			ImGui::Text("Rtg Construct: %f [ms]", dbgw_stat_primary_rtg_construct*1000.0f);
+			ImGui::Text("Rtg Compile  : %f [ms]", dbgw_stat_primary_rtg_compile*1000.0f);
+			ImGui::Text("Rtg Execute  : %f [ms]", dbgw_stat_primary_rtg_execute*1000.0f);
 
 			ImGui::Separator();
 			ImGui::SliderFloat("Main Thread Sleep", &dbgw_perf_main_thread_sleep_millisec, 0.0f, 100.0f);

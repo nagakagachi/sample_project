@@ -24,7 +24,7 @@ void main_cs(
 		return;
 
 	// 適当に重そうな処理.
-	const int k_loop_num = 100;
+	const int k_loop_num = 16;
 	float4 v = (float4)0;
 	for(int i = 0; i < k_loop_num; ++i)
 	{
