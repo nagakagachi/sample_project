@@ -257,6 +257,17 @@ namespace ngl
 			
 			_Max,
 		};
+		// シェーダステージマスク. EShaderStage のビットマスク.
+		using ShaderStageMask = u32;
+		static constexpr ShaderStageMask GetShaderStageMask(EShaderStage stage)
+		{
+			return 1u << static_cast<u32>(stage);
+		}
+		static constexpr bool IsContainShaderStage(ShaderStageMask mask, EShaderStage stage)
+		{
+			return 0 != (mask & GetShaderStageMask(stage));
+		}
+
 
 		// ブレンド要素
 		enum class EBlendFactor

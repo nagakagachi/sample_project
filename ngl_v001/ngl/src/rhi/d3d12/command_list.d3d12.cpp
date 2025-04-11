@@ -138,13 +138,13 @@ namespace ngl
 			assert(p_desc_set);
 
 			// cbv, srv, uav用デフォルトDescriptor取得.
-			auto def_descriptor = parent_device_->GetPersistentDescriptorAllocator()->GetDefaultPersistentDescriptor();
-			auto&& resource_table = p_pso->GetPipelineResourceViewLayout()->GetResourceTable();
+			const auto def_descriptor = parent_device_->GetPersistentDescriptorAllocator()->GetDefaultPersistentDescriptor();
+			const auto& resource_table = p_pso->GetPipelineResourceViewLayout()->GetResourceTable();
 
 			const auto& cs_sampler_desc_set_handle_array = p_desc_set->GetCsSampler();
 			const auto cs_sampler_table = resource_table.cs_sampler_table;
 			// Sampler用のFrameDescriptorHeapに必要な数. 設定された最大のレジスタ番号+1を個数とする.
-			auto total_samp_count = cs_sampler_desc_set_handle_array.max_use_register_index + 1;
+			const auto total_samp_count = cs_sampler_desc_set_handle_array.max_use_register_index + 1;
 
 			// Sampler用のFrameDescriptor確保. ここでPageが足りなければ新規Pageが確保されてHeapが切り替わるので, SetDescriptorHeaps() の前に実行する必要がある.
 			const auto sampler_desc_heap_type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
@@ -170,7 +170,11 @@ namespace ngl
 			// Samplerのコミット.
 			{
 				// 各ステージのSamplerを設定.
-				D3D12_CPU_DESCRIPTOR_HANDLE tmp[k_sampler_table_size];
+				#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+					// 事前に歯抜けにデフォルトのDescriptorを埋めておく場合は一時バッファ不要.
+				#else
+					D3D12_CPU_DESCRIPTOR_HANDLE tmp[k_sampler_table_size];
+				#endif
 				auto SetSamplerDescriptor = [&](
 					D3D12_DESCRIPTOR_HEAP_TYPE heap_type,
 					D3D12_CPU_DESCRIPTOR_HANDLE dst_cpu_handle_start,
@@ -181,17 +185,24 @@ namespace ngl
 					if (0 > table_index || 0 >= src_count)
 						return;
 
-					// Copy時に無効なDescriptorがあるとエラーになるため, 無効要素にはダミーのDesctirptorを詰めたバッファを作る.
-					//	DescriptorSetDep側で歯抜けの部分にダミーDescriptorを詰めて置くことでそのままコピーできるはずなので, 高速化のため検討.
-					for (u32 i = 0; i < src_count; i++)
-					{
-						tmp[i] = (src_handle[i].ptr > 0) ? src_handle[i] : def_descriptor.cpu_handle;
-					}
+					#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+						// 最適化案.
+						//	DescriptorSetへの設定時点でそのバッファの歯抜け部にデフォルトDescriptorを詰めておくことで, ここでの一時バッファへのコピーを省略する.
+						const D3D12_CPU_DESCRIPTOR_HANDLE* src_handle_buffer = src_handle;
+					#else
+						// Copy時に無効なDescriptorがあるとエラーになるため, 無効要素にはダミーのDesctirptorを詰めたバッファを作る.
+						//	DescriptorSetDep側で歯抜けの部分にダミーDescriptorを詰めて置くことでそのままコピーできるはずなので, 高速化のため検討.
+						for (u32 i = 0; i < src_count; i++)
+						{
+							tmp[i] = (src_handle[i].ptr > 0) ? src_handle[i] : def_descriptor.cpu_handle;
+						}
+						const D3D12_CPU_DESCRIPTOR_HANDLE* src_handle_buffer = tmp;
+					#endif
 
 					// FrameDescriptorHeapから連続したDescriptorを確保してコピー,CommandListへセットする.
 					parent_device_->GetD3D12Device()->CopyDescriptors(
 						1, &dst_cpu_handle_start, &src_count,
-						src_count, tmp, nullptr,
+						src_count, src_handle_buffer, nullptr,
 						heap_type);
 					p_command_list_->SetComputeRootDescriptorTable(table_index, dst_gpu_handle_start);
 				};
@@ -204,18 +215,29 @@ namespace ngl
 			{
 				const auto cvbsrvuav_desc_heap_type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 
-				D3D12_CPU_DESCRIPTOR_HANDLE tmp[k_srv_table_size];// cbv, srv, uav のテーブルサイズで最大の k_srv_table_size でワーク確保して再利用.
+				#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+					// 事前に歯抜けにデフォルトのDescriptorを埋めておく場合は一時バッファ不要.
+				#else
+					D3D12_CPU_DESCRIPTOR_HANDLE tmp[k_srv_table_size];// cbv, srv, uav のテーブルサイズで最大の k_srv_table_size でワーク確保して再利用.
+				#endif
 				auto SetViewDescriptor = [&](u32 count, const D3D12_CPU_DESCRIPTOR_HANDLE* handles, u8 table_index)
 				{
 					if (0 > table_index || 0 >= count)
 						return;
 
-					// Copy時に無効なDescriptorがあるとエラーになるため, 無効要素にはダミーのDesctirptorを詰めたバッファを作る.
-					//	DescriptorSetDep側で歯抜けの部分にダミーDescriptorを詰めて置くことでそのままコピーできるはずなので, 高速化のため検討.
-					for (u32 i = 0; i < count; i++)
-					{
-						tmp[i] = (handles[i].ptr > 0) ? handles[i] : def_descriptor.cpu_handle;
-					}
+					#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+						// 最適化案.
+						//	DescriptorSetへの設定時点でそのバッファの歯抜け部にデフォルトDescriptorを詰めておくことで, ここでの一時バッファへのコピーを省略する.
+						const D3D12_CPU_DESCRIPTOR_HANDLE* src_handle_buffer = handles;
+					#else
+						// Copy時に無効なDescriptorがあるとエラーになるため, 無効要素にはダミーのDesctirptorを詰めたバッファを作る.
+						//	DescriptorSetDep側で歯抜けの部分にダミーDescriptorを詰めて置くことでそのままコピーできるはずなので, 高速化のため検討.
+						for (u32 i = 0; i < count; i++)
+						{
+							tmp[i] = (handles[i].ptr > 0) ? handles[i] : def_descriptor.cpu_handle;
+						}
+						const D3D12_CPU_DESCRIPTOR_HANDLE* src_handle_buffer = tmp;
+					#endif
 
 					D3D12_CPU_DESCRIPTOR_HANDLE dst_cpu;
 					D3D12_GPU_DESCRIPTOR_HANDLE dst_gpu;
@@ -224,7 +246,7 @@ namespace ngl
 					// FrameDescriptorHeapから連続したDescriptorを確保してコピー,CommandListへセットする.
 					parent_device_->GetD3D12Device()->CopyDescriptors(
 						1, &dst_cpu, &count,
-						count, tmp, nullptr,
+						count, src_handle_buffer, nullptr,
 						cvbsrvuav_desc_heap_type);
 					p_command_list_->SetComputeRootDescriptorTable(table_index, dst_gpu);
 				};
@@ -413,8 +435,8 @@ namespace ngl
 			assert(p_desc_set);
 
 			// cbv, srv, uav用デフォルトDescriptor取得.
-			auto def_descriptor = parent_device_->GetPersistentDescriptorAllocator()->GetDefaultPersistentDescriptor();
-			auto&& resource_table = p_pso->GetPipelineResourceViewLayout()->GetResourceTable();
+			const auto def_descriptor = parent_device_->GetPersistentDescriptorAllocator()->GetDefaultPersistentDescriptor();
+			const auto& resource_table = p_pso->GetPipelineResourceViewLayout()->GetResourceTable();
 
 			struct DescriptorSetInfo
 			{
@@ -467,7 +489,12 @@ namespace ngl
 			// Samplerのコミット.
 			{
 				// 各ステージのSamplerを設定.
-				D3D12_CPU_DESCRIPTOR_HANDLE tmp[k_sampler_table_size];
+				#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+					// 事前に歯抜けにデフォルトのDescriptorを埋めておく場合は一時バッファ不要.
+				#else
+					D3D12_CPU_DESCRIPTOR_HANDLE tmp[k_sampler_table_size];
+				#endif
+				
 				auto SetSamplerDescriptor = [&](
 					D3D12_DESCRIPTOR_HEAP_TYPE heap_type,
 					D3D12_CPU_DESCRIPTOR_HANDLE dst_cpu_handle_start,
@@ -478,15 +505,22 @@ namespace ngl
 					if (0 > table_index || 0 >= src_count)
 						return;
 
-					for (u32 i = 0; i < src_count; i++)
-					{
-						tmp[i] = (src_handle[i].ptr > 0) ? src_handle[i] : def_descriptor.cpu_handle;
-					}
+					#if NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION
+						// 最適化案.
+						//	DescriptorSetへの設定時点でそのバッファの歯抜け部にデフォルトDescriptorを詰めておくことで, ここでの一時バッファへのコピーを省略する.
+						const D3D12_CPU_DESCRIPTOR_HANDLE* src_handle_buffer = src_handle;
+					#else
+						for (u32 i = 0; i < src_count; i++)
+						{
+							tmp[i] = (src_handle[i].ptr > 0) ? src_handle[i] : def_descriptor.cpu_handle;
+						}
+						const D3D12_CPU_DESCRIPTOR_HANDLE* src_handle_buffer = tmp;
+					#endif
 
 					// FrameDescriptorHeapから連続したDescriptorを確保してコピー,CommandListへセットする.
 					parent_device_->GetD3D12Device()->CopyDescriptors(
 						1, &dst_cpu_handle_start, &src_count,
-						src_count, tmp, nullptr,
+						src_count, src_handle_buffer, nullptr,
 						heap_type);
 					p_command_list_->SetGraphicsRootDescriptorTable(table_index, dst_gpu_handle_start);
 				};
@@ -545,23 +579,35 @@ namespace ngl
 					p_command_list_->SetGraphicsRootDescriptorTable(table_index, dst_gpu);
 				};
 				// 各ステージの各リソースタイプ別に連続Descriptorを確保,コピーしてテーブルにをセットしていく
-				// 各ステージ毎各リソースタイプ毎に0番から設定された最大レジスタ番号までの範囲でFrameDescriptorから確保してコピー,CommandListへ設定する.
-				SetViewDescriptor(p_desc_set->GetVsCbv().max_use_register_index + 1, p_desc_set->GetVsCbv().cpu_handles, resource_table.vs_cbv_table);
-				SetViewDescriptor(p_desc_set->GetVsSrv().max_use_register_index + 1, p_desc_set->GetVsSrv().cpu_handles, resource_table.vs_srv_table);
-
-				// 現状はUAVはPSのみ.(CSは別関数)
-				SetViewDescriptor(p_desc_set->GetPsCbv().max_use_register_index + 1, p_desc_set->GetPsCbv().cpu_handles, resource_table.ps_cbv_table);
-				SetViewDescriptor(p_desc_set->GetPsSrv().max_use_register_index + 1, p_desc_set->GetPsSrv().cpu_handles, resource_table.ps_srv_table);
-				SetViewDescriptor(p_desc_set->GetPsUav().max_use_register_index + 1, p_desc_set->GetPsUav().cpu_handles, resource_table.ps_uav_table);
-
-				SetViewDescriptor(p_desc_set->GetGsCbv().max_use_register_index + 1, p_desc_set->GetGsCbv().cpu_handles, resource_table.gs_cbv_table);
-				SetViewDescriptor(p_desc_set->GetGsSrv().max_use_register_index + 1, p_desc_set->GetGsSrv().cpu_handles, resource_table.gs_srv_table);
-
-				SetViewDescriptor(p_desc_set->GetHsCbv().max_use_register_index + 1, p_desc_set->GetHsCbv().cpu_handles, resource_table.hs_cbv_table);
-				SetViewDescriptor(p_desc_set->GetHsSrv().max_use_register_index + 1, p_desc_set->GetHsSrv().cpu_handles, resource_table.hs_srv_table);
-
-				SetViewDescriptor(p_desc_set->GetDsCbv().max_use_register_index + 1, p_desc_set->GetDsCbv().cpu_handles, resource_table.ds_cbv_table);
-				SetViewDescriptor(p_desc_set->GetDsSrv().max_use_register_index + 1, p_desc_set->GetDsSrv().cpu_handles, resource_table.ds_srv_table);
+				
+				// ステージが存在するかどうかで早期に判断.
+				if(p_pso->IsContainShaderStage(EShaderStage::Vertex))
+				{
+					SetViewDescriptor(p_desc_set->GetVsCbv().max_use_register_index + 1, p_desc_set->GetVsCbv().cpu_handles, resource_table.vs_cbv_table);
+					SetViewDescriptor(p_desc_set->GetVsSrv().max_use_register_index + 1, p_desc_set->GetVsSrv().cpu_handles, resource_table.vs_srv_table);
+				}
+				if(p_pso->IsContainShaderStage(EShaderStage::Pixel))
+				{
+					// 現状はUAVはPSのみ.(CSは別関数)
+					SetViewDescriptor(p_desc_set->GetPsCbv().max_use_register_index + 1, p_desc_set->GetPsCbv().cpu_handles, resource_table.ps_cbv_table);
+					SetViewDescriptor(p_desc_set->GetPsSrv().max_use_register_index + 1, p_desc_set->GetPsSrv().cpu_handles, resource_table.ps_srv_table);
+					SetViewDescriptor(p_desc_set->GetPsUav().max_use_register_index + 1, p_desc_set->GetPsUav().cpu_handles, resource_table.ps_uav_table);
+				}
+				if(p_pso->IsContainShaderStage(EShaderStage::Geometry))
+				{
+					SetViewDescriptor(p_desc_set->GetGsCbv().max_use_register_index + 1, p_desc_set->GetGsCbv().cpu_handles, resource_table.gs_cbv_table);
+					SetViewDescriptor(p_desc_set->GetGsSrv().max_use_register_index + 1, p_desc_set->GetGsSrv().cpu_handles, resource_table.gs_srv_table);
+				}
+				if(p_pso->IsContainShaderStage(EShaderStage::Hull))
+				{
+					SetViewDescriptor(p_desc_set->GetHsCbv().max_use_register_index + 1, p_desc_set->GetHsCbv().cpu_handles, resource_table.hs_cbv_table);
+					SetViewDescriptor(p_desc_set->GetHsSrv().max_use_register_index + 1, p_desc_set->GetHsSrv().cpu_handles, resource_table.hs_srv_table);
+				}
+				if(p_pso->IsContainShaderStage(EShaderStage::Domain))
+				{
+					SetViewDescriptor(p_desc_set->GetDsCbv().max_use_register_index + 1, p_desc_set->GetDsCbv().cpu_handles, resource_table.ds_cbv_table);
+					SetViewDescriptor(p_desc_set->GetDsSrv().max_use_register_index + 1, p_desc_set->GetDsSrv().cpu_handles, resource_table.ds_srv_table);
+				}
 			}
 		}
 		// -------------------------------------------------------------------------------------------------------------------------------------------------

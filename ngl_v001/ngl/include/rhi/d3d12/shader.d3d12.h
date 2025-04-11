@@ -302,14 +302,33 @@ namespace rhi
 		void SetView(DescriptorSetDep* p_desc_set, const char* name, const UnorderedAccessViewDep* p_view) const;
 		void SetView(DescriptorSetDep* p_desc_set, const char* name, const SamplerDep* p_view) const;
 
+		const ShaderStageMask& GetPipelineShaderStageMask() const
+		{
+			// 初期化で適切なShaderStageMaskが設定されているはず.
+			assert( stage_mask_ != 0 );
+			return stage_mask_;
+		}
+		const bool IsContainShaderStage(EShaderStage stage) const
+		{
+			return rhi::IsContainShaderStage(GetPipelineShaderStageMask(), stage);
+		}
+
 	public:
 		ID3D12PipelineState* GetD3D12PipelineState();
 		ID3D12RootSignature* GetD3D12RootSignature();
 		const ID3D12PipelineState* GetD3D12PipelineState() const;
 		const ID3D12RootSignature* GetD3D12RootSignature() const;
 	protected:
+		// 派生クラスで適切なShaderStageMaskを設定する.
+		void SetPipelineContainShaderStage(const ShaderStageMask& stage_mask)
+		{
+			stage_mask_ = stage_mask;
+		}
+	protected:
 		std::shared_ptr<PipelineResourceViewLayoutDep>		view_layout_;
+		ShaderStageMask										stage_mask_{};		
 		Microsoft::WRL::ComPtr<ID3D12PipelineState>			pso_;
+
 	};
 	
 	// パイプラインステート Graphics.

@@ -51,6 +51,7 @@ namespace ngl::render
 				const std::vector<gfx::StaticMeshComponent*>* p_mesh_list{};
 			};
 			SetupDesc desc_{};
+			bool is_render_skip_debug{};
 			
 			// リソースとアクセスを定義するプリプロセス.
 			void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info, const SetupDesc& desc)
@@ -66,6 +67,10 @@ namespace ngl::render
 				builder.RegisterTaskNodeRenderFunction(this,
 					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
 					{
+						if(is_render_skip_debug)
+						{
+							return;
+						}
 						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "DepthPass");
 						
 						auto res_depth = builder.GetAllocatedResource(this, h_depth_);
@@ -103,6 +108,7 @@ namespace ngl::render
 				const std::vector<gfx::StaticMeshComponent*>* p_mesh_list{};
 			};
 			SetupDesc desc_{};
+			bool is_render_skip_debug{};
 			
 			// リソースとアクセスを定義するプリプロセス.
 			void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
@@ -153,6 +159,10 @@ namespace ngl::render
 				builder.RegisterTaskNodeRenderFunction(this,
 					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
 					{
+						if(is_render_skip_debug)
+						{
+							return;
+						}
 						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "GBuffer");
 				
 						// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
@@ -261,6 +271,7 @@ namespace ngl::render
 				math::Vec3 directional_light_dir{};
 			};
 			SetupDesc desc_{};
+			bool is_render_skip_debug{};
 			
 			// リソースとアクセスを定義するプリプロセス.
 			void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
@@ -438,6 +449,10 @@ namespace ngl::render
 				builder.RegisterTaskNodeRenderFunction(this,
 					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
 					{
+						if(is_render_skip_debug)
+						{
+							return;
+						}
 						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "Shadow");
 							
 						// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
@@ -515,6 +530,7 @@ namespace ngl::render
 				rhi::RefCbvDep ref_scene_cbv{};
 			};
 			SetupDesc desc_{};
+			bool is_render_skip_debug{};
 			
 			// リソースとアクセスを定義するプリプロセス.
 			void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
@@ -560,6 +576,10 @@ namespace ngl::render
 				builder.RegisterTaskNodeRenderFunction(this,
 					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
 					{
+						if(is_render_skip_debug)
+						{
+							return;
+						}
 						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "LinearDepth");
 
 						auto& global_res = gfx::GlobalRenderResource::Instance();
@@ -614,6 +634,7 @@ namespace ngl::render
 				rhi::RefCbvDep ref_shadow_cbv{};
 			};
 			SetupDesc desc_{};
+			bool is_render_skip_debug{};
 			
 			// リソースとアクセスを定義するプリプロセス.
 			void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
@@ -697,6 +718,10 @@ namespace ngl::render
 				builder.RegisterTaskNodeRenderFunction(this,
 					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
 					{
+						if(is_render_skip_debug)
+						{
+							return;
+						}
 						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "Lighting");
 							
 						auto& global_res = gfx::GlobalRenderResource::Instance();
@@ -797,6 +822,7 @@ namespace ngl::render
 				bool debugview_dshadow = false;
 			};
 			SetupDesc desc_{};
+			bool is_render_skip_debug{};
 			
 			// リソースとアクセスを定義するプリプロセス.
 			void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
@@ -889,6 +915,10 @@ namespace ngl::render
 				builder.RegisterTaskNodeRenderFunction(this,
 					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
 					{
+						if(is_render_skip_debug)
+						{
+							return;
+						}
 						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "Final");
 							
 						auto& global_res = gfx::GlobalRenderResource::Instance();
@@ -1020,6 +1050,7 @@ namespace ngl::render
 				rhi::RefCbvDep ref_scene_cbv{};
 			};
 			SetupDesc desc_{};
+			bool is_render_skip_debug{};
 			
 			// リソースとアクセスを定義するプリプロセス.
 			void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
@@ -1062,6 +1093,10 @@ namespace ngl::render
 				builder.RegisterTaskNodeRenderFunction(this,
 					[this](rtg::RenderTaskGraphBuilder& builder, rhi::ComputeCommandListDep* commandlist)
 					{
+						if(is_render_skip_debug)
+						{
+							return;
+						}
 						NGL_RHI_GPU_SCOPED_EVENT_MARKER(commandlist, "ComputeTest");
 							
 						// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
@@ -1097,6 +1132,7 @@ namespace ngl::render
 				class gfx::RtSceneManager* p_rt_scene{};
 			};
 			SetupDesc desc_{};
+			bool is_render_skip_debug{};
 			
 			// リソースとアクセスを定義するプリプロセス.
 			void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info, const SetupDesc& desc)
@@ -1170,6 +1206,10 @@ namespace ngl::render
 				builder.RegisterTaskNodeRenderFunction(this,
 					[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
 					{
+						if(is_render_skip_debug)
+						{
+							return;
+						}
 						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RtPass");
 							
 						// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.

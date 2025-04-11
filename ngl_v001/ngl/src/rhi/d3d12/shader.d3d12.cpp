@@ -1600,33 +1600,41 @@ namespace rhi
 		std::vector<D3D12_INPUT_ELEMENT_DESC> input_elem_descs;
 		input_elem_descs.resize(desc.input_layout.num_elements);
 
-
+		ShaderStageMask shader_stage_mask{};
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc = {};
 		if (desc.vs)
 		{
 			pso_desc.VS.BytecodeLength = desc.vs->GetShaderBinarySize();
 			pso_desc.VS.pShaderBytecode = desc.vs->GetShaderBinaryPtr();
+			shader_stage_mask |= GetShaderStageMask(EShaderStage::Vertex);
 		}
 		if (desc.ps)
 		{
 			pso_desc.PS.BytecodeLength = desc.ps->GetShaderBinarySize();
 			pso_desc.PS.pShaderBytecode = desc.ps->GetShaderBinaryPtr();
+			shader_stage_mask |= GetShaderStageMask(EShaderStage::Pixel);
 		}
 		if (desc.ds)
 		{
 			pso_desc.DS.BytecodeLength = desc.ds->GetShaderBinarySize();
 			pso_desc.DS.pShaderBytecode = desc.ds->GetShaderBinaryPtr();
+			shader_stage_mask |= GetShaderStageMask(EShaderStage::Domain);
 		}
 		if (desc.hs)
 		{
 			pso_desc.HS.BytecodeLength = desc.hs->GetShaderBinarySize();
 			pso_desc.HS.pShaderBytecode = desc.hs->GetShaderBinaryPtr();
+			shader_stage_mask |= GetShaderStageMask(EShaderStage::Hull);
 		}
 		if (desc.gs)
 		{
 			pso_desc.GS.BytecodeLength = desc.gs->GetShaderBinarySize();
 			pso_desc.GS.pShaderBytecode = desc.gs->GetShaderBinaryPtr();
+			shader_stage_mask |= GetShaderStageMask(EShaderStage::Geometry);
 		}
+		// 存在するステージのマスク表現を保持.
+		SetPipelineContainShaderStage(shader_stage_mask);
+
 		pso_desc.StreamOutput = {};
 		// BlendState
 		{
@@ -1788,12 +1796,16 @@ namespace rhi
 			return false;
 
 
+		ShaderStageMask shader_stage_mask{};
 		D3D12_COMPUTE_PIPELINE_STATE_DESC pso_desc = {};
 		if (desc.cs)
 		{
 			pso_desc.CS.BytecodeLength = desc.cs->GetShaderBinarySize();
 			pso_desc.CS.pShaderBytecode = desc.cs->GetShaderBinaryPtr();
+			shader_stage_mask |= GetShaderStageMask(EShaderStage::Compute);
 		}
+		// 存在するステージのマスク表現を保持.
+		SetPipelineContainShaderStage(shader_stage_mask);
 
 		pso_desc.NodeMask = desc.node_mask;
 

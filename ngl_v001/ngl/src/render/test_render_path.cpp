@@ -92,7 +92,8 @@ namespace ngl::test
 				// ...
 			}
 			
-				
+			// デバッグのためPassの描画ジョブをスキップ.
+			constexpr bool k_force_skip_all_pass_render = false;
 			
 #define ASYNC_COMPUTE_TEST0 0
 #define ASYNC_COMPUTE_TEST1 1
@@ -148,6 +149,8 @@ namespace ngl::test
 						setup_desc.p_mesh_list = &p_scene->mesh_instance_array_;
 					}
 					task_depth->Setup(rtg_builder, p_device, view_info, setup_desc);
+					// Renderをスキップテスト.
+					task_depth->is_render_skip_debug = k_force_skip_all_pass_render;
 				}
 					
 				// ----------------------------------------
@@ -162,6 +165,8 @@ namespace ngl::test
 						setup_desc.ref_scene_cbv = sceneview_cbv;
 					}
 					task_linear_depth->Setup(rtg_builder, p_device, view_info, task_depth->h_depth_, async_compute_tex0, setup_desc);
+					// Renderをスキップテスト.
+					task_linear_depth->is_render_skip_debug = k_force_skip_all_pass_render;
 				}
 				
 				ngl::rtg::RtgResourceHandle async_compute_tex1 = {};
@@ -178,6 +183,9 @@ namespace ngl::test
 						setup_desc.ref_scene_cbv = sceneview_cbv;
 					}
 					task_test_compute1->Setup(rtg_builder, p_device, view_info, task_linear_depth->h_linear_depth_, setup_desc);
+					// Renderをスキップテスト.
+					task_test_compute1->is_render_skip_debug = k_force_skip_all_pass_render;
+
 					async_compute_tex1 = task_test_compute1->h_work_tex_;
 				}
 #endif
@@ -195,6 +203,8 @@ namespace ngl::test
 						setup_desc.p_mesh_list = &p_scene->mesh_instance_array_;
 					}
 					task_gbuffer->Setup(rtg_builder, p_device, view_info, task_depth->h_depth_, async_compute_tex0, setup_desc);
+					// Renderをスキップテスト.
+					task_gbuffer->is_render_skip_debug = k_force_skip_all_pass_render;
 				}
 					
 				// ----------------------------------------
@@ -210,6 +220,8 @@ namespace ngl::test
 						setup_desc.directional_light_dir = ngl::math::Vec3::Normalize(render_frame_desc.directional_light_dir);
 					}
 					task_d_shadow->Setup(rtg_builder, p_device, view_info, setup_desc);
+					// Renderをスキップテスト.
+					task_d_shadow->is_render_skip_debug = k_force_skip_all_pass_render;
 				}
 					
 				// ----------------------------------------
@@ -230,6 +242,8 @@ namespace ngl::test
 						task_d_shadow->h_shadow_depth_atlas_,
 						async_compute_tex1,
 						setup_desc);
+					// Renderをスキップテスト.
+					task_light->is_render_skip_debug = k_force_skip_all_pass_render;
 				}
 
 				// ----------------------------------------
@@ -278,6 +292,8 @@ namespace ngl::test
 							debug_gbuffer0, debug_gbuffer1, debug_gbuffer2, debug_gbuffer3,
 							debug_dshadow,
 							setup_desc);
+						// Renderをスキップテスト.
+						task_final->is_render_skip_debug = k_force_skip_all_pass_render;
 					}
 				}
 
