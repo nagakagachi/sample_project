@@ -50,6 +50,9 @@
 
 #include "../external/imgui/imgui.h"
 
+// GPU待機タイミングのオーバーラップ最適化.
+#define NGL_OPTIMIZE_WAIT_GPU 1
+
 
 // ImGui.
 static bool dbgw_test_window_enable = true;
@@ -186,6 +189,14 @@ AppGame::~AppGame()
 {
 	// RenderThread待機.
 	render_thread_.Wait();
+	
+	#if 1 == NGL_OPTIMIZE_WAIT_GPU
+		// GPUへ投入したタスクの完了待ち.
+		if(gpu_wait_signal_count_validity_)
+		{
+			gpu_wait_signal_.Wait(&gpu_wait_fence_, gpu_wait_signal_count_);
+		}
+	#endif
 	
 	// リソース参照クリア.
 	mesh_comp_array_.clear();
@@ -511,6 +522,7 @@ bool AppGame::Initialize()
 	return true;
 }
 
+
 void AppGame::BeginFrame()
 {
 	// imgui.
@@ -605,6 +617,15 @@ void AppGame::LaunchRender()
 		}
 #endif
 		
+
+		#if 1 == NGL_OPTIMIZE_WAIT_GPU
+			// QueueへのSubmit前に前回フレームのGPUタスク待機.
+			if(gpu_wait_signal_count_validity_)
+			{
+				gpu_wait_signal_.Wait(&gpu_wait_fence_, gpu_wait_signal_count_);
+			}
+		#endif
+
 		// システム用Graphics CommandListをSubmit.
 		{
 			p_gfx_frame_begin_command_list_->End();
@@ -618,19 +639,21 @@ void AppGame::LaunchRender()
 			ngl::rtg::RenderTaskGraphBuilder::SubmitCommand(graphics_queue_, compute_queue_, e.graphics, e.compute);
 		}
 
-	
 		// Present.
 		swapchain_->GetDxgiSwapChain()->Present(0, 0);
-
+		
 		// CPUへの完了シグナル. Wait用のFenceValueを取得.
 		gpu_wait_signal_count_ = graphics_queue_.SignalAndIncrement(&gpu_wait_fence_);
 		gpu_wait_signal_count_validity_ = true;
+		
 
-		// 現状はここで即座にGPU実行完了待機.
-		if(gpu_wait_signal_count_validity_)
-		{
-			gpu_wait_signal_.Wait(&gpu_wait_fence_, gpu_wait_signal_count_);
-		}
+		#if 0 == NGL_OPTIMIZE_WAIT_GPU
+			// 現状はここで即座にGPU実行完了待機.
+			if(gpu_wait_signal_count_validity_)
+			{
+				gpu_wait_signal_.Wait(&gpu_wait_fence_, gpu_wait_signal_count_);
+			}
+		#endif
 		// フレーム描画完了.
 	}
 	);
