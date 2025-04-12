@@ -96,9 +96,9 @@ namespace thread
 
         std::mutex				condition_mutex_;
         std::condition_variable	condition_var_;
-        bool			terminate_signal_ = false;
+        std::atomic_bool		terminate_signal_ = false;
         
-        bool			job_signal_ = false;	
+        std::atomic_bool    job_signal_ = false;	
         std::function< void(void) > func_;
     };
 

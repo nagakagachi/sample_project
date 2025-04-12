@@ -3,6 +3,7 @@
 // ImGuiの有効化.
 #define NGL_IMGUI_ENABLE 1
 
+#include <mutex>
 
 #include "util/singleton.h"
 #include "rhi/d3d12/device.d3d12.h"
@@ -11,6 +12,11 @@
 
 namespace ngl::imgui
 {
+
+    // Imgui マルチスレッド向けSnapshot.
+    //  https://github.com/ocornut/imgui/issues/1860#issuecomment-1927630727
+    struct ImDrawDataSnapshot;
+   
     class ImguiInterface : public Singleton<ImguiInterface>
     {
     public:
@@ -18,8 +24,10 @@ namespace ngl::imgui
         bool Initialize(rhi::DeviceDep* p_device, rhi::SwapChainDep* p_swapchain);
         void Finalize();
 
-        // フレーム開始時.
+        // メインスレッド開始.
         bool BeginFrame();
+        // メインスレッドにおけるImGui操作終了. RenderThread起動直前のMainThreadとの同期タイミングを想定.
+        //  この呼び出しでRenderThread側の描画データアクセスができるようになる.
         void EndFrame();
 
         // ImGuiレンダリングタスクを登録.
@@ -29,6 +37,10 @@ namespace ngl::imgui
     private:
         bool initialized_ = false;
         rhi::FrameDescriptorHeapPageInterface descriptor_heap_interface_{};
-        
+
+        // RenderThreadでのImGuiレンダリングのための描画データSnapshot.
+        std::array<ImDrawDataSnapshot*, 2> render_snapshot_{};
+        int snapshot_flip_{};
+        int snapshot_flip_render_{};
     };
 }

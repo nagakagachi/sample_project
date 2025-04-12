@@ -3,6 +3,8 @@
 #if NGL_IMGUI_ENABLE
 // imgui.
 #include "imgui.h"
+#include "imgui_internal.h"
+
 #include "backends/imgui_impl_win32.h"
 #include "backends/imgui_impl_dx12.h"
 
@@ -14,6 +16,65 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 namespace  ngl::imgui
 {
+    // ImGui描画データSnapshot.
+    struct ImDrawDataSnapshot
+    {
+        ImDrawDataSnapshot() = default;
+        ~ImDrawDataSnapshot();
+
+        void clear()
+        {
+            for (ImDrawList* list : internal_data_list)
+            {
+                IM_DELETE(list);
+            }
+            internal_data_list.clear();
+            data.Clear();
+        }
+
+        ImDrawData data{};
+        ImVector<ImDrawList*> internal_data_list{};
+    };
+    ImDrawDataSnapshot::~ImDrawDataSnapshot()
+    {
+        clear();
+    }
+    
+    // swapによって swap_src の内容は out_data に移譲されるため, swap_srcは使用不可能になる.
+    void CaptureSnapshotWithSwap(ImDrawDataSnapshot* out_data,  ImDrawData* swap_src)
+    {
+        assert(out_data);
+        assert(swap_src);
+
+        // copy Common.
+        // ImDrawDataの内部ポインタをコピー. さらに後段で内部ポインタの所有権をout_dataへ移譲する.
+        out_data->data = *swap_src;
+        {
+            // コピーした内容の内 CmdListsは後段で再構築するためクリアする.
+            ImVector<ImDrawList*> empty_list{};
+            out_data->data.CmdLists.swap(empty_list);
+        }
+
+        // Swap Detail.
+        // src の内部ポインタをout_data側へ移譲する. srcの中身は空になり使用できなくなる点に注意.
+        for (ImDrawList* src_list : swap_src->CmdLists)
+        {
+            out_data->internal_data_list.push_back(IM_NEW(ImDrawList)(src_list->_Data));
+            auto* new_internal_data = out_data->internal_data_list.back();
+
+            src_list->CmdBuffer.swap(new_internal_data->CmdBuffer); // Cheap swap
+            src_list->IdxBuffer.swap(new_internal_data->IdxBuffer);
+            src_list->VtxBuffer.swap(new_internal_data->VtxBuffer);
+            src_list->CmdBuffer.reserve(new_internal_data->CmdBuffer.Capacity); // Preserve bigger size to avoid reallocs for two consecutive frames
+            src_list->IdxBuffer.reserve(new_internal_data->IdxBuffer.Capacity);
+            src_list->VtxBuffer.reserve(new_internal_data->VtxBuffer.Capacity);
+            
+            out_data->data.CmdLists.push_back(new_internal_data);
+        }
+    }
+
+
+    
     bool ImguiInterface::Initialize(rhi::DeviceDep* p_device, rhi::SwapChainDep* p_swapchain)
     {
 #if NGL_IMGUI_ENABLE
@@ -53,6 +114,13 @@ namespace  ngl::imgui
             d3d_desc_handle_gpu
             );
         // ------------------------------------------------------------------------------------------
+
+        {
+            for(auto&& e : render_snapshot_)
+            {
+                e = new ImDrawDataSnapshot();
+            }
+        }
         
         initialized_ = true;
 #endif
@@ -74,6 +142,15 @@ namespace  ngl::imgui
 
         descriptor_heap_interface_.Finalize();
 
+        {
+            for(auto&& e : render_snapshot_)
+            {
+                assert(e);
+                delete e;
+                e = {};
+            }
+        }
+        
         initialized_ = false;
 #endif
     }
@@ -109,7 +186,22 @@ namespace  ngl::imgui
             return;
         }
         
-        ImGui::EndFrame();
+        // ------------------------------------------------------------------------------------------
+        // このフレームの描画データ生成.
+        ImGui::Render();
+
+        // RenderThreadでのImGuiレンダリングのために同期中に描画データのSnapshotを保存.
+        {
+            // snapshot用にクリア.
+            snapshot_flip_render_ = snapshot_flip_;
+            snapshot_flip_ = (snapshot_flip_ + 1) % render_snapshot_.size();
+        
+            render_snapshot_[snapshot_flip_render_]->clear();
+            // snapchotにImGui::GetDrawData()の内容を移譲してキャプチャ. ImGui::GetDrawData()の内容は無効になる点に注意.
+            CaptureSnapshotWithSwap(render_snapshot_[snapshot_flip_render_], ImGui::GetDrawData());
+        }
+        // ------------------------------------------------------------------------------------------
+
 #endif
         return;
     }
@@ -142,9 +234,6 @@ namespace  ngl::imgui
                         assert(res_swapchain.swapchain_.IsValid());
                             
                         #if NGL_IMGUI_ENABLE
-                            // ------------------------------------------------------------------------------------------
-                            ImGui::Render();
-                            // ------------------------------------------------------------------------------------------
 
                             // ImGui用のDescriptorHeap.
                             ID3D12DescriptorHeap* d3d_desc_heap = p_parent_->descriptor_heap_interface_.GetD3D12DescriptorHeap();
@@ -157,7 +246,12 @@ namespace  ngl::imgui
 
                             // ------------------------------------------------------------------------------------------
                             // Imguiレンダリング.
-                            ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandlist->GetD3D12GraphicsCommandList());
+                            //ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandlist->GetD3D12GraphicsCommandList());
+                            // Snapshotを利用して安全にRenderThreadでImGui描画.
+                            const auto snapshot_render_read_flip = (p_parent_->snapshot_flip_render_);
+                            ImGui_ImplDX12_RenderDrawData(
+                                &(p_parent_->render_snapshot_[snapshot_render_read_flip]->data),
+                                commandlist->GetD3D12GraphicsCommandList());
                             // ------------------------------------------------------------------------------------------
                         #endif
                     });
