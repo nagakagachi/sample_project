@@ -23,10 +23,16 @@ float3 compute_F0_default(const float3 base_color, float metallic) {
 	return compute_F0(base_color, metallic, k_dielectric_reflectance);
 }
 
+// HalfVectorの計算は初回フレームなどの特異な状況でNaNが発生することが多いため安全な正規化を用意.
+float3 ngl_safe_normalize(float3 v)
+{
+	float vov = dot(v, v);
+	return (0.0001 <= vov)? v*rsqrt(vov) : float3(0.0, 1.0, 0.0);
+}
 
 float3 brdf_schlick_F(float3 F0, float3 N, float3 V, float3 L)
 {
-	const float3 h = normalize(V + L);
+	const float3 h = ngl_safe_normalize(V + L);
 	const float v_o_h = saturate(dot(V, h));
 	const float tmp = (1.0 - v_o_h);
 	const float3 F = F0 + (1.0 - F0) * (tmp*tmp*tmp*tmp*tmp);
@@ -36,9 +42,10 @@ float brdf_trowbridge_reitz_D(float perceptual_roughness, float3 N, float3 V, fl
 {
 	const float limited_perceptual_roughness = clamp(perceptual_roughness, ngl_MIN_PERCEPTUAL_ROUGHNESS, 1.0);
 	const float a = limited_perceptual_roughness*limited_perceptual_roughness;
+
 	const float a2 = a*a;
 	
-	const float3 h = normalize(V + L);
+	const float3 h = ngl_safe_normalize(V + L);
 	const float n_o_h = dot(N, h);
 	const float tmp = (1.0 + n_o_h*n_o_h * (a2 - 1.0));
 	const float D = (a2) / (ngl_PI * tmp*tmp);

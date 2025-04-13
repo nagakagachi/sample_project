@@ -18,6 +18,12 @@ struct VS_OUTPUT
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 ConstantBuffer<SceneDirectionalShadowSampleInfo> ngl_cb_shadowview;
 
+struct CbLightingPass
+{
+	int enable_feedback_blur_test;
+	int is_first_frame;
+};
+ConstantBuffer<CbLightingPass> ngl_cb_lighting_pass;
 
 Texture2D tex_lineardepth;// Linear View Depth.
 Texture2D tex_gbuffer0;
@@ -46,6 +52,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	const float4 gb1 = tex_gbuffer1.Load(int3(input.pos.xy, 0));
 	const float4 gb2 = tex_gbuffer2.Load(int3(input.pos.xy, 0));
 	const float4 gb3 = tex_gbuffer3.Load(int3(input.pos.xy, 0));
+	const float4 prev_light = tex_prev_light.Load(int3(input.pos.xy, 0));
 
 	// GBuffer Decode.
 	float3 gb_base_color = gb0.xyz;
@@ -161,30 +168,75 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	const float cos_term = saturate(dot(gb_normal_ws, L));
 	float3 lit_color = cos_term * brdf * lit_intensity * light_visibility;
 	
+		// ------------------------------------------------------------------------------
+			#if 0
+				// 初回フレームの情報を画面に継続保持して調査するロジック.
+				if(0.1 > input.uv.y)
+				{
+					if(ngl_cb_lighting_pass.is_first_frame == 1)
+					{
+						// 初期フレーム特有の問題調査のため, 初期フレームの各種情報を出力する.
+						if(0.1 > input.uv.x)
+						{
+							return float4(diffuse_term, 0.0);
+						}
+						if(0.2 > input.uv.x)
+						{
+							return float4(specular_term, 0.0);
+						}
+						if(0.3 > input.uv.x)
+						{
+							return float4(gb_base_color, 0.0);
+						}
+						if(0.4 > input.uv.x)
+						{
+							return float4(gb_rounghness.xxx, 0.0);
+						}
+						if(0.5 > input.uv.x)
+						{
+							return float4(gb_metalness.xxx, 0.0);
+						}
+						if(0.6 > input.uv.x)
+						{
+							return float4(gb_normal_ws, 0.0);
+						}
+					}
+					else
+					{
+						// 初期フレーム以降でも初期フレームデータをそのまま画面に維持する.
+						return prev_light;
+					}
+				}
+			#endif
+			// NaNチェック.
+			const float3  k_lit_nan_key_color = float3(1.0, 0.25, 1.0);
+			if(isnan(lit_color.x) || isnan(lit_color.y) || isnan(lit_color.z))
+			{
+				// ライティング計算でNaN検出した場合はキーになるカラーをそのまま返す.
+				return float4(k_lit_nan_key_color, 0.0);
+			}
+			// NaNチェック. 前回フレームのバッファがNaNキー色の場合は, そのまま返す.
+			if(all(prev_light == k_lit_nan_key_color))
+			{
+				return float4(k_lit_nan_key_color, 0.0);
+			}
+		// ------------------------------------------------------------------------------
+
 	// ambient term.
-	if(1)
 	{
 		const float3 k_ambient_rate = float3(0.7, 0.7, 1.0) * 0.15;
 		lit_color += gb_base_color * (1.0/ngl_PI) * ((dot(gb_normal_ws, -L)) * 0.5 + 0.5) * lit_intensity * k_ambient_rate;
 	}
 
-	
-	// デバッグ.
-	if(true)
-	{		
-		// 前回フレームのバッファ.
-		if(true)
-		{
-			float3 prev_light = tex_prev_light.Load(int3(input.pos.xy, 0)).xyz;
-		
-			const float2 dist_from_center = (input.uv - 0.5);
-			const float length_from_center = length(dist_from_center);
-			// 画面端でテスト用のフィードバックブラー.
-			const float k_lenght_min = 0.4;
-			//float prev_blend_rate = (k_lenght_min < length_from_center)? 1.0 : 0.0;
-			float prev_blend_rate = saturate((length_from_center - k_lenght_min)*5.0);
-			lit_color = lerp(lit_color, prev_light, prev_blend_rate * 0.95);
-		}
+	// 過去フレームを使ったフィードバックブラーテスト.
+	if(ngl_cb_lighting_pass.enable_feedback_blur_test)
+	{
+		// 画面端でテスト用のフィードバックブラー.
+		const float2 dist_from_center = (input.uv - 0.5);
+		const float length_from_center = length(dist_from_center);
+		const float k_lenght_min = 0.4;
+		float prev_blend_rate = saturate((length_from_center - k_lenght_min)*5.0);
+		lit_color = lerp(lit_color, prev_light, prev_blend_rate * 0.95);
 	}
 
 	return float4(lit_color, 1.0);

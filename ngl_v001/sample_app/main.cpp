@@ -56,6 +56,7 @@ static bool dbgw_test_window_enable = true;
 static bool dbgw_enable_render_thread = true;
 static bool dbgw_enable_pass_render_parallel = true;
 static float dbgw_perf_main_thread_sleep_millisec = 0.0f;
+static bool dbgw_enable_feedback_blur_test = true;
 static bool dbgw_enable_sub_view_path = false;
 static bool dbgw_enable_raytrace_pass = false;
 static bool dbgw_view_half_dot_gray = false;
@@ -143,10 +144,15 @@ private:
 	ngl::rhi::WaitOnFenceSignalDep				gpu_wait_signal_;
 	
 	// GPU待機用バッファの最大数. 内部バッファ確保のためのサイズ.
-	static constexpr int							k_framebuffer_count_max = 8;
+	static constexpr int							k_gpu_work_queue_count_max = 4;
 	// SubmitしたGPUタスクのバッファリング待機用情報.
-	std::array<ngl::u64, k_framebuffer_count_max>	inflight_gpu_work_id_{};
-	std::array<bool, k_framebuffer_count_max>		inflight_gpu_work_id_enable_{};
+	std::array<ngl::u64, k_gpu_work_queue_count_max>	inflight_gpu_work_id_{};
+	std::array<bool, k_gpu_work_queue_count_max>		inflight_gpu_work_id_enable_{};
+	// GPU側の待機キューの数. value =< バックバッファ数.
+	//	理想的にはバックバッファ数と同じ値だが, 現状RHIのガベージコレクションなどがGPU側1F遅れと想定しているため 1 を指定している.
+	//	ガベコレにGPUにSubmitしたフレームIDを識別して破棄する仕組みを入れれば最大限増加してパフォーマンス向上できると考えられる.
+	static constexpr ngl::u32 inflight_gpu_work_flip_count_ = 1;
+	ngl::u32 inflight_gpu_work_flip_ = 0;
 
 
 
@@ -193,8 +199,9 @@ AppGame::~AppGame()
 	render_thread_.Wait();
 	
 	// GPUへ投入したタスクの完了待ち.
-	for(ngl::u32 gpu_work_index = 0; gpu_work_index < device_.GetDesc().swapchain_buffer_count; ++gpu_work_index)
+	for(ngl::u32 gpu_work_offset = 0; gpu_work_offset < inflight_gpu_work_flip_count_; ++gpu_work_offset)
 	{
+		const auto gpu_work_index = (inflight_gpu_work_flip_ + gpu_work_offset) % inflight_gpu_work_flip_count_;
 		if (inflight_gpu_work_id_enable_[gpu_work_index])
 		{
 			gpu_wait_signal_.Wait(&gpu_wait_fence_, inflight_gpu_work_id_[gpu_work_index]);
@@ -254,7 +261,8 @@ bool AppGame::Initialize()
 		}
 
 		// GpuWorkId管理バッファサイズチェック.
-		assert(k_framebuffer_count_max > device_.GetDesc().swapchain_buffer_count);
+		assert(k_gpu_work_queue_count_max > device_.GetDesc().swapchain_buffer_count);
+		assert(device_.GetDesc().swapchain_buffer_count >= inflight_gpu_work_flip_count_);
 
 	}
 	// graphics queue.
@@ -624,18 +632,25 @@ void AppGame::LaunchRender()
 			compute_queue_.ExecuteCommandLists(static_cast<unsigned int>(std::size(p_command_lists)), p_command_lists);
 		}
 #endif
-		
-		const auto framebuffer_index = device_.GetFrameBufferIndex();
+
+
+		// ------------------------------------------------------------------------------------------
 		const auto submit_gpu_work_id = device_.GetDeviceFrameIndex();
+		const auto inflight_gpu_work_index = inflight_gpu_work_flip_;
+		inflight_gpu_work_flip_ = (inflight_gpu_work_flip_ + 1) % inflight_gpu_work_flip_count_;
+		// ------------------------------------------------------------------------------------------
 		
-		// GPUタスクの待機. Backbuffer分のバッファリング.
-		if(inflight_gpu_work_id_enable_[framebuffer_index])
+		// ------------------------------------------------------------------------------------------
+		// 今回フレームのコマンドをGPUにSubmitする前に前回のGPU処理完了待機.
+		// GPU側にN個のキューを想定している場合は今回使用するキューのタスク完了を待つ(現状は1つ).
+		if(inflight_gpu_work_id_enable_[inflight_gpu_work_index])
 		{
 			// 今回のGPUタスク待機バッファの完了を待機.
-			gpu_wait_signal_.Wait(&gpu_wait_fence_, inflight_gpu_work_id_[framebuffer_index]);
+			gpu_wait_signal_.Wait(&gpu_wait_fence_, inflight_gpu_work_id_[inflight_gpu_work_index]);
 
-			inflight_gpu_work_id_enable_[framebuffer_index] = false;
+			inflight_gpu_work_id_enable_[inflight_gpu_work_index] = false;
 		}
+		// ------------------------------------------------------------------------------------------
 		
 		// Submit to Gpu Task.
 		{
@@ -656,13 +671,15 @@ void AppGame::LaunchRender()
 		// Present.
 		swapchain_->GetDxgiSwapChain()->Present(0, 0);
 		
+		// ------------------------------------------------------------------------------------------
 		{
 			// 今回のGPUタスクの待機用シグナル発行とそのバッファリング.
-			inflight_gpu_work_id_[framebuffer_index] = submit_gpu_work_id;
-			graphics_queue_.Signal(&gpu_wait_fence_, inflight_gpu_work_id_[framebuffer_index]);
+			inflight_gpu_work_id_[inflight_gpu_work_index] = submit_gpu_work_id;
+			graphics_queue_.Signal(&gpu_wait_fence_, inflight_gpu_work_id_[inflight_gpu_work_index]);
 
-			inflight_gpu_work_id_enable_[framebuffer_index] = true;
+			inflight_gpu_work_id_enable_[inflight_gpu_work_index] = true;
 		}
+		// ------------------------------------------------------------------------------------------
 		
 		// フレーム描画完了.
 	}
@@ -768,6 +785,7 @@ bool AppGame::Execute()
 		ImGui::SetNextItemOpen(true, ImGuiCond_Once);
 		if (ImGui::CollapsingHeader("Pass Setting"))
 		{
+			ImGui::Checkbox("Enable Feedback Blur Test", &dbgw_enable_feedback_blur_test);
 			ImGui::Checkbox("Enable Raytrace Pass", &dbgw_enable_raytrace_pass);
 			ImGui::Checkbox("Enable SubView Render", &dbgw_enable_sub_view_path);
 		}
@@ -930,6 +948,7 @@ void AppGame::RenderApp(std::vector<RtgGenerateCommandListSet>& out_rtg_command_
 				render_frame_desc.debug_pass_render_parallel = dbgw_enable_pass_render_parallel;
 				
 				render_frame_desc.debugview_halfdot_gray = dbgw_view_half_dot_gray;
+				render_frame_desc.debugview_enable_feedback_blur_test = dbgw_enable_feedback_blur_test;
 				render_frame_desc.debugview_subview_result = dbgw_enable_sub_view_path;
 				render_frame_desc.debugview_raytrace_result = dbgw_enable_raytrace_pass;
 

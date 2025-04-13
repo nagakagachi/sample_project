@@ -235,6 +235,8 @@ namespace ngl::test
 						
 						setup_desc.ref_scene_cbv = sceneview_cbv;
 						setup_desc.ref_shadow_cbv = task_d_shadow->ref_d_shadow_sample_cbv_;
+
+						setup_desc.enable_feedback_blur_test = render_frame_desc.debugview_enable_feedback_blur_test;
 					}
 					task_light->Setup(rtg_builder, p_device, view_info,
 						task_gbuffer->h_gb0_, task_gbuffer->h_gb1_, task_gbuffer->h_gb2_, task_gbuffer->h_gb3_,

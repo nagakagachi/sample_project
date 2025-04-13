@@ -629,9 +629,10 @@ namespace ngl::render
 			{
 				int w{};
 				int h{};
-				
 				rhi::RefCbvDep ref_scene_cbv{};
 				rhi::RefCbvDep ref_shadow_cbv{};
+				
+				bool enable_feedback_blur_test{};
 			};
 			SetupDesc desc_{};
 			bool is_render_skip_debug{};
@@ -747,8 +748,39 @@ namespace ngl::render
 						assert(res_light.tex_.IsValid() && res_light.rtv_.IsValid());
 						assert(res_shadowmap.tex_.IsValid() && res_shadowmap.srv_.IsValid());
 
+						// 前回フレームのライトリソースが無効な場合は、グローバルリソースのデフォルトを使用.
 						rhi::RefSrvDep ref_prev_lit = (res_prev_light.srv_.IsValid())? res_prev_light.srv_ : global_res.default_resource_.tex_black->ref_view_;
-							
+
+						// LightingPass定数バッファ.
+						struct CbLightingPass
+						{
+							int enable_feedback_blur_test;
+							int is_first_frame;
+						};
+						rhi::RefBufferDep ref_lighting_pass_cb = new rhi::BufferDep();
+						rhi::RefCbvDep ref_lighting_pass_cbv = new rhi::ConstantBufferViewDep();
+						{
+							{
+								rhi::BufferDep::Desc cb_desc{};
+								cb_desc.SetupAsConstantBuffer(sizeof(CbLightingPass));
+								ref_lighting_pass_cb->Initialize(gfx_commandlist->GetDevice(), cb_desc);
+							}
+							{
+								rhi::ConstantBufferViewDep::Desc cbv_desc{};
+								ref_lighting_pass_cbv->Initialize(ref_lighting_pass_cb.Get(), cbv_desc);
+							}
+							if(auto* p_mapped = ref_lighting_pass_cb->MapAs<CbLightingPass>())
+							{
+								p_mapped->enable_feedback_blur_test = desc_.enable_feedback_blur_test;
+								static bool debug_first_frame_flag = true;
+								p_mapped->is_first_frame = debug_first_frame_flag;
+								debug_first_frame_flag = false;
+
+								ref_lighting_pass_cb->Unmap();
+							}
+						}
+
+						
 						// Viewport.
 						gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_light.tex_->GetWidth(), res_light.tex_->GetHeight());
 
@@ -763,6 +795,7 @@ namespace ngl::render
 
 						pso_->SetView(&desc_set, "ngl_cb_sceneview", desc_.ref_scene_cbv.Get());
 						pso_->SetView(&desc_set, "ngl_cb_shadowview", desc_.ref_shadow_cbv.Get());
+						pso_->SetView(&desc_set, "ngl_cb_lighting_pass", ref_lighting_pass_cbv.Get());
 							
 						pso_->SetView(&desc_set, "tex_lineardepth", res_linear_depth.srv_.Get());
 						pso_->SetView(&desc_set, "tex_gbuffer0", res_gb0.srv_.Get());

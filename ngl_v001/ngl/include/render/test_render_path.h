@@ -49,6 +49,7 @@ namespace ngl::test
 
     	bool debug_pass_render_parallel = true;
     	bool debugview_halfdot_gray = false;
+    	bool debugview_enable_feedback_blur_test = false;
     	bool debugview_subview_result = false;
     	bool debugview_raytrace_result = false;
     	bool debugview_gbuffer = false;
