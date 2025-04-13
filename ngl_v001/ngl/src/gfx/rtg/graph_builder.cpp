@@ -1165,7 +1165,7 @@ namespace ngl
 							ngl::rhi::RhiRef<ngl::rhi::FenceDep> fence = new ngl::rhi::FenceDep();
 							fence->Initialize(p_compiled_manager_->p_device_);
 
-							fence->IncrementFenceValue();// Fence値を加算してWaitが即完了しないようにする.
+							fence->IncrementHelperFenceValue();// Fence値を加算してWaitが即完了しないようにする.
 							sync_fences[e.fence_id] = fence;
 						}
 					}
@@ -1183,7 +1183,7 @@ namespace ngl
 						RtgSubmitCommandSequenceElem wait_elem = {};
 						wait_elem.type = ERtgSubmitCommandType::Wait;
 						wait_elem.fence = sync_fences[fence_id];
-						wait_elem.fence_value = sync_fences[fence_id]->GetFenceValue();// すでにユニーク値になっているのでそのまま使用.
+						wait_elem.fence_value = sync_fences[fence_id]->GetHelperFenceValue();// すでにユニーク値になっているのでそのまま使用.
 						
 						if(ETASK_TYPE::GRAPHICS == queue_type)
 						{
@@ -1222,7 +1222,7 @@ namespace ngl
 									ngl::rhi::RhiRef<ngl::rhi::FenceDep> fence = new ngl::rhi::FenceDep();
 									fence->Initialize(p_compiled_manager_->p_device_);
 
-									const u64 state_transition_fenec_value = fence->GetFenceValue() + 1;//一応現在の値+1で
+									const u64 state_transition_fenec_value = fence->GetHelperFenceValue() + 1;//一応現在の値+1で
 									{
 										// GraphicsでPushしたState遷移をComputeで待たせるためのSignal.
 										RtgSubmitCommandSequenceElem signal_elem = {};
@@ -1261,7 +1261,7 @@ namespace ngl
 						RtgSubmitCommandSequenceElem signal_elem = {};
 						signal_elem.type = ERtgSubmitCommandType::Signal;
 						signal_elem.fence = sync_fences[fence_id];
-						signal_elem.fence_value = sync_fences[fence_id]->GetFenceValue();// すでにユニーク値になっているのでそのまま使用.
+						signal_elem.fence_value = sync_fences[fence_id]->GetHelperFenceValue();// すでにユニーク値になっているのでそのまま使用.
 						
 						if(ETASK_TYPE::GRAPHICS == queue_type)
 						{

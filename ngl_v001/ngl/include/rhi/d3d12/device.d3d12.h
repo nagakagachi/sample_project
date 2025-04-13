@@ -124,6 +124,7 @@ namespace ngl
 			// Deviceが管理するグローバルなフレームインデックスを取得.
 			u64	 GetDeviceFrameIndex() const { return frame_index_; }
 
+			// フレームバッファインデックス. 0 ~ num_backbuffer-1.
 			const u32 GetFrameBufferIndex() const { return buffer_index_; }
 		public:
 			// RHIオブジェクトガベージコレクト関連.
@@ -148,7 +149,6 @@ namespace ngl
 
 			Microsoft::WRL::ComPtr<DXGI_FACTORY_TYPE> p_factory_;
 
-			// テスト中. フレームインデックス処理用.
 			u64 frame_index_ = 0;
 
 			u32	buffer_index_ = 0;
@@ -165,7 +165,7 @@ namespace ngl
 			// フレームでのDescriptor確保用. こちらはPage単位で拡張していく. CBV,SRV,UAVおよびSamplerすべてで利用可能.
 			std::unique_ptr<FrameDescriptorHeapPagePool>		p_frame_descriptor_page_pool_;
 
-
+			// RHIオブジェクトガベージコレクト.
 			GabageCollector			gb_;
 		};
 
@@ -182,10 +182,7 @@ namespace ngl
 			bool Initialize(DeviceDep* p_device, D3D12_COMMAND_LIST_TYPE type);
 
 			// Fenceに対してSignal発行..
-			void Signal(FenceDep* p_fence, ngl::types::u64 fence_value);
-			// Fenceに対してSignal発行.
-			// 内部でp_fenceのFenceValueでSignalを発行してからFenceValueを加算し, wait対象のFenceValue(加算前の値)を返す.
-			ngl::types::u64 SignalAndIncrement(FenceDep* p_fence);
+			void Signal(FenceDep* p_fence, ngl::types::u64 fence_value); 
 			// FenceでWait. 待機するFenceValueを指定する.
 			void Wait(FenceDep* p_fence, ngl::types::u64 wait_value);
 
@@ -240,19 +237,22 @@ namespace ngl
 
 			ID3D12Fence* GetD3D12Fence();
 
-			ngl::types::u64 GetFenceValue() const {return fence_value_;}
+			ngl::types::u64 GetHelperFenceValue() const {return helper_fence_value_;}
 			
 			// Increment
 			// return prev FenceValue.
-			ngl::types::u64 IncrementFenceValue()
+			ngl::types::u64 IncrementHelperFenceValue()
 			{
-				const auto tmp = fence_value_;
-				++fence_value_;
+				const auto tmp = helper_fence_value_;
+				++helper_fence_value_;
 				return tmp;
 			}
 		private:
 			Microsoft::WRL::ComPtr<ID3D12Fence> p_fence_;
-			ngl::types::u64 fence_value_ = 1;// FenceValue初期値が0であるため意図通りにSignalWaitするために1開始.
+
+			// Fenceと対応するインデックス管理の補助用メンバ. 外部からfence valueを与えるのであれば使わなくても良い.
+			// 	FenceValue初期値が0であるため意図通りにSignalWaitするために1開始.
+			ngl::types::u64 helper_fence_value_ = 1;
 		};
 
 

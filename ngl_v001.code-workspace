@@ -9,7 +9,15 @@
 		"files.associations": {
 			"*.gso": "hexdump",
 			"charconv": "cpp",
-			"xmemory": "cpp"
+			"xmemory": "cpp",
+			"array": "cpp",
+			"vector": "cpp",
+			"algorithm": "cpp",
+			"bitset": "cpp",
+			"iterator": "cpp",
+			"xhash": "cpp",
+			"xtree": "cpp",
+			"xutility": "cpp"
 		}
 	}
 }

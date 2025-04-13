@@ -50,9 +50,6 @@
 
 #include "../external/imgui/imgui.h"
 
-// GPU待機タイミングのオーバーラップ最適化.
-#define NGL_OPTIMIZE_WAIT_GPU 1
-
 
 // ImGui.
 static bool dbgw_test_window_enable = true;
@@ -144,10 +141,15 @@ private:
 	ngl::rhi::FenceDep							gpu_wait_fence_;
 	// CommandQueue実行完了待機用オブジェクト
 	ngl::rhi::WaitOnFenceSignalDep				gpu_wait_signal_;
-	// 待機Counter.
-	ngl::u64									gpu_wait_signal_count_ = 0;
-	bool										gpu_wait_signal_count_validity_ = false;
 	
+	// GPU待機用バッファの最大数. 内部バッファ確保のためのサイズ.
+	static constexpr int							k_framebuffer_count_max = 8;
+	// SubmitしたGPUタスクのバッファリング待機用情報.
+	std::array<ngl::u64, k_framebuffer_count_max>	inflight_gpu_work_id_{};
+	std::array<bool, k_framebuffer_count_max>		inflight_gpu_work_id_enable_{};
+
+
+
 	ngl::rhi::GraphicsCommandListDep*			p_gfx_frame_begin_command_list_{};
 
 	// SwapChain
@@ -190,14 +192,16 @@ AppGame::~AppGame()
 	// RenderThread待機.
 	render_thread_.Wait();
 	
-	#if 1 == NGL_OPTIMIZE_WAIT_GPU
-		// GPUへ投入したタスクの完了待ち.
-		if(gpu_wait_signal_count_validity_)
+	// GPUへ投入したタスクの完了待ち.
+	for(ngl::u32 gpu_work_index = 0; gpu_work_index < device_.GetDesc().swapchain_buffer_count; ++gpu_work_index)
+	{
+		if (inflight_gpu_work_id_enable_[gpu_work_index])
 		{
-			gpu_wait_signal_.Wait(&gpu_wait_fence_, gpu_wait_signal_count_);
+			gpu_wait_signal_.Wait(&gpu_wait_fence_, inflight_gpu_work_id_[gpu_work_index]);
+			inflight_gpu_work_id_enable_[gpu_work_index] = false;
 		}
-	#endif
-	
+	}
+
 	// リソース参照クリア.
 	mesh_comp_array_.clear();
 
@@ -248,6 +252,10 @@ bool AppGame::Initialize()
 		{
 			MessageBoxA(window_.Dep().GetWindowHandle(), "Raytracing is not supported on this device.", "Info", MB_OK);
 		}
+
+		// GpuWorkId管理バッファサイズチェック.
+		assert(k_framebuffer_count_max > device_.GetDesc().swapchain_buffer_count);
+
 	}
 	// graphics queue.
 	if (!graphics_queue_.Initialize(&device_))
@@ -617,43 +625,45 @@ void AppGame::LaunchRender()
 		}
 #endif
 		
-
-		#if 1 == NGL_OPTIMIZE_WAIT_GPU
-			// QueueへのSubmit前に前回フレームのGPUタスク待機.
-			if(gpu_wait_signal_count_validity_)
-			{
-				gpu_wait_signal_.Wait(&gpu_wait_fence_, gpu_wait_signal_count_);
-			}
-		#endif
-
-		// システム用Graphics CommandListをSubmit.
+		const auto framebuffer_index = device_.GetFrameBufferIndex();
+		const auto submit_gpu_work_id = device_.GetDeviceFrameIndex();
+		
+		// GPUタスクの待機. Backbuffer分のバッファリング.
+		if(inflight_gpu_work_id_enable_[framebuffer_index])
 		{
-			p_gfx_frame_begin_command_list_->End();
-			ngl::rhi::CommandListBaseDep* submit_list[] = { p_gfx_frame_begin_command_list_ };
-			graphics_queue_.ExecuteCommandLists(static_cast<unsigned int>(std::size(submit_list)), submit_list);
+			// 今回のGPUタスク待機バッファの完了を待機.
+			gpu_wait_signal_.Wait(&gpu_wait_fence_, inflight_gpu_work_id_[framebuffer_index]);
+
+			inflight_gpu_work_id_enable_[framebuffer_index] = false;
 		}
-	
-		// RtgのCommaandをSubmit.
-		for(auto& e : app_rtg_command_list_set)
+		
+		// Submit to Gpu Task.
 		{
-			ngl::rtg::RenderTaskGraphBuilder::SubmitCommand(graphics_queue_, compute_queue_, e.graphics, e.compute);
+			// システム用Graphics CommandList.
+			{
+				p_gfx_frame_begin_command_list_->End();
+				ngl::rhi::CommandListBaseDep* submit_list[] = { p_gfx_frame_begin_command_list_ };
+				graphics_queue_.ExecuteCommandLists(static_cast<unsigned int>(std::size(submit_list)), submit_list);
+			}
+		
+			// RtgのCommaand.
+			for(auto& e : app_rtg_command_list_set)
+			{
+				ngl::rtg::RenderTaskGraphBuilder::SubmitCommand(graphics_queue_, compute_queue_, e.graphics, e.compute);
+			}
 		}
 
 		// Present.
 		swapchain_->GetDxgiSwapChain()->Present(0, 0);
 		
-		// CPUへの完了シグナル. Wait用のFenceValueを取得.
-		gpu_wait_signal_count_ = graphics_queue_.SignalAndIncrement(&gpu_wait_fence_);
-		gpu_wait_signal_count_validity_ = true;
-		
+		{
+			// 今回のGPUタスクの待機用シグナル発行とそのバッファリング.
+			inflight_gpu_work_id_[framebuffer_index] = submit_gpu_work_id;
+			graphics_queue_.Signal(&gpu_wait_fence_, inflight_gpu_work_id_[framebuffer_index]);
 
-		#if 0 == NGL_OPTIMIZE_WAIT_GPU
-			// 現状はここで即座にGPU実行完了待機.
-			if(gpu_wait_signal_count_validity_)
-			{
-				gpu_wait_signal_.Wait(&gpu_wait_fence_, gpu_wait_signal_count_);
-			}
-		#endif
+			inflight_gpu_work_id_enable_[framebuffer_index] = true;
+		}
+		
 		// フレーム描画完了.
 	}
 	);

@@ -455,17 +455,6 @@ namespace ngl
 			// Signal発行.
 			p_command_queue_->Signal( p_fence->GetD3D12Fence(), fence_value);
 		}
-		ngl::types::u64 CommandQueueBaseDep::SignalAndIncrement(FenceDep* p_fence)
-		{
-			if (!p_fence)
-				return {};
-			// FenceValueを加算, 加算前の値を取得.
-			const auto signal_value = p_fence->IncrementFenceValue();
-			// Signal発行.
-			Signal( p_fence, signal_value);
-			// SignalのFenceValueを返す.
-			return signal_value;
-		}
 		// FenceでWait.
 		void CommandQueueBaseDep::Wait(FenceDep* p_fence, ngl::types::u64 wait_value)
 		{
