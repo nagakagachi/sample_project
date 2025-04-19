@@ -5,6 +5,8 @@
 
 #include <mutex>
 
+#include "../../ngl/external/imgui/imgui.h"
+
 #include "util/singleton.h"
 #include "rhi/d3d12/device.d3d12.h"
 

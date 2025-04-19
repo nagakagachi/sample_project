@@ -171,6 +171,9 @@
     <ClInclude Include="include\thread\lockfree_stack_intrusive_test.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
+    <ClInclude Include="include\thread\fixed_size_lock_free_stack.h">
+      <Filter>ヘッダー ファイル\thread</Filter>
+    </ClInclude>
     <ClInclude Include="include\util\bit_operation.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
@@ -340,6 +343,9 @@
     </ClCompile>
     <ClCompile Include="src\thread\lockfree_stack_intrusive_test.cpp">
       <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="src\thread\fixed_size_lock_free_stack.cpp">
+      <Filter>ソース ファイル\thread</Filter>
     </ClCompile>
     <ClCompile Include="src\util\bit_operation.cpp">
       <Filter>ソース ファイル</Filter>

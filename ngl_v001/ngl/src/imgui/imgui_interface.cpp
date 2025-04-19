@@ -2,7 +2,6 @@
 
 #if NGL_IMGUI_ENABLE
 // imgui.
-#include "imgui.h"
 #include "imgui_internal.h"
 
 #include "backends/imgui_impl_win32.h"

@@ -11,13 +11,12 @@
 #include "boot/boot_application.h"
 #include "platform/window.h"
 #include "util/time/timer.h"
-#include "memory/tlsf_memory_pool.h"
-#include "memory/tlsf_allocator.h"
 #include "file/file.h"
 
 #include "math/math.h"
 
 #include "thread/job_thread.h"
+#include "thread/fixed_size_lock_free_stack.h"
 
 // resource
 #include "resource/resource_manager.h"
@@ -35,6 +34,9 @@
 #include "gfx/raytrace_scene.h"
 #include "gfx/mesh_component.h"
 
+#include "gfx/util/constant_buffer_pool.h"
+
+// Render Path
 #include "render/test_render_path.h"
 
 // マテリアルシェーダ関連.
@@ -44,11 +46,7 @@
 
 // imguiのシステム処理Wrapper.
 #include "imgui/imgui_interface.h"
-// ImGuiのUI構築関数系のため.
-#include <memory>
-#include <memory>
 
-#include "../external/imgui/imgui.h"
 
 
 // ImGui.
@@ -190,8 +188,20 @@ private:
 };
 
 
+// -----------------------------------------------
+// テストコードの呼び出しはここに書く.
+static void TestEntry()
+{
+	// テストコード呼び出し.
+	ngl::thread::TestCode();
+}
+
+
 AppGame::AppGame()
 {
+	
+	TestEntry();
+
 }
 AppGame::~AppGame()
 {
@@ -524,9 +534,6 @@ bool AppGame::Initialize()
 	{
 		std::cout << "[ERROR] Initialize gfx::RtSceneManager" << std::endl;
 	}
-	
-	// テストコード
-	//ngl_test::TestFunc00(&device_);
 	
 	// Texture Rexource読み込みのテスト.
 	ngl::gfx::ResTexture::LoadDesc tex_load_desc{};
@@ -1093,7 +1100,7 @@ void PlayerController::UpdateFrame(ngl::platform::CoreWindow& window, float delt
 
 int main()
 {
-	std::cout << "Boot App" << std::endl;
+    std::cout << "Boot App" << std::endl;
 	ngl::time::Timer::Instance().StartTimer("AppGameTime");
 
 	{

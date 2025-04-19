@@ -132,6 +132,7 @@
     <ClInclude Include="include\gfx\rtg\graph_builder.h" />
     <ClInclude Include="include\gfx\rtg\rtg_command_list_pool.h" />
     <ClInclude Include="include\gfx\texture_loader_directxtex.h" />
+    <ClInclude Include="include\gfx\util\constant_buffer_pool.h" />
     <ClInclude Include="include\imgui\imgui_interface.h" />
     <ClInclude Include="include\math\detail\math_matrix.h" />
     <ClInclude Include="include\math\detail\math_util.h" />
@@ -162,6 +163,7 @@
     <ClInclude Include="include\thread\job_thread.h" />
     <ClInclude Include="include\thread\lockfree_stack_intrusive.h" />
     <ClInclude Include="include\thread\lockfree_stack_intrusive_test.h" />
+    <ClInclude Include="include\thread\fixed_size_lock_free_stack.h" />
     <ClInclude Include="include\util\bit_operation.h" />
     <ClInclude Include="include\util\instance_handle.h" />
     <ClInclude Include="include\util\noncopyable.h" />
@@ -202,6 +204,7 @@
     <ClCompile Include="src\gfx\resource\resource_texture.cpp" />
     <ClCompile Include="src\gfx\rtg\graph_builder.cpp" />
     <ClCompile Include="src\gfx\texture_loader_directxtex.cpp" />
+    <ClCompile Include="src\gfx\util\constant_buffer_pool.cpp" />
     <ClCompile Include="src\imgui\imgui_interface.cpp" />
     <ClCompile Include="src\math\math.cpp" />
     <ClCompile Include="src\memory\boundary_tag_block.cpp" />
@@ -223,6 +226,7 @@
     <ClCompile Include="src\rhi\rhi_ref.cpp" />
     <ClCompile Include="src\thread\job_thread.cpp" />
     <ClCompile Include="src\thread\lockfree_stack_intrusive_test.cpp" />
+    <ClCompile Include="src\thread\fixed_size_lock_free_stack.cpp" />
     <ClCompile Include="src\util\bit_operation.cpp" />
     <ClCompile Include="src\util\time\timer.cpp" />
   </ItemGroup>

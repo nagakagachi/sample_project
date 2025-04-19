@@ -17,7 +17,10 @@
 			"iterator": "cpp",
 			"xhash": "cpp",
 			"xtree": "cpp",
-			"xutility": "cpp"
+			"xutility": "cpp",
+			"mutex": "cpp",
+			"atomic": "cpp",
+			"thread": "cpp"
 		}
 	}
 }
