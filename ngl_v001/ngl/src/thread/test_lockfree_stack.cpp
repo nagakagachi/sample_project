@@ -12,24 +12,36 @@
 namespace ngl {
 namespace thread {
 
+    /// @brief ロックフリースタックの並行処理テスト実装
+    /// マルチスレッド環境での Push/Pop 操作の整合性を検証します。
+    /// テストでは以下の項目を確認します：
+    /// - 複数スレッドからの同時アクセスによるデータの整合性
+    /// - 全ての要素が正しくPush/Popされること
+    /// - 要素の重複や欠落が発生しないこと
+
     // テスト用のノードクラス
     using TestStack = ngl::thread::LockFreeStackIntrusive<struct TestStackNode>;
     
+    /// @brief テスト用のノードクラス
+    /// @details プッシュ/ポップを行ったスレッドのIDを追跡し、
+    /// 処理の正当性を検証するために使用します
     struct TestStackNode : public TestStack::Node 
     {
         TestStackNode(int v) : value(v), push_thread_id(0), pop_thread_id(0) {}
-        int value;
-        int push_thread_id;
-        int pop_thread_id;
+        int value;              ///< ノードの値
+        int push_thread_id;     ///< プッシュを行ったスレッドのID
+        int pop_thread_id;      ///< ポップを行ったスレッドのID
     };
 
-    // プッシュ操作を行うスレッド関数
+    /// @brief プッシュ操作のテストワーカークラス
+    /// @details 指定された範囲の値を持つノードを生成し、
+    /// スタックに連続的にプッシュする処理を実行します
     class TestPushWorker {
     public:
-        TestStack* stack = nullptr;
-        int thread_id = 0;
-        int start_value = 0;
-        int num_pushes = 0;
+        TestStack* stack = nullptr;      ///< 操作対象のスタック
+        int thread_id = 0;               ///< ワーカーのスレッドID
+        int start_value = 0;             ///< プッシュする値の開始値
+        int num_pushes = 0;              ///< プッシュする要素数
 
         TestPushWorker(TestStack* s, int id, int start, int count) 
             : stack(s), thread_id(id), start_value(start), num_pushes(count) {}
@@ -43,12 +55,15 @@ namespace thread {
         }
     };
 
-    // ポップ操作を行うスレッド関数
+    /// @brief ポップ操作のテストワーカークラス
+    /// @details ソーススタックからポップした要素を
+    /// デスティネーションスタックにプッシュする処理を実行します。
+    /// これにより、要素の移動を追跡し、データの整合性を検証できます。
     class TestPopWorker {
     public:
-        TestStack* src_stack = nullptr;
-        TestStack* dst_stack = nullptr;
-        int thread_id = 0;
+        TestStack* src_stack = nullptr;  ///< ポップ元のスタック
+        TestStack* dst_stack = nullptr;  ///< プッシュ先のスタック
+        int thread_id = 0;               ///< ワーカーのスレッドID
 
         TestPopWorker(TestStack* src, TestStack* dst, int id) 
             : src_stack(src), dst_stack(dst), thread_id(id) {}
@@ -61,9 +76,15 @@ namespace thread {
         }
     };
 
+    /// @brief LockFreeStackIntrusiveクラスの並行処理テスト
+    /// @details 複数のプッシュスレッドとポップスレッドを同時に実行し、
+    /// データの整合性を検証します。以下の手順でテストを実施：
+    /// 1. 複数のプッシュスレッドが異なる値範囲のノードをプッシュ
+    /// 2. 複数のポップスレッドが同時にノードを取り出し
+    /// 3. 全ての要素数、値の重複、欠落をチェック
     void TestLockFreeStackIntrusive()
     {
-        std::cout << "Starting LockFreeStack Test..." << std::endl;
+        std::cout << "Starting LockFreeStackIntrusive Test..." << std::endl;
 
         TestStack stack1;  // プッシュ用スタック
         TestStack stack2;  // ポップ後の要素保存用スタック
@@ -135,11 +156,28 @@ namespace thread {
             delete node;
         }
 
-        std::cout << "LockFreeStack Test " 
+        std::cout << "LockFreeStackIntrusive Test " 
                   << (has_duplicates || actual_total != expected_total ? "FAILED" : "PASSED")
                   << std::endl;
     }
 
+    /// @brief 固定サイズロックフリースタックの並行処理テスト実装
+    /// @details 固定サイズのスタックに対する並行アクセスのテストを実施します。
+    /// このテストでは以下の項目を検証します：
+    /// - 複数スレッドからの同時Push/Pop操作の整合性
+    /// - スタックの容量制限の正常な動作
+    /// - Push/Pop操作のタイムアウト処理
+    /// - 値の重複や欠落が発生しないこと
+    /// 
+    /// テスト手順：
+    /// 1. 複数のプッシュスレッドが同時に値を書き込み
+    /// 2. 複数のポップスレッドが同時に値を読み出し
+    /// 3. すべての値が1回だけ処理されることを確認
+    /// 4. スタックが最終的に空になることを確認
+    ///
+    /// @tparam Stack 固定サイズスタックの型（FixedSizeLockFreeStackまたはStaticSizeLockFreeStack）
+    /// @param test_name テストの識別名
+    /// @param stack テスト対象のスタックインスタンス
     template<typename Stack>
     void TestFixedSizeStackImpl(const char* test_name, Stack& stack)
     {
@@ -150,7 +188,9 @@ namespace thread {
         std::vector<int> value_counts(num_threads * ops_per_thread, 0);
         std::vector<std::thread> threads;
 
-        // プッシュワーカー
+        /// プッシュワーカー
+        /// @details 指定された範囲の値をスタックにプッシュします。
+        /// タイムアウト処理により、スタックが一杯の場合の待機と再試行を行います。
         auto push_worker = [&stack](int thread_id, int start_val, int count) {
             for (int i = 0; i < count; ++i) {
                 int value = start_val + i;
@@ -165,7 +205,9 @@ namespace thread {
             }
         };
 
-        // ポップワーカー
+        /// ポップワーカー
+        /// @details スタックから値をポップし、各値の出現回数を記録します。
+        /// タイムアウト処理により、スタックが空の場合の待機と再試行を行います。
         auto pop_worker = [&stack, &value_counts](int thread_id, int expected_count) {
             int popped_count = 0;
             int retry_count = 0;
