@@ -162,8 +162,9 @@
     <ClInclude Include="include\text\hash_text.inl" />
     <ClInclude Include="include\thread\job_thread.h" />
     <ClInclude Include="include\thread\lockfree_stack_intrusive.h" />
-    <ClInclude Include="include\thread\lockfree_stack_intrusive_test.h" />
-    <ClInclude Include="include\thread\fixed_size_lock_free_stack.h" />
+    <ClInclude Include="include\thread\lockfree_stack_fixed_size.h" />
+    <ClInclude Include="include\thread\lockfree_stack_static_size.h" />
+    <ClInclude Include="include\thread\test_lockfree_stack.h" />
     <ClInclude Include="include\util\bit_operation.h" />
     <ClInclude Include="include\util\instance_handle.h" />
     <ClInclude Include="include\util\noncopyable.h" />
@@ -225,8 +226,7 @@
     <ClCompile Include="src\rhi\rhi_object_garbage_collect.cpp" />
     <ClCompile Include="src\rhi\rhi_ref.cpp" />
     <ClCompile Include="src\thread\job_thread.cpp" />
-    <ClCompile Include="src\thread\lockfree_stack_intrusive_test.cpp" />
-    <ClCompile Include="src\thread\fixed_size_lock_free_stack.cpp" />
+    <ClCompile Include="src\thread\test_lockfree_stack.cpp" />
     <ClCompile Include="src\util\bit_operation.cpp" />
     <ClCompile Include="src\util\time\timer.cpp" />
   </ItemGroup>

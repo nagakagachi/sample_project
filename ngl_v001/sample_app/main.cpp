@@ -16,7 +16,7 @@
 #include "math/math.h"
 
 #include "thread/job_thread.h"
-#include "thread/fixed_size_lock_free_stack.h"
+#include "thread/test_lockfree_stack.h"
 
 // resource
 #include "resource/resource_manager.h"
@@ -193,7 +193,9 @@ private:
 static void TestEntry()
 {
 	// テストコード呼び出し.
-	ngl::thread::TestCode();
+	ngl::thread::TestLockFreeStackIntrusive();
+	ngl::thread::TestFixedSizeLockFreeStack();
+	ngl::thread::TestStaticSizeLockFreeStack();
 }
 
 
