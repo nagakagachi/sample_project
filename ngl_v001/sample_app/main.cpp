@@ -316,6 +316,10 @@ bool AppGame::Initialize()
 		return false;
 	}
 	
+	// ConstantBufferPool(テスト)
+	ngl::gfx::ConstantBufferPool cb_pool;
+	cb_pool.Initialize(&device_);
+
 	// RTGマネージャ初期化.
 	{
 		rtg_manager_.Init(&device_, 4);
