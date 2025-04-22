@@ -1,14 +1,29 @@
 ﻿#pragma once
 
+#include <memory>
+
+#include "rhi/d3d12/resource.d3d12.h"
+#include "rhi/d3d12/resource_view.d3d12.h"
 
 namespace ngl {
+
+namespace rhi {
+    class DeviceDep;
+
+} // namespace rhi
+
 namespace gfx {
 
+    class ConstantBufferPoolImpl;
 
-    struct ConstantBufferPoolHandle
+    // ConstantBufferPoolの要素.
+    struct ConstantBufferPoolItem
     {
-        int dummy{};
+        rhi::BufferDep buffer_{};
+        rhi::ConstantBufferViewDep cbv_{};
     };
+    using ConstantBufferPoolHandle = std::shared_ptr<ConstantBufferPoolItem>;
+
 
     class ConstantBufferPool
     {
@@ -20,12 +35,10 @@ namespace gfx {
         void Finalize();
 
 
-        ConstantBufferPoolHandle Alloc();
-        void Free(ConstantBufferPoolHandle handle);
+        ConstantBufferPoolHandle Alloc(int byte_size);
 
     private:
-        rhi::DeviceDep* p_device_{};
-
+        ConstantBufferPoolImpl* impl_{};
     };
 
     

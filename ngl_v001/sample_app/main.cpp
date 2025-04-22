@@ -13,6 +13,8 @@
 #include "util/time/timer.h"
 #include "file/file.h"
 
+#include "util/bit_operation.h"
+
 #include "math/math.h"
 
 #include "thread/job_thread.h"
@@ -316,9 +318,21 @@ bool AppGame::Initialize()
 		return false;
 	}
 	
+	/*
 	// ConstantBufferPool(テスト)
 	ngl::gfx::ConstantBufferPool cb_pool;
 	cb_pool.Initialize(&device_);
+	
+	auto cbh0 = cb_pool.Alloc(15);
+	auto cbh1 = cb_pool.Alloc(16);
+	auto cbh2 = cb_pool.Alloc(17);
+
+	cbh0 = cbh1;
+
+	cbh1.reset();
+	cbh0.reset();
+	cbh2.reset();
+	*/
 
 	// RTGマネージャ初期化.
 	{
