@@ -491,9 +491,7 @@ namespace ngl
 			
 			rhi::DynamicDescriptorStackAllocatorInterface	desc_alloc_interface_ = {};
 
-			//rhi::RhiRef<rhi::BufferDep>				cb_scene_view[2];
-			//rhi::RhiRef<rhi::ConstantBufferViewDep>	cbv_scene_view[2];
-			rhi::ConstantBufferPoolHandle				cbh_scene_view[2];
+			rhi::ConstantBufferPooledHandle				cbh_scene_view[2];
 
 			math::Vec3 camera_pos_ = {};
 			math::Vec3 camera_dir_ = {};

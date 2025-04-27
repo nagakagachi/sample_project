@@ -47,7 +47,7 @@ namespace ngl::render
 				int w{};
 				int h{};
 				
-				rhi::ConstantBufferPoolHandle scene_cbv{};
+				rhi::ConstantBufferPooledHandle scene_cbv{};
 				const std::vector<gfx::StaticMeshComponent*>* p_mesh_list{};
 			};
 			SetupDesc desc_{};
@@ -104,7 +104,7 @@ namespace ngl::render
 				int w{};
 				int h{};
 				
-				rhi::ConstantBufferPoolHandle scene_cbv{};
+				rhi::ConstantBufferPooledHandle scene_cbv{};
 				const std::vector<gfx::StaticMeshComponent*>* p_mesh_list{};
 			};
 			SetupDesc desc_{};
@@ -257,13 +257,13 @@ namespace ngl::render
 		{
 			rtg::RtgResourceHandle h_shadow_depth_atlas_{};
 
-			rhi::ConstantBufferPoolHandle	shadow_sample_cbh_{};
+			rhi::ConstantBufferPooledHandle	shadow_sample_cbh_{};
 			// Cascade情報. Setupで計算.
 			CascadeShadowMapParameter csm_param_{};
 
 			struct SetupDesc
 			{
-				rhi::ConstantBufferPoolHandle scene_cbv{};
+				rhi::ConstantBufferPooledHandle scene_cbv{};
 				const std::vector<gfx::StaticMeshComponent*>* p_mesh_list{};
 
 				math::Vec3 directional_light_dir{};
@@ -507,7 +507,7 @@ namespace ngl::render
 				int w{};
 				int h{};
 				
-				rhi::ConstantBufferPoolHandle scene_cbv{};
+				rhi::ConstantBufferPooledHandle scene_cbv{};
 			};
 			SetupDesc desc_{};
 			bool is_render_skip_debug{};
@@ -609,8 +609,8 @@ namespace ngl::render
 			{
 				int w{};
 				int h{};
-				rhi::ConstantBufferPoolHandle scene_cbv{};
-				rhi::ConstantBufferPoolHandle ref_shadow_cbv{};
+				rhi::ConstantBufferPooledHandle scene_cbv{};
+				rhi::ConstantBufferPooledHandle ref_shadow_cbv{};
 				
 				bool enable_feedback_blur_test{};
 			};
@@ -812,7 +812,7 @@ namespace ngl::render
 				int w{};
 				int h{};
 				
-				rhi::ConstantBufferPoolHandle scene_cbv{};
+				rhi::ConstantBufferPooledHandle scene_cbv{};
 
 				bool debugview_halfdot_gray = false;
 				bool debugview_subview_result = false;
@@ -1035,7 +1035,7 @@ namespace ngl::render
 				int w{};
 				int h{};
 				
-				rhi::ConstantBufferPoolHandle scene_cbv{};
+				rhi::ConstantBufferPooledHandle scene_cbv{};
 			};
 			SetupDesc desc_{};
 			bool is_render_skip_debug{};

@@ -10,11 +10,11 @@ namespace ngl::rhi
 {
     class ConstantBufferPoolImpl;
 
-    class ConstantBufferPoolHandleDeleter
+    class ConstantBufferPooledHandleDeleter
     {
     public:
-        ConstantBufferPoolHandleDeleter(ConstantBufferPoolImpl* parent);
-        ~ConstantBufferPoolHandleDeleter();
+        ConstantBufferPooledHandleDeleter(ConstantBufferPoolImpl* parent);
+        ~ConstantBufferPooledHandleDeleter();
         void operator()(ConstantBufferPoolItem* item);
     private:
         ConstantBufferPoolImpl* parent_ = nullptr;
@@ -109,7 +109,7 @@ namespace ngl::rhi
 
     class ConstantBufferPoolImpl
     {
-        friend ConstantBufferPoolHandleDeleter;
+        friend ConstantBufferPooledHandleDeleter;
     public:
         static constexpr int CalcSizeRoundupExp2(int byte_size)
         {
@@ -195,8 +195,8 @@ namespace ngl::rhi
             }
         }
 
-        // ConstantBufferPoolHandleを生成.
-        ConstantBufferPoolHandle Alloc(int byte_size)
+        // ConstantBufferPooledHandleを生成.
+        ConstantBufferPooledHandle Alloc(int byte_size)
         {
             assert(0 < byte_size && u8"ConstantBufferPool::Alloc: サイズが不正.");
 
@@ -219,7 +219,7 @@ namespace ngl::rhi
             }
 
             // 共有ハンドル化して返却.
-            return std::shared_ptr<ConstantBufferPoolItem>(item, ConstantBufferPoolHandleDeleter(this));
+            return std::shared_ptr<ConstantBufferPoolItem>(item, ConstantBufferPooledHandleDeleter(this));
         }
 
         private:
@@ -256,20 +256,20 @@ namespace ngl::rhi
 
 
     //-------------------------------------------------------------------
-    ConstantBufferPoolHandleDeleter::ConstantBufferPoolHandleDeleter(ConstantBufferPoolImpl* parent)
+    ConstantBufferPooledHandleDeleter::ConstantBufferPooledHandleDeleter(ConstantBufferPoolImpl* parent)
     : parent_(parent)
     {
-        assert(parent_ != nullptr && u8"ConstantBufferPoolHandleDeleter::parent_未設定");
+        assert(parent_ != nullptr && u8"ConstantBufferPooledHandleDeleter::parent_未設定");
     }
-    ConstantBufferPoolHandleDeleter::~ConstantBufferPoolHandleDeleter()
+    ConstantBufferPooledHandleDeleter::~ConstantBufferPooledHandleDeleter()
     {
-        assert(parent_ != nullptr && u8"ConstantBufferPoolHandleDeleter::parent_未設定");
+        assert(parent_ != nullptr && u8"ConstantBufferPooledHandleDeleter::parent_未設定");
     }
 
-    inline void ConstantBufferPoolHandleDeleter::operator()(ConstantBufferPoolItem* item)
+    inline void ConstantBufferPooledHandleDeleter::operator()(ConstantBufferPoolItem* item)
     {
-        assert(parent_ != nullptr && u8"ConstantBufferPoolHandleDeleter::parent_未設定");
-        assert(item != nullptr && u8"ConstantBufferPoolHandleDeleter::operator(): 不正なポインタ.");
+        assert(parent_ != nullptr && u8"ConstantBufferPooledHandleDeleter::parent_未設定");
+        assert(item != nullptr && u8"ConstantBufferPooledHandleDeleter::operator(): 不正なポインタ.");
         // Parentに破棄処理を依頼.
         parent_->DeleterFunc(item);
     }
@@ -307,7 +307,7 @@ namespace ngl::rhi
         impl_->ReadyToNewFrame();
     }
 
-    ConstantBufferPoolHandle ConstantBufferPool::Alloc(int byte_size)
+    ConstantBufferPooledHandle ConstantBufferPool::Alloc(int byte_size)
     {
         assert(impl_ != nullptr && u8"初期化時にimplが確保されていない");
         return impl_->Alloc(byte_size);

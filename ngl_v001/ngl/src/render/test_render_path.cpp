@@ -50,7 +50,6 @@ namespace ngl::test
 			ngl::math::Mat44 proj_mat = ngl::math::CalcReverseInfiniteFarPerspectiveMatrix(view_info.camera_fov_y, view_info.aspect_ratio, view_info.near_z);
 			ngl::math::Vec4 ndc_z_to_view_z_coef = ngl::math::CalcViewDepthReconstructCoefForInfiniteFarReversePerspective(view_info.near_z);
 
-			//if (auto* mapped = sceneview_buffer->MapAs<ngl::gfx::CbSceneView>())
 			if (auto* mapped = scene_cb_h->buffer_.MapAs<ngl::gfx::CbSceneView>())
 			{
 				mapped->cb_view_mtx = view_mat;

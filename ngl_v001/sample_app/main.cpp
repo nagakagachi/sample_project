@@ -706,7 +706,7 @@ void AppGame::LaunchRender()
 		{
 			// 今回のGPUタスクの待機用シグナル発行とそのバッファリング.
 			inflight_gpu_work_id_[inflight_gpu_work_index] = submit_gpu_work_id;
-			graphics_queue_.Signal(&gpu_wait_fence_, inflight_gpu_work_id_[inflight_gpu_work_index]);
+			graphics_queue_.Signal(&gpu_wait_fence_, submit_gpu_work_id);
 
 			inflight_gpu_work_id_enable_[inflight_gpu_work_index] = true;
 		}

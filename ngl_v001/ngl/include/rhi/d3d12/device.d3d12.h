@@ -133,8 +133,6 @@ namespace ngl
 			// Deviceが管理するグローバルなフレームインデックスを取得.
 			u64	 GetDeviceFrameIndex() const { return frame_index_; }
 
-			// フレームバッファインデックス. 0 ~ num_backbuffer-1.
-			const u32 GetFrameBufferIndex() const { return buffer_index_; }
 		public:
 			// RHIオブジェクトガベージコレクト関連.
 
@@ -158,7 +156,7 @@ namespace ngl
 
 			Microsoft::WRL::ComPtr<DXGI_FACTORY_TYPE> p_factory_;
 
-			u64 frame_index_ = 0;
+			std::atomic_uint64_t frame_index_ = 0;
 
 			u32	buffer_index_ = 0;
 

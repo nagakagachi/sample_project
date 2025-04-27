@@ -22,11 +22,11 @@ namespace rhi {
         rhi::BufferDep buffer_{};
         rhi::ConstantBufferViewDep cbv_{};
     };
-    using ConstantBufferPoolHandle = std::shared_ptr<ConstantBufferPoolItem>;
+    using ConstantBufferPooledHandle = std::shared_ptr<ConstantBufferPoolItem>;
 
 
     // ConstantBufferのPool.
-    //  TODO 現在はシンプルなmutex lock方式によるスレッドセーフ実装.
+    //  TODO 現在はシンプルなmutex lock方式によるスレッドセーフ実装86453210..
     class ConstantBufferPool
     {
     public:
@@ -38,7 +38,7 @@ namespace rhi {
         void ReadyToNewFrame();
 
     public:
-        ConstantBufferPoolHandle Alloc(int byte_size);
+        ConstantBufferPooledHandle Alloc(int byte_size);
 
     private:
         ConstantBufferPoolImpl* impl_{};
