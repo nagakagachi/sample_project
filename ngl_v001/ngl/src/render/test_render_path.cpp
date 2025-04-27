@@ -19,6 +19,7 @@ namespace ngl::test
 		) -> void
 	{
 		auto* p_device = render_frame_desc.p_device;
+		auto* p_cb_pool = p_device->GetConstantBufferPool();
 				
 		const auto screen_w = render_frame_desc.screen_w;
 		const auto screen_h = render_frame_desc.screen_h;
@@ -40,16 +41,7 @@ namespace ngl::test
 		
 				
 		// Update View Constant Buffer.
-		ngl::rhi::RefBufferDep sceneview_buffer = new ngl::rhi::BufferDep();
-		ngl::rhi::RefCbvDep sceneview_cbv = new ngl::rhi::ConstantBufferViewDep();
-		{
-			ngl::rhi::BufferDep::Desc buffer_desc{};
-			buffer_desc.SetupAsConstantBuffer(sizeof(ngl::gfx::CbSceneView));
-			sceneview_buffer->Initialize(p_device, buffer_desc);
-
-			ngl::rhi::ConstantBufferViewDep::Desc cbv_desc{};
-			sceneview_cbv->Initialize(sceneview_buffer.Get(), cbv_desc);
-		}
+		auto scene_cb_h = p_cb_pool->Alloc(sizeof(ngl::gfx::CbSceneView));
 		// SceneView ConstantBuffer内容更新.
 		{
 			ngl::math::Mat34 view_mat = ngl::math::CalcViewMatrix(view_info.camera_pos, view_info.camera_pose.GetColumn2(), view_info.camera_pose.GetColumn1());
@@ -58,7 +50,8 @@ namespace ngl::test
 			ngl::math::Mat44 proj_mat = ngl::math::CalcReverseInfiniteFarPerspectiveMatrix(view_info.camera_fov_y, view_info.aspect_ratio, view_info.near_z);
 			ngl::math::Vec4 ndc_z_to_view_z_coef = ngl::math::CalcViewDepthReconstructCoefForInfiniteFarReversePerspective(view_info.near_z);
 
-			if (auto* mapped = sceneview_buffer->MapAs<ngl::gfx::CbSceneView>())
+			//if (auto* mapped = sceneview_buffer->MapAs<ngl::gfx::CbSceneView>())
+			if (auto* mapped = scene_cb_h->buffer_.MapAs<ngl::gfx::CbSceneView>())
 			{
 				mapped->cb_view_mtx = view_mat;
 				mapped->cb_proj_mtx = proj_mat;
@@ -69,7 +62,7 @@ namespace ngl::test
 
 				mapped->cb_time_sec = std::fmodf(static_cast<float>(ngl::time::Timer::Instance().GetElapsedSec("AppGameTime")), 60.0f*60.0f*24.0f);
 
-				sceneview_buffer->Unmap();
+				scene_cb_h->buffer_.Unmap();
 			}
 		}
 				
@@ -145,7 +138,7 @@ namespace ngl::test
 						setup_desc.w = screen_w;
 						setup_desc.h = screen_h;
 						
-						setup_desc.ref_scene_cbv = sceneview_cbv;
+						setup_desc.scene_cbv = scene_cb_h;
 						setup_desc.p_mesh_list = &p_scene->mesh_instance_array_;
 					}
 					task_depth->Setup(rtg_builder, p_device, view_info, setup_desc);
@@ -162,7 +155,7 @@ namespace ngl::test
 						setup_desc.w = screen_w;
 						setup_desc.h = screen_h;
 						
-						setup_desc.ref_scene_cbv = sceneview_cbv;
+						setup_desc.scene_cbv = scene_cb_h;
 					}
 					task_linear_depth->Setup(rtg_builder, p_device, view_info, task_depth->h_depth_, async_compute_tex0, setup_desc);
 					// Renderをスキップテスト.
@@ -180,7 +173,7 @@ namespace ngl::test
 						setup_desc.w = screen_w;
 						setup_desc.h = screen_h;
 						
-						setup_desc.ref_scene_cbv = sceneview_cbv;
+						setup_desc.scene_cbv = scene_cb_h;
 					}
 					task_test_compute1->Setup(rtg_builder, p_device, view_info, task_linear_depth->h_linear_depth_, setup_desc);
 					// Renderをスキップテスト.
@@ -199,7 +192,7 @@ namespace ngl::test
 						setup_desc.w = screen_w;
 						setup_desc.h = screen_h;
 						
-						setup_desc.ref_scene_cbv = sceneview_cbv;
+						setup_desc.scene_cbv = scene_cb_h;
 						setup_desc.p_mesh_list = &p_scene->mesh_instance_array_;
 					}
 					task_gbuffer->Setup(rtg_builder, p_device, view_info, task_depth->h_depth_, async_compute_tex0, setup_desc);
@@ -213,7 +206,7 @@ namespace ngl::test
 				{
 					ngl::render::task::TaskDirectionalShadowPass::SetupDesc setup_desc{};
 					{
-						setup_desc.ref_scene_cbv = sceneview_cbv;
+						setup_desc.scene_cbv = scene_cb_h;
 						setup_desc.p_mesh_list = &p_scene->mesh_instance_array_;
 						
 						// Directionalのライト方向テスト.
@@ -233,8 +226,8 @@ namespace ngl::test
 						setup_desc.w = screen_w;
 						setup_desc.h = screen_h;
 						
-						setup_desc.ref_scene_cbv = sceneview_cbv;
-						setup_desc.ref_shadow_cbv = task_d_shadow->ref_d_shadow_sample_cbv_;
+						setup_desc.scene_cbv = scene_cb_h;
+						setup_desc.ref_shadow_cbv = task_d_shadow->shadow_sample_cbh_;
 
 						setup_desc.enable_feedback_blur_test = render_frame_desc.debugview_enable_feedback_blur_test;
 					}
@@ -278,7 +271,7 @@ namespace ngl::test
 							setup_desc.w = screen_w;
 							setup_desc.h = screen_h;
 						
-							setup_desc.ref_scene_cbv = sceneview_cbv;
+							setup_desc.scene_cbv = scene_cb_h;
 
 							setup_desc.debugview_halfdot_gray = render_frame_desc.debugview_halfdot_gray;
 							setup_desc.debugview_subview_result = render_frame_desc.debugview_subview_result;

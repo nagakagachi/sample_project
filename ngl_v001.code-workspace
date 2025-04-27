@@ -93,7 +93,8 @@
 			"xlocnum": "cpp",
 			"xloctime": "cpp",
 			"xstring": "cpp",
-			"xtr1common": "cpp"
+			"xtr1common": "cpp",
+			"*.impl": "cpp"
 		}
 	}
 }

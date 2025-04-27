@@ -47,7 +47,7 @@ namespace ngl::render
 				int w{};
 				int h{};
 				
-				rhi::RefCbvDep ref_scene_cbv{};
+				rhi::ConstantBufferPoolHandle scene_cbv{};
 				const std::vector<gfx::StaticMeshComponent*>* p_mesh_list{};
 			};
 			SetupDesc desc_{};
@@ -81,7 +81,7 @@ namespace ngl::render
 						ngl::gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_depth.tex_->GetWidth(), res_depth.tex_->GetHeight());
 						gfx::RenderMeshResource render_mesh_res = {};
 						{
-							render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", desc_.ref_scene_cbv.Get()};
+							render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", &desc_.scene_cbv->cbv_};
 						}
 						ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_depth::k_name, *desc_.p_mesh_list, render_mesh_res);
 					});
@@ -104,7 +104,7 @@ namespace ngl::render
 				int w{};
 				int h{};
 				
-				rhi::RefCbvDep ref_scene_cbv{};
+				rhi::ConstantBufferPoolHandle scene_cbv{};
 				const std::vector<gfx::StaticMeshComponent*>* p_mesh_list{};
 			};
 			SetupDesc desc_{};
@@ -197,7 +197,7 @@ namespace ngl::render
 						// Mesh Rendering.
 						gfx::RenderMeshResource render_mesh_res = {};
 						{
-							render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", desc_.ref_scene_cbv.Get()};
+							render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", &desc_.scene_cbv->cbv_};
 						}
 						ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_gbuffer::k_name, *desc_.p_mesh_list, render_mesh_res);
 					}
@@ -257,15 +257,13 @@ namespace ngl::render
 		{
 			rtg::RtgResourceHandle h_shadow_depth_atlas_{};
 
-
-			rhi::RefBufferDep ref_d_shadow_sample_cb_{};
-			rhi::RefCbvDep ref_d_shadow_sample_cbv_{};// 内部用.
+			rhi::ConstantBufferPoolHandle	shadow_sample_cbh_{};
 			// Cascade情報. Setupで計算.
 			CascadeShadowMapParameter csm_param_{};
 
 			struct SetupDesc
 			{
-				rhi::RefCbvDep ref_scene_cbv{};
+				rhi::ConstantBufferPoolHandle scene_cbv{};
 				const std::vector<gfx::StaticMeshComponent*>* p_mesh_list{};
 
 				math::Vec3 directional_light_dir{};
@@ -277,6 +275,8 @@ namespace ngl::render
 			void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
 				const SetupDesc& desc)
 			{
+				auto* p_cb_pool = p_device->GetConstantBufferPool();
+
 				desc_ = desc;
 				
 				// Cascade Shadowの最遠方距離.
@@ -303,17 +303,7 @@ namespace ngl::render
 				}
 				
 				// ShadowSample用の定数バッファ.
-				ref_d_shadow_sample_cb_ = new rhi::BufferDep();
-				{
-					rhi::BufferDep::Desc cb_desc{};
-					cb_desc.SetupAsConstantBuffer(sizeof(SceneDirectionalShadowSampleInfo));
-					ref_d_shadow_sample_cb_->Initialize(p_device, cb_desc);
-				}
-				ref_d_shadow_sample_cbv_ = new rhi::ConstantBufferViewDep();
-				{
-					rhi::ConstantBufferViewDep::Desc cbv_desc{};
-					ref_d_shadow_sample_cbv_->Initialize(ref_d_shadow_sample_cb_.Get(), cbv_desc);
-				}
+				shadow_sample_cbh_ = p_cb_pool->Alloc(sizeof(SceneDirectionalShadowSampleInfo));
 
 				// ----------------------------------
 				// Cascade情報セットアップ.
@@ -417,7 +407,7 @@ namespace ngl::render
 					csm_param_.cascade_tile_size_y[ci] = shadowmap_single_reso;
 				}
 
-				if (auto* mapped = ref_d_shadow_sample_cb_->MapAs<SceneDirectionalShadowSampleInfo>())
+				if(auto* mapped = shadow_sample_cbh_->buffer_.MapAs<SceneDirectionalShadowSampleInfo>())
 				{
 					assert(csm_param_.k_cascade_count < mapped->k_directional_shadow_cascade_cb_max);// バッファサイズが足りているか.
 
@@ -442,7 +432,7 @@ namespace ngl::render
 						mapped->cb_cascade_far_distance4[ci/4].data[ci%4] = csm_param_.split_distance_ws[ci];
 					}
 					
-					ref_d_shadow_sample_cb_->Unmap();
+					shadow_sample_cbh_->buffer_.Unmap();
 				}
 				
 				// Render処理のLambdaをRTGに登録.
@@ -471,18 +461,8 @@ namespace ngl::render
 							NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, text::FixedString<64>("Cascade_%d", cascade_index));
 								
 							// Cascade用の定数バッファを都度生成.
-							rhi::RefBufferDep ref_shadow_render_cb = new rhi::BufferDep();
-							rhi::RefCbvDep ref_shadow_render_cbv = new rhi::ConstantBufferViewDep();
-							{
-								rhi::BufferDep::Desc cb_desc{};
-								cb_desc.SetupAsConstantBuffer(sizeof(SceneDirectionalShadowRenderInfo));
-								ref_shadow_render_cb->Initialize(gfx_commandlist->GetDevice(), cb_desc);
-							}
-							{
-								rhi::ConstantBufferViewDep::Desc cbv_desc{};
-								ref_shadow_render_cbv->Initialize(ref_shadow_render_cb.Get(), cbv_desc);
-							}
-							if (auto* mapped = ref_shadow_render_cb->MapAs<SceneDirectionalShadowRenderInfo>())
+							auto shadow_cb_h = gfx_commandlist->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(SceneDirectionalShadowRenderInfo));
+							if (auto* mapped = shadow_cb_h->buffer_.MapAs<SceneDirectionalShadowRenderInfo>())
 							{
 								const auto csm_info_index = cascade_index;
 									
@@ -492,7 +472,7 @@ namespace ngl::render
 								mapped->cb_shadow_view_inv_mtx = ngl::math::Mat34::Inverse(csm_param_.light_view_mtx[csm_info_index]);
 								mapped->cb_shadow_proj_inv_mtx = ngl::math::Mat44::Inverse(csm_param_.light_ortho_mtx[csm_info_index]);
 								
-								ref_d_shadow_sample_cb_->Unmap();
+								shadow_cb_h->buffer_.Unmap();
 							}
 
 							const auto cascade_tile_w = csm_param_.cascade_tile_size_x[cascade_index];
@@ -504,8 +484,8 @@ namespace ngl::render
 							// Mesh Rendering.
 							gfx::RenderMeshResource render_mesh_res = {};
 							{
-								render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", desc_.ref_scene_cbv.Get()};
-								render_mesh_res.cbv_d_shadowview = {"ngl_cb_shadowview", ref_shadow_render_cbv.Get()};
+								render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", &desc_.scene_cbv->cbv_};
+								render_mesh_res.cbv_d_shadowview = {"ngl_cb_shadowview", &shadow_cb_h->cbv_};
 							}
 							ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_d_shadow::k_name, *desc_.p_mesh_list, render_mesh_res);
 						}
@@ -527,7 +507,7 @@ namespace ngl::render
 				int w{};
 				int h{};
 				
-				rhi::RefCbvDep ref_scene_cbv{};
+				rhi::ConstantBufferPoolHandle scene_cbv{};
 			};
 			SetupDesc desc_{};
 			bool is_render_skip_debug{};
@@ -596,7 +576,7 @@ namespace ngl::render
 						// Samplerを設定するテスト. シェーダコード側ではほぼ意味はない.
 						pso_->SetView(&desc_set, "SmpHardwareDepth", global_res.default_resource_.sampler_shadow_point.Get());
 						pso_->SetView(&desc_set, "RWTexLinearDepth", res_linear_depth.uav_.Get());
-						pso_->SetView(&desc_set, "ngl_cb_sceneview", desc_.ref_scene_cbv.Get());
+						pso_->SetView(&desc_set, "ngl_cb_sceneview", &desc_.scene_cbv->cbv_);
 							
 						gfx_commandlist->SetPipelineState(pso_.Get());
 						gfx_commandlist->SetDescriptorSet(pso_.Get(), &desc_set);
@@ -629,8 +609,8 @@ namespace ngl::render
 			{
 				int w{};
 				int h{};
-				rhi::RefCbvDep ref_scene_cbv{};
-				rhi::RefCbvDep ref_shadow_cbv{};
+				rhi::ConstantBufferPoolHandle scene_cbv{};
+				rhi::ConstantBufferPoolHandle ref_shadow_cbv{};
 				
 				bool enable_feedback_blur_test{};
 			};
@@ -757,29 +737,16 @@ namespace ngl::render
 							int enable_feedback_blur_test;
 							int is_first_frame;
 						};
-						rhi::RefBufferDep ref_lighting_pass_cb = new rhi::BufferDep();
-						rhi::RefCbvDep ref_lighting_pass_cbv = new rhi::ConstantBufferViewDep();
+						auto lighting_cbh = gfx_commandlist->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(CbLightingPass));
+						if(auto* p_mapped = lighting_cbh->buffer_.MapAs<CbLightingPass>())
 						{
-							{
-								rhi::BufferDep::Desc cb_desc{};
-								cb_desc.SetupAsConstantBuffer(sizeof(CbLightingPass));
-								ref_lighting_pass_cb->Initialize(gfx_commandlist->GetDevice(), cb_desc);
-							}
-							{
-								rhi::ConstantBufferViewDep::Desc cbv_desc{};
-								ref_lighting_pass_cbv->Initialize(ref_lighting_pass_cb.Get(), cbv_desc);
-							}
-							if(auto* p_mapped = ref_lighting_pass_cb->MapAs<CbLightingPass>())
-							{
-								p_mapped->enable_feedback_blur_test = desc_.enable_feedback_blur_test;
-								static bool debug_first_frame_flag = true;
-								p_mapped->is_first_frame = debug_first_frame_flag;
-								debug_first_frame_flag = false;
+							p_mapped->enable_feedback_blur_test = desc_.enable_feedback_blur_test;
+							static bool debug_first_frame_flag = true;
+							p_mapped->is_first_frame = debug_first_frame_flag;
+							debug_first_frame_flag = false;
 
-								ref_lighting_pass_cb->Unmap();
-							}
+							lighting_cbh->buffer_.Unmap();
 						}
-
 						
 						// Viewport.
 						gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_light.tex_->GetWidth(), res_light.tex_->GetHeight());
@@ -793,9 +760,9 @@ namespace ngl::render
 						gfx_commandlist->SetPipelineState(pso_.Get());
 						ngl::rhi::DescriptorSetDep desc_set = {};
 
-						pso_->SetView(&desc_set, "ngl_cb_sceneview", desc_.ref_scene_cbv.Get());
-						pso_->SetView(&desc_set, "ngl_cb_shadowview", desc_.ref_shadow_cbv.Get());
-						pso_->SetView(&desc_set, "ngl_cb_lighting_pass", ref_lighting_pass_cbv.Get());
+						pso_->SetView(&desc_set, "ngl_cb_sceneview", &desc_.scene_cbv->cbv_);
+						pso_->SetView(&desc_set, "ngl_cb_shadowview", &desc_.ref_shadow_cbv->cbv_);
+						pso_->SetView(&desc_set, "ngl_cb_lighting_pass", &lighting_cbh->cbv_);
 							
 						pso_->SetView(&desc_set, "tex_lineardepth", res_linear_depth.srv_.Get());
 						pso_->SetView(&desc_set, "tex_gbuffer0", res_gb0.srv_.Get());
@@ -845,7 +812,7 @@ namespace ngl::render
 				int w{};
 				int h{};
 				
-				rhi::RefCbvDep ref_scene_cbv{};
+				rhi::ConstantBufferPoolHandle scene_cbv{};
 
 				bool debugview_halfdot_gray = false;
 				bool debugview_subview_result = false;
@@ -1012,29 +979,17 @@ namespace ngl::render
 							int enable_gbuffer;
 							int enable_dshadow;
 						};
-						rhi::RefBufferDep ref_cb = new rhi::BufferDep();
-						rhi::RefCbvDep ref_cbv = new rhi::ConstantBufferViewDep();
+						auto cbh = gfx_commandlist->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(CbFinalScreenPass));
+						if(auto* p_mapped = cbh->buffer_.MapAs<CbFinalScreenPass>())
 						{
-							{
-								rhi::BufferDep::Desc cb_desc{};
-								cb_desc.SetupAsConstantBuffer(sizeof(CbFinalScreenPass));
-								ref_cb->Initialize(gfx_commandlist->GetDevice(), cb_desc);
-							}
-							{
-								rhi::ConstantBufferViewDep::Desc cbv_desc{};
-								ref_cbv->Initialize(ref_cb.Get(), cbv_desc);
-							}
-							if(auto* p_mapped = ref_cb->MapAs<CbFinalScreenPass>())
-							{
-								p_mapped->enable_halfdot_gray = desc_.debugview_halfdot_gray;
-								p_mapped->enable_subview_result = desc_.debugview_subview_result;
-								p_mapped->enable_raytrace_result = desc_.debugview_raytrace_result;
+							p_mapped->enable_halfdot_gray = desc_.debugview_halfdot_gray;
+							p_mapped->enable_subview_result = desc_.debugview_subview_result;
+							p_mapped->enable_raytrace_result = desc_.debugview_raytrace_result;
 
-								p_mapped->enable_gbuffer = desc_.debugview_gbuffer;
-								p_mapped->enable_dshadow = desc_.debugview_dshadow;
+							p_mapped->enable_gbuffer = desc_.debugview_gbuffer;
+							p_mapped->enable_dshadow = desc_.debugview_dshadow;
 
-								ref_cb->Unmap();
-							}
+							cbh->buffer_.Unmap();
 						}
 							
 						gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_swapchain.swapchain_->GetWidth(), res_swapchain.swapchain_->GetHeight());
@@ -1047,7 +1002,7 @@ namespace ngl::render
 
 						gfx_commandlist->SetPipelineState(pso_.Get());
 						ngl::rhi::DescriptorSetDep desc_set = {};
-						pso_->SetView(&desc_set, "cb_final_screen_pass", ref_cbv.Get());
+						pso_->SetView(&desc_set, "cb_final_screen_pass", &cbh->cbv_);
 						pso_->SetView(&desc_set, "tex_light", res_light.srv_.Get());
 						pso_->SetView(&desc_set, "tex_rt", ref_rt_result.Get());
 						pso_->SetView(&desc_set, "tex_res_data", ref_other_rtg_out.Get());
@@ -1080,7 +1035,7 @@ namespace ngl::render
 				int w{};
 				int h{};
 				
-				rhi::RefCbvDep ref_scene_cbv{};
+				rhi::ConstantBufferPoolHandle scene_cbv{};
 			};
 			SetupDesc desc_{};
 			bool is_render_skip_debug{};
@@ -1264,22 +1219,14 @@ namespace ngl::render
 							//		ex) Primary, Shadow の2種であれば 2.
 							int num_ray_type;
 						};
-						rhi::RefBufferDep tmp_cb_raytrace = new rhi::BufferDep();
+						auto raytrace_cbh = gfx_commandlist->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(RaytraceInfo));
+						if(auto* mapped = raytrace_cbh->buffer_.MapAs<RaytraceInfo>())
 						{
-							rhi::BufferDep::Desc cb_desc{};
-							cb_desc.SetupAsConstantBuffer(sizeof(RaytraceInfo));
-							tmp_cb_raytrace->Initialize(gfx_commandlist->GetDevice(), cb_desc);
-
-							auto* mapped = tmp_cb_raytrace->MapAs<RaytraceInfo>();
-							{
-								mapped->num_ray_type = desc_.p_rt_scene->NumHitGroupCountMax();
-							}
-							tmp_cb_raytrace->Unmap();
-						}
-						rhi::RefCbvDep tmp_cbv_raytrace = new rhi::ConstantBufferViewDep();
-						tmp_cbv_raytrace->Initialize(tmp_cb_raytrace.Get(), {});
-
+							mapped->num_ray_type = desc_.p_rt_scene->NumHitGroupCountMax();
 							
+							raytrace_cbh->buffer_.Unmap();
+						}
+						
 						// Ray Dispatch.
 						{
 							gfx::RtPassCore::DispatchRayParam param = {};
@@ -1288,7 +1235,7 @@ namespace ngl::render
 							// global resourceのセット.
 							{
 								param.cbv_slot[0] = desc_.p_rt_scene->GetSceneViewCbv();// View.
-								param.cbv_slot[1] = tmp_cbv_raytrace.Get();// Raytrace.
+								param.cbv_slot[1] = &raytrace_cbh->cbv_;
 							}
 							{
 								param.srv_slot;

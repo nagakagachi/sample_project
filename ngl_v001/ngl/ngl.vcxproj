@@ -132,7 +132,6 @@
     <ClInclude Include="include\gfx\rtg\graph_builder.h" />
     <ClInclude Include="include\gfx\rtg\rtg_command_list_pool.h" />
     <ClInclude Include="include\gfx\texture_loader_directxtex.h" />
-    <ClInclude Include="include\gfx\util\constant_buffer_pool.h" />
     <ClInclude Include="include\imgui\imgui_interface.h" />
     <ClInclude Include="include\math\detail\math_matrix.h" />
     <ClInclude Include="include\math\detail\math_util.h" />
@@ -148,6 +147,7 @@
     <ClInclude Include="include\render\test_render_path.h" />
     <ClInclude Include="include\resource\resource.h" />
     <ClInclude Include="include\resource\resource_manager.h" />
+    <ClInclude Include="include\rhi\constant_buffer_pool.h" />
     <ClInclude Include="include\rhi\d3d12\command_list.d3d12.h" />
     <ClInclude Include="include\rhi\d3d12\descriptor.d3d12.h" />
     <ClInclude Include="include\rhi\d3d12\device.d3d12.h" />
@@ -205,7 +205,6 @@
     <ClCompile Include="src\gfx\resource\resource_texture.cpp" />
     <ClCompile Include="src\gfx\rtg\graph_builder.cpp" />
     <ClCompile Include="src\gfx\texture_loader_directxtex.cpp" />
-    <ClCompile Include="src\gfx\util\constant_buffer_pool.cpp" />
     <ClCompile Include="src\imgui\imgui_interface.cpp" />
     <ClCompile Include="src\math\math.cpp" />
     <ClCompile Include="src\memory\boundary_tag_block.cpp" />
@@ -216,6 +215,7 @@
     <ClCompile Include="src\resource\resource.cpp" />
     <ClCompile Include="src\resource\resource_manager.cpp" />
     <ClCompile Include="src\resource\resource_manager_impl.cpp" />
+    <ClCompile Include="src\rhi\constant_buffer_pool.cpp" />
     <ClCompile Include="src\rhi\d3d12\command_list.d3d12.cpp" />
     <ClCompile Include="src\rhi\d3d12\descriptor.d3d12.cpp" />
     <ClCompile Include="src\rhi\d3d12\device.d3d12.cpp" />
@@ -231,6 +231,8 @@
     <ClCompile Include="src\util\time\timer.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="include\gfx\util\" />
+    <Folder Include="src\gfx\util\" />
     <Folder Include="src\math\detail\" />
   </ItemGroup>
   <ItemGroup>

@@ -12,7 +12,7 @@ namespace rhi {
 
 } // namespace rhi
 
-namespace gfx {
+namespace rhi {
 
     class ConstantBufferPoolImpl;
 
@@ -25,6 +25,8 @@ namespace gfx {
     using ConstantBufferPoolHandle = std::shared_ptr<ConstantBufferPoolItem>;
 
 
+    // ConstantBufferのPool.
+    //  TODO 現在はシンプルなmutex lock方式によるスレッドセーフ実装.
     class ConstantBufferPool
     {
     public:
@@ -33,8 +35,9 @@ namespace gfx {
 
         void Initialize(rhi::DeviceDep* p_device);
         void Finalize();
+        void ReadyToNewFrame();
 
-
+    public:
         ConstantBufferPoolHandle Alloc(int byte_size);
 
     private:

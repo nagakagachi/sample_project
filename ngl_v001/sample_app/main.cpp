@@ -30,13 +30,13 @@
 #include "rhi/d3d12/resource.d3d12.h"
 #include "rhi/d3d12/resource_view.d3d12.h"
 
+#include "rhi/constant_buffer_pool.h"
 
 // gfx
 #include "gfx/render/global_render_resource.h"
 #include "gfx/raytrace_scene.h"
 #include "gfx/mesh_component.h"
 
-#include "gfx/util/constant_buffer_pool.h"
 
 // Render Path
 #include "render/test_render_path.h"
@@ -223,6 +223,8 @@ AppGame::~AppGame()
 		}
 	}
 
+	rt_scene_ = {};
+
 	// リソース参照クリア.
 	mesh_comp_array_.clear();
 
@@ -318,21 +320,23 @@ bool AppGame::Initialize()
 		return false;
 	}
 	
-	/*
-	// ConstantBufferPool(テスト)
-	ngl::gfx::ConstantBufferPool cb_pool;
-	cb_pool.Initialize(&device_);
-	
-	auto cbh0 = cb_pool.Alloc(15);
-	auto cbh1 = cb_pool.Alloc(16);
-	auto cbh2 = cb_pool.Alloc(17);
+	if(false)
+	{
+		// ConstantBufferPool(テスト)
+		ngl::rhi::ConstantBufferPool* cb_pool = device_.GetConstantBufferPool();
+		
+		auto cbh_2 = cb_pool->Alloc(2);
+		cbh_2 = {};
+		auto cbh0 = cb_pool->Alloc(15);
+		auto cbh1 = cb_pool->Alloc(16);
+		auto cbh2 = cb_pool->Alloc(17);
 
-	cbh0 = cbh1;
+		cbh0 = cbh1;
 
-	cbh1.reset();
-	cbh0.reset();
-	cbh2.reset();
-	*/
+		cbh1.reset();
+		cbh0.reset();
+		cbh2.reset();
+	}
 
 	// RTGマネージャ初期化.
 	{

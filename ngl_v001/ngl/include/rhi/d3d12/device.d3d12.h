@@ -21,6 +21,7 @@
 
 #include "rhi/rhi.h"
 #include "rhi/rhi_object_garbage_collect.h"
+#include "rhi/constant_buffer_pool.h"
 
 #include "rhi/d3d12/rhi_util.d3d12.h"
 #include "descriptor.d3d12.h"
@@ -115,6 +116,14 @@ namespace ngl
 			{
 				return p_frame_descriptor_page_pool_.get();
 			}
+		
+		public:
+			// ConstantBufferPool取得.
+			ConstantBufferPool* GetConstantBufferPool() 
+			{
+				return &cb_pool_;
+			}
+
 		public:
 			// フレーム関連.
 			
@@ -167,6 +176,9 @@ namespace ngl
 
 			// RHIオブジェクトガベージコレクト.
 			GabageCollector			gb_;
+
+			// ConstantBufferPool. フレームでの返却管理などのためにDeviceに持たせている.
+			ConstantBufferPool		cb_pool_{};
 		};
 
 

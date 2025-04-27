@@ -1684,20 +1684,13 @@ namespace ngl
 				//		ex) Primary, Shadow の2種であれば 2.
 				int num_ray_type;
 			};
-			rhi::RefBufferDep tmp_cb_raytrace = new rhi::BufferDep();
+			auto raytrace_cbh = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(RaytraceInfo));
+			if(auto* mapped = raytrace_cbh->buffer_.MapAs<RaytraceInfo>())
 			{
-				rhi::BufferDep::Desc cb_desc{};
-				cb_desc.SetupAsConstantBuffer(sizeof(RaytraceInfo));
-				tmp_cb_raytrace->Initialize(p_device, cb_desc);
+				mapped->num_ray_type = p_rt_scene_->NumHitGroupCountMax();
 
-				auto* mapped = tmp_cb_raytrace->MapAs<RaytraceInfo>();
-				{
-					mapped->num_ray_type = p_rt_scene_->NumHitGroupCountMax();
-				}
-				tmp_cb_raytrace->Unmap();
+				raytrace_cbh->buffer_.Unmap();
 			}
-			rhi::RefCbvDep tmp_cbv_raytrace = new rhi::ConstantBufferViewDep();
-			tmp_cbv_raytrace->Initialize(tmp_cb_raytrace.Get(), {});
 			
 
 			// Ray Dispatch.
@@ -1708,7 +1701,7 @@ namespace ngl
 				// global resourceのセット.
 				{
 					param.cbv_slot[0] = p_rt_scene_->GetSceneViewCbv();// View.
-					param.cbv_slot[1] = tmp_cbv_raytrace.Get();// Raytrace.
+					param.cbv_slot[1] = &raytrace_cbh->cbv_;// Raytrace.
 				}
 				{
 					param.srv_slot;
@@ -1760,17 +1753,9 @@ namespace ngl
 			}
 
 			// SceneView定数バッファ.
+			for (auto i = 0; i < std::size(cbh_scene_view); ++i)
 			{
-				rhi::BufferDep::Desc buff_desc = {};
-				buff_desc.SetupAsConstantBuffer(sizeof(CbSceneView));
-				for (auto i = 0; i < std::size(cb_scene_view); ++i)
-				{
-					cb_scene_view[i].Reset(new rhi::BufferDep());
-					cb_scene_view[i]->Initialize(p_device, buff_desc);
-
-					cbv_scene_view[i].Reset(new rhi::ConstantBufferViewDep());
-					cbv_scene_view[i]->Initialize(cb_scene_view[i].Get(), {});
-				}
+				cbh_scene_view[i] = p_device->GetConstantBufferPool()->Alloc(sizeof(CbSceneView));
 			}
 
 			is_initialized_ = true;
@@ -1930,8 +1915,8 @@ namespace ngl
 #endif
 			// 定数バッファ更新.
 			{
-				const auto cb_index = frame_count_ % std::size(cb_scene_view);
-				if (auto* mapped = static_cast<CbSceneView*>(cb_scene_view[cb_index]->Map()))
+				const auto cb_index = frame_count_ % std::size(cbh_scene_view);
+				if (auto* mapped = static_cast<CbSceneView*>(cbh_scene_view[cb_index]->buffer_.Map()))
 				{
 					mapped->cb_view_mtx = view_mat;
 					mapped->cb_proj_mtx = proj_mat;
@@ -1940,7 +1925,7 @@ namespace ngl
 
 					mapped->cb_ndc_z_to_view_z_coef = ndc_z_to_view_z_coef;
 
-					cb_scene_view[cb_index]->Unmap();
+					cbh_scene_view[cb_index]->buffer_.Unmap();
 				}
 			}
 		}
@@ -1968,16 +1953,16 @@ namespace ngl
 			if(!is_initialized_)
 				return nullptr;
 			
-			const auto cb_index = frame_count_ % std::size(cb_scene_view);
-			return (cbv_scene_view[cb_index].IsValid())? cbv_scene_view[cb_index].Get() : nullptr;
+			const auto cb_index = frame_count_ % std::size(cbh_scene_view);
+			return (cbh_scene_view[cb_index]->buffer_.IsValid())? &cbh_scene_view[cb_index]->cbv_ : nullptr;
 		}
 		const rhi::ConstantBufferViewDep* RtSceneManager::GetSceneViewCbv() const
 		{
 			if(!is_initialized_)
 				return nullptr;
 			
-			const auto cb_index = frame_count_ % std::size(cb_scene_view);
-			return (cbv_scene_view[cb_index].IsValid()) ? cbv_scene_view[cb_index].Get() : nullptr;
+			const auto cb_index = frame_count_ % std::size(cbh_scene_view);
+			return (cbh_scene_view[cb_index]->buffer_.IsValid())? &cbh_scene_view[cb_index]->cbv_ : nullptr;
 		}
 
 		void RtSceneManager::DispatchRay(rhi::GraphicsCommandListDep* p_command_list, const DispatchRayParam& param)
@@ -1985,7 +1970,7 @@ namespace ngl
 			if(!is_initialized_)
 				return;
 			
-			const auto cb_index = frame_count_ % std::size(cb_scene_view);
+			const auto cb_index = frame_count_ % std::size(cbh_scene_view);
 
 			rhi::DeviceDep* p_device = p_command_list->GetDevice();
 			auto* d3d_device = p_device->GetD3D12Device();

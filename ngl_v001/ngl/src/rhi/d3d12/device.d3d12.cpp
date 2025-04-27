@@ -251,10 +251,16 @@ namespace ngl
 				}
 			}
 
+			// ConstantBufferPool.
+			{
+				cb_pool_.Initialize(this);
+			}
+
 			return true;
 		}
 		void DeviceDep::Finalize()
 		{
+			cb_pool_.Finalize();
 			gb_.Finalize();
 
 			p_device_ = nullptr;
@@ -269,6 +275,7 @@ namespace ngl
 
 			p_dynamic_descriptor_manager_->ReadyToNewFrame((u32)frame_index_);
 
+			cb_pool_.ReadyToNewFrame();
 			gb_.ReadyToNewFrame();
 
 
