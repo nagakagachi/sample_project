@@ -119,7 +119,7 @@ namespace ngl
 	{
 		class RenderTaskGraphBuilder;
 		using RtgNameType = text::HashText<64>;
-
+		
 		enum class ETASK_TYPE : int
 		{
 			GRAPHICS = 0,

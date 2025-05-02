@@ -108,6 +108,9 @@ namespace ngl
 
 	void GraphicsFramework::Finalize()
 	{
+		// RenderThread待機.
+		render_thread_.Wait();
+		
 		// Submit済みのGPUタスク終了待ち.
 		WaitAllGpuTask();
 
@@ -124,23 +127,56 @@ namespace ngl
 	// フレームのRenderThread同期タイミングで実行する処理を担当. RenderThread.
 	void GraphicsFramework::SyncRender()
 	{
+		// RenderThread完了待機.
+		render_thread_.Wait();
+		
 		// Graphics Deviceのフレーム準備
 		device_.ReadyToNewFrame();
 
 		// RTGのフレーム開始処理.
 		rtg_manager_.BeginFrame();
 	}
-	// フレームのRender処理の先頭で実行し, また最初にSubmitされるCommandListへの積み込みが必要な処理を担当. RenderThread.
-	void GraphicsFramework::BeginFrameRender()
+	// RenderThreadでフレームのシステム及びApp処理を実行する.
+	//	ResourceSystem処理, App処理, GPU待機, Submit, Present, 次フレーム準備の一連の処理を実行.
+	void GraphicsFramework::BeginFrameRender(std::function< void(std::vector<RtgGenerateCommandListSet>& app_rtg_command_list_set) > app_render_func)
 	{
-		// システム用のフレーム先頭実行コマンドリストをRtgから準備.
-		p_system_frame_begin_command_list_ = {};
-		rtg_manager_.GetNewFrameCommandList(p_system_frame_begin_command_list_);
-		p_system_frame_begin_command_list_->Begin();// begin.
+		// RenderThreadにシステム処理とAPp描画Lambdaを実行させる.
+		render_thread_.Begin([this, app_render_func]
+		{
+			// システム用のフレーム先頭実行コマンドリストをRtgから準備.
+			p_system_frame_begin_command_list_ = {};
+			rtg_manager_.GetNewFrameCommandList(p_system_frame_begin_command_list_);
+			p_system_frame_begin_command_list_->Begin();// begin.
 
-		// ResourceManagerのRenderThread処理.
-		// TextureLinearBufferや MeshBufferのUploadなど.
-		ngl::res::ResourceManager::Instance().UpdateResourceOnRender(&device_, p_system_frame_begin_command_list_);
+			// ResourceManagerのRenderThread処理.
+			// TextureLinearBufferや MeshBufferのUploadなど.
+			ngl::res::ResourceManager::Instance().UpdateResourceOnRender(&device_, p_system_frame_begin_command_list_);
+
+			
+			// アプリケーション側のRender処理.
+			std::vector<RtgGenerateCommandListSet> app_rtg_command_list_set{};
+			app_render_func(app_rtg_command_list_set);
+			
+			// フレームワークのSubmit準備&前回GPUタスク完了待ち.
+			ReadyToSubmit();
+			
+			// アプリケーションのSubmit.
+			for(auto& e : app_rtg_command_list_set)
+			{
+				ngl::rtg::RenderTaskGraphBuilder::SubmitCommand(graphics_queue_, compute_queue_, e.graphics, e.compute);
+			}
+			
+			// フレームワークのPresent.
+			Present();
+			// フレームワークのRender終了&次フレームの準備.
+			EndFrameRender();
+		}
+		);
+	}
+	// Render処理のThread処理を強制的に待機する.
+	void GraphicsFramework::ForceWaitFrameRender()
+	{
+		render_thread_.Wait();
 	}
 	// フレームのCommandListのSubmit準備として, 以前のSubmitによるGPU処理完了を待機する. RenderThread.
 	void GraphicsFramework::ReadyToSubmit()

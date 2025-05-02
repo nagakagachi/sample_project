@@ -5,6 +5,8 @@
 
 #include "platform/window.h"
 
+#include "thread/job_thread.h"
+
 // rhi
 #include "rhi/d3d12/device.d3d12.h"
 
@@ -19,6 +21,12 @@ namespace rhi
 {
 	class GraphicsCommandListDep;
 }
+	
+struct RtgGenerateCommandListSet
+{
+	std::vector<ngl::rtg::RtgSubmitCommandSequenceElem> graphics{};
+	std::vector<ngl::rtg::RtgSubmitCommandSequenceElem> compute{};
+};
 	
 // Graphicsフレームワーク.
 //	Deviceやグラフィックスに関わるフレーム処理などをまとめる.
@@ -35,18 +43,22 @@ public:
 	void BeginFrame();
 	// フレームのRenderThread同期タイミングで実行する処理を担当. RenderThread.
 	void SyncRender();
-	// フレームのRender処理の先頭で実行し, また最初にSubmitされるCommandListへの積み込みが必要な処理を担当. RenderThread.
-	void BeginFrameRender();
-	// フレームのCommandListのSubmit準備として, 以前のSubmitによるGPU処理完了を待機する. RenderThread.
-	void ReadyToSubmit();
-	// フレームのSwapchainのPresent. RenderThread.
-	void Present();
-	// フレームのRender処理完了. RenderThread.
-	void EndFrameRender();
-
+	// フレームのRender処理の先頭で実行し, また最初にSubmitされるCommandListへの積み込みが必要な処理を担当.
+	void BeginFrameRender(std::function< void(std::vector<RtgGenerateCommandListSet>& app_rtg_command_list_set) > app_render_func);
+	// Render処理のThread処理を強制的に待機する.
+	void ForceWaitFrameRender();
+	
 	// Submit済みのGPUタスクのすべての完了を待機.
 	void WaitAllGpuTask();
-
+	
+private:
+	// 内部用. フレームのCommandListのSubmit準備として, 以前のSubmitによるGPU処理完了を待機する. RenderThread.
+	void ReadyToSubmit();
+	// 内部用. フレームのSwapchainのPresent. RenderThread.
+	void Present();
+	// 内部用. フレームのRender処理完了. RenderThread.
+	void EndFrameRender();
+	
 public:
 	ngl::rhi::EResourceState GetSwapchainBufferInitialState() const;
 
@@ -82,6 +94,9 @@ private:
 	//	ガベコレにGPUにSubmitしたフレームIDを識別して破棄する仕組みを入れれば最大限増加してパフォーマンス向上できると考えられる.
 	static constexpr ngl::u32							inflight_gpu_work_flip_count_ = 1;
 	ngl::u32											inflight_gpu_work_flip_ = 0;
+	
+	// RenderThread.
+	ngl::thread::SingleJobThread				render_thread_;
 };
 
 }

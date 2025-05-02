@@ -17,7 +17,6 @@
 
 #include "math/math.h"
 
-#include "thread/job_thread.h"
 #include "thread/test_lockfree_stack.h"
 
 // resource
@@ -97,13 +96,8 @@ public:
 	void LaunchRender();
 	
 private:
-	struct RtgGenerateCommandListSet
-	{
-		std::vector<ngl::rtg::RtgSubmitCommandSequenceElem> graphics{};
-		std::vector<ngl::rtg::RtgSubmitCommandSequenceElem> compute{};
-	};
 	// RenderThreadメイン処理 (RenderThread側).
-	void RenderApp(std::vector<RtgGenerateCommandListSet>& out_rtg_command_list_set);
+	void RenderApp(std::vector<ngl::RtgGenerateCommandListSet>& out_rtg_command_list_set);
 private:
 	struct RenderParam
 	{
@@ -131,10 +125,6 @@ private:
 	// Graphicsフレームワーク.
 	ngl::GraphicsFramework		gfxfw_{};
 	std::vector<ngl::rhi::EResourceState>		swapchain_resource_state_;
-
-	
-	// RenderThread.
-	ngl::thread::SingleJobThread				render_thread_;
 
 	ngl::rhi::RefTextureDep						tex_rw_;
 	ngl::rhi::RefSrvDep							tex_rw_srv_;
@@ -178,9 +168,6 @@ AppGame::AppGame()
 }
 AppGame::~AppGame()
 {
-	// RenderThread待機.
-	render_thread_.Wait();
-
 	// RenderFramework終了.
 	gfxfw_.Finalize();
 
@@ -453,58 +440,30 @@ void AppGame::BeginFrame()
 
 void AppGame::SyncRender()
 {	
-	// RenderThread待機.
-	render_thread_.Wait();
+	// フレームワークのRender同期タイミング処理.
+	gfxfw_.SyncRender();
 	
 	// IMGUIのEndFrame呼び出し.
 	ngl::imgui::ImguiInterface::Instance().EndFrame();
 
-	// フレームワークのRender同期タイミング処理.
-	gfxfw_.SyncRender();
 }
 
 // Render駆動.
 void AppGame::LaunchRender()
 {
-	// GameThread同期部
-	
 	// RenderParam同期.
 	SyncRenderParam();
-	// RenderThreadでJob実行.
-	render_thread_.Begin([this]
+
+	// フレームワーのRenderThreadにAppの描画処理実行を依頼.
+	gfxfw_.BeginFrameRender([this](std::vector<ngl::RtgGenerateCommandListSet>& app_rtg_command_list_set)
 	{
-		// フレームワークのRender開始.
-		gfxfw_.BeginFrameRender();
-		
 		// アプリケーション側のRender処理.
-		std::vector<RtgGenerateCommandListSet> app_rtg_command_list_set{};
 		RenderApp(app_rtg_command_list_set);
-		
-		// フレームワークのSubmit準備&前回GPUタスク完了待ち.
-		gfxfw_.ReadyToSubmit();
-		
-		// アプリケーションのSubmit.
-		{
-			// RtgのCommaand.
-			for(auto& e : app_rtg_command_list_set)
-			{
-				ngl::rtg::RenderTaskGraphBuilder::SubmitCommand(gfxfw_.graphics_queue_, gfxfw_.compute_queue_, e.graphics, e.compute);
-			}
-		}
+	});
 
-		// フレームワークのPresent.
-		gfxfw_.Present();
-
-		// フレームワークのRender終了&次フレームの準備.
-		gfxfw_.EndFrameRender();
-		
-		// フレーム描画完了.
-	}
-	);
-	
-	// RenderThreadのシングルスレッド実行モードの場合.
-	if(!dbgw_enable_render_thread)
-		render_thread_.Wait();
+	// RenderThread強制待機デバッグ.
+	if(dbgw_enable_render_thread)
+		gfxfw_.ForceWaitFrameRender();
 }
 
 void AppGame::PushRenderParam(RenderParamPtr param)
@@ -671,7 +630,7 @@ bool AppGame::Execute()
 }
 
 // アプリ側のRenderThread処理.
-void AppGame::RenderApp(std::vector<RtgGenerateCommandListSet>& out_rtg_command_list_set)
+void AppGame::RenderApp(std::vector<ngl::RtgGenerateCommandListSet>& out_rtg_command_list_set)
 {	
 	// フレームのSwapchainインデックス.
 	const auto swapchain_index = gfxfw_.swapchain_->GetCurrentBufferIndex();
@@ -723,7 +682,7 @@ void AppGame::RenderApp(std::vector<RtgGenerateCommandListSet>& out_rtg_command_
 		}
 		
 		out_rtg_command_list_set.push_back({});
-		RtgGenerateCommandListSet& rtg_result = out_rtg_command_list_set.back();
+		ngl::RtgGenerateCommandListSet& rtg_result = out_rtg_command_list_set.back();
 		// Pathの実行 (RenderTaskGraphの構築と実行).
 		TestFrameRenderingPath(render_frame_desc, subview_render_frame_out, gfxfw_.rtg_manager_, rtg_result.graphics, rtg_result.compute);
 	}
@@ -779,7 +738,7 @@ void AppGame::RenderApp(std::vector<RtgGenerateCommandListSet>& out_rtg_command_
 		swapchain_resource_state_[swapchain_index] = swapchain_final_state;// State変更.
 		
 		out_rtg_command_list_set.push_back({});
-		RtgGenerateCommandListSet& rtg_result = out_rtg_command_list_set.back();
+		ngl::RtgGenerateCommandListSet& rtg_result = out_rtg_command_list_set.back();
 		// Pathの実行 (RenderTaskGraphの構築と実行).
 		ngl::test::RenderFrameOut render_frame_out{};
 		TestFrameRenderingPath(render_frame_desc, render_frame_out, gfxfw_.rtg_manager_, rtg_result.graphics, rtg_result.compute);
