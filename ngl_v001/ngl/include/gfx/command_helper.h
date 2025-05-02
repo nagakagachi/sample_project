@@ -1,8 +1,5 @@
 ﻿#pragma once
 
-
-#include "math/math.h"
-
 namespace ngl
 {
 namespace rhi

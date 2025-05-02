@@ -117,6 +117,7 @@
     <ClInclude Include="include\file\file.h" />
     <ClInclude Include="include\gfx\command_helper.h" />
     <ClInclude Include="include\gfx\common_struct.h" />
+    <ClInclude Include="include\gfx\gfx_framework.h" />
     <ClInclude Include="include\gfx\material\material_shader_common.h" />
     <ClInclude Include="include\gfx\material\material_shader_generator.h" />
     <ClInclude Include="include\gfx\material\material_shader_manager.h" />
@@ -193,6 +194,7 @@
     <ClCompile Include="src\boot\win\boot_application.win.cpp" />
     <ClCompile Include="src\file\file.cpp" />
     <ClCompile Include="src\gfx\command_helper.cpp" />
+    <ClCompile Include="src\gfx\gfx_framework.cpp" />
     <ClCompile Include="src\gfx\material\material_shader_generator.cpp" />
     <ClCompile Include="src\gfx\material\material_shader_manager.cpp" />
     <ClCompile Include="src\gfx\mesh_component.cpp" />

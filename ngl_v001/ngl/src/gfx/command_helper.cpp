@@ -1,5 +1,4 @@
-﻿#pragma once
-
+﻿
 #include "gfx/command_helper.h"
 
 #include "rhi/d3d12/command_list.d3d12.h"

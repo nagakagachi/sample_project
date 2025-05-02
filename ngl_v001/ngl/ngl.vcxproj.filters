@@ -168,12 +168,6 @@
     <ClInclude Include="include\thread\lockfree_stack_intrusive.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="include\thread\lockfree_stack_intrusive_test.h">
-      <Filter>ヘッダー ファイル</Filter>
-    </ClInclude>
-    <ClInclude Include="include\thread\fixed_size_lock_free_stack.h">
-      <Filter>ヘッダー ファイル\thread</Filter>
-    </ClInclude>
     <ClInclude Include="include\util\bit_operation.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
@@ -226,6 +220,21 @@
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="external\tinyxml2\tinyxml2.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="include\gfx\gfx_framework.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="include\rhi\constant_buffer_pool.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="include\thread\lockfree_stack_fixed_size.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="include\thread\lockfree_stack_static_size.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
+    <ClInclude Include="include\thread\test_lockfree_stack.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
   </ItemGroup>
@@ -341,12 +350,6 @@
     <ClCompile Include="src\thread\job_thread.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="src\thread\lockfree_stack_intrusive_test.cpp">
-      <Filter>ソース ファイル</Filter>
-    </ClCompile>
-    <ClCompile Include="src\thread\fixed_size_lock_free_stack.cpp">
-      <Filter>ソース ファイル\thread</Filter>
-    </ClCompile>
     <ClCompile Include="src\util\bit_operation.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
@@ -375,6 +378,15 @@
       <Filter>ソース ファイル</Filter>
     </ClCompile>
     <ClCompile Include="external\tinyxml2\tinyxml2.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="src\rhi\constant_buffer_pool.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="src\thread\test_lockfree_stack.cpp">
+      <Filter>ソース ファイル</Filter>
+    </ClCompile>
+    <ClCompile Include="src\gfx\gfx_framework.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
   </ItemGroup>

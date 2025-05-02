@@ -26,29 +26,26 @@
 // rhi
 #include "rhi/d3d12/device.d3d12.h"
 #include "rhi/d3d12/command_list.d3d12.h"
-#include "rhi/d3d12/descriptor.d3d12.h"
 #include "rhi/d3d12/resource.d3d12.h"
 #include "rhi/d3d12/resource_view.d3d12.h"
 
-#include "rhi/constant_buffer_pool.h"
+// GraphicsFramework.
+#include "gfx/gfx_framework.h"
 
 // gfx
-#include "gfx/render/global_render_resource.h"
 #include "gfx/raytrace_scene.h"
 #include "gfx/mesh_component.h"
-
-
-// Render Path
-#include "render/test_render_path.h"
 
 // マテリアルシェーダ関連.
 #include "gfx/material/material_shader_generator.h"
 #include "gfx/material/material_shader_manager.h"
 
 
+// Render Path
+#include "render/test_render_path.h"
+
 // imguiのシステム処理Wrapper.
 #include "imgui/imgui_interface.h"
-
 
 
 // ImGui.
@@ -131,42 +128,14 @@ private:
 
 	ngl::platform::CoreWindow	window_;
 
-	// RenderThread.
-	ngl::thread::SingleJobThread				render_thread_;
-	
-	ngl::rhi::DeviceDep							device_;
-	ngl::rhi::GraphicsCommandQueueDep			graphics_queue_;
-	ngl::rhi::ComputeCommandQueueDep			compute_queue_;
-	
-	// CommandQueue実行完了待機用Fence
-	ngl::rhi::FenceDep							gpu_wait_fence_;
-	// CommandQueue実行完了待機用オブジェクト
-	ngl::rhi::WaitOnFenceSignalDep				gpu_wait_signal_;
-	
-	// GPU待機用バッファの最大数. 内部バッファ確保のためのサイズ.
-	static constexpr int							k_gpu_work_queue_count_max = 4;
-	// SubmitしたGPUタスクのバッファリング待機用情報.
-	std::array<ngl::u64, k_gpu_work_queue_count_max>	inflight_gpu_work_id_{};
-	std::array<bool, k_gpu_work_queue_count_max>		inflight_gpu_work_id_enable_{};
-	// GPU側の待機キューの数. value =< バックバッファ数.
-	//	理想的にはバックバッファ数と同じ値だが, 現状RHIのガベージコレクションなどがGPU側1F遅れと想定しているため 1 を指定している.
-	//	ガベコレにGPUにSubmitしたフレームIDを識別して破棄する仕組みを入れれば最大限増加してパフォーマンス向上できると考えられる.
-	static constexpr ngl::u32 inflight_gpu_work_flip_count_ = 1;
-	ngl::u32 inflight_gpu_work_flip_ = 0;
-
-
-
-	ngl::rhi::GraphicsCommandListDep*			p_gfx_frame_begin_command_list_{};
-
-	// SwapChain
-	ngl::rhi::RhiRef<ngl::rhi::SwapChainDep>	swapchain_;
-	std::vector<ngl::rhi::RefRtvDep>			swapchain_rtvs_;
+	// Graphicsフレームワーク.
+	ngl::GraphicsFramework		gfxfw_{};
 	std::vector<ngl::rhi::EResourceState>		swapchain_resource_state_;
 
-	// RenderTaskGraphのCompileやそれらが利用するリソースプール管理.
-	ngl::rtg::RenderTaskGraphManager			rtg_manager_{};
-
 	
+	// RenderThread.
+	ngl::thread::SingleJobThread				render_thread_;
+
 	ngl::rhi::RefTextureDep						tex_rw_;
 	ngl::rhi::RefSrvDep							tex_rw_srv_;
 	ngl::rhi::RefUavDep							tex_rw_uav_;
@@ -211,17 +180,9 @@ AppGame::~AppGame()
 {
 	// RenderThread待機.
 	render_thread_.Wait();
-	
-	// GPUへ投入したタスクの完了待ち.
-	for(ngl::u32 gpu_work_offset = 0; gpu_work_offset < inflight_gpu_work_flip_count_; ++gpu_work_offset)
-	{
-		const auto gpu_work_index = (inflight_gpu_work_flip_ + gpu_work_offset) % inflight_gpu_work_flip_count_;
-		if (inflight_gpu_work_id_enable_[gpu_work_index])
-		{
-			gpu_wait_signal_.Wait(&gpu_wait_fence_, inflight_gpu_work_id_[gpu_work_index]);
-			inflight_gpu_work_id_enable_[gpu_work_index] = false;
-		}
-	}
+
+	// RenderFramework終了.
+	gfxfw_.Finalize();
 
 	rt_scene_ = {};
 
@@ -230,8 +191,6 @@ AppGame::~AppGame()
 
 	// Material Shader Manager.
 	ngl::gfx::MaterialShaderManager::Instance().Finalize();
-	// 共有リソース管理.
-	ngl::gfx::GlobalRenderResource::Instance().Finalize();
 	
 	// リソースマネージャから全て破棄.
 	ngl::res::ResourceManager::Instance().ReleaseCacheAll();
@@ -239,10 +198,6 @@ AppGame::~AppGame()
 	// imgui.
 	ngl::imgui::ImguiInterface::Instance().Finalize();
 	
-	swapchain_.Reset();
-	graphics_queue_.Finalize();
-	compute_queue_.Finalize();
-	device_.Finalize();
 }
 
 bool AppGame::Initialize()
@@ -255,97 +210,23 @@ bool AppGame::Initialize()
 	{
 		return false;
 	}
-	
-	// Graphics Device.
+	// グラフィックスフレームワーク初期化.
+	if(!gfxfw_.Initialize(&window_))
 	{
-		ngl::rhi::DeviceDep::Desc device_desc{};
-		#if _DEBUG
-			device_desc.enable_debug_layer = true;	// デバッグレイヤ有効化.
-		#endif
-		device_desc.frame_descriptor_size = 500000;
-		device_desc.persistent_descriptor_size = 500000;
-		if (!device_.Initialize(&window_, device_desc))
-		{
-			std::cout << "[ERROR] Initialize Device" << std::endl;
-			return false;
-		}
-		
-		// Raytracing Support Check.
-		if (!device_.IsSupportDxr())
-		{
-			MessageBoxA(window_.Dep().GetWindowHandle(), "Raytracing is not supported on this device.", "Info", MB_OK);
-		}
-
-		// GpuWorkId管理バッファサイズチェック.
-		assert(k_gpu_work_queue_count_max > device_.GetDesc().swapchain_buffer_count);
-		assert(device_.GetDesc().swapchain_buffer_count >= inflight_gpu_work_flip_count_);
-
+		assert(false && u8"Failed Initialize Rendering Framework.");
 	}
-	// graphics queue.
-	if (!graphics_queue_.Initialize(&device_))
+	// グラフィックスフレームワークからDevice取得.
+	auto& device = gfxfw_.device_;
+	// Swapchainバッファのステート管理は現状App側で行う.
+	swapchain_resource_state_.resize(gfxfw_.swapchain_->NumResource());
+	for (auto i = 0u; i < gfxfw_.swapchain_->NumResource(); ++i)
 	{
-		std::cout << "[ERROR] Initialize Graphics Command Queue" << std::endl;
-		return false;
-	}
-	// compute queue.
-	if(!compute_queue_.Initialize(&device_))
-	{
-		std::cout << "[ERROR] Initialize Compute Command Queue" << std::endl;
-		return false;
-	}
-	// swapchain.
-	{
-		ngl::rhi::SwapChainDep::Desc swap_chain_desc;
-		swap_chain_desc.format = ngl::rhi::EResourceFormat::Format_R10G10B10A2_UNORM;
-		swapchain_ = new ngl::rhi::SwapChainDep();
-		if (!swapchain_->Initialize(&device_, &graphics_queue_, swap_chain_desc))
-		{
-			std::cout << "[ERROR] Initialize SwapChain" << std::endl;
-			return false;
-		}
-
-		swapchain_rtvs_.resize(swapchain_->NumResource());
-		swapchain_resource_state_.resize(swapchain_->NumResource());
-		for (auto i = 0u; i < swapchain_->NumResource(); ++i)
-		{
-			swapchain_rtvs_[i] = new ngl::rhi::RenderTargetViewDep();
-			swapchain_rtvs_[i]->Initialize(&device_, swapchain_.Get(), i);
-			swapchain_resource_state_[i] = ngl::rhi::EResourceState::Common;// Swapchain初期ステートは指定していないためCOMMON状態.
-		}
-	}
-	
-	if (!gpu_wait_fence_.Initialize(&device_))
-	{
-		std::cout << "[ERROR] Initialize Fence" << std::endl;
-		return false;
-	}
-	
-	if(false)
-	{
-		// ConstantBufferPool(テスト)
-		ngl::rhi::ConstantBufferPool* cb_pool = device_.GetConstantBufferPool();
-		
-		auto cbh_2 = cb_pool->Alloc(2);
-		cbh_2 = {};
-		auto cbh0 = cb_pool->Alloc(15);
-		auto cbh1 = cb_pool->Alloc(16);
-		auto cbh2 = cb_pool->Alloc(17);
-
-		cbh0 = cbh1;
-
-		cbh1.reset();
-		cbh0.reset();
-		cbh2.reset();
-	}
-
-	// RTGマネージャ初期化.
-	{
-		rtg_manager_.Init(&device_, 4);
+		swapchain_resource_state_[i] = gfxfw_.GetSwapchainBufferInitialState();
 	}
 	
 	// imgui.
 	{
-		if(!ngl::imgui::ImguiInterface::Instance().Initialize(&device_, swapchain_.Get()))
+		if(!ngl::imgui::ImguiInterface::Instance().Initialize(&device, gfxfw_.swapchain_.Get()))
 		{
 			std::cout << "[ERROR] Initialize Imgui" << std::endl;
 			assert(false);
@@ -383,16 +264,7 @@ bool AppGame::Initialize()
 			}
 
 			// Material Shader Psoセットアップ.
-			ngl::gfx::MaterialShaderManager::Instance().Setup(&device_, k_material_shader_file_dir);
-		}
-	}
-
-	// デフォルトテクスチャ等の簡易アクセス用クラス初期化.
-	{
-		if(!ngl::gfx::GlobalRenderResource::Instance().Initialize(&device_))
-		{
-			assert(false);
-			return false;
+			ngl::gfx::MaterialShaderManager::Instance().Setup(&device, k_material_shader_file_dir);
 		}
 	}
 
@@ -407,19 +279,19 @@ bool AppGame::Initialize()
 		desc.initial_state = ngl::rhi::EResourceState::ShaderRead;
 
 		tex_rw_ = new ngl::rhi::TextureDep();
-		if (!tex_rw_->Initialize(&device_, desc))
+		if (!tex_rw_->Initialize(&device, desc))
 		{
 			std::cout << "[ERROR] Create RW Texture Initialize" << std::endl;
 			assert(false);
 		}
 		tex_rw_srv_ = new ngl::rhi::ShaderResourceViewDep();
-		if (!tex_rw_srv_->InitializeAsTexture(&device_, tex_rw_.Get(), 0, 1, 0, 1))
+		if (!tex_rw_srv_->InitializeAsTexture(&device, tex_rw_.Get(), 0, 1, 0, 1))
 		{
 			std::cout << "[ERROR] Create RW SRV" << std::endl;
 			assert(false);
 		}
 		tex_rw_uav_ = new ngl::rhi::UnorderedAccessViewDep();
-		if (!tex_rw_uav_->Initialize(&device_, tex_rw_.Get(), 0, 0, 1))
+		if (!tex_rw_uav_->Initialize(&device, tex_rw_.Get(), 0, 0, 1))
 		{
 			std::cout << "[ERROR] Create RW UAV" << std::endl;
 			assert(false);
@@ -459,7 +331,7 @@ bool AppGame::Initialize()
 				mesh_comp_array_.push_back(mc);
 
 				ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-				mc->Initialize(&device_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device_, mesh_target_scene, &loaddesc));
+				mc->Initialize(&device, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_target_scene, &loaddesc));
 				// スケール設定.
 				mc->transform_.SetDiagonal(ngl::math::Vec3(target_scene_base_scale));
 			}
@@ -470,7 +342,7 @@ bool AppGame::Initialize()
 				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
 				mesh_comp_array_.push_back(mc);
 				ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-				mc->Initialize(&device_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device_, mesh_file_spider, &loaddesc));
+				mc->Initialize(&device, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc));
 				
 				ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
 				tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 5.0f));
@@ -484,7 +356,7 @@ bool AppGame::Initialize()
 				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
 				mesh_comp_array_.push_back(mc);
 				ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-				mc->Initialize(&device_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device_, mesh_file_stanford_bunny, &loaddesc));
+				mc->Initialize(&device, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_stanford_bunny, &loaddesc));
 				
 				ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
 				tr.SetDiagonal(ngl::math::Vec4(1.0f));
@@ -498,7 +370,7 @@ bool AppGame::Initialize()
 				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
 				mesh_comp_array_.push_back(mc);
 				ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-				mc->Initialize(&device_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device_, mesh_file_stanford_bunny, &loaddesc));
+				mc->Initialize(&device, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_stanford_bunny, &loaddesc));
 				
 				ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
 				tr.SetDiagonal(ngl::math::Vec4(1.0f, 0.3f, 1.0f, 1.0f));//被均一スケールテスト.
@@ -512,7 +384,7 @@ bool AppGame::Initialize()
 				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
 				mesh_comp_array_.push_back(mc);
 				ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-				mc->Initialize(&device_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device_, mesh_file_stanford_bunny, &loaddesc));
+				mc->Initialize(&device, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_stanford_bunny, &loaddesc));
 				
 				ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
 				tr.SetDiagonal(ngl::math::Vec4(1.0f, 3.0f, 1.0f, 1.0f));//被均一スケールテスト.
@@ -527,7 +399,7 @@ bool AppGame::Initialize()
 				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
 				mesh_comp_array_.push_back(mc);
 				ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-				mc->Initialize(&device_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device_, mesh_file_spider, &loaddesc));
+				mc->Initialize(&device, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc));
 
 				constexpr int k_rand_f_div = 10000;
 				const float randx = (std::rand() % k_rand_f_div) / (float)k_rand_f_div;
@@ -554,7 +426,7 @@ bool AppGame::Initialize()
 	// Raytrace.
 	//	TLAS構築時にShaderTableの最大Hitgroup数が必要な設計であるため初期化時に最大数指定する. PrimayとShadowの2種であれば 2.
 	constexpr int k_system_hitgroup_count_max = 3;
-	if (!rt_scene_.Initialize(&device_, k_system_hitgroup_count_max))
+	if (!rt_scene_.Initialize(&device, k_system_hitgroup_count_max))
 	{
 		std::cout << "[ERROR] Initialize gfx::RtSceneManager" << std::endl;
 	}
@@ -563,7 +435,7 @@ bool AppGame::Initialize()
 	ngl::gfx::ResTexture::LoadDesc tex_load_desc{};
 	//const char test_load_texture_file_name[] = "../ngl/data/model/sponza_gltf/glTF/6772804448157695701.jpg";
 	const char test_load_texture_file_name[] = "../ngl/data/texture/sample_dds/test-dxt1.dds";
-	res_texture_ = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResTexture>(&device_, test_load_texture_file_name, &tex_load_desc);
+	res_texture_ = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResTexture>(&device, test_load_texture_file_name, &tex_load_desc);
 	
 	ngl::time::Timer::Instance().StartTimer("app_frame_sec");
 	return true;
@@ -572,6 +444,9 @@ bool AppGame::Initialize()
 
 void AppGame::BeginFrame()
 {
+	// フレームワークのフレーム開始タイミング処理.
+	gfxfw_.BeginFrame();
+	
 	// imgui.
 	ngl::imgui::ImguiInterface::Instance().BeginFrame();
 }
@@ -581,16 +456,11 @@ void AppGame::SyncRender()
 	// RenderThread待機.
 	render_thread_.Wait();
 	
-	
 	// IMGUIのEndFrame呼び出し.
 	ngl::imgui::ImguiInterface::Instance().EndFrame();
 
-
-	// Graphics Deviceのフレーム準備
-	device_.ReadyToNewFrame();
-	
-	// RTGのフレーム開始処理.
-	rtg_manager_.BeginFrame();
+	// フレームワークのRender同期タイミング処理.
+	gfxfw_.SyncRender();
 }
 
 // Render駆動.
@@ -603,114 +473,30 @@ void AppGame::LaunchRender()
 	// RenderThreadでJob実行.
 	render_thread_.Begin([this]
 	{
-		// RenderThreadシステム先頭処理.
-		{
-			// このフレーム用のシステムCommandListをRtgから取得.
-			p_gfx_frame_begin_command_list_ = {};
-			rtg_manager_.GetNewFrameCommandList(p_gfx_frame_begin_command_list_);
-			p_gfx_frame_begin_command_list_->Begin();// begin.
-
-			// ResourceManagerのRenderThread処理. TextureLinearBufferや MeshBufferのUploadなど.
-			ngl::res::ResourceManager::Instance().UpdateResourceOnRender(&device_, p_gfx_frame_begin_command_list_);
-		}
-
+		// フレームワークのRender開始.
+		gfxfw_.BeginFrameRender();
 		
 		// アプリケーション側のRender処理.
 		std::vector<RtgGenerateCommandListSet> app_rtg_command_list_set{};
 		RenderApp(app_rtg_command_list_set);
 		
-	
-#if 0
-		// システム側AsyncComputeテスト.
-		ngl::rhi::ComputeCommandListDep* rtg_compute_command_list{};
-		rtg_manager_.GetNewFrameCommandList(rtg_compute_command_list);
-		{
-			// テストのためPoolから取得したCommandListに積み込み.
-			rtg_compute_command_list->Begin();
-			// GraphicsQueueがComputeQueueをWaitする状況のテスト用.
-			{
-				auto ref_cpso = ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep>(new ngl::rhi::ComputePipelineStateDep());
-				{
-					ngl::rhi::ComputePipelineStateDep::Desc cpso_desc{};
-					{
-						ngl::gfx::ResShader::LoadDesc cs_load_desc{};
-						cs_load_desc.stage = ngl::rhi::EShaderStage::Compute;
-						cs_load_desc.shader_model_version = "6_3";
-						cs_load_desc.entry_point_name = "main_cs";
-						auto cs_load_handle = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(&device_, "../ngl/shader/test/async_task_test_cs.hlsl", &cs_load_desc);
-				
-						cpso_desc.cs = &cs_load_handle->data_;
-					}
-					// CsPso初期化.
-					ref_cpso->Initialize(&device_, cpso_desc);
-				}
-				
-				ngl::rhi::DescriptorSetDep desc_set{};
-				ref_cpso->SetView(&desc_set, "rwtex_out", tex_rw_uav_.Get());
-				rtg_compute_command_list->SetPipelineState(ref_cpso.Get());
-				rtg_compute_command_list->SetDescriptorSet(ref_cpso.Get(), &desc_set);
-				ref_cpso->DispatchHelper(rtg_compute_command_list, tex_rw_->GetWidth(), tex_rw_->GetHeight(), 1);
-			}
-			rtg_compute_command_list->End();
-		}
-	
-		// フレーム先頭からAcyncComputeのテストSubmit.
-		{
-			ngl::rhi::CommandListBaseDep* p_command_lists[] =
-			{
-				rtg_compute_command_list
-			};
-			compute_queue_.ExecuteCommandLists(static_cast<unsigned int>(std::size(p_command_lists)), p_command_lists);
-		}
-#endif
-
-
-		// ------------------------------------------------------------------------------------------
-		const auto submit_gpu_work_id = device_.GetDeviceFrameIndex();
-		const auto inflight_gpu_work_index = inflight_gpu_work_flip_;
-		inflight_gpu_work_flip_ = (inflight_gpu_work_flip_ + 1) % inflight_gpu_work_flip_count_;
-		// ------------------------------------------------------------------------------------------
+		// フレームワークのSubmit準備&前回GPUタスク完了待ち.
+		gfxfw_.ReadyToSubmit();
 		
-		// ------------------------------------------------------------------------------------------
-		// 今回フレームのコマンドをGPUにSubmitする前に前回のGPU処理完了待機.
-		// GPU側にN個のキューを想定している場合は今回使用するキューのタスク完了を待つ(現状は1つ).
-		if(inflight_gpu_work_id_enable_[inflight_gpu_work_index])
+		// アプリケーションのSubmit.
 		{
-			// 今回のGPUタスク待機バッファの完了を待機.
-			gpu_wait_signal_.Wait(&gpu_wait_fence_, inflight_gpu_work_id_[inflight_gpu_work_index]);
-
-			inflight_gpu_work_id_enable_[inflight_gpu_work_index] = false;
-		}
-		// ------------------------------------------------------------------------------------------
-		
-		// Submit to Gpu Task.
-		{
-			// システム用Graphics CommandList.
-			{
-				p_gfx_frame_begin_command_list_->End();
-				ngl::rhi::CommandListBaseDep* submit_list[] = { p_gfx_frame_begin_command_list_ };
-				graphics_queue_.ExecuteCommandLists(static_cast<unsigned int>(std::size(submit_list)), submit_list);
-			}
-		
 			// RtgのCommaand.
 			for(auto& e : app_rtg_command_list_set)
 			{
-				ngl::rtg::RenderTaskGraphBuilder::SubmitCommand(graphics_queue_, compute_queue_, e.graphics, e.compute);
+				ngl::rtg::RenderTaskGraphBuilder::SubmitCommand(gfxfw_.graphics_queue_, gfxfw_.compute_queue_, e.graphics, e.compute);
 			}
 		}
 
-		// Present.
-		swapchain_->GetDxgiSwapChain()->Present(0, 0);
-		
-		// ------------------------------------------------------------------------------------------
-		{
-			// 今回のGPUタスクの待機用シグナル発行とそのバッファリング.
-			inflight_gpu_work_id_[inflight_gpu_work_index] = submit_gpu_work_id;
-			graphics_queue_.Signal(&gpu_wait_fence_, submit_gpu_work_id);
+		// フレームワークのPresent.
+		gfxfw_.Present();
 
-			inflight_gpu_work_id_enable_[inflight_gpu_work_index] = true;
-		}
-		// ------------------------------------------------------------------------------------------
+		// フレームワークのRender終了&次フレームの準備.
+		gfxfw_.EndFrameRender();
 		
 		// フレーム描画完了.
 	}
@@ -886,11 +672,11 @@ bool AppGame::Execute()
 
 // アプリ側のRenderThread処理.
 void AppGame::RenderApp(std::vector<RtgGenerateCommandListSet>& out_rtg_command_list_set)
-{
+{	
 	// フレームのSwapchainインデックス.
-	const auto swapchain_index = swapchain_->GetCurrentBufferIndex();
-	ngl::u32 screen_width = swapchain_->GetWidth();
-	ngl::u32 screen_height = swapchain_->GetHeight();
+	const auto swapchain_index = gfxfw_.swapchain_->GetCurrentBufferIndex();
+	ngl::u32 screen_width = gfxfw_.swapchain_->GetWidth();
+	ngl::u32 screen_height = gfxfw_.swapchain_->GetHeight();
 		
 	// Raytracing Scene更新.
 	if(rt_scene_.IsValid())
@@ -905,7 +691,9 @@ void AppGame::RenderApp(std::vector<RtgGenerateCommandListSet>& out_rtg_command_
 			screen_aspect_ratio);
 
 		// RtScene更新. AS更新とそのCommand生成.
-		rt_scene_.UpdateOnRender(&device_, p_gfx_frame_begin_command_list_, render_param_->frame_scene);
+		// ここではグラフィックスフレームワークが持つフレーム先頭コマンドリストにコマンド登録している.
+		// Passを用意して通常のRtgパスとして実行するのが正規.
+		rt_scene_.UpdateOnRender(&gfxfw_.device_, gfxfw_.p_system_frame_begin_command_list_, render_param_->frame_scene);
 	}
 	
 	// SubViewの描画テスト.
@@ -916,7 +704,7 @@ void AppGame::RenderApp(std::vector<RtgGenerateCommandListSet>& out_rtg_command_
 		// Pathの設定.
 		ngl::test::RenderFrameDesc render_frame_desc{};
 		{
-			render_frame_desc.p_device = &device_;
+			render_frame_desc.p_device = &gfxfw_.device_;
 			
 			render_frame_desc.screen_w = screen_width;
 			render_frame_desc.screen_h = screen_height;
@@ -937,7 +725,7 @@ void AppGame::RenderApp(std::vector<RtgGenerateCommandListSet>& out_rtg_command_
 		out_rtg_command_list_set.push_back({});
 		RtgGenerateCommandListSet& rtg_result = out_rtg_command_list_set.back();
 		// Pathの実行 (RenderTaskGraphの構築と実行).
-		TestFrameRenderingPath(render_frame_desc, subview_render_frame_out, rtg_manager_, rtg_result.graphics, rtg_result.compute);
+		TestFrameRenderingPath(render_frame_desc, subview_render_frame_out, gfxfw_.rtg_manager_, rtg_result.graphics, rtg_result.compute);
 	}
 	
 	static ngl::rtg::RtgResourceHandle h_prev_light{};// 前回フレームハンドルのテスト.
@@ -948,14 +736,14 @@ void AppGame::RenderApp(std::vector<RtgGenerateCommandListSet>& out_rtg_command_
 		// Pathの設定.
 		ngl::test::RenderFrameDesc render_frame_desc{};
 		{
-			render_frame_desc.p_device = &device_;
+			render_frame_desc.p_device = &gfxfw_.device_;
 			
 			render_frame_desc.screen_w = screen_width;
 			render_frame_desc.screen_h = screen_height;
 
 			// MainViewはSwapchain書き込みPassを動かすため情報設定.
-			render_frame_desc.ref_swapchain = swapchain_;
-			render_frame_desc.ref_swapchain_rtv = swapchain_rtvs_[swapchain_index];
+			render_frame_desc.ref_swapchain = gfxfw_.swapchain_;
+			render_frame_desc.ref_swapchain_rtv = gfxfw_.swapchain_rtvs_[swapchain_index];
 			render_frame_desc.swapchain_state_prev = swapchain_resource_state_[swapchain_index];
 			render_frame_desc.swapchain_state_next = swapchain_final_state;
 			
@@ -994,7 +782,7 @@ void AppGame::RenderApp(std::vector<RtgGenerateCommandListSet>& out_rtg_command_
 		RtgGenerateCommandListSet& rtg_result = out_rtg_command_list_set.back();
 		// Pathの実行 (RenderTaskGraphの構築と実行).
 		ngl::test::RenderFrameOut render_frame_out{};
-		TestFrameRenderingPath(render_frame_desc, render_frame_out, rtg_manager_, rtg_result.graphics, rtg_result.compute);
+		TestFrameRenderingPath(render_frame_desc, render_frame_out, gfxfw_.rtg_manager_, rtg_result.graphics, rtg_result.compute);
 		
 		h_prev_light = render_frame_out.h_propagate_lit;// Rtgリソースの一部を次フレームに伝搬する.
 
