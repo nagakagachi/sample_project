@@ -181,10 +181,6 @@ AppGame::~AppGame()
 	
 	// リソースマネージャから全て破棄.
 	ngl::res::ResourceManager::Instance().ReleaseCacheAll();
-
-	// imgui.
-	ngl::imgui::ImguiInterface::Instance().Finalize();
-	
 }
 
 bool AppGame::Initialize()
@@ -211,17 +207,6 @@ bool AppGame::Initialize()
 		swapchain_resource_state_[i] = gfxfw_.GetSwapchainBufferInitialState();
 	}
 	
-	// imgui.
-	{
-		if(!ngl::imgui::ImguiInterface::Instance().Initialize(&device, gfxfw_.swapchain_.Get()))
-		{
-			std::cout << "[ERROR] Initialize Imgui" << std::endl;
-			assert(false);
-			return false;
-		}
-	}
-	
-
 	// Material Shader.
 	{
 		constexpr char k_material_shader_file_dir[] = "../ngl/shader/material/generated";
@@ -433,19 +418,12 @@ void AppGame::BeginFrame()
 {
 	// フレームワークのフレーム開始タイミング処理.
 	gfxfw_.BeginFrame();
-	
-	// imgui.
-	ngl::imgui::ImguiInterface::Instance().BeginFrame();
 }
 
 void AppGame::SyncRender()
 {	
 	// フレームワークのRender同期タイミング処理.
 	gfxfw_.SyncRender();
-	
-	// IMGUIのEndFrame呼び出し.
-	ngl::imgui::ImguiInterface::Instance().EndFrame();
-
 }
 
 // Render駆動.

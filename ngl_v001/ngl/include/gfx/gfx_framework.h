@@ -70,7 +70,7 @@ public:
 	// SwapChain
 	ngl::rhi::RhiRef<ngl::rhi::SwapChainDep>	swapchain_;
 	std::vector<ngl::rhi::RefRtvDep>			swapchain_rtvs_;
-	ngl::rhi::EResourceState					swapchain_buffer_initial_state_;
+	ngl::rhi::EResourceState					swapchain_buffer_initial_state_{};
 	
 	// RenderTaskGraphのCompileやそれらが利用するリソースプール管理.
 	ngl::rtg::RenderTaskGraphManager			rtg_manager_{};

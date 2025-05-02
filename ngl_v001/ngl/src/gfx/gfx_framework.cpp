@@ -5,8 +5,12 @@
 #include "rhi/d3d12/resource_view.d3d12.h"
 
 #include "gfx/command_helper.h"
-// gfx
+
+// gfx 共通リソース.
 #include "gfx/render/global_render_resource.h"
+
+// Imgui.
+#include "imgui/imgui_interface.h"
 
 namespace ngl
 {
@@ -83,7 +87,7 @@ namespace ngl
 				swapchain_rtvs_[i]->Initialize(&device_, swapchain_.Get(), i);
 			}
 		}
-
+		// GPU待機用Fence.
 		if (!gpu_wait_fence_.Initialize(&device_))
 		{
 			std::cout << "[ERROR] Initialize Fence" << std::endl;
@@ -96,13 +100,20 @@ namespace ngl
 		}
 
 		// デフォルトテクスチャ等の簡易アクセス用クラス初期化.
+		if (!ngl::gfx::GlobalRenderResource::Instance().Initialize(&device_))
 		{
-			if (!ngl::gfx::GlobalRenderResource::Instance().Initialize(&device_))
-			{
-				assert(false);
-				return false;
-			}
+			assert(false);
+			return false;
 		}
+	
+		// imgui.
+		if(!ngl::imgui::ImguiInterface::Instance().Initialize(&device_, swapchain_.Get()))
+		{
+			std::cout << "[ERROR] Initialize Imgui" << std::endl;
+			assert(false);
+			return false;
+		}
+	
 		return true;
 	}
 
@@ -116,13 +127,17 @@ namespace ngl
 
 		// 共有リソースシステム終了.
 		ngl::gfx::GlobalRenderResource::Instance().Finalize();
+		
+		// imgui.
+		ngl::imgui::ImguiInterface::Instance().Finalize();
 	}
 
 
 	// フレームの開始タイミングの処理を担当. MainThread.
 	void GraphicsFramework::BeginFrame()
 	{
-		// TODO.
+		// imgui.
+		ngl::imgui::ImguiInterface::Instance().BeginFrame();
 	}
 	// フレームのRenderThread同期タイミングで実行する処理を担当. RenderThread.
 	void GraphicsFramework::SyncRender()
@@ -135,6 +150,9 @@ namespace ngl
 
 		// RTGのフレーム開始処理.
 		rtg_manager_.BeginFrame();
+		
+		// IMGUIのEndFrame呼び出し.
+		ngl::imgui::ImguiInterface::Instance().EndFrame();
 	}
 	// RenderThreadでフレームのシステム及びApp処理を実行する.
 	//	ResourceSystem処理, App処理, GPU待機, Submit, Present, 次フレーム準備の一連の処理を実行.
