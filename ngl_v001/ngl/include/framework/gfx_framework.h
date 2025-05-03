@@ -16,15 +16,17 @@
 
 namespace ngl
 {
-namespace platform
-{
-	class CoreWindow;
+	namespace platform
+	{
+		class CoreWindow;
+	}
+	namespace rhi
+	{
+		class GraphicsCommandListDep;
+	}
 }
-namespace rhi
+namespace ngl::fwk
 {
-	class GraphicsCommandListDep;
-}
-
 // 単一のRtgBuilderによるCommand.
 struct RtgSubmitCommandSet
 {

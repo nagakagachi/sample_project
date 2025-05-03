@@ -222,7 +222,7 @@
     <ClInclude Include="external\tinyxml2\tinyxml2.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="include\gfx\gfx_framework.h">
+    <ClInclude Include="include\framework\gfx_framework.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="include\rhi\constant_buffer_pool.h">
@@ -386,7 +386,7 @@
     <ClCompile Include="src\thread\test_lockfree_stack.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="src\gfx\gfx_framework.cpp">
+    <ClCompile Include="src\framework\gfx_framework.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
   </ItemGroup>

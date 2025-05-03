@@ -29,7 +29,7 @@
 #include "rhi/d3d12/resource_view.d3d12.h"
 
 // GraphicsFramework.
-#include "gfx/gfx_framework.h"
+#include "framework/gfx_framework.h"
 
 // gfx
 #include "gfx/raytrace_scene.h"
@@ -99,7 +99,7 @@ private:
 	// AppのMainThread処理.
 	bool ExecuteApp();
 	// AppのRenderThread処理.
-	void RenderApp(ngl::RtgFrameRenderSubmitCommandBuffer& out_rtg_command_list_set);
+	void RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_command_list_set);
 private:
 	struct RenderParam
 	{
@@ -125,7 +125,7 @@ private:
 	ngl::platform::CoreWindow	window_;
 
 	// Graphicsフレームワーク.
-	ngl::GraphicsFramework		gfxfw_{};
+	ngl::fwk::GraphicsFramework		gfxfw_{};
 	std::vector<ngl::rhi::EResourceState>		swapchain_resource_state_;
 
 	ngl::rhi::RefTextureDep						tex_rw_;
@@ -435,7 +435,7 @@ void AppGame::LaunchRender()
 	SyncRenderParam();
 
 	// フレームワークのRenderThreadにAppの描画処理実行を依頼.
-	gfxfw_.BeginFrameRender([this](ngl::RtgFrameRenderSubmitCommandBuffer& app_rtg_command_list_set)
+	gfxfw_.BeginFrameRender([this](ngl::fwk::RtgFrameRenderSubmitCommandBuffer& app_rtg_command_list_set)
 	{
 		// アプリケーション側のRender処理.
 		RenderApp(app_rtg_command_list_set);
@@ -614,7 +614,7 @@ bool AppGame::ExecuteApp()
 }
 
 // アプリ側のRenderThread処理.
-void AppGame::RenderApp(ngl::RtgFrameRenderSubmitCommandBuffer& out_rtg_command_list_set)
+void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_command_list_set)
 {	
 	// フレームのSwapchainインデックス.
 	const auto swapchain_index = gfxfw_.swapchain_->GetCurrentBufferIndex();
@@ -666,7 +666,7 @@ void AppGame::RenderApp(ngl::RtgFrameRenderSubmitCommandBuffer& out_rtg_command_
 		}
 		
 		out_rtg_command_list_set.push_back({});
-		ngl::RtgSubmitCommandSet& rtg_result = out_rtg_command_list_set.back();
+		ngl::fwk::RtgSubmitCommandSet& rtg_result = out_rtg_command_list_set.back();
 		// Pathの実行 (RenderTaskGraphの構築と実行).
 		TestFrameRenderingPath(render_frame_desc, subview_render_frame_out, gfxfw_.rtg_manager_, rtg_result.graphics, rtg_result.compute);
 	}
@@ -722,7 +722,7 @@ void AppGame::RenderApp(ngl::RtgFrameRenderSubmitCommandBuffer& out_rtg_command_
 		swapchain_resource_state_[swapchain_index] = swapchain_final_state;// State変更.
 		
 		out_rtg_command_list_set.push_back({});
-		ngl::RtgSubmitCommandSet& rtg_result = out_rtg_command_list_set.back();
+		ngl::fwk::RtgSubmitCommandSet& rtg_result = out_rtg_command_list_set.back();
 		// Pathの実行 (RenderTaskGraphの構築と実行).
 		ngl::test::RenderFrameOut render_frame_out{};
 		TestFrameRenderingPath(render_frame_desc, render_frame_out, gfxfw_.rtg_manager_, rtg_result.graphics, rtg_result.compute);

@@ -1,5 +1,5 @@
 ﻿
-#include "gfx/gfx_framework.h"
+#include "framework/gfx_framework.h"
 
 #include "rhi/d3d12/command_list.d3d12.h"
 #include "rhi/d3d12/resource_view.d3d12.h"
@@ -14,7 +14,7 @@
 // Imgui.
 #include "imgui/imgui_interface.h"
 
-namespace ngl
+namespace ngl::fwk
 {
 
 	GraphicsFramework::GraphicsFramework()
