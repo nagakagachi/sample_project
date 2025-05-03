@@ -573,7 +573,7 @@ bool AppGame::ExecuteApp()
 			const float sin_curve = sinf((float)app_sec_ * 2.0f * ngl::math::k_pi_f * 0.1f * (move_range + 1.0f));
 
 			auto trans = e->transform_.GetColumn3();
-			trans.z += sin_curve * 0.075f;
+			trans.z += sin_curve * delta_sec * 3.0f;
 			e->transform_.SetColumn3(trans);
 		}
 	}
