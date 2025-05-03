@@ -440,7 +440,7 @@ void AppGame::LaunchRender()
 	});
 
 	// RenderThread強制待機デバッグ.
-	if(dbgw_enable_render_thread)
+	if(!dbgw_enable_render_thread)
 		gfxfw_.ForceWaitFrameRender();
 }
 
