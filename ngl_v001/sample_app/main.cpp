@@ -97,7 +97,7 @@ public:
 	
 private:
 	// RenderThreadメイン処理 (RenderThread側).
-	void RenderApp(std::vector<ngl::RtgGenerateCommandListSet>& out_rtg_command_list_set);
+	void RenderApp(ngl::RtgFrameRenderSubmitCommandBuffer& out_rtg_command_list_set);
 private:
 	struct RenderParam
 	{
@@ -432,8 +432,8 @@ void AppGame::LaunchRender()
 	// RenderParam同期.
 	SyncRenderParam();
 
-	// フレームワーのRenderThreadにAppの描画処理実行を依頼.
-	gfxfw_.BeginFrameRender([this](std::vector<ngl::RtgGenerateCommandListSet>& app_rtg_command_list_set)
+	// フレームワークのRenderThreadにAppの描画処理実行を依頼.
+	gfxfw_.BeginFrameRender([this](ngl::RtgFrameRenderSubmitCommandBuffer& app_rtg_command_list_set)
 	{
 		// アプリケーション側のRender処理.
 		RenderApp(app_rtg_command_list_set);
@@ -608,7 +608,7 @@ bool AppGame::Execute()
 }
 
 // アプリ側のRenderThread処理.
-void AppGame::RenderApp(std::vector<ngl::RtgGenerateCommandListSet>& out_rtg_command_list_set)
+void AppGame::RenderApp(ngl::RtgFrameRenderSubmitCommandBuffer& out_rtg_command_list_set)
 {	
 	// フレームのSwapchainインデックス.
 	const auto swapchain_index = gfxfw_.swapchain_->GetCurrentBufferIndex();
@@ -660,7 +660,7 @@ void AppGame::RenderApp(std::vector<ngl::RtgGenerateCommandListSet>& out_rtg_com
 		}
 		
 		out_rtg_command_list_set.push_back({});
-		ngl::RtgGenerateCommandListSet& rtg_result = out_rtg_command_list_set.back();
+		ngl::RtgSubmitCommandSet& rtg_result = out_rtg_command_list_set.back();
 		// Pathの実行 (RenderTaskGraphの構築と実行).
 		TestFrameRenderingPath(render_frame_desc, subview_render_frame_out, gfxfw_.rtg_manager_, rtg_result.graphics, rtg_result.compute);
 	}
@@ -716,7 +716,7 @@ void AppGame::RenderApp(std::vector<ngl::RtgGenerateCommandListSet>& out_rtg_com
 		swapchain_resource_state_[swapchain_index] = swapchain_final_state;// State変更.
 		
 		out_rtg_command_list_set.push_back({});
-		ngl::RtgGenerateCommandListSet& rtg_result = out_rtg_command_list_set.back();
+		ngl::RtgSubmitCommandSet& rtg_result = out_rtg_command_list_set.back();
 		// Pathの実行 (RenderTaskGraphの構築と実行).
 		ngl::test::RenderFrameOut render_frame_out{};
 		TestFrameRenderingPath(render_frame_desc, render_frame_out, gfxfw_.rtg_manager_, rtg_result.graphics, rtg_result.compute);

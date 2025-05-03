@@ -21,12 +21,15 @@ namespace rhi
 {
 	class GraphicsCommandListDep;
 }
-	
-struct RtgGenerateCommandListSet
+
+// 単一のRtgBuilderによるCommand.
+struct RtgSubmitCommandSet
 {
 	std::vector<ngl::rtg::RtgSubmitCommandSequenceElem> graphics{};
 	std::vector<ngl::rtg::RtgSubmitCommandSequenceElem> compute{};
 };
+// フレーム描画の多数のRtg描画によるCommandをリストする.
+using RtgFrameRenderSubmitCommandBuffer = std::vector<RtgSubmitCommandSet>;
 	
 // Graphicsフレームワーク.
 //	Deviceやグラフィックスに関わるフレーム処理などをまとめる.
@@ -44,7 +47,7 @@ public:
 	// フレームのRenderThread同期タイミングで実行する処理を担当. RenderThread.
 	void SyncRender();
 	// フレームのRender処理の先頭で実行し, また最初にSubmitされるCommandListへの積み込みが必要な処理を担当.
-	void BeginFrameRender(std::function< void(std::vector<RtgGenerateCommandListSet>& app_rtg_command_list_set) > app_render_func);
+	void BeginFrameRender(std::function< void(RtgFrameRenderSubmitCommandBuffer& app_rtg_command_list_set) > app_render_func);
 	// Render処理のThread処理を強制的に待機する.
 	void ForceWaitFrameRender();
 	

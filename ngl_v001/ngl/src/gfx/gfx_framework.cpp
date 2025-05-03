@@ -156,7 +156,7 @@ namespace ngl
 	}
 	// RenderThreadでフレームのシステム及びApp処理を実行する.
 	//	ResourceSystem処理, App処理, GPU待機, Submit, Present, 次フレーム準備の一連の処理を実行.
-	void GraphicsFramework::BeginFrameRender(std::function< void(std::vector<RtgGenerateCommandListSet>& app_rtg_command_list_set) > app_render_func)
+	void GraphicsFramework::BeginFrameRender(std::function< void(RtgFrameRenderSubmitCommandBuffer& app_rtg_command_list_set) > app_render_func)
 	{
 		// RenderThreadにシステム処理とAPp描画Lambdaを実行させる.
 		render_thread_.Begin([this, app_render_func]
@@ -172,7 +172,7 @@ namespace ngl
 
 			
 			// アプリケーション側のRender処理.
-			std::vector<RtgGenerateCommandListSet> app_rtg_command_list_set{};
+			RtgFrameRenderSubmitCommandBuffer app_rtg_command_list_set{};
 			app_render_func(app_rtg_command_list_set);
 			
 			// フレームワークのSubmit準備&前回GPUタスク完了待ち.
