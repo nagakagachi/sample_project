@@ -3,7 +3,6 @@
 #include <vector>
 #include <array>
 
-#include "platform/window.h"
 
 #include "thread/job_thread.h"
 
@@ -17,6 +16,10 @@
 
 namespace ngl
 {
+namespace platform
+{
+	class CoreWindow;
+}
 namespace rhi
 {
 	class GraphicsCommandListDep;
@@ -39,8 +42,14 @@ public:
 	GraphicsFramework();
 	~GraphicsFramework();
 
-	bool Initialize(ngl::platform::CoreWindow* p_window);
-	void Finalize();
+	bool Initialize(platform::CoreWindow* p_window);
+	// 終了処理前半. ThreadやGPUタスクの完了待ち.
+	void FinalizePrev();
+	// 終了処理後半. リソースの破棄.
+	void FinalizePost();
+
+	// フレームワークやCoreWindowの有効性チェック.
+	bool IsValid() const;
 	
 	// フレームの開始タイミングの処理を担当. MainThread.
 	void BeginFrame();
@@ -66,6 +75,8 @@ public:
 	ngl::rhi::EResourceState GetSwapchainBufferInitialState() const;
 
 public:
+	ngl::platform::CoreWindow*					p_window_{};
+		
 	ngl::rhi::DeviceDep							device_;
 	ngl::rhi::GraphicsCommandQueueDep			graphics_queue_;
 	ngl::rhi::ComputeCommandQueueDep			compute_queue_;

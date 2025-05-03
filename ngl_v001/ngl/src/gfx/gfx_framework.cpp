@@ -9,6 +9,8 @@
 // gfx 共通リソース.
 #include "gfx/render/global_render_resource.h"
 
+#include "platform/window.h"
+
 // Imgui.
 #include "imgui/imgui_interface.h"
 
@@ -27,8 +29,12 @@ namespace ngl
 		device_.Finalize();
 	}
 
-	bool GraphicsFramework::Initialize(ngl::platform::CoreWindow* p_window)
+	bool GraphicsFramework::Initialize(platform::CoreWindow* p_window)
 	{
+		assert(p_window && u8"無効Window");
+		
+		p_window_ = p_window;
+		
 		// Graphics Device.
 		{
 			ngl::rhi::DeviceDep::Desc device_desc{};
@@ -37,7 +43,7 @@ namespace ngl
 #endif
 			device_desc.frame_descriptor_size = 500000;
 			device_desc.persistent_descriptor_size = 500000;
-			if (!device_.Initialize(p_window, device_desc))
+			if (!device_.Initialize(p_window_, device_desc))
 			{
 				std::cout << "[ERROR] Initialize Device" << std::endl;
 				return false;
@@ -46,7 +52,7 @@ namespace ngl
 			// Raytracing Support Check.
 			if (!device_.IsSupportDxr())
 			{
-				MessageBoxA(p_window->Dep().GetWindowHandle(), "Raytracing is not supported on this device.", "Info", MB_OK);
+				MessageBoxA(p_window_->Dep().GetWindowHandle(), "Raytracing is not supported on this device.", "Info", MB_OK);
 			}
 
 			// GpuWorkId管理バッファサイズチェック.
@@ -117,19 +123,32 @@ namespace ngl
 		return true;
 	}
 
-	void GraphicsFramework::Finalize()
+	void GraphicsFramework::FinalizePrev()
 	{
 		// RenderThread待機.
 		render_thread_.Wait();
 		
 		// Submit済みのGPUタスク終了待ち.
 		WaitAllGpuTask();
+	}
 
+	void GraphicsFramework::FinalizePost()
+	{
 		// 共有リソースシステム終了.
 		ngl::gfx::GlobalRenderResource::Instance().Finalize();
 		
 		// imgui.
 		ngl::imgui::ImguiInterface::Instance().Finalize();
+
+		// リソースマネージャから全て破棄.
+		ngl::res::ResourceManager::Instance().ReleaseCacheAll();
+	}
+
+	// フレームワークやCoreWindowの有効性チェック.
+	bool GraphicsFramework::IsValid() const
+	{
+		assert(p_window_ && u8"無効Window");
+		return p_window_->IsValid();
 	}
 
 

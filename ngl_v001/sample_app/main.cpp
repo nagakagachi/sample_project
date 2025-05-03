@@ -96,7 +96,9 @@ public:
 	void LaunchRender();
 	
 private:
-	// RenderThreadメイン処理 (RenderThread側).
+	// AppのMainThread処理.
+	bool ExecuteApp();
+	// AppのRenderThread処理.
 	void RenderApp(ngl::RtgFrameRenderSubmitCommandBuffer& out_rtg_command_list_set);
 private:
 	struct RenderParam
@@ -168,8 +170,8 @@ AppGame::AppGame()
 }
 AppGame::~AppGame()
 {
-	// RenderFramework終了.
-	gfxfw_.Finalize();
+	// Graphicsフレームワークのジョブ系終了.
+	gfxfw_.FinalizePrev();
 
 	rt_scene_ = {};
 
@@ -178,9 +180,9 @@ AppGame::~AppGame()
 
 	// Material Shader Manager.
 	ngl::gfx::MaterialShaderManager::Instance().Finalize();
-	
-	// リソースマネージャから全て破棄.
-	ngl::res::ResourceManager::Instance().ReleaseCacheAll();
+
+	// Graphicsフレームワークのリソース系終了.
+	gfxfw_.FinalizePost();
 }
 
 bool AppGame::Initialize()
@@ -464,21 +466,33 @@ void AppGame::SyncRenderParam()
 bool AppGame::Execute()
 {
 	// ウィンドウが無効になったら終了
-	if (!window_.IsValid())
+	if (!gfxfw_.IsValid())
 	{
 		return false;
 	}
 	// Begin Frame.
 	BeginFrame();
 
-	
+	// App側MainThread処理.
+	if(!ExecuteApp())
 	{
-		frame_sec_ = ngl::time::Timer::Instance().GetElapsedSec("app_frame_sec");
-		app_sec_ += frame_sec_;
-
-		// 再スタート
-		ngl::time::Timer::Instance().StartTimer("app_frame_sec");
+		return false;
 	}
+	
+	// Sync MainThread-RenderThread.
+	SyncRender();
+	
+	// Launch Render Thread.
+	LaunchRender();
+	
+	return true;
+}
+// App側MainThread処理.
+bool AppGame::ExecuteApp()
+{
+	frame_sec_ = ngl::time::Timer::Instance().GetElapsedSec("app_frame_sec");
+	app_sec_ += frame_sec_;
+	ngl::time::Timer::Instance().StartTimer("app_frame_sec");
 	const float delta_sec = static_cast<float>(frame_sec_);
 
 	
@@ -596,14 +610,6 @@ bool AppGame::Execute()
 		std::this_thread::sleep_for(std::chrono::milliseconds(static_cast<int>(dbgw_perf_main_thread_sleep_millisec)));
 	}
 
-	// Render.
-	{
-		// Game Thread - Render Thread.
-		SyncRender();
-		// Render Thread.
-		LaunchRender();
-	}
-	
 	return true;
 }
 
