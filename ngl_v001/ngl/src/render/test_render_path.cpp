@@ -1,12 +1,21 @@
 ﻿
 #include "render/test_render_path.h"
 
-#include "render/test_pass.h"
 #include "imgui/imgui_interface.h"
 
 #include "gfx/render/global_render_resource.h"
 #include "gfx/material/material_shader_manager.h"
 #include "util/time/timer.h"
+
+// Pass.
+#include "render/task/pass_pre_z.h"
+#include "render/task/pass_gbuffer.h"
+#include "render/task/pass_cascade_shadow.h"
+#include "render/task/pass_linear_depth.h"
+#include "render/task/pass_directional_light_deferred.h"
+#include "render/task/pass_final_composite.h"
+#include "render/task/pass_async_compute_test.h"
+#include "render/task/pass_raytrace_test.h"
 
 namespace ngl::test
 {

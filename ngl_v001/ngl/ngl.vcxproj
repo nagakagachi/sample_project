@@ -144,7 +144,15 @@
     <ClInclude Include="include\memory\tlsf_memory_pool.h" />
     <ClInclude Include="include\platform\window.h" />
     <ClInclude Include="include\platform\win\window.win.h" />
-    <ClInclude Include="include\render\test_pass.h" />
+    <ClInclude Include="include\render\task\pass_async_compute_test.h" />
+    <ClInclude Include="include\render\task\pass_cascade_shadow.h" />
+    <ClInclude Include="include\render\task\pass_common.h" />
+    <ClInclude Include="include\render\task\pass_directional_light_deferred.h" />
+    <ClInclude Include="include\render\task\pass_final_composite.h" />
+    <ClInclude Include="include\render\task\pass_gbuffer.h" />
+    <ClInclude Include="include\render\task\pass_linear_depth.h" />
+    <ClInclude Include="include\render\task\pass_pre_z.h" />
+    <ClInclude Include="include\render\task\pass_raytrace_test.h" />
     <ClInclude Include="include\render\test_render_path.h" />
     <ClInclude Include="include\resource\resource.h" />
     <ClInclude Include="include\resource\resource_manager.h" />

@@ -8,7 +8,6 @@
 
 #include "gfx/common_struct.h"
 #include "gfx/material/material_shader_manager.h"
-#include "render/test_pass.h"
 
 namespace ngl
 {
