@@ -11,8 +11,6 @@ namespace ngl
 	// Render Task Graph 検証実装.
 	namespace rtg
 	{
-
-		
 		// オペレータ.
 		constexpr bool TaskStage::operator<(const TaskStage arg) const
 		{

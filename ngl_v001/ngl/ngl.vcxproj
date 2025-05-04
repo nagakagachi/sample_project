@@ -132,6 +132,7 @@
     <ClInclude Include="include\gfx\resource\resource_texture.h" />
     <ClInclude Include="include\gfx\rtg\graph_builder.h" />
     <ClInclude Include="include\gfx\rtg\rtg_command_list_pool.h" />
+    <ClInclude Include="include\gfx\rtg\rtg_common.h" />
     <ClInclude Include="include\gfx\texture_loader_directxtex.h" />
     <ClInclude Include="include\imgui\imgui_interface.h" />
     <ClInclude Include="include\math\detail\math_matrix.h" />
