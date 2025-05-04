@@ -219,6 +219,8 @@ namespace ngl::test
 						
 						// Directionalのライト方向テスト.
 						setup_desc.directional_light_dir = ngl::math::Vec3::Normalize(render_frame_desc.directional_light_dir);
+
+						setup_desc.dbg_per_cascade_multithread = render_frame_desc.debug_multithread_cascade_shadow;
 					}
 					task_d_shadow->Setup(rtg_builder, p_device, view_info, setup_desc);
 					// Renderをスキップテスト.
@@ -322,7 +324,7 @@ namespace ngl::test
 			// Rtgを実行し構成TaskのRender処理Lambdaを実行, CommandListを生成する.
 			//	Compileによってリソースプールのステートが更新され, その後にCompileされたGraphはそれを前提とするため, Graphは必ずExecuteする必要がある.
 			//	各TaskのRender処理Lambdaはそれぞれ別スレッドで並列実行される可能性がある.
-			thread::JobSystem* p_job_system = (render_frame_desc.debug_pass_render_parallel)? rtg_manager.GetJobSystem() : nullptr;
+			thread::JobSystem* p_job_system = (render_frame_desc.debug_multithread_render_pass)? rtg_manager.GetJobSystem() : nullptr;
 			time::Timer::Instance().StartTimer("rtg_builder_execute");
 			rtg_builder.Execute(out_graphics_cmd, out_compute_cmd, p_job_system);
 			out_frame_out.stat_rtg_execute_sec = static_cast<float>(time::Timer::Instance().GetElapsedSec("rtg_builder_execute"));

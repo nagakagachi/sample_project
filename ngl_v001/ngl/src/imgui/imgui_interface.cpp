@@ -224,9 +224,11 @@ namespace  ngl::imgui
                 
                 // Render処理のLambdaをRTGに登録.
                 builder.RegisterTaskNodeRenderFunction(this,
-                    [this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* commandlist)
+                    [this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
                     {
-                        NGL_RHI_GPU_SCOPED_EVENT_MARKER(commandlist, "ImGui");
+                        command_list_allocator.Alloc(1);
+                        auto* command_list = command_list_allocator.GetOrCreate(0);
+                        NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "ImGui");
                             
                         // スケジュール済みリソース(Swapchain)取得.
                         auto res_swapchain = builder.GetAllocatedResource(this, h_swapchain_);
@@ -237,20 +239,18 @@ namespace  ngl::imgui
                             // ImGui用のDescriptorHeap.
                             ID3D12DescriptorHeap* d3d_desc_heap = p_parent_->descriptor_heap_interface_.GetD3D12DescriptorHeap();
                             D3D12_CPU_DESCRIPTOR_HANDLE rtv_desc_handle_cpu =  res_swapchain.rtv_.Get()->GetD3D12DescriptorHandle();
-                            ID3D12GraphicsCommandList* d3d_command_list = commandlist->GetD3D12GraphicsCommandList();
+                            ID3D12GraphicsCommandList* d3d_command_list = command_list->GetD3D12GraphicsCommandList();
 
                             // RTV設定.
                             d3d_command_list->OMSetRenderTargets(1, &rtv_desc_handle_cpu, FALSE, nullptr);
                             d3d_command_list->SetDescriptorHeaps(1, &d3d_desc_heap);
 
                             // ------------------------------------------------------------------------------------------
-                            // Imguiレンダリング.
-                            //ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandlist->GetD3D12GraphicsCommandList());
                             // Snapshotを利用して安全にRenderThreadでImGui描画.
                             const auto snapshot_render_read_flip = (p_parent_->snapshot_flip_render_);
                             ImGui_ImplDX12_RenderDrawData(
                                 &(p_parent_->render_snapshot_[snapshot_render_read_flip]->data),
-                                commandlist->GetD3D12GraphicsCommandList());
+                                command_list->GetD3D12GraphicsCommandList());
                             // ------------------------------------------------------------------------------------------
                         #endif
                     });

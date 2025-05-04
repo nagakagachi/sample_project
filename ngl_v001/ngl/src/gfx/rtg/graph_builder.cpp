@@ -255,14 +255,14 @@ namespace ngl
 
 
 		// GraphicsTask用のRender処理登録. IGraphicsTaskNode派生Taskはこの関数で自身のRender処理を登録する.
-		void RenderTaskGraphBuilder::RegisterTaskNodeRenderFunction(const IGraphicsTaskNode* node, const std::function<void(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)>& render_function)
+		void RenderTaskGraphBuilder::RegisterTaskNodeRenderFunction(const IGraphicsTaskNode* node, const TaskNodeRenderFunctionType_Graphics& render_function)
 		{
 			// 念の為二重登録チェック.
 			assert(node_function_graphics_.end() == node_function_graphics_.find(node));
 			node_function_graphics_.insert(std::pair(node, render_function));
 		}
 		// AsyncComputeTask用のRender処理登録. IComputeTaskNode派生Taskはこの関数で自身の非同期Compute Render処理を登録する.
-		void RenderTaskGraphBuilder::RegisterTaskNodeRenderFunction(const IComputeTaskNode* node, const std::function<void(rtg::RenderTaskGraphBuilder& builder, rhi::ComputeCommandListDep* gfx_commandlist)>& render_function)
+		void RenderTaskGraphBuilder::RegisterTaskNodeRenderFunction(const IComputeTaskNode* node, const TaskNodeRenderFunctionType_Compute& render_function)
 		{
 			// 念の為二重登録チェック.
 			assert(node_function_compute_.end() == node_function_compute_.find(node));
@@ -1029,7 +1029,7 @@ namespace ngl
 			// Node毎に複数CommandList利用が可能なようにNode毎のCommandList配列. Node毎のMultiThread処理.
 			std::vector<std::vector<rhi::CommandListBaseDep*>> node_commandlists = {};
 			node_commandlists.resize(node_sequence_.size());
-			
+
 			// TaskのレンダリングタスクのJob実行リスト.
 			std::vector< std::function<void(void)> > render_jobs{}; 
 			for (const auto& e : node_sequence_)
@@ -1042,21 +1042,25 @@ namespace ngl
 					
 					// CommandList積み込みJob部分.
 					{
+						const auto num_pre_system_commandlist = node_commandlists[node_index].size();// Graphicsの場合は 0.
+						
 						// このNode用にCommandList確保. Graphics板を取得.
 						rhi::GraphicsCommandListDep* p_cmdlist = {};
 						p_compiled_manager_->GetNewFrameCommandList(p_cmdlist);
 						node_commandlists[node_index].push_back(p_cmdlist);// Node別CommandListArrayに登録.
-						
-						// CommandLList Begin. Endは別途実行.
-						p_cmdlist->Begin();
+						p_cmdlist->Begin();// CommandLList Begin. Endは別途実行.
+
+						// Task用の先頭CommandListに自動解決ステート遷移コマンド積み込み.
 						generate_barrier_command(e, p_cmdlist);
+						// Task用CommandList確保用のアロケータセットアップ. Task毎のCommandList配列を割り当てて必要であれば内部で追加する.
+						TaskGraphicsCommandListAllocator task_command_list_allocator(&node_commandlists[node_index], (int)num_pre_system_commandlist, p_compiled_manager_);
 						
-						auto render_func = [this, e, p_cmdlist]()
+						auto render_func = [this, e, task_command_list_allocator]()
 						{
 							// TaskNodeはそれぞれ自身のポインタをキーとして適切なシグネチャのLambdaを登録する.
 							if(auto render_func = node_function_graphics_.find(e); render_func != node_function_graphics_.end())
 							{
-								render_func->second(*this, p_cmdlist);// 登録されていれば実行.
+								render_func->second(*this, task_command_list_allocator);// 登録されていれば実行.
 							}
 						};
 						// JobリストにTaskのレンダリング処理を登録.
@@ -1067,34 +1071,37 @@ namespace ngl
 				{
 					// Compute.
 					
-					//	Compute側で必要なリソースバリアを発行するためのCommandList.
+					//	Compute側で必要なリソースバリアを発行するための先行GraphicsCommandListがある点がComputeの注意点.
 					if(check_exist_state_transition(e))
 					{
 						// 状態遷移コマンド発行用にGraphics板を取得.
 						rhi::GraphicsCommandListDep* p_cmdlist = {};
 						p_compiled_manager_->GetNewFrameCommandList(p_cmdlist);
 						node_commandlists[node_index].push_back(p_cmdlist);// Node別CommandListArrayに登録.
+						p_cmdlist->Begin();// CommandLList Begin. Endは別途実行.
 						
-						// CommandLList Begin. Endは別途実行.
-						p_cmdlist->Begin();
+						// Task用の先頭CommandListに自動解決ステート遷移コマンド積み込み.
 						generate_barrier_command(e, p_cmdlist);
 					}
 					
-					// ComputeTaskのCommandを発行する.
+					// ComputeTaskのComputeCommandを発行する.
 					{
+						const auto num_pre_system_commandlist = node_commandlists[node_index].size();// ステート遷移コマンド用のGraphicsCommandListが登録済みの場合は 1.
+						
 						rhi::ComputeCommandListDep* p_cmdlist = {};
 						p_compiled_manager_->GetNewFrameCommandList(p_cmdlist);
 						node_commandlists[node_index].push_back(p_cmdlist);// Node別CommandListArrayに登録.
+						p_cmdlist->Begin();// CommandLList Begin. Endは別途実行.
 						
-						// CommandLList Begin. Endは別途実行.
-						p_cmdlist->Begin();
+						// Task用CommandList確保用のアロケータセットアップ. Task毎のCommandList配列を割り当てて必要であれば内部で追加する.
+						TaskComputeCommandListAllocator task_command_list_allocator(&node_commandlists[node_index], (int)num_pre_system_commandlist, p_compiled_manager_);
 					
-						auto render_func = [this, e, p_cmdlist]()
+						auto render_func = [this, e, task_command_list_allocator]()
 						{
 							// TaskNodeはそれぞれ自身のポインタをキーとして適切なシグネチャのLambdaを登録する.
 							if(auto render_func = node_function_compute_.find(e); render_func != node_function_compute_.end())
 							{
-								render_func->second(*this, p_cmdlist);// 登録されていれば実行.
+								render_func->second(*this, task_command_list_allocator);// 登録されていれば実行.
 							}
 						};
 						// JobリストにTaskのレンダリング処理を登録.
@@ -1107,6 +1114,7 @@ namespace ngl
 				}
 			}
 
+			// Task群のジョブ実行.
 			if(p_job_system)
 			{
 				// Parallel.
@@ -1129,6 +1137,10 @@ namespace ngl
 			{
 				for(auto& list : per_node_list)
 				{
+					// バッファは確保されていても実際に要素生成されていない場合があるのでチェック.
+					if(!list)
+						continue;
+					
 					list->End();
 				}
 			}
@@ -1198,6 +1210,9 @@ namespace ngl
 					// CommandList部積み込み.
 					for(auto&& list : node_commandlists[i])
 					{
+						if(!list)
+							continue;
+						
 						RtgSubmitCommandSequenceElem command_elem = {};
 						command_elem.type = ERtgSubmitCommandType::CommandList;
 						command_elem.command_list = list;
@@ -1222,7 +1237,7 @@ namespace ngl
 									ngl::rhi::RhiRef<ngl::rhi::FenceDep> fence = new ngl::rhi::FenceDep();
 									fence->Initialize(p_compiled_manager_->p_device_);
 
-									const u64 state_transition_fenec_value = fence->GetHelperFenceValue() + 1;//一応現在の値+1で
+									const u64 state_transition_fenec_value = fence->GetHelperFenceValue() + 1;//現在の値+1
 									{
 										// GraphicsでPushしたState遷移をComputeで待たせるためのSignal.
 										RtgSubmitCommandSequenceElem signal_elem = {};

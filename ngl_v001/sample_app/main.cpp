@@ -49,8 +49,9 @@
 
 // ImGui.
 static bool dbgw_test_window_enable = true;
-static bool dbgw_enable_render_thread = true;
-static bool dbgw_enable_pass_render_parallel = true;
+static bool dbgw_render_thread = true;
+static bool dbgw_multithread_render_pass = true;
+static bool dbgw_multithread_cascade_shadow = true;
 static float dbgw_perf_main_thread_sleep_millisec = 0.0f;
 static bool dbgw_enable_feedback_blur_test = true;
 static bool dbgw_enable_sub_view_path = false;
@@ -121,6 +122,8 @@ private:
 private:
 	double						app_sec_ = 0.0f;
 	double						frame_sec_ = 0.0f;
+	
+	double						moving_avg_t50_frame_sec_ = 0.0f;
 
 	ngl::platform::CoreWindow	window_;
 
@@ -442,7 +445,7 @@ void AppGame::LaunchRender()
 	});
 
 	// RenderThread強制待機デバッグ.
-	if(!dbgw_enable_render_thread)
+	if(!dbgw_render_thread)
 		gfxfw_.ForceWaitFrameRender();
 }
 
@@ -490,9 +493,13 @@ bool AppGame::Execute()
 // App側MainThread処理.
 bool AppGame::ExecuteApp()
 {
-	frame_sec_ = ngl::time::Timer::Instance().GetElapsedSec("app_frame_sec");
-	app_sec_ += frame_sec_;
-	ngl::time::Timer::Instance().StartTimer("app_frame_sec");
+	{
+		frame_sec_ = ngl::time::Timer::Instance().GetElapsedSec("app_frame_sec");
+		ngl::time::Timer::Instance().StartTimer("app_frame_sec");// リスタート.
+		app_sec_ += frame_sec_;
+
+		moving_avg_t50_frame_sec_ = (0.5) * frame_sec_ + (1.0 - 0.5) * moving_avg_t50_frame_sec_;
+	}
 	const float delta_sec = static_cast<float>(frame_sec_);
 
 	
@@ -523,7 +530,8 @@ bool AppGame::ExecuteApp()
 		ImGui::SetNextItemOpen(true, ImGuiCond_Once);
 		if (ImGui::CollapsingHeader("Debug Perf"))
 		{
-			ImGui::Text("Delta: %f [ms]", delta_sec*1000.0f);
+			ImGui::Text("Delta:			%f [ms]", delta_sec*1000.0f);
+			ImGui::Text("Delta(avg0.5):	%f [ms]", moving_avg_t50_frame_sec_*1000.0f);
 			
 			ImGui::Text("Rtg Construct: %f [ms]", dbgw_stat_primary_rtg_construct*1000.0f);
 			ImGui::Text("Rtg Compile  : %f [ms]", dbgw_stat_primary_rtg_compile*1000.0f);
@@ -533,8 +541,9 @@ bool AppGame::ExecuteApp()
 			ImGui::SliderFloat("Main Thread Sleep", &dbgw_perf_main_thread_sleep_millisec, 0.0f, 100.0f);
 			
 			ImGui::Separator();
-			ImGui::Checkbox("Enable Render Thread", &dbgw_enable_render_thread);
-			ImGui::Checkbox("Enable Render Pass Parallel", &dbgw_enable_pass_render_parallel);
+			ImGui::Checkbox("Enable Render Thread", &dbgw_render_thread);
+			ImGui::Checkbox("Enable MultiThread RenderPass", &dbgw_multithread_render_pass);
+			ImGui::Checkbox("Enable MultiThread CascadeShadow", &dbgw_multithread_cascade_shadow);
 		}
 		
 		ImGui::SetNextItemOpen(true, ImGuiCond_Once);
@@ -660,7 +669,8 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
 			render_frame_desc.directional_light_dir = render_param_->dlight_dir;
 
 			{
-				render_frame_desc.debug_pass_render_parallel = dbgw_enable_pass_render_parallel;
+				render_frame_desc.debug_multithread_render_pass = dbgw_multithread_render_pass;
+				render_frame_desc.debug_multithread_cascade_shadow = dbgw_multithread_cascade_shadow;
 			}
 			// SubViewは最低限の設定.
 		}
@@ -707,7 +717,8 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
 			render_frame_desc.h_other_graph_out_tex = subview_render_frame_out.h_propagate_lit;
 
 			{
-				render_frame_desc.debug_pass_render_parallel = dbgw_enable_pass_render_parallel;
+				render_frame_desc.debug_multithread_render_pass = dbgw_multithread_render_pass;
+				render_frame_desc.debug_multithread_cascade_shadow = dbgw_multithread_cascade_shadow;
 				
 				render_frame_desc.debugview_halfdot_gray = dbgw_view_half_dot_gray;
 				render_frame_desc.debugview_enable_feedback_blur_test = dbgw_enable_feedback_blur_test;

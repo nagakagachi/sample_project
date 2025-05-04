@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <thread>
+
 #include "pass_common.h"
 
 #include "gfx/rtg/graph_builder.h"
@@ -73,6 +75,8 @@ namespace ngl::render::task
 			const std::vector<gfx::StaticMeshComponent*>* p_mesh_list{};
 
 			math::Vec3 directional_light_dir{};
+
+			bool		dbg_per_cascade_multithread = true;
 		};
 		SetupDesc desc_{};
 		bool is_render_skip_debug{};
@@ -243,31 +247,46 @@ namespace ngl::render::task
 			
 			// Render処理のLambdaをRTGに登録.
 			builder.RegisterTaskNodeRenderFunction(this,
-				[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
 				{
 					if(is_render_skip_debug)
 					{
 						return;
 					}
-					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "Shadow");
+
+					if(desc_.dbg_per_cascade_multithread)
+					{
+						// Cascade毎にマルチスレッド実行するためにCommandListを確保.
+						command_list_allocator.Alloc(csm_param_.k_cascade_count);
+					}
+					else
+					{
+						// シングルスレッド実行なので1つだけCommandList確保.
+						command_list_allocator.Alloc(1);
+					}
+					
+					// マルチスレッドで複数CommandListを使うためScopedMakerでは対応できない. 直接適切なCommandListにMarkerをPushする.
+					command_list_allocator.GetOrCreate_Front()->BeginMarker("Shadow");
 						
 					// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
 					auto res_shadow_depth_atlas = builder.GetAllocatedResource(this, h_shadow_depth_atlas_);
 					assert(res_shadow_depth_atlas.tex_.IsValid() && res_shadow_depth_atlas.dsv_.IsValid());
 
-						
 					// Atlas全域クリア.
-					gfx_commandlist->ClearDepthTarget(res_shadow_depth_atlas.dsv_.Get(), 0.0f, 0, true, true);// とりあえずクリアだけ.ReverseZなので0クリア.
-					// Set RenderTarget.
-					gfx_commandlist->SetRenderTargets(nullptr, 0, res_shadow_depth_atlas.dsv_.Get());
-						
-					// 描画するCascadeIndex.
-					for(int cascade_index = 0; cascade_index < csm_param_.k_cascade_count; ++cascade_index)
+					command_list_allocator.GetOrCreate_Front()->ClearDepthTarget(res_shadow_depth_atlas.dsv_.Get(), 0.0f, 0, true, true);// とりあえずクリアだけ.ReverseZなので0クリア.
+
+					// Cascade単位のレンダリング.
+					auto render_per_cascade = [this, res_shadow_depth_atlas](int cascade_index, rhi::GraphicsCommandListDep* command_list, const rtg::RtgAllocatedResourceInfo& shadow_atlas)
 					{
-						NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, text::FixedString<64>("Cascade_%d", cascade_index));
+						auto* thread_command_list = command_list;
+						
+						NGL_RHI_GPU_SCOPED_EVENT_MARKER(thread_command_list, text::FixedString<64>("Cascade_%d", cascade_index));
+
+						// D3D ValidationErrorになるため, CommandList毎に同じTarget設定コマンドを発行している.
+						thread_command_list->SetRenderTargets(nullptr, 0, shadow_atlas.dsv_.Get());
 							
 						// Cascade用の定数バッファを都度生成.
-						auto shadow_cb_h = gfx_commandlist->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(SceneDirectionalShadowRenderInfo));
+						auto shadow_cb_h = thread_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(SceneDirectionalShadowRenderInfo));
 						if (auto* mapped = shadow_cb_h->buffer_.MapAs<SceneDirectionalShadowRenderInfo>())
 						{
 							const auto csm_info_index = cascade_index;
@@ -285,7 +304,7 @@ namespace ngl::render::task
 						const auto cascade_tile_h = csm_param_.cascade_tile_size_y[cascade_index];
 						const auto cascade_tile_offset_x = csm_param_.cascade_tile_offset_x[cascade_index];
 						const auto cascade_tile_offset_y = csm_param_.cascade_tile_offset_y[cascade_index];
-						ngl::gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, cascade_tile_offset_x, cascade_tile_offset_y, cascade_tile_w, cascade_tile_h);
+						ngl::gfx::helper::SetFullscreenViewportAndScissor(thread_command_list, cascade_tile_offset_x, cascade_tile_offset_y, cascade_tile_w, cascade_tile_h);
 
 						// Mesh Rendering.
 						gfx::RenderMeshResource render_mesh_res = {};
@@ -293,8 +312,43 @@ namespace ngl::render::task
 							render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", &desc_.scene_cbv->cbv_};
 							render_mesh_res.cbv_d_shadowview = {"ngl_cb_shadowview", &shadow_cb_h->cbv_};
 						}
-						ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_d_shadow::k_name, *desc_.p_mesh_list, render_mesh_res);
+						ngl::gfx::RenderMeshWithMaterial(*thread_command_list, gfx::MaterialPassPsoCreator_d_shadow::k_name, *desc_.p_mesh_list, render_mesh_res);
+					};
+
+					if(desc_.dbg_per_cascade_multithread)
+					{
+						// Cascade毎にマルチスレッド実行.
+					
+						// シンプルにstd::thread使用. 理想的には起動済みのJobSystemスレッドを利用したい.
+						// 0番以外を別スレッド実行.
+						std::vector<std::thread*> thread_array;
+						for(int cascade_index = 1; cascade_index < csm_param_.k_cascade_count; ++cascade_index)
+						{
+							thread_array.push_back( new std::thread( render_per_cascade, cascade_index, command_list_allocator.GetOrCreate(cascade_index), res_shadow_depth_atlas));
+						}
+						// 0番はカレントスレッドで実行.
+						constexpr  int cascade_index0 = 0;
+						std::invoke(render_per_cascade, cascade_index0, command_list_allocator.GetOrCreate(cascade_index0), res_shadow_depth_atlas);
+					
+						// thread完了待ち.
+						for(auto&& t : thread_array)
+						{
+							t->join();
+						}
 					}
+					else
+					{
+						// シングルスレッド実行.
+						
+						for(int cascade_index = 0; cascade_index < csm_param_.k_cascade_count; ++cascade_index)
+						{
+							// 先頭CommandListにすべてのレンダリングを実行.
+							render_per_cascade(cascade_index, command_list_allocator.GetOrCreate_Front(), res_shadow_depth_atlas);
+						}
+					}
+
+					// 最終CommandListにMarker終了をPush.
+					command_list_allocator.GetOrCreate_Back()->EndMarker();
 				});
 		}
 	};

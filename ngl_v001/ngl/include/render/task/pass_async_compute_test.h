@@ -63,12 +63,14 @@ namespace ngl::render::task
 			
 			// Render処理のLambdaをRTGに登録.
 			builder.RegisterTaskNodeRenderFunction(this,
-				[this](rtg::RenderTaskGraphBuilder& builder, rhi::ComputeCommandListDep* commandlist)
+				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskComputeCommandListAllocator command_list_allocator)
 				{
 					if(is_render_skip_debug)
 					{
 						return;
 					}
+					command_list_allocator.Alloc(1);
+					auto commandlist = command_list_allocator.GetOrCreate(0);
 					NGL_RHI_GPU_SCOPED_EVENT_MARKER(commandlist, "ComputeTest");
 						
 					// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.

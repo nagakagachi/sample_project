@@ -47,7 +47,8 @@ namespace ngl::test
     	ngl::rtg::RtgResourceHandle	h_other_graph_out_tex = {};
 
 
-    	bool debug_pass_render_parallel = true;
+    	bool debug_multithread_render_pass = true;
+    	bool debug_multithread_cascade_shadow = true;
     	bool debugview_halfdot_gray = false;
     	bool debugview_enable_feedback_blur_test = false;
     	bool debugview_subview_result = false;

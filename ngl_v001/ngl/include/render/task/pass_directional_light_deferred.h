@@ -93,8 +93,6 @@ namespace ngl::render::task
 				}
 				auto res_shader_ps = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_TASK_SHADER_PATH("df_light_pass_ps.hlsl"), &loaddesc_ps);
 
-				const auto light_desc = builder.GetResourceHandleDesc(h_light_);
-
 				ngl::rhi::GraphicsPipelineStateDep::Desc desc = {};
 				{
 					desc.vs = &res_shader_vs->data_;
@@ -102,9 +100,6 @@ namespace ngl::render::task
 					{
 						desc.num_render_targets = 1;
 						desc.render_target_formats[0] = light_desc.desc.format;
-					}
-					{
-						//desc.depth_stencil_state.depth_enable;
 					}
 				}
 				pso_ = new rhi::GraphicsPipelineStateDep();
@@ -116,12 +111,14 @@ namespace ngl::render::task
 			
 			// Render処理のLambdaをRTGに登録.
 			builder.RegisterTaskNodeRenderFunction(this,
-				[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
 				{
 					if(is_render_skip_debug)
 					{
 						return;
 					}
+					command_list_allocator.Alloc(1);
+					auto gfx_commandlist = command_list_allocator.GetOrCreate(0);
 					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "Lighting");
 						
 					auto& global_res = gfx::GlobalRenderResource::Instance();

@@ -38,25 +38,27 @@ namespace ngl::render::task
 				
             // Render処理のLambdaをRtgに登録.
             builder.RegisterTaskNodeRenderFunction(this,
-                [this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+                [this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
                 {
                     if(is_render_skip_debug)
                     {
                         return;
                     }
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "DepthPass");
+                    command_list_allocator.Alloc(1);
+                    auto* commandlist = command_list_allocator.GetOrCreate(0);
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(commandlist, "DepthPass");
 						
                     auto res_depth = builder.GetAllocatedResource(this, h_depth_);
                     assert(res_depth.tex_.IsValid() && res_depth.dsv_.IsValid());
 
-                    gfx_commandlist->ClearDepthTarget(res_depth.dsv_.Get(), 0.0f, 0, true, true);// とりあえずクリアだけ.ReverseZなので0クリア.
-                    gfx_commandlist->SetRenderTargets(nullptr, 0, res_depth.dsv_.Get());
-                    ngl::gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_depth.tex_->GetWidth(), res_depth.tex_->GetHeight());
+                    commandlist->ClearDepthTarget(res_depth.dsv_.Get(), 0.0f, 0, true, true);// とりあえずクリアだけ.ReverseZなので0クリア.
+                    commandlist->SetRenderTargets(nullptr, 0, res_depth.dsv_.Get());
+                    ngl::gfx::helper::SetFullscreenViewportAndScissor(commandlist, res_depth.tex_->GetWidth(), res_depth.tex_->GetHeight());
                     gfx::RenderMeshResource render_mesh_res = {};
                     {
                         render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", &desc_.scene_cbv->cbv_};
                     }
-                    ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_depth::k_name, *desc_.p_mesh_list, render_mesh_res);
+                    ngl::gfx::RenderMeshWithMaterial(*commandlist, gfx::MaterialPassPsoCreator_depth::k_name, *desc_.p_mesh_list, render_mesh_res);
                 });
         }
     };

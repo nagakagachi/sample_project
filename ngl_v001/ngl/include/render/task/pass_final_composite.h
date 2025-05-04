@@ -134,12 +134,14 @@ namespace ngl::render::task
 			
 			// Render処理のLambdaをRTGに登録.
 			builder.RegisterTaskNodeRenderFunction(this,
-				[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
 				{
 					if(is_render_skip_debug)
 					{
 						return;
 					}
+					command_list_allocator.Alloc(1);
+					auto gfx_commandlist = command_list_allocator.GetOrCreate(0);
 					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "Final");
 						
 					auto& global_res = gfx::GlobalRenderResource::Instance();

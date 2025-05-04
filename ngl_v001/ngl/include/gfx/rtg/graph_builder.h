@@ -16,18 +16,21 @@
 
 			// 実際のレンダリング処理をLambda登録. RTGのCompile後ExecuteでTaskNode毎のLambdaが並列実行されCommandList生成される.
 			builder.RegisterTaskNodeRenderFunction(this,
-				[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator commandlist_allocator)
 				{
+					command_list_allocator.Alloc(1);
+					auto* commandlist = command_list_allocator.GetOrCreate(0);
+					
 					// ハンドルからリソース取得. 必要なBarrier/ステート遷移はRTGシステムが担当するため, 個々のTaskは必要な状態になっているリソースを使用できる.
 					auto res_depth = builder.GetAllocatedResource(this, h_depth_);
 					assert(res_depth.tex_.IsValid() && res_depth.dsv_.IsValid());
 
 					// 例:クリア
-					gfx_commandlist->ClearDepthTarget(res_depth.dsv_.Get(), 0.0f, 0, true, true);// とりあえずクリアだけ.ReverseZなので0クリア.
+					commandlist->ClearDepthTarget(res_depth.dsv_.Get(), 0.0f, 0, true, true);// とりあえずクリアだけ.ReverseZなので0クリア.
 
 					// 例:DepthRenderTagetとして設定してレンダリング.
-					gfx_commandlist->SetRenderTargets(nullptr, 0, res_depth.dsv_.Get());
-					ngl::gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_depth.tex_->GetWidth(), res_depth.tex_->GetHeight());
+					commandlist->SetRenderTargets(nullptr, 0, res_depth.dsv_.Get());
+					ngl::gfx::helper::SetFullscreenViewportAndScissor(commandlist, res_depth.tex_->GetWidth(), res_depth.tex_->GetHeight());
 					// TODO. 描画.
 					// ....
 				});
@@ -54,8 +57,11 @@
 
 			// 実際のレンダリング処理をLambda登録. RTGのCompile後ExecuteでTaskNode毎のLambdaが並列実行されCommandList生成される.
 			builder.RegisterTaskNodeRenderFunction(this,
-				[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator commandlist_allocator)
 				{
+					command_list_allocator.Alloc(1);
+					auto* commandlist = command_list_allocator.GetOrCreate(0);
+					
 					// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
 					auto res_depth = builder.GetAllocatedResource(this, h_depth_);
 					auto res_linear_depth = builder.GetAllocatedResource(this, h_linear_depth_);
@@ -118,6 +124,7 @@ namespace ngl
 	namespace rtg
 	{
 		class RenderTaskGraphBuilder;
+		class RenderTaskGraphManager;
 		using RtgNameType = text::HashText<64>;
 		
 		enum class ETASK_TYPE : int
@@ -265,7 +272,7 @@ namespace ngl
 
 		TaskNode派生クラスは自身のRender処理LambdaをBuilderに登録することでRTGから呼び出しをうける.
 			builder.RegisterTaskNodeRenderFunction(this,
-						[this](rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+						[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator commandlist_allocator)
 						{
 							Do Render
 						});
@@ -414,6 +421,36 @@ namespace ngl
 			u64							fence_value = 0;
 		};
 
+		// Taskが利用するCommandListを取得するためのインターフェイス.
+		//	COMMAND_LIST_TYPE = rhi::GraphicsCommandListDep or rhi::ComputeCommandListDep
+		template<typename COMMAND_LIST_TYPE>
+		class TaskCommandListAllocator
+		{
+		public:
+			// Taskが利用するCommandListを必要分確保する. 既定で 1 確保されている状態.
+			//	2以上でAllocした場合でも実際にGetOrCreateでアクセスするまでその要素は生成されない.
+			void Alloc(int num_command_list);
+			// Task用の確保されたindex番目のCommandListを取得, 未生成ならば生成して取得.
+			COMMAND_LIST_TYPE* GetOrCreate(int index);
+			// 先頭CommandList取得or生成取得.
+			COMMAND_LIST_TYPE* GetOrCreate_Front();
+			// 末尾CommandList取得or生成取得.
+			COMMAND_LIST_TYPE* GetOrCreate_Back();
+			// 確保されているCommandList数.
+			int NumAllocatedCommandList() const;
+			
+		public:
+			TaskCommandListAllocator(std::vector<rhi::CommandListBaseDep*>* task_command_list_buffer, int user_command_list_offset, RenderTaskGraphManager* manager);
+		private:
+			//	Task単位で確保するCommandListの登録先vector. 初期化時に自動解決ステート遷移コマンドを積み込んだCommandlistが一つ登録済みになる.
+			std::vector<rhi::CommandListBaseDep*>* command_list_array_{};
+			int user_command_list_array_offset_ = 0;
+			// 追加CommandList確保用にマネージャ参照.
+			RenderTaskGraphManager* manager_{};
+		};
+		using TaskGraphicsCommandListAllocator = TaskCommandListAllocator<rhi::GraphicsCommandListDep>;
+		using TaskComputeCommandListAllocator = TaskCommandListAllocator<rhi::ComputeCommandListDep>;
+		
 		// レンダリングパスのシーケンスとそれらのリソース依存関係解決.
 		//	このクラスのインスタンスは　TaskNodeのRecord, Compile, Execute の一連の処理の後に使い捨てとなる. これは使いまわしのための状態リセットの実装ミスを避けるため.
 		//  TaskNode内部の一時リソースやTaskNode間のリソースフローはHandleを介して記録し, Compileによって実際のリソース割当や状態遷移の解決をする.
@@ -422,9 +459,10 @@ namespace ngl
 		class RenderTaskGraphBuilder
 		{
 			friend class RenderTaskGraphManager;
-			
-			using TaskNodeRenderFunctionType_Graphics = const std::function<void(rtg::RenderTaskGraphBuilder& builder, rhi::GraphicsCommandListDep* gfx_commandlist)>;
-			using TaskNodeRenderFunctionType_Compute = const std::function<void(rtg::RenderTaskGraphBuilder& builder, rhi::ComputeCommandListDep* gfx_commandlist)>;
+			using TaskNodeRenderFunctionType_Graphics =
+				const std::function<void(rtg::RenderTaskGraphBuilder& builder, TaskGraphicsCommandListAllocator command_list_allocator)>;
+			using TaskNodeRenderFunctionType_Compute =
+				const std::function<void(rtg::RenderTaskGraphBuilder& builder, TaskComputeCommandListAllocator command_list_allocator)>;
 			
 		public:
 			RenderTaskGraphBuilder() = default;
@@ -450,8 +488,10 @@ namespace ngl
 			}
 
 			// GraphicsTask用のRender処理登録. IGraphicsTaskNode派生Taskはこの関数で自身のRender処理を登録する.
+			//	void(rtg::RenderTaskGraphBuilder& builder, TaskGraphicsCommandListAllocator command_list_allocator)>
 			void RegisterTaskNodeRenderFunction(const IGraphicsTaskNode* node, const TaskNodeRenderFunctionType_Graphics& render_function);
 			// AsyncComputeTask用のRender処理登録. IComputeTaskNode派生Taskはこの関数で自身のAsyncCompute Render処理を登録する.
+			//	void(rtg::RenderTaskGraphBuilder& builder, TaskComputeCommandListAllocator command_list_allocator)>
 			void RegisterTaskNodeRenderFunction(const IComputeTaskNode* node, const TaskNodeRenderFunctionType_Compute& render_function);
 
 		public:
@@ -459,6 +499,10 @@ namespace ngl
 			//	Graph内リソースを確保してハンドルを取得する.
 			RtgResourceHandle CreateResource(RtgResourceDesc2D res_desc);
 
+			// Nodeからのリソースアクセスを記録.
+			// NodeのRender実行順と一致する順序で登録をする必要がある. この順序によってリソースステート遷移の確定や実リソースの割当等をする.
+			RtgResourceHandle RecordResourceAccess(const ITaskNode& node, const RtgResourceHandle res_handle, const ACCESS_TYPE access_type);
+			
 			// 次のフレームへ寿命を延長する.
 			//	TAA等で前回フレームのリソースを利用したい場合に, この関数で寿命を次回フレームまで延長することで同じハンドルで同じリソースを利用できる.
 			RtgResourceHandle PropagateResourceToNextFrame(RtgResourceHandle handle);
@@ -481,11 +525,6 @@ namespace ngl
 			
 			// Handleのリソース定義情報を取得.
 			RtgResourceDesc2D GetResourceHandleDesc(RtgResourceHandle handle) const;
-
-			
-			// Nodeからのリソースアクセスを記録.
-			// NodeのRender実行順と一致する順序で登録をする必要がある. この順序によってリソースステート遷移の確定や実リソースの割当等をする.
-			RtgResourceHandle RecordResourceAccess(const ITaskNode& node, const RtgResourceHandle res_handle, const ACCESS_TYPE access_type);
 
 		public:
 			// Graph実行.
@@ -727,5 +766,59 @@ namespace ngl
 		};
 		
 		// ------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+		// ------------------------------------------------------------------------------------------------------------------------------------------------------
+		template<typename COMMAND_LIST_TYPE>
+		TaskCommandListAllocator<COMMAND_LIST_TYPE>::TaskCommandListAllocator(std::vector<rhi::CommandListBaseDep*>* task_command_list_buffer, int user_command_list_offset, RenderTaskGraphManager* manager)
+			: command_list_array_(task_command_list_buffer), user_command_list_array_offset_(user_command_list_offset), manager_(manager)
+		{
+			assert(task_command_list_buffer && manager && u8"初期化引数エラー");
+		}
+		template<typename COMMAND_LIST_TYPE>
+		void TaskCommandListAllocator<COMMAND_LIST_TYPE>::Alloc(int num_command_list)
+		{
+			const int require_command_list_count = (num_command_list + user_command_list_array_offset_);
+			if(require_command_list_count > command_list_array_->size())
+			{
+				command_list_array_->resize(require_command_list_count, nullptr);// 増加分はnullptr fill.
+			}
+		}
+		template<typename COMMAND_LIST_TYPE>
+		int TaskCommandListAllocator<COMMAND_LIST_TYPE>::NumAllocatedCommandList() const
+		{
+			return ((int)command_list_array_->size() - user_command_list_array_offset_);
+		}
+		template<typename COMMAND_LIST_TYPE>
+		COMMAND_LIST_TYPE* TaskCommandListAllocator<COMMAND_LIST_TYPE>::GetOrCreate(int index)
+		{
+			assert(NumAllocatedCommandList() > index && u8"範囲外アクセス");
+			
+			const int command_list_index = index + user_command_list_array_offset_;// オフセット分をスキップした位置にアクセス.
+			if(nullptr == command_list_array_->at(command_list_index))
+			{
+				// 指定の追加コマンドリストが未確保であればここで確保.
+				COMMAND_LIST_TYPE* new_command_list{};
+				manager_->GetNewFrameCommandList(new_command_list);
+				// 自動的にBeginする.
+				new_command_list->Begin();
+				// 登録.
+				command_list_array_->at(command_list_index) = new_command_list;
+			}
+			return (COMMAND_LIST_TYPE*)command_list_array_->at(command_list_index);
+		}
+		template<typename COMMAND_LIST_TYPE>
+		COMMAND_LIST_TYPE* TaskCommandListAllocator<COMMAND_LIST_TYPE>::GetOrCreate_Front()
+		{
+			return GetOrCreate(0);
+		}
+		template<typename COMMAND_LIST_TYPE>
+		COMMAND_LIST_TYPE* TaskCommandListAllocator<COMMAND_LIST_TYPE>::GetOrCreate_Back()
+		{
+			return GetOrCreate(NumAllocatedCommandList()-1);
+		}
+		// ------------------------------------------------------------------------------------------------------------------------------------------------------
+
+		
 	}
 }
