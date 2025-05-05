@@ -60,7 +60,7 @@ namespace ngl
 
 			// フレームでのDescriptor確保用インターフェイス初期化
 			FrameCommandListDynamicDescriptorAllocatorInterface::Desc fdi_desc = {};
-			fdi_desc.stack_size = 2048;// スタックサイズは適当.
+			fdi_desc.stack_size = 512;// スタックサイズは適当.
 			if (!frame_desc_interface_.Initialize(parent_device_->GeDynamicDescriptorManager(), fdi_desc))
 			{
 				std::cout << "[ERROR] Create FrameCommandListDynamicDescriptorAllocatorInterface" << std::endl;
@@ -91,9 +91,11 @@ namespace ngl
 			p_command_list_->Reset(p_command_allocator_.Get(), nullptr);
 			is_open_ = true;
 
+#if !NGL_RHI_COMMANDLIST_DESCRIPTOR_RESET_ON_END
 			// 新しいフレームのためのFrameDescriptorの準備.
 			// インデックスはDeviceから取得するグローバルなフレームインデックス.
 			frame_desc_interface_.ReadyToNewFrame((u32)parent_device_->GetDeviceFrameIndex());
+#endif
 		}
 		void CommandListBaseDep::End()
 		{
@@ -101,6 +103,14 @@ namespace ngl
 			assert(is_open_);
 			
 			p_command_list_->Close();
+
+#if NGL_RHI_COMMANDLIST_DESCRIPTOR_RESET_ON_END
+			// 新しいフレームのためのFrameDescriptorの準備.
+			// インデックスはDeviceから取得するグローバルなフレームインデックス.
+			// もともとBeginで実行していたものを, PoolされたCommandList等が確保したままPoolされてDynamicDescriptorを圧迫する問題の対策としてEndへ移動.
+			frame_desc_interface_.ReadyToNewFrame((u32)parent_device_->GetDeviceFrameIndex());
+#endif
+			
 			is_open_ = false;
 		}
 		void CommandListBaseDep::Dispatch(u32 x, u32 y, u32 z)

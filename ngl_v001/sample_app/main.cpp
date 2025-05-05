@@ -545,6 +545,14 @@ bool AppGame::ExecuteApp()
 			ImGui::Checkbox("Enable MultiThread RenderPass", &dbgw_multithread_render_pass);
 			ImGui::Checkbox("Enable MultiThread CascadeShadow", &dbgw_multithread_cascade_shadow);
 		}
+		if(ImGui::CollapsingHeader("RHI"))
+		{
+			const auto free_dynamic_descriptor_count = gfxfw_.device_.GeDynamicDescriptorManager()->GetFreeDescriptorCount();
+			const auto max_dynamic_descriptor_count = gfxfw_.device_.GeDynamicDescriptorManager()->GetMaxDescriptorCount();
+			// Dynamic Descriptorの残量.
+			ImGui::Text("DynamicDescriptor Free Count : %d / %d (%.2f)",
+				free_dynamic_descriptor_count, max_dynamic_descriptor_count, 100.0f * (float)free_dynamic_descriptor_count/(float)max_dynamic_descriptor_count);
+		}
 		
 		ImGui::SetNextItemOpen(true, ImGuiCond_Once);
 		if (ImGui::CollapsingHeader("Debug View"))

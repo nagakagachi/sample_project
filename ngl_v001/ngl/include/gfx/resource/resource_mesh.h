@@ -209,9 +209,6 @@ namespace ngl
 			}
 			~ResMeshData()
 			{
-#if defined(_DEBUG)
-				//std::cout << "[ResMeshData] Destruct " << this << std::endl;
-#endif
 			}
 
 

@@ -333,8 +333,10 @@ namespace ngl
 				RangeHandle Alloc(uint32_t size);
 				// 解放.
 				void Dealloc(const RangeHandle& handle);
-
+				// 確保総サイズ.
 				uint32_t MaxSize() const;
+				// free listの総サイズ計算.
+				uint32_t CalcTotalFreeSize() const;
 			private:
 				class RangeAllocatorImpl* impl_ = nullptr;
 			};
@@ -373,6 +375,11 @@ namespace ngl
 			void Deallocate(const DynamicDescriptorAllocHandle& handle);
 			// 遅延解放リクエスト. frame_indexは現在のDeviceのフレームインデックスを指定する.
 			void DeallocateDeferred(const DynamicDescriptorAllocHandle& handle, u32 frame_index);
+			// 確保している総サイズ.
+			uint32_t GetMaxDescriptorCount() const;
+			// フレーム毎の空きサイズ.
+			uint32_t GetFreeDescriptorCount() const;
+			
 			// ハンドルからDescriptor情報取得.
 			void GetDescriptor(const DynamicDescriptorAllocHandle& handle, D3D12_CPU_DESCRIPTOR_HANDLE& alloc_cpu_handle_head, D3D12_GPU_DESCRIPTOR_HANDLE& alloc_gpu_handle_head) const;
 
@@ -404,6 +411,8 @@ namespace ngl
 			D3D12_GPU_DESCRIPTOR_HANDLE			gpu_handle_start_ = {};
 
 			dynamic_descriptor_allocator::RangeAllocator	range_allocator_ = {};
+			// デバッグ用にフレームごとに総計した空きサイズ.
+			uint32_t										frame_total_free_size_ = {};
 
 			struct DeferredDeallocateInfo
 			{

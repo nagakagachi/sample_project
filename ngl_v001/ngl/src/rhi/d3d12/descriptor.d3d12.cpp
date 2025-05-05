@@ -89,6 +89,9 @@ namespace ngl
 				// 解放.
 				void Dealloc(const RangeHandle& handle);
 
+				// FreeListの合計サイズを計算.
+				int CalcTotalFreeSize() const;
+
 				struct FreeRangeNode
 				{
 					FreeRangeNode* prev = nullptr;
@@ -184,7 +187,7 @@ namespace ngl
 			RangeHandle RangeAllocatorImpl::Alloc(int size)
 			{
 				// 線形探索.
-				// TLSF的に対応しても良いかも.
+				//	要求サイズよりも大きいフリーリスト要素を探索.
 				auto* node = free_head_;
 				for (; node != nullptr && size > node->size; node = node->next)
 				{
@@ -193,9 +196,6 @@ namespace ngl
 				// 枯渇.
 				if (nullptr == node)
 				{
-					// TODO.
-					// ここで断片化が原因の可能性があるため矯正マージをして再検索も検討する.
-
 					return {};
 				}
 
@@ -243,12 +243,10 @@ namespace ngl
 				// 情報.
 				free_node->pos = handle.detail.head;
 				free_node->size = handle.detail.size;
-
-
+				
 				// 線形探索でposによる挿入位置決定.
 				auto* node = free_head_;
 				auto* prev = (nullptr != node) ? node->prev : nullptr;
-
 
 				// フリーリストへの挿入位置を線形探索.
 				for (; nullptr != node;)
@@ -316,7 +314,16 @@ namespace ngl
 						}
 					}
 				}
-
+			}
+			int RangeAllocatorImpl::CalcTotalFreeSize() const
+			{
+				int total_free_size = 0;
+				auto* node = free_head_;
+				for(;nullptr != node; node = node->next)
+				{
+					total_free_size += node->size;
+				}
+				return total_free_size;
 			}
 
 
@@ -355,6 +362,10 @@ namespace ngl
 			uint32_t RangeAllocator::MaxSize() const
 			{
 				return impl_->max_size_;
+			}
+			uint32_t RangeAllocator::CalcTotalFreeSize() const
+			{
+				return static_cast<uint32_t>(impl_->CalcTotalFreeSize());
 			}
 			// -----------------------------------------------------------------------
 			// -----------------------------------------------------------------------
@@ -682,8 +693,15 @@ namespace ngl
 
 				const auto elem_frame_index = deferred_deallocate_list_[i]->frame;
 				u32 frame_diff = (frame_index > elem_frame_index) ? frame_index - elem_frame_index : elem_frame_index - frame_index;
+#if NGL_RHI_COMMANDLIST_DESCRIPTOR_RESET_ON_END
+				// CommandListのDynamicDescriptor解放をEnd()で行う場合はここは2F待機.
+				constexpr u32 k_frame_descriptor_reset_frame = 2;
+#else
+				constexpr u32 k_frame_descriptor_reset_frame = 1;
+#endif
+				
 				// フレーム差分が十分以上なら破棄.
-				if (1 <= frame_diff)
+				if (k_frame_descriptor_reset_frame <= frame_diff)
 				{
 					// ロック中なので自身のDeallocateメソッドではなく, range_allocatorの関数を直接呼んでいる.
 					for (auto h : deferred_deallocate_list_[i]->handles)
@@ -698,6 +716,10 @@ namespace ngl
 					deferred_deallocate_list_[i]->frame = 0;// 念のため
 				}
 			}
+#if NGL_RHI_PROFILE_CODE
+			// デバッグ用に空き総サイズを計算.
+			frame_total_free_size_ = range_allocator_.CalcTotalFreeSize();
+#endif
 		}
 
 		DynamicDescriptorAllocHandle DynamicDescriptorManager::AllocateDescriptorArray(u32 count)
@@ -768,7 +790,14 @@ namespace ngl
 			assert(0 <= frame_list_index);
 			// 登録.
 			deferred_deallocate_list_[frame_list_index]->handles.push_back(handle);
-
+		}
+		uint32_t DynamicDescriptorManager::GetMaxDescriptorCount() const
+		{
+			return range_allocator_.MaxSize();
+		}
+		uint32_t DynamicDescriptorManager::GetFreeDescriptorCount() const
+		{
+			return frame_total_free_size_;
 		}
 		// ハンドルからDescriptor情報取得.
 		void DynamicDescriptorManager::GetDescriptor(const DynamicDescriptorAllocHandle& handle, D3D12_CPU_DESCRIPTOR_HANDLE& alloc_cpu_handle_head, D3D12_GPU_DESCRIPTOR_HANDLE& alloc_gpu_handle_head) const

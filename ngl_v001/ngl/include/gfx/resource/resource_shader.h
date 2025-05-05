@@ -43,9 +43,6 @@ namespace ngl
 			}
 			~ResShader()
 			{
-#if defined(_DEBUG)
-				//std::cout << "[ResShader] Destruct " << this << std::endl;
-#endif
 			}
 
 			void OnResourceRenderUpdate(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist) override

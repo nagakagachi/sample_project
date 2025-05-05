@@ -7,9 +7,15 @@
 #include "util/types.h"
 #include "text/hash_text.h"
 
+// 計測や統計などのコードを有効化するマクロ. Releaseでも計測したい場合があるため別途用意.
+#define NGL_RHI_PROFILE_CODE 1
 
 // DescriptorSetのCommandListへの設定時のコピーを削減する最適化用マクロ.
 #define NGL_DEBUG_DESCRIPTOR_SET_OPTIMIZATION 1
+
+// CommandList単位で確保したDescriptorStackの解放をBeginではなくEndで実行する.
+//	もともとBeginで実行していたが, PoolされているCommandListの場合に次のBeginまで確保され続けてしまうため, DynamicDescriptor圧迫を回避する目的でEndへ移動.
+#define NGL_RHI_COMMANDLIST_DESCRIPTOR_RESET_ON_END 1
 
 
 namespace ngl
