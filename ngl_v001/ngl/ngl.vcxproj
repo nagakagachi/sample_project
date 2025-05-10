@@ -135,6 +135,7 @@
     <ClInclude Include="include\gfx\rtg\rtg_common.h" />
     <ClInclude Include="include\gfx\texture_loader_directxtex.h" />
     <ClInclude Include="include\imgui\imgui_interface.h" />
+    <ClInclude Include="include\math\detail\math_curve.h" />
     <ClInclude Include="include\math\detail\math_matrix.h" />
     <ClInclude Include="include\math\detail\math_util.h" />
     <ClInclude Include="include\math\detail\math_vector.h" />

@@ -8,6 +8,7 @@
 #include "detail/math_vector.h"
 #include "detail/math_matrix.h"
 #include "detail/math_util.h"
+#include "detail/math_curve.h"
 
 namespace ngl
 {
