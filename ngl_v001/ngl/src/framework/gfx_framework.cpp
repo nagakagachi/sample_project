@@ -163,8 +163,13 @@ namespace ngl::fwk
 	// フレームのRenderThread同期タイミングで実行する処理を担当. RenderThread.
 	void GraphicsFramework::SyncRender()
 	{
-		// RenderThread完了待機.
-		render_thread_.Wait();
+		const std::chrono::system_clock::time_point begin_time_point_wait_render_thread = std::chrono::system_clock::now();
+		{
+			// RenderThread完了待機.
+			render_thread_.Wait();
+		}
+		const auto wait_render_thread_micro_sec = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now()-begin_time_point_wait_render_thread).count(); 
+		
 		
 		// Graphics Deviceのフレーム準備
 		device_.ReadyToNewFrame();
@@ -181,6 +186,7 @@ namespace ngl::fwk
 			Statistics frame_stat{};
 			{
 				frame_stat.device_frame_index = device_.GetDeviceFrameIndex();
+				frame_stat.wait_render_thread_micro_sec = wait_render_thread_micro_sec;
 			}
 			stat_history_.PushTail(frame_stat);
 
@@ -193,6 +199,7 @@ namespace ngl::fwk
 					// Device Frame Indexで一致する要素を更新.
 					if (stat->device_frame_index == stat_on_render_.device_frame_index)
 					{
+						stat->app_render_func_micro_sec = stat_on_render_.app_render_func_micro_sec;
 						stat->wait_gpu_fence_micro_sec = stat_on_render_.wait_gpu_fence_micro_sec;
 						stat->wait_present_micro_sec = stat_on_render_.wait_present_micro_sec;
 
@@ -228,7 +235,11 @@ namespace ngl::fwk
 			
 			// アプリケーション側のRender処理.
 			RtgFrameRenderSubmitCommandBuffer app_rtg_command_list_set{};
-			app_render_func(app_rtg_command_list_set);
+			const std::chrono::system_clock::time_point begin_time_point_app_render_func = std::chrono::system_clock::now();
+			{
+				app_render_func(app_rtg_command_list_set);
+			}
+			stat_on_render_.app_render_func_micro_sec = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now()-begin_time_point_app_render_func).count(); 
 			
 			// フレームワークのSubmit準備&前回GPUタスク完了待ち.
 			ReadyToSubmit();

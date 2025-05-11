@@ -533,16 +533,18 @@ bool AppGame::ExecuteApp()
 			ImGui::Text("Delta:			%f [ms]", delta_sec*1000.0f);
 			ImGui::Text("Delta(avg0.5):	%f [ms]", moving_avg_t50_frame_sec_*1000.0f);
 			
+			const auto prev_frame_gfx_stat = gfxfw_.GetStatistics(1);
+			ImGui::Text("App Render         : %f [ms]", static_cast<double>(prev_frame_gfx_stat.app_render_func_micro_sec)/(1000.0));
+			ImGui::Text("Wait RenderThread  : %f [ms]", static_cast<double>(prev_frame_gfx_stat.wait_render_thread_micro_sec)/(1000.0));
+			ImGui::Text("Wait Gpu           : %f [ms]", static_cast<double>(prev_frame_gfx_stat.wait_gpu_fence_micro_sec)/(1000.0));
+			ImGui::Text("Present Cpu Block  : %f [ms]", static_cast<double>(prev_frame_gfx_stat.wait_present_micro_sec)/(1000.0));
+			
 			ImGui::Text("Rtg Construct: %f [ms]", dbgw_stat_primary_rtg_construct*1000.0f);
 			ImGui::Text("Rtg Compile  : %f [ms]", dbgw_stat_primary_rtg_compile*1000.0f);
 			ImGui::Text("Rtg Execute  : %f [ms]", dbgw_stat_primary_rtg_execute*1000.0f);
 
-			const auto prev_frame_gfx_stat = gfxfw_.GetStatistics(1);
-			ImGui::Text("Gpu Fence    : %f [ms]", static_cast<double>(prev_frame_gfx_stat.wait_gpu_fence_micro_sec)/(1000.0));
-			ImGui::Text("Present      : %f [ms]", static_cast<double>(prev_frame_gfx_stat.wait_present_micro_sec)/(1000.0));
-
 			ImGui::Separator();
-			ImGui::SliderFloat("Main Thread Sleep", &dbgw_perf_main_thread_sleep_millisec, 0.0f, 100.0f);
+			ImGui::SliderFloat("Main Thread Sleep Test [ms]", &dbgw_perf_main_thread_sleep_millisec, 0.0f, 100.0f);
 			
 			ImGui::Separator();
 			ImGui::Checkbox("Enable Render Thread", &dbgw_render_thread);

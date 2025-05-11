@@ -70,6 +70,8 @@ public:
 	struct Statistics
 	{
 		u64 device_frame_index{};
+		u64 app_render_func_micro_sec{};
+		u64 wait_render_thread_micro_sec{};
 		u64 wait_gpu_fence_micro_sec{};
 		u64 wait_present_micro_sec{};
 
