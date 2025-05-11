@@ -345,14 +345,21 @@ namespace ngl
 			obj_desc.Stereo = false;
 			obj_desc.SampleDesc.Count = 1;
 			obj_desc.SampleDesc.Quality = 0;
+#if 0
 			obj_desc.BufferUsage = DXGI_USAGE_BACK_BUFFER;
+#else
+			// https://learn.microsoft.com/ja-jp/windows/win32/api/dxgi/ne-dxgi-dxgi_swap_effect
+			// https://learn.microsoft.com/ja-jp/windows/win32/direct3ddxgi/dxgi-usage
+			obj_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+#endif
 			obj_desc.BufferCount = device_desc.swapchain_buffer_count;
 
 			obj_desc.Scaling = DXGI_SCALING_STRETCH;
 			obj_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 			obj_desc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
 
-			obj_desc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+			//obj_desc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+			obj_desc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;// presentでのDXGI_PRESENT_ALLOW_TEARINGを許可.
 
 
 			// 一時オブジェクトでSwapchain生成

@@ -294,8 +294,13 @@ namespace ngl::fwk
 	void GraphicsFramework::Present()
 	{
 		const std::chrono::system_clock::time_point begin_time_point = std::chrono::system_clock::now();
-		
-		swapchain_->GetDxgiSwapChain()->Present(0, 0);
+
+#if 1
+		UINT presentFlags = DXGI_PRESENT_ALLOW_TEARING;
+#else
+		UINT presentFlags = 0;
+#endif
+		swapchain_->GetDxgiSwapChain()->Present(0, presentFlags);
 		
 		stat_on_render_.wait_present_micro_sec = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now()-begin_time_point).count(); 
 	}
