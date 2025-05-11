@@ -5,6 +5,7 @@
 
 
 #include "thread/job_thread.h"
+#include "util/ring_buffer.h"
 
 // rhi
 #include "rhi/d3d12/device.d3d12.h"
@@ -64,6 +65,18 @@ public:
 	
 	// Submit済みのGPUタスクのすべての完了を待機.
 	void WaitAllGpuTask();
+
+public:
+	struct Statistics
+	{
+		u64 device_frame_index{};
+		u64 wait_gpu_fence_micro_sec{};
+		u64 wait_present_micro_sec{};
+
+		bool collected_cpu_render_thread{};// cpu render thread の情報集計が完了したか.
+	};
+	int NumStatisticsHistoryCount() const;
+	Statistics GetStatistics(int history_index) const;
 	
 private:
 	// 内部用. フレームのCommandListのSubmit準備として, 以前のSubmitによるGPU処理完了を待機する. RenderThread.
@@ -113,6 +126,10 @@ private:
 	
 	// RenderThread.
 	ngl::thread::SingleJobThread				render_thread_;
+
+private:
+	StaticSizeRingBuffer<Statistics, 16>		stat_history_{};
+	Statistics									stat_on_render_{};
 };
 
 }

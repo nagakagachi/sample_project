@@ -280,7 +280,7 @@ bool AppGame::Initialize()
 		const char* mesh_file_stanford_bunny = "../ngl/data/model/stanford_bunny/bunny.obj";
 		const char* mesh_file_spider = "../ngl/data/model/assimp/FBX/spider.fbx";
 		const float spider_base_scale = 0.0001f;
-		
+
 		// シーンモデル.
 #if 1
 		// Sponza.
@@ -536,6 +536,10 @@ bool AppGame::ExecuteApp()
 			ImGui::Text("Rtg Construct: %f [ms]", dbgw_stat_primary_rtg_construct*1000.0f);
 			ImGui::Text("Rtg Compile  : %f [ms]", dbgw_stat_primary_rtg_compile*1000.0f);
 			ImGui::Text("Rtg Execute  : %f [ms]", dbgw_stat_primary_rtg_execute*1000.0f);
+
+			const auto prev_frame_gfx_stat = gfxfw_.GetStatistics(1);
+			ImGui::Text("Gpu Fence    : %f [ms]", static_cast<double>(prev_frame_gfx_stat.wait_gpu_fence_micro_sec)/(1000.0));
+			ImGui::Text("Present      : %f [ms]", static_cast<double>(prev_frame_gfx_stat.wait_present_micro_sec)/(1000.0));
 
 			ImGui::Separator();
 			ImGui::SliderFloat("Main Thread Sleep", &dbgw_perf_main_thread_sleep_millisec, 0.0f, 100.0f);

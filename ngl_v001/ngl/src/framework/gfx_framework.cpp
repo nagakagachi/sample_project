@@ -1,6 +1,8 @@
 ﻿
 #include "framework/gfx_framework.h"
 
+#include <chrono>
+
 #include "rhi/d3d12/command_list.d3d12.h"
 #include "rhi/d3d12/resource_view.d3d12.h"
 
@@ -172,6 +174,35 @@ namespace ngl::fwk
 		
 		// IMGUIのEndFrame呼び出し.
 		ngl::imgui::ImguiInterface::Instance().EndFrame();
+
+		// Stat.
+		{
+			// 新規History追加.
+			Statistics frame_stat{};
+			{
+				frame_stat.device_frame_index = device_.GetDeviceFrameIndex();
+			}
+			stat_history_.PushTail(frame_stat);
+
+			// 前回フレームの情報で更新.
+			{
+				for (int history_index = 0; history_index < stat_history_.Size(); ++history_index)
+				{
+					auto* stat = stat_history_.Get(history_index);
+					assert(stat);
+					// Device Frame Indexで一致する要素を更新.
+					if (stat->device_frame_index == stat_on_render_.device_frame_index)
+					{
+						stat->wait_gpu_fence_micro_sec = stat_on_render_.wait_gpu_fence_micro_sec;
+						stat->wait_present_micro_sec = stat_on_render_.wait_present_micro_sec;
+
+						// Render Threadの情報格納完了したことを保存.
+						stat->collected_cpu_render_thread = true;
+						break;
+					}
+				}
+			}
+		}
 	}
 	// RenderThreadでフレームのシステム及びApp処理を実行する.
 	//	ResourceSystem処理, App処理, GPU待機, Submit, Present, 次フレーム準備の一連の処理を実行.
@@ -180,6 +211,11 @@ namespace ngl::fwk
 		// RenderThreadにシステム処理とAPp描画Lambdaを実行させる.
 		render_thread_.Begin([this, app_render_func]
 		{
+			{
+				stat_on_render_={};
+				stat_on_render_.device_frame_index = device_.GetDeviceFrameIndex();
+			}
+			
 			// システム用のフレーム先頭実行コマンドリストをRtgから準備.
 			p_system_frame_begin_command_list_ = {};
 			rtg_manager_.GetNewFrameCommandList(p_system_frame_begin_command_list_);
@@ -223,10 +259,13 @@ namespace ngl::fwk
 		// GPU側にN個のキューを想定している場合は今回使用するキューのタスク完了を待つ(現状は1つ).
 		if (inflight_gpu_work_id_enable_[inflight_gpu_work_flip_])
 		{
+			const std::chrono::system_clock::time_point begin_time_point = std::chrono::system_clock::now();
+			
 			// 今回のGPUタスク待機バッファの完了を待機.
 			gpu_wait_signal_.Wait(&gpu_wait_fence_, inflight_gpu_work_id_[inflight_gpu_work_flip_]);
-
 			inflight_gpu_work_id_enable_[inflight_gpu_work_flip_] = false;
+			
+			stat_on_render_.wait_gpu_fence_micro_sec = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now()-begin_time_point).count(); 
 		}
 		// ------------------------------------------------------------------------------------------
 
@@ -243,7 +282,11 @@ namespace ngl::fwk
 	// フレームのSwapchainのPresent. RenderThread.
 	void GraphicsFramework::Present()
 	{
+		const std::chrono::system_clock::time_point begin_time_point = std::chrono::system_clock::now();
+		
 		swapchain_->GetDxgiSwapChain()->Present(0, 0);
+		
+		stat_on_render_.wait_present_micro_sec = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now()-begin_time_point).count(); 
 	}
 	// フレームのRender処理完了. RenderThread.
 	void GraphicsFramework::EndFrameRender()
@@ -279,5 +322,23 @@ namespace ngl::fwk
 		return swapchain_buffer_initial_state_;
 	}
 	;
+	
+	int GraphicsFramework::NumStatisticsHistoryCount() const
+	{
+		return stat_history_.Size();
+	}
+	GraphicsFramework::Statistics GraphicsFramework::GetStatistics(int history_index) const
+	{
+		if (stat_history_.Size() <= history_index)
+		{
+			GraphicsFramework::Statistics dummy{};
+			dummy.device_frame_index = device_.GetDeviceFrameIndex();
+			return dummy;
+		}
+			
+		// 過去に向かうインデックス.
+		const int ring_buffer_index = (stat_history_.Size() - 1) - history_index;
+		return *stat_history_.Get(ring_buffer_index);
+	}
 
 }

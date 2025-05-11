@@ -2,6 +2,8 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$/.." vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ngl/external/DirectXTex" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/ngl/external/assimp" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ngl/external/imgui" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/ngl/external/tinyxml2" vcs="Git" />
   </component>

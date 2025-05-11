@@ -179,6 +179,7 @@
     <ClInclude Include="include\util\bit_operation.h" />
     <ClInclude Include="include\util\instance_handle.h" />
     <ClInclude Include="include\util\noncopyable.h" />
+    <ClInclude Include="include\util\ring_buffer.h" />
     <ClInclude Include="include\util\shared_count.h" />
     <ClInclude Include="include\util\shared_ptr.h" />
     <ClInclude Include="include\util\singleton.h" />
