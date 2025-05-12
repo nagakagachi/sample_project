@@ -14,6 +14,9 @@
 #include "render/task/pass_linear_depth.h"
 #include "render/task/pass_directional_light_deferred.h"
 #include "render/task/pass_final_composite.h"
+
+#include "render/task/pass_skybox.h"
+
 #include "render/task/pass_async_compute_test.h"
 #include "render/task/pass_raytrace_test.h"
 
@@ -207,6 +210,23 @@ namespace ngl::test
 					// Renderをスキップテスト.
 					task_gbuffer->is_render_skip_debug = k_force_skip_all_pass_render;
 				}
+				
+				// ----------------------------------------
+				// Skybox Pass.
+				auto* task_skybox = rtg_builder.AppendTaskNode<ngl::render::task::PassSkybox>();
+				{
+					ngl::render::task::PassSkybox::SetupDesc setup_desc{};
+					{
+						setup_desc.w = screen_w;
+						setup_desc.h = screen_h;
+						
+						setup_desc.scene_cbv = scene_cb_h;
+						setup_desc.res_skybox_panorama_texture = p_scene->res_skybox_panorama_texture_;
+					}
+					
+					task_skybox->Setup(rtg_builder, p_device, view_info, setup_desc, task_depth->h_depth_, {});
+				}
+				
 					
 				// ----------------------------------------
 				// DirectionalShadow Pass.
@@ -242,6 +262,7 @@ namespace ngl::test
 						setup_desc.enable_feedback_blur_test = render_frame_desc.debugview_enable_feedback_blur_test;
 					}
 					task_light->Setup(rtg_builder, p_device, view_info,
+					task_skybox->h_light_,
 						task_gbuffer->h_gb0_, task_gbuffer->h_gb1_, task_gbuffer->h_gb2_, task_gbuffer->h_gb3_,
 						task_gbuffer->h_velocity_, task_linear_depth->h_linear_depth_, render_frame_desc.h_prev_lit,
 						task_d_shadow->h_shadow_depth_atlas_,
@@ -296,6 +317,9 @@ namespace ngl::test
 							render_frame_desc.h_other_graph_out_tex, h_rt_result,
 							debug_gbuffer0, debug_gbuffer1, debug_gbuffer2, debug_gbuffer3,
 							debug_dshadow,
+
+							render_frame_desc.ref_test_tex_srv,
+
 							setup_desc);
 						// Renderをスキップテスト.
 						task_final->is_render_skip_debug = k_force_skip_all_pass_render;

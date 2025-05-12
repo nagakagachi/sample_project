@@ -38,6 +38,7 @@ namespace ngl::render::task
 		
 		// リソースとアクセスを定義するプリプロセス.
 		void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
+			rtg::RtgResourceHandle h_light,
 			rtg::RtgResourceHandle h_gb0, rtg::RtgResourceHandle h_gb1, rtg::RtgResourceHandle h_gb2, rtg::RtgResourceHandle h_gb3, rtg::RtgResourceHandle h_velocity,
 			rtg::RtgResourceHandle h_linear_depth, rtg::RtgResourceHandle h_prev_light,
 			rtg::RtgResourceHandle h_shadowmap,
@@ -45,7 +46,6 @@ namespace ngl::render::task
 			const SetupDesc& desc)
 		{
 			// Rtgリソースセットアップ.
-			rtg::RtgResourceDesc2D light_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
 			{
 				desc_ = desc;
 				
@@ -68,8 +68,13 @@ namespace ngl::render::task
 					// Asyncの結果を読み取りだけレコードしてFenceさせる.
 					builder.RecordResourceAccess(*this, h_async_compute_result, rtg::access_type::SHADER_READ);
 				}
-			
-				h_light_ = builder.RecordResourceAccess(*this, builder.CreateResource(light_desc), rtg::access_type::RENDER_TARGET);// このTaskで新規生成したRenderTargetを出力先とする.
+
+				if (h_light.IsInvalid())
+				{
+					rtg::RtgResourceDesc2D light_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
+					h_light = builder.CreateResource(light_desc);
+				}
+				h_light_ = builder.RecordResourceAccess(*this, h_light, rtg::access_type::RENDER_TARGET);// このTaskで新規生成したRenderTargetを出力先とする.
 			}
 			
 			{
@@ -83,7 +88,7 @@ namespace ngl::render::task
 					loaddesc_vs.stage = ngl::rhi::EShaderStage::Vertex;
 					loaddesc_vs.shader_model_version = task::k_shader_model;
 				}
-				auto res_shader_vs = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_TASK_SHADER_PATH("screen/fullscr_procedural_vs.hlsl"), &loaddesc_vs);
+				auto res_shader_vs = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_TASK_SHADER_PATH("screen/fullscr_procedural_z1_vs.hlsl"), &loaddesc_vs);
 
 				ngl::gfx::ResShader::LoadDesc loaddesc_ps = {};
 				{
@@ -99,7 +104,7 @@ namespace ngl::render::task
 					desc.ps = &res_shader_ps->data_;
 					{
 						desc.num_render_targets = 1;
-						desc.render_target_formats[0] = light_desc.desc.format;
+						desc.render_target_formats[0] = builder.GetResourceHandleDesc(h_light_).desc.format;//light_desc.desc.format;
 					}
 				}
 				pso_ = new rhi::GraphicsPipelineStateDep();

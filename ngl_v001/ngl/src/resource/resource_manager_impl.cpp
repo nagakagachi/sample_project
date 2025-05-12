@@ -116,19 +116,36 @@ namespace res
 			DirectX::TexMetadata meta_data;
 
 			bool is_dds = true;
+			bool is_hdr = false;
 			{
+				using ExtNameStr = ngl::text::HashText<16>;
+				constexpr ExtNameStr dds_ext = ".dds";
+				constexpr ExtNameStr hdr_ext = ".hdr";
+
+
 				const auto* file_name = p_res->GetFileName();
-				const auto file_name_lenght = strlen(file_name);
-				if(4 < file_name_lenght)
-				{
-					is_dds = (0==strncmp((file_name + file_name_lenght-4), ".dds", 4));
-				}
+				const auto file_name_length = strlen(file_name);
+
+
+				constexpr auto CheckExt = [](const ExtNameStr& ext, const char* file_name, int file_name_length)
+					{
+						return ext.Length() < file_name_length && 0 == strncmp((file_name + file_name_length - ext.Length()), ext.Get(), ext.Length());
+					};
+
+				is_dds = CheckExt(dds_ext, file_name, file_name_length);
+				is_hdr = CheckExt(hdr_ext, file_name, file_name_length);
 			}
 
 			if(is_dds)
 			{
 				// DDS ロード.
 				if(!directxtex::LoadImageData_DDS(image_data, meta_data, p_device, p_res->GetFileName()))
+					return false;
+			}
+			else if (is_hdr)
+			{
+				// HDR ロード.
+				if (!directxtex::LoadImageData_HDR(image_data, meta_data, p_device, p_res->GetFileName()))
 					return false;
 			}
 			else

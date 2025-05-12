@@ -13,6 +13,7 @@ namespace directxtex
 	
 	bool LoadImageData_DDS(DirectX::ScratchImage& image_data, DirectX::TexMetadata& meta_data, rhi::DeviceDep* p_device, const char* filename);
 	bool LoadImageData_WIC(DirectX::ScratchImage& image_data, DirectX::TexMetadata& meta_data, rhi::DeviceDep* p_device, const char* filename);
+	bool LoadImageData_HDR(DirectX::ScratchImage& image_data, DirectX::TexMetadata& meta_data, rhi::DeviceDep* p_device, const char* filename);
 	
 }
 }

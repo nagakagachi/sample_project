@@ -43,7 +43,8 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	if(1e7 <= ld)
 	{
 		// 天球扱い.
-		return float4(0.0, 0.0, 0.5, 0.0);
+		//return float4(0.0, 0.0, 0.5, 0.0);
+		discard;
 	}
 	float depth_visualize = pow(saturate(ld / 200.0), 1.0/0.8);
 	

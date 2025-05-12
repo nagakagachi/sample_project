@@ -89,6 +89,10 @@ namespace ngl::rtg
 			v.desc.format = format;
 			return v;
 		}
+		void SetupAsAbsoluteSize(int w, int h, rhi::EResourceFormat format)
+		{
+			*this = CreateAsAbsoluteSize(w, h, format);
+		}
 
 		// 具体的なサイズ(Width, Height)を計算して返す.
 		void GetConcreteTextureSize(int work_width, int work_height, int& out_width, int& out_height) const

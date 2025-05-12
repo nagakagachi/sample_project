@@ -51,6 +51,9 @@ namespace ngl::render::task
 			rtg::RtgResourceHandle h_other_rtg_out, rtg::RtgResourceHandle h_rt_result,
 			rtg::RtgResourceHandle h_gbuffer0, rtg::RtgResourceHandle h_gbuffer1, rtg::RtgResourceHandle h_gbuffer2, rtg::RtgResourceHandle h_gbuffer3,
 			rtg::RtgResourceHandle h_dshadow,
+
+			ngl::rhi::RefSrvDep ref_test_tex,
+
 			const SetupDesc& desc)
 		{
 			desc_ = desc;
@@ -104,7 +107,7 @@ namespace ngl::render::task
 					loaddesc_vs.stage = ngl::rhi::EShaderStage::Vertex;
 					loaddesc_vs.shader_model_version = task::k_shader_model;
 				}
-				auto res_shader_vs = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_TASK_SHADER_PATH("screen/fullscr_procedural_vs.hlsl"), &loaddesc_vs);
+				auto res_shader_vs = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_TASK_SHADER_PATH("screen/fullscr_procedural_z1_vs.hlsl"), &loaddesc_vs);
 
 				ngl::gfx::ResShader::LoadDesc loaddesc_ps = {};
 				{
@@ -134,7 +137,7 @@ namespace ngl::render::task
 			
 			// Render処理のLambdaをRTGに登録.
 			builder.RegisterTaskNodeRenderFunction(this,
-				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
+				[this, ref_test_tex](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
 				{
 					if(is_render_skip_debug)
 					{
@@ -228,7 +231,14 @@ namespace ngl::render::task
 					pso_->SetView(&desc_set, "cb_final_screen_pass", &cbh->cbv_);
 					pso_->SetView(&desc_set, "tex_light", res_light.srv_.Get());
 					pso_->SetView(&desc_set, "tex_rt", ref_rt_result.Get());
+
+#if 1
+					// 別Viewの結果を貼り付け.
 					pso_->SetView(&desc_set, "tex_res_data", ref_other_rtg_out.Get());
+#else
+					// テクスチャリソースを貼り付け.
+					pso_->SetView(&desc_set, "tex_res_data", ref_test_tex.Get());
+#endif
 
 					pso_->SetView(&desc_set, "tex_gbuffer0", ref_gbuffer0.Get());
 					pso_->SetView(&desc_set, "tex_gbuffer1", ref_gbuffer1.Get());

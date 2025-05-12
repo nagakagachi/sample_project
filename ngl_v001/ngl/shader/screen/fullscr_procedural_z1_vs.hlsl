@@ -1,7 +1,11 @@
 
+#define NGL_SHADER_FULLSCR_PROCEDURAL_TRIANGLE_Z 1.0
+#include "../include/fullscr_procedural_triangle.hlsli"
+
+/*
 #if 0
 
-頂点入力無しでフルスクリーン描画Triangleを出力するVS.
+頂点入力無しで深度値1のフルスクリーン描画Triangleを出力するVS.
 
 
 PrimitiveTopology::TriangleList
@@ -51,3 +55,4 @@ VS_OUTPUT main_vs(uint sv_vtx_id : SV_VertexID)
 
 	return output;
 }
+*/

@@ -133,6 +133,7 @@
     <ClInclude Include="include\gfx\rtg\graph_builder.h" />
     <ClInclude Include="include\gfx\rtg\rtg_command_list_pool.h" />
     <ClInclude Include="include\gfx\rtg\rtg_common.h" />
+    <ClInclude Include="include\gfx\scene\skybox.h" />
     <ClInclude Include="include\gfx\texture_loader_directxtex.h" />
     <ClInclude Include="include\imgui\imgui_interface.h" />
     <ClInclude Include="include\math\detail\math_curve.h" />
@@ -155,6 +156,7 @@
     <ClInclude Include="include\render\task\pass_linear_depth.h" />
     <ClInclude Include="include\render\task\pass_pre_z.h" />
     <ClInclude Include="include\render\task\pass_raytrace_test.h" />
+    <ClInclude Include="include\render\task\pass_skybox.h" />
     <ClInclude Include="include\render\test_render_path.h" />
     <ClInclude Include="include\resource\resource.h" />
     <ClInclude Include="include\resource\resource_manager.h" />

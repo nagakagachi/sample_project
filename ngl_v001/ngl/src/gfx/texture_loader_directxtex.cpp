@@ -67,6 +67,25 @@ namespace directxtex
         
         return true;
     }
-    
+    bool LoadImageData_HDR(DirectX::ScratchImage& image_data, DirectX::TexMetadata& meta_data, rhi::DeviceDep* p_device, const char* filename)
+    {
+        constexpr int k_temporal_name_buffer_len = 256;
+        wchar_t temporal_name_buffer[k_temporal_name_buffer_len];
+
+        const auto filename_len = strlen(filename);
+        assert(filename_len < k_temporal_name_buffer_len);
+        mbs_to_wcs(temporal_name_buffer, k_temporal_name_buffer_len, filename);
+        
+        DirectX::WIC_FLAGS flags = DirectX::WIC_FLAGS_NONE;
+        image_data = {};
+        meta_data = {};
+        if( FAILED(DirectX::LoadFromHDRFile(temporal_name_buffer, &meta_data, image_data)))
+        {
+            assert(false);
+            return false;
+        }
+        
+        return true;
+    }
 }
 }

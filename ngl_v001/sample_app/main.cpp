@@ -35,6 +35,8 @@
 #include "gfx/raytrace_scene.h"
 #include "gfx/mesh_component.h"
 
+#include "gfx/scene/skybox.h"
+
 // マテリアルシェーダ関連.
 #include "gfx/material/material_shader_generator.h"
 #include "gfx/material/material_shader_manager.h"
@@ -45,8 +47,6 @@
 
 // imguiのシステム処理Wrapper.
 #include "imgui/imgui_interface.h"
-
-
 // ImGui.
 static bool dbgw_test_window_enable = true;
 static bool dbgw_render_thread = true;
@@ -131,12 +131,11 @@ private:
 	ngl::fwk::GraphicsFramework		gfxfw_{};
 	std::vector<ngl::rhi::EResourceState>		swapchain_resource_state_;
 
-	ngl::rhi::RefTextureDep						tex_rw_;
-	ngl::rhi::RefSrvDep							tex_rw_srv_;
-	ngl::rhi::RefUavDep							tex_rw_uav_;
-	
-	// Loaded Texture.
-	ngl::res::ResourceHandle<ngl::gfx::ResTexture> res_texture_{};
+	ngl::math::Vec3		camera_pos_ = {0.0f, 2.0f, -1.0f};
+	ngl::math::Mat33	camera_pose_ = ngl::math::Mat33::Identity();
+	float				camera_fov_y = ngl::math::Deg2Rad(60.0f);// not half fov.
+	PlayerController	player_controller{};
+
 
 	// Meshオブジェクト管理.
 	std::vector<std::shared_ptr<ngl::gfx::StaticMeshComponent>>	mesh_comp_array_;
@@ -145,12 +144,15 @@ private:
 	// RaytraceScene.
 	ngl::gfx::RtSceneManager					rt_scene_;
 
-	
-	ngl::math::Vec3		camera_pos_ = {0.0f, 2.0f, -1.0f};
-	ngl::math::Mat33	camera_pose_ = ngl::math::Mat33::Identity();
-	float				camera_fov_y = ngl::math::Deg2Rad(60.0f);// not half fov.
-	PlayerController	player_controller{};
+	ngl::gfx::scene::SkyBox						skybox_;
 
+	
+	ngl::rhi::RefTextureDep						tex_rw_;
+	ngl::rhi::RefSrvDep							tex_rw_srv_;
+	ngl::rhi::RefUavDep							tex_rw_uav_;
+	
+	// Loaded Texture.
+	ngl::res::ResourceHandle<ngl::gfx::ResTexture> res_texture_{};
 };
 
 
@@ -176,6 +178,12 @@ AppGame::~AppGame()
 	// Graphicsフレームワークのジョブ系終了.
 	gfxfw_.FinalizePrev();
 
+	// RenderParam内の各種参照をクリア.
+	{
+		PushRenderParam({});
+		SyncRenderParam();
+	}
+	skybox_ = {};
 	rt_scene_ = {};
 
 	// リソース参照クリア.
@@ -412,7 +420,15 @@ bool AppGame::Initialize()
 	ngl::gfx::ResTexture::LoadDesc tex_load_desc{};
 	//const char test_load_texture_file_name[] = "../ngl/data/model/sponza_gltf/glTF/6772804448157695701.jpg";
 	const char test_load_texture_file_name[] = "../ngl/data/texture/sample_dds/test-dxt1.dds";
+	//const char test_load_texture_file_name[] = "../ngl/data/texture/vgl/pisa/pisa.hdr";
 	res_texture_ = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResTexture>(&device, test_load_texture_file_name, &tex_load_desc);
+
+
+	if (!skybox_.InitializeAsPanorama(&device, "../ngl/data/texture/vgl/pisa/pisa.hdr"))
+	{
+		std::cout << "[ERROR] Initialize SkyBox" << std::endl;
+	}
+
 	
 	ngl::time::Timer::Instance().StartTimer("app_frame_sec");
 	return true;
@@ -612,6 +628,8 @@ bool AppGame::ExecuteApp()
 			// 登録.
 			frame_scene.mesh_instance_array_.push_back(e.get());
 		}
+
+		frame_scene.res_skybox_panorama_texture_ = skybox_.GetTexture();
 	}
 
 	// RenderParamのセットアップ.

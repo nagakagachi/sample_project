@@ -60,6 +60,8 @@ namespace gfx
 		~SceneRepresentation() {}
 
 		std::vector<gfx::StaticMeshComponent*> mesh_instance_array_ = {};
+
+		res::ResourceHandle<gfx::ResTexture>	res_skybox_panorama_texture_ = {};
 	};
 
 }
