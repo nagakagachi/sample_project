@@ -1,6 +1,8 @@
 #ifndef NGL_SHADER_MATH_UTIL_H
 #define NGL_SHADER_MATH_UTIL_H
 
+#define NGL_PI 3.141592653589793
+
 float Matrix2x2_Determinant(float2x2 m)
 {
     return m._m00 * m._m11 - m._m01 * m._m10;
@@ -107,5 +109,11 @@ float3 CalcViewSpaceRay(float2 screen_uv, float4x4 proj_mtx)
     return ray_dir_view;
 }
 
+// ワールド空間レイ方向からパノラマイメージUVへのマッピング.
+float2 CalcPanoramaTexcoordFromWorldSpaceRay(float3 ray_dir)
+{
+    const float2 panorama_uv = float2(1.0 + atan2(-ray_dir.x, -ray_dir.z) / (2.0*NGL_PI), acos(ray_dir.y) / NGL_PI);
+    return panorama_uv;
+}
 
 #endif

@@ -543,6 +543,11 @@ bool AppGame::ExecuteApp()
 		ImGui::TextColored(ImColor(1.0f, 0.9f, 0.9f), "     (Unreal Engine Like)");
 		ImGui::TextColored(ImColor(1.0f, 0.2f, 0.2f), " ");
 		
+		if (ImGui::CollapsingHeader("View Info"))
+		{
+			ImGui::Text("Camera Dir:			%.3f, %.3f, %.3f", camera_pose_.GetColumn2().x, camera_pose_.GetColumn2().y, camera_pose_.GetColumn2().z);
+		}
+		
 		ImGui::SetNextItemOpen(true, ImGuiCond_Once);
 		if (ImGui::CollapsingHeader("Debug Perf"))
 		{
