@@ -68,12 +68,16 @@ namespace ngl::gfx::scene
             }
 
             // Cubemap生成のRenderCommand登録.
-            ngl::fwk::PushCommonRenderCommand([this](ngl::fwk::ComonRenderCommandArg arg)
+            const rhi::EResourceState cubemap_init_state = rhi::EResourceState::Common;
+            ngl::fwk::PushCommonRenderCommand([this, cubemap_init_state](ngl::fwk::ComonRenderCommandArg arg)
             {
                 auto* command_list = arg.command_list;
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "Generate_Sky_Cubemap_From_Panorama")
                 auto& global_res = gfx::GlobalRenderResource::Instance();
 
+                // UAVステートへ.
+                command_list->ResourceBarrier(this->GetCubemap().Get(), cubemap_init_state, rhi::EResourceState::UnorderedAccess);
+                
                 rhi::DescriptorSetDep descset{};
                 pso_->SetView(&descset, "tex_panorama", res_sky_texture_->ref_view_.Get());
                 pso_->SetView(&descset, "samp", global_res.default_resource_.sampler_linear_clamp.Get());
@@ -83,13 +87,20 @@ namespace ngl::gfx::scene
                 command_list->SetDescriptorSet(pso_.Get(), &descset);
                 constexpr u32 k_cubemap_plane_count = 6;
                 pso_->DispatchHelper(command_list, generated_cubemap_->GetWidth(), generated_cubemap_->GetHeight(), k_cubemap_plane_count);
+
+                // UAVからSrvステートへ.
+                command_list->ResourceBarrier(this->GetCubemap().Get(), rhi::EResourceState::UnorderedAccess, rhi::EResourceState::ShaderRead);
             });
             
             return res_sky_texture_.IsValid();
         }
 
         
-        rhi::RefSrvDep GetCubemap() const
+        rhi::RefTextureDep GetCubemap() const
+        {
+            return generated_cubemap_;
+        }
+        rhi::RefSrvDep GetCubemapSrv() const
         {
             return generated_cubemap_srv_;
         }

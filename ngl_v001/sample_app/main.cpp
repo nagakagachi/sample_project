@@ -633,7 +633,7 @@ bool AppGame::ExecuteApp()
 			frame_scene.mesh_instance_array_.push_back(e.get());
 		}
 
-		frame_scene.skybox_cubemap_srv_ = skybox_.GetCubemap();
+		frame_scene.skybox_cubemap_srv_ = skybox_.GetCubemapSrv();
 		frame_scene.res_skybox_panorama_texture_ = skybox_.GetPanoramaTexture();
 	}
 
