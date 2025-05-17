@@ -1645,7 +1645,7 @@ namespace ngl
 					assert(false);
 				}
 				ray_result_uav_.Reset(new rhi::UnorderedAccessViewDep());
-				if (!ray_result_uav_->Initialize(p_device, ray_result_.Get(), 0, 0, 1))
+				if (!ray_result_uav_->InitializeRwTexture(p_device, ray_result_.Get(), 0, 0, 1))
 				{
 					assert(false);
 				}

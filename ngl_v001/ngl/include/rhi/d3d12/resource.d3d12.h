@@ -147,6 +147,40 @@ namespace ngl
 					// クリア値. 生成時指定による高速クリア. ReverseZの場合は 1.0 .
 					std::array<float, 4> clear_value = {0.0f, 0.0f , 0.0f , 0.0f };
 				} rendertarget = {};
+
+			public:
+				static void InitializeBase(Desc& out_desc, rhi::ETextureType dimension_type, rhi::EResourceFormat format, bool rtv, bool uav)
+				{
+					out_desc.type = dimension_type;
+					out_desc.format = format;
+
+					out_desc.bind_flag = rhi::ResourceBindFlag::ShaderResource;
+					if (rtv)
+						out_desc.bind_flag |= rhi::ResourceBindFlag::RenderTarget;
+					if (uav)
+						out_desc.bind_flag |= rhi::ResourceBindFlag::UnorderedAccess;
+				}
+				
+				static void InitializeAsTexture2D(Desc& out_desc, rhi::EResourceFormat format, u32 w, u32 h, bool rtv, bool uav)
+				{
+					InitializeBase(out_desc, rhi::ETextureType::Texture2D, format, rtv, uav);
+					
+					out_desc.width = w;
+					out_desc.height = h;
+					out_desc.depth = 1;
+					out_desc.array_size = 1;
+					out_desc.mip_count = 1;
+				}
+				static void InitializeAsCubemap(Desc& out_desc, rhi::EResourceFormat format, u32 w, u32 h, bool rtv, bool uav)
+				{
+					InitializeBase(out_desc, rhi::ETextureType::TextureCube, format, rtv, uav);
+					
+					out_desc.width = w;
+					out_desc.height = h;
+					out_desc.depth = 1;
+					out_desc.array_size = 1;
+					out_desc.mip_count = 1;
+				}
 			};
 
 			TextureDep();

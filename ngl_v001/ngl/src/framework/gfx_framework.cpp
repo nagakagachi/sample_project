@@ -8,10 +8,14 @@
 
 #include "gfx/command_helper.h"
 
+// RenderCommand.
+#include "framework/gfx_render_command_manager.h"
+
 // gfx 共通リソース.
 #include "gfx/render/global_render_resource.h"
 
 #include "platform/window.h"
+
 
 // Imgui.
 #include "imgui/imgui_interface.h"
@@ -228,10 +232,13 @@ namespace ngl::fwk
 			rtg_manager_.GetNewFrameCommandList(p_system_frame_begin_command_list_);
 			p_system_frame_begin_command_list_->Begin();// begin.
 
-			// ResourceManagerのRenderThread処理.
-			// TextureLinearBufferや MeshBufferのUploadなど.
-			ngl::res::ResourceManager::Instance().UpdateResourceOnRender(&device_, p_system_frame_begin_command_list_);
+			{
+				// ResourceManagerのRenderThread処理. TextureLinearBufferや MeshBufferのUploadなど.
+				ngl::res::ResourceManager::Instance().UpdateResourceOnRender(&device_, p_system_frame_begin_command_list_);
 
+				// PushCommonRenderCommandで積み込まれた描画スレッドコマンドを実行.
+				GfxRenderCommandManager::Instance().Execute(p_system_frame_begin_command_list_);
+			}
 			
 			// アプリケーション側のRender処理.
 			RtgFrameRenderSubmitCommandBuffer app_rtg_command_list_set{};
@@ -245,9 +252,9 @@ namespace ngl::fwk
 			ReadyToSubmit();
 			
 			// アプリケーションのSubmit.
-			for(auto& e : app_rtg_command_list_set)
+			for(auto& command_set : app_rtg_command_list_set)
 			{
-				ngl::rtg::RenderTaskGraphBuilder::SubmitCommand(graphics_queue_, compute_queue_, e.graphics, e.compute);
+				ngl::rtg::RenderTaskGraphBuilder::SubmitCommand(graphics_queue_, compute_queue_, &command_set);
 			}
 			
 			// フレームワークのPresent.

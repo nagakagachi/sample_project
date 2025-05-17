@@ -69,19 +69,37 @@ namespace ngl::gfx
 
         // Sampler.
         {
-            // Linear.
-            ngl::rhi::SamplerDep::Desc samp_desc = {};
-            samp_desc.Filter = ngl::rhi::ETextureFilterMode::Min_Linear_Mag_Linear_Mip_Linear;
-            samp_desc.AddressU = ngl::rhi::ETextureAddressMode::Repeat;
-            samp_desc.AddressV = ngl::rhi::ETextureAddressMode::Repeat;
-            samp_desc.AddressW = ngl::rhi::ETextureAddressMode::Repeat;
-            
-            default_resource_.sampler_linear_wrap = new rhi::SamplerDep();
-            if (!default_resource_.sampler_linear_wrap->Initialize(p_device_, samp_desc))
+            // Linear Wrap.
             {
-                std::cout << "[ERROR] Create rhi::SamplerDep" << std::endl;
-                assert(false);
-                return false;
+                ngl::rhi::SamplerDep::Desc samp_desc = {};
+                samp_desc.Filter = ngl::rhi::ETextureFilterMode::Min_Linear_Mag_Linear_Mip_Linear;
+                samp_desc.AddressU = ngl::rhi::ETextureAddressMode::Repeat;
+                samp_desc.AddressV = ngl::rhi::ETextureAddressMode::Repeat;
+                samp_desc.AddressW = ngl::rhi::ETextureAddressMode::Repeat;
+            
+                default_resource_.sampler_linear_wrap = new rhi::SamplerDep();
+                if (!default_resource_.sampler_linear_wrap->Initialize(p_device_, samp_desc))
+                {
+                    std::cout << "[ERROR] Create rhi::SamplerDep" << std::endl;
+                    assert(false);
+                    return false;
+                }
+            }
+            // Linear Clamp.
+            {
+                ngl::rhi::SamplerDep::Desc samp_desc = {};
+                samp_desc.Filter = ngl::rhi::ETextureFilterMode::Min_Linear_Mag_Linear_Mip_Linear;
+                samp_desc.AddressU = ngl::rhi::ETextureAddressMode::Clamp;
+                samp_desc.AddressV = ngl::rhi::ETextureAddressMode::Clamp;
+                samp_desc.AddressW = ngl::rhi::ETextureAddressMode::Clamp;
+            
+                default_resource_.sampler_linear_clamp = new rhi::SamplerDep();
+                if (!default_resource_.sampler_linear_clamp->Initialize(p_device_, samp_desc))
+                {
+                    std::cout << "[ERROR] Create rhi::SamplerDep" << std::endl;
+                    assert(false);
+                    return false;
+                }
             }
         }
         

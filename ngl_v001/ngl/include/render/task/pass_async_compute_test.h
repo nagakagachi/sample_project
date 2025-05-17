@@ -53,7 +53,7 @@ namespace ngl::render::task
 						cs_load_desc.shader_model_version = task::k_shader_model;
 						cs_load_desc.entry_point_name = "main_cs";
 						auto cs_load_handle = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
-							p_device, NGL_RENDER_TASK_SHADER_PATH("test/async_task_test_cs.hlsl"), &cs_load_desc
+							p_device, NGL_RENDER_SHADER_PATH("test/async_task_test_cs.hlsl"), &cs_load_desc
 						);
 						cpso_desc.cs = &cs_load_handle->data_;
 					}

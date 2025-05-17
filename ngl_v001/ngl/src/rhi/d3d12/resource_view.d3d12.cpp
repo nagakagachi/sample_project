@@ -265,6 +265,8 @@ namespace ngl
 				case EResourceDimension::Texture2D: return D3D12_UAV_DIMENSION_TEXTURE2D;
 				case EResourceDimension::Texture2DArray: return D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
 				case EResourceDimension::Texture3D: return D3D12_UAV_DIMENSION_TEXTURE3D;
+				case EResourceDimension::TextureCube: return D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
+				case EResourceDimension::TextureCubeArray: return D3D12_UAV_DIMENSION_TEXTURE2DARRAY;
 				default:
 					assert(false);
 					return D3D12_UAV_DIMENSION_UNKNOWN;
@@ -730,7 +732,7 @@ namespace ngl
 			return true;
 		}
 		// TextureのView.
-		bool UnorderedAccessViewDep::Initialize(DeviceDep* p_device, const TextureDep* p_texture, u32 mip_slice, u32 first_array_slice, u32 array_size)
+		bool UnorderedAccessViewDep::InitializeRwTexture(DeviceDep* p_device, const TextureDep* p_texture, u32 mip_slice, u32 first_array_slice, u32 array_size)
 		{
 			InitializeRhiObject(p_device);
 

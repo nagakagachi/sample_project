@@ -107,7 +107,7 @@ namespace ngl::render::task
 					loaddesc_vs.stage = ngl::rhi::EShaderStage::Vertex;
 					loaddesc_vs.shader_model_version = task::k_shader_model;
 				}
-				auto res_shader_vs = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_TASK_SHADER_PATH("screen/fullscr_procedural_z1_vs.hlsl"), &loaddesc_vs);
+				auto res_shader_vs = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_SHADER_PATH("screen/fullscr_procedural_z1_vs.hlsl"), &loaddesc_vs);
 
 				ngl::gfx::ResShader::LoadDesc loaddesc_ps = {};
 				{
@@ -115,7 +115,7 @@ namespace ngl::render::task
 					loaddesc_ps.stage = ngl::rhi::EShaderStage::Pixel;
 					loaddesc_ps.shader_model_version = task::k_shader_model;
 				}
-				auto res_shader_ps = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_TASK_SHADER_PATH("final_screen_pass_ps.hlsl"), &loaddesc_ps);
+				auto res_shader_ps = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_SHADER_PATH("final_screen_pass_ps.hlsl"), &loaddesc_ps);
 
 
 				ngl::rhi::GraphicsPipelineStateDep::Desc desc = {};

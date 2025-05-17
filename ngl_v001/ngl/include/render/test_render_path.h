@@ -73,8 +73,7 @@ namespace ngl::test
 			const RenderFrameDesc& render_frame_desc,
 			RenderFrameOut& out_frame_out,
 			ngl::rtg::RenderTaskGraphManager& rtg_manager,
-			std::vector<ngl::rtg::RtgSubmitCommandSequenceElem>& out_graphics_cmd,
-			std::vector<ngl::rtg::RtgSubmitCommandSequenceElem>& out_compute_cmd
+			ngl::rtg::RtgSubmitCommandSet* out_command_set
 		) -> void;
     
 }

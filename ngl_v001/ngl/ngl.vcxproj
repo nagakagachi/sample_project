@@ -115,6 +115,7 @@
     <ClInclude Include="include\boot\boot_application.h" />
     <ClInclude Include="include\boot\win\boot_application.win.h" />
     <ClInclude Include="include\file\file.h" />
+    <ClInclude Include="include\framework\gfx_render_command_manager.h" />
     <ClInclude Include="include\gfx\command_helper.h" />
     <ClInclude Include="include\gfx\common_struct.h" />
     <ClInclude Include="include\framework\gfx_framework.h" />
@@ -206,6 +207,7 @@
     </ClCompile>
     <ClCompile Include="src\boot\win\boot_application.win.cpp" />
     <ClCompile Include="src\file\file.cpp" />
+    <ClCompile Include="src\framework\gfx_render_command_manager.cpp" />
     <ClCompile Include="src\gfx\command_helper.cpp" />
     <ClCompile Include="src\framework\gfx_framework.cpp" />
     <ClCompile Include="src\gfx\material\material_shader_generator.cpp" />

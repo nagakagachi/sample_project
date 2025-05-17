@@ -19,6 +19,7 @@ namespace ngl::gfx
         struct DefaultReource
         {
             rhi::RefSampDep sampler_linear_wrap = {};
+            rhi::RefSampDep sampler_linear_clamp = {};
             rhi::RefSampDep sampler_shadow_point = {};
             rhi::RefSampDep sampler_shadow_linear = {};
             

@@ -19,6 +19,7 @@ namespace ngl::render::task
 			
             rhi::ConstantBufferPooledHandle scene_cbv{};
 
+            rhi::RefSrvDep  cubemap_srv{};
             res::ResourceHandle<gfx::ResTexture>    res_skybox_panorama_texture{};
         };
         SetupDesc setup_desc_{};
@@ -56,7 +57,7 @@ namespace ngl::render::task
             {
                 // 初期化. シェーダバイナリの要求とPSO生成.
 				
-                auto& ResourceMan = ngl::res::ResourceManager::Instance();
+                auto& res_mgr = ngl::res::ResourceManager::Instance();
 
                 ngl::gfx::ResShader::LoadDesc loaddesc_vs = {};
                 {
@@ -65,7 +66,7 @@ namespace ngl::render::task
                     loaddesc_vs.shader_model_version = task::k_shader_model;
                 }
                 // ReverseZで最遠方(Z=0)のフルスクリーントライアングル描画.
-                auto res_shader_vs = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_TASK_SHADER_PATH("screen/fullscr_procedural_z0_vs.hlsl"), &loaddesc_vs);
+                auto res_shader_vs = res_mgr.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_SHADER_PATH("screen/fullscr_procedural_z0_vs.hlsl"), &loaddesc_vs);
 
                 ngl::gfx::ResShader::LoadDesc loaddesc_ps = {};
                 {
@@ -73,7 +74,7 @@ namespace ngl::render::task
                     loaddesc_ps.stage = ngl::rhi::EShaderStage::Pixel;
                     loaddesc_ps.shader_model_version = task::k_shader_model;
                 }
-                auto res_shader_ps = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_TASK_SHADER_PATH("skybox_pass_ps.hlsl"), &loaddesc_ps);
+                auto res_shader_ps = res_mgr.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_SHADER_PATH("skybox_pass_ps.hlsl"), &loaddesc_ps);
 
                 ngl::rhi::GraphicsPipelineStateDep::Desc desc = {};
                 {
@@ -108,11 +109,26 @@ namespace ngl::render::task
 					NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "SkyBox_Screen")
                     
                     auto& global_res = gfx::GlobalRenderResource::Instance();
+			        auto* p_cb_pool = command_list->GetDevice()->GetConstantBufferPool();
 						
                     // ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
                     auto res_depth = builder.GetAllocatedResource(this, h_depth_);
                     auto res_light = builder.GetAllocatedResource(this, h_light_);
 
+                    
+                    struct CbSkyBox
+                    {
+                        float	exposure;
+                        u32     panorama_mode;
+                    };
+                    auto cbh = p_cb_pool->Alloc(sizeof(CbSkyBox));
+                    if (auto map_ptr = cbh->buffer_.MapAs<CbSkyBox>())
+                    {
+                        map_ptr->exposure = 1.0f;
+                        map_ptr->panorama_mode = 0;//1;
+                        
+                        cbh->buffer_.Unmap();
+                    }
                     
                     // Viewport.
                     gfx::helper::SetFullscreenViewportAndScissor(command_list, res_light.tex_->GetWidth(), res_light.tex_->GetHeight());
@@ -127,9 +143,9 @@ namespace ngl::render::task
                     ngl::rhi::DescriptorSetDep desc_set = {};
 
                     pso_->SetView(&desc_set, "ngl_cb_sceneview", &setup_desc_.scene_cbv->cbv_);
-						
+                    pso_->SetView(&desc_set, "cb_skybox", &cbh->cbv_);
+                    pso_->SetView(&desc_set, "tex_skybox_cube", setup_desc_.cubemap_srv.Get());
                     pso_->SetView(&desc_set, "tex_skybox_panorama", setup_desc_.res_skybox_panorama_texture->ref_view_.Get());
-						
                     pso_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_wrap.Get());
 						
                     command_list->SetDescriptorSet(pso_.Get(), &desc_set);

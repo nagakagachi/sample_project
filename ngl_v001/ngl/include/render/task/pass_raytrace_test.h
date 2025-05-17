@@ -47,7 +47,7 @@ namespace ngl::render::task
 					ngl::gfx::ResShader::LoadDesc loaddesc = {};
 					loaddesc.stage = ngl::rhi::EShaderStage::ShaderLibrary;
 					loaddesc.shader_model_version = "6_3";
-					res_shader_lib_ = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_TASK_SHADER_PATH("dxr_sample_lib.hlsl"), &loaddesc);
+					res_shader_lib_ = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_SHADER_PATH("dxr_sample_lib.hlsl"), &loaddesc);
 				}
 
 				// StateObject生成.

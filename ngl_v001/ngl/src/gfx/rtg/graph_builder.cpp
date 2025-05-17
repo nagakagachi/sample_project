@@ -289,7 +289,9 @@ namespace ngl
 				for(int sequence_id = 0; sequence_id < node_sequence_.size(); ++sequence_id)
 				{
 					ITaskNode* p_node = node_sequence_[sequence_id];
-					assert(node_handle_usage_list_.end() != node_handle_usage_list_.find(p_node));// ありえない.
+					// リソースのRecordをしないTaskも存在する場合がある.
+					if(node_handle_usage_list_.end() == node_handle_usage_list_.find(p_node))
+						continue;
 
 					// Nodeが同じHandleに対して重複したアクセスがないかチェック.
 					for(int i = 0; i < node_handle_usage_list_[p_node].size() - 1; ++i)
@@ -329,6 +331,9 @@ namespace ngl
 				{
 					const auto* p_node_i = node_sequence_[i];
 					const auto task_type_i = p_node_i->TaskType();
+					// リソースのRecordをしないTaskも存在する場合がある.
+					if(node_handle_usage_list_.end() == node_handle_usage_list_.find(p_node_i))
+						continue;
 
 					int nearest_dependency_index = -1;
 					// 前段のNodeを近い順に探索.
@@ -336,6 +341,9 @@ namespace ngl
 					{
 						const auto* p_node_j = node_sequence_[j];
 						const auto task_type_j = p_node_j->TaskType();
+						// リソースのRecordをしないTaskも存在する場合がある.
+						if(node_handle_usage_list_.end() == node_handle_usage_list_.find(p_node_j))
+							continue;
 
 						// 異なるTypeのNodeで同一Handleへアクセスしているものを探す
 						if(task_type_i == task_type_j)
@@ -442,6 +450,10 @@ namespace ngl
 			for(int node_i = 0; node_i < node_sequence_.size(); ++node_i)
 			{
 				const ITaskNode* p_node = node_sequence_[node_i];
+				// リソースのRecordをしないTaskも存在する場合がある.
+				if(node_handle_usage_list_.end() == node_handle_usage_list_.find(p_node))
+					continue;
+				
 				// このNodeのリソースアクセス情報を巡回.
 				for(auto& res_access : node_handle_usage_list_[p_node])
 				{
@@ -472,6 +484,10 @@ namespace ngl
 			for(int node_i = 0; node_i < node_sequence_.size(); ++node_i)
 			{
 				const ITaskNode* p_node = node_sequence_[node_i];
+				// リソースのRecordをしないTaskも存在する場合がある.
+				if(node_handle_usage_list_.end() == node_handle_usage_list_.find(p_node))
+					continue;
+				
 				// このNodeのリソースアクセス情報を巡回.
 				for(auto& res_access : node_handle_usage_list_[p_node])
 				{
@@ -675,6 +691,10 @@ namespace ngl
 			std::vector<std::vector<const ITaskNode*>> res_access_node_array(valid_res_count);
 			for(const auto* p_node : node_sequence_)
 			{
+				// リソースのRecordをしないTaskも存在する場合がある.
+				if(node_handle_usage_list_.end() == node_handle_usage_list_.find(p_node))
+					continue;
+				
 				const auto& node_handles = node_handle_usage_list_[p_node];
 				for(const auto& access_info : node_handles)
 				{
@@ -714,6 +734,10 @@ namespace ngl
 					rhi::EResourceState curr_state = begin_state;
 					for(const auto* p_node : res_access_node_array[res_index])
 					{
+						// リソースのRecordをしないTaskも存在する場合がある.
+						if(node_handle_usage_list_.end() == node_handle_usage_list_.find(p_node))
+							continue;
+						
 						for(const auto handle : node_handle_usage_list_[p_node])
 						{
 							const int handle_index = compiled_.handle_2_linear_index_[handle.handle];
@@ -940,7 +964,7 @@ namespace ngl
 		}
 
 		void RenderTaskGraphBuilder::Execute(
-			std::vector<RtgSubmitCommandSequenceElem>& out_graphics_commands, std::vector<RtgSubmitCommandSequenceElem>& out_compute_commands,
+			RtgSubmitCommandSet* out_command_set,
 			thread::JobSystem* p_job_system)
 		{
 			// Compileされていないチェック.
@@ -953,20 +977,24 @@ namespace ngl
 
 			// Nodeの使用Resouceに有効な状態遷移が1つでも存在するかをチェック.
 			auto check_exist_state_transition = [&](const ITaskNode* p_node)-> bool
-			{					
-				const auto& node_handle_access = node_handle_usage_list_[p_node];
-				for (const auto& handle_access : node_handle_access)
+			{
+				// リソースのRecordをしないTaskも存在する場合がある.
+				if(node_handle_usage_list_.end() != node_handle_usage_list_.find(p_node))
 				{
-					RtgAllocatedResourceInfo handle_res = GetAllocatedResource(p_node, handle_access.handle);
-					if (handle_res.tex_.IsValid() && (handle_res.prev_state_ != handle_res.curr_state_))
+					const auto& node_handle_access = node_handle_usage_list_[p_node];
+					for (const auto& handle_access : node_handle_access)
 					{
-						// 通常テクスチャリソースの場合.
-						return true;
-					}
-					else if (handle_res.swapchain_.IsValid() && (handle_res.prev_state_ != handle_res.curr_state_))
-					{
-						// Swapchain(外部)の場合.
-						return true;
+						RtgAllocatedResourceInfo handle_res = GetAllocatedResource(p_node, handle_access.handle);
+						if (handle_res.tex_.IsValid() && (handle_res.prev_state_ != handle_res.curr_state_))
+						{
+							// 通常テクスチャリソースの場合.
+							return true;
+						}
+						else if (handle_res.swapchain_.IsValid() && (handle_res.prev_state_ != handle_res.curr_state_))
+						{
+							// Swapchain(外部)の場合.
+							return true;
+						}
 					}
 				}
 				return false;// 有効な状態遷移が1つも存在しなければ false;
@@ -977,27 +1005,31 @@ namespace ngl
 			{					
 				// Nodeが登録したHandleを全て列挙. Nodeのdebug_ref_handles_はデバッグ用とであることと, メンバマクロ登録されたHandleしか格納されていないため, Builderに登録されたHandle全てを列挙するにはこの方法しかない.
 				const auto& node_handle_access = node_handle_usage_list_[p_node];
-				for (const auto& handle_access : node_handle_access)
+				// リソースのRecordをしないTaskも存在する場合がある.
+				if(node_handle_usage_list_.end() != node_handle_usage_list_.find(p_node))
 				{
-					RtgAllocatedResourceInfo handle_res = GetAllocatedResource(p_node, handle_access.handle);
-					if (handle_res.tex_.IsValid())
+					for (const auto& handle_access : node_handle_access)
 					{
-						// 通常テクスチャリソースの場合.
+						RtgAllocatedResourceInfo handle_res = GetAllocatedResource(p_node, handle_access.handle);
+						if (handle_res.tex_.IsValid())
+						{
+							// 通常テクスチャリソースの場合.
 
-						// 状態遷移コマンド発効..
-						if (handle_res.prev_state_ != handle_res.curr_state_)
-						{
-							p_command_list->ResourceBarrier(handle_res.tex_.Get(), handle_res.prev_state_, handle_res.curr_state_);
+							// 状態遷移コマンド発効..
+							if (handle_res.prev_state_ != handle_res.curr_state_)
+							{
+								p_command_list->ResourceBarrier(handle_res.tex_.Get(), handle_res.prev_state_, handle_res.curr_state_);
+							}
 						}
-					}
-					else if (handle_res.swapchain_.IsValid())
-					{
-						// Swapchain(外部)の場合.
-						
-						// 状態遷移コマンド発効..
-						if (handle_res.prev_state_ != handle_res.curr_state_)
+						else if (handle_res.swapchain_.IsValid())
 						{
-							p_command_list->ResourceBarrier(handle_res.swapchain_.Get(), handle_res.swapchain_->GetCurrentBufferIndex(), handle_res.prev_state_, handle_res.curr_state_);
+							// Swapchain(外部)の場合.
+						
+							// 状態遷移コマンド発効..
+							if (handle_res.prev_state_ != handle_res.curr_state_)
+							{
+								p_command_list->ResourceBarrier(handle_res.swapchain_.Get(), handle_res.swapchain_->GetCurrentBufferIndex(), handle_res.prev_state_, handle_res.curr_state_);
+							}
 						}
 					}
 				}
@@ -1154,8 +1186,8 @@ namespace ngl
 			}
 
 			// Fence込のSubmit可能シーケンスを生成.
-			out_graphics_commands.clear();
-			out_compute_commands.clear();
+			out_command_set->graphics.clear();
+			out_command_set->compute.clear();
 			{	
 				// Task間同期に必要なFenceをセットアップ.
 				std::vector<rhi::RhiRef<rhi::FenceDep>> sync_fences;
@@ -1197,11 +1229,11 @@ namespace ngl
 						
 						if(ETASK_TYPE::GRAPHICS == queue_type)
 						{
-							out_graphics_commands.push_back(wait_elem);
+							out_command_set->graphics.push_back(wait_elem);
 						}
 						else
 						{
-							out_compute_commands.push_back(wait_elem);
+							out_command_set->compute.push_back(wait_elem);
 						}
 					}
 
@@ -1218,7 +1250,7 @@ namespace ngl
 						if(ETASK_TYPE::GRAPHICS == queue_type)
 						{
 							// Graphics.
-							out_graphics_commands.push_back(command_elem);
+							out_command_set->graphics.push_back(command_elem);
 						}
 						else
 						{
@@ -1227,7 +1259,7 @@ namespace ngl
 							if(list->GetD3D12GraphicsCommandList()->GetType() == D3D12_COMMAND_LIST_TYPE_DIRECT)
 							{
 								// Compute用のState遷移をGraphics側に発行するCommandListなのでGraphicsへPush.
-								out_graphics_commands.push_back(command_elem);
+								out_command_set->graphics.push_back(command_elem);
 
 								// さらにこのGraphicsComamndをComputeが待機する必要があるためFence追加.
 								{
@@ -1243,7 +1275,7 @@ namespace ngl
 										signal_elem.fence = fence;
 										signal_elem.fence_value = state_transition_fenec_value;
 
-										out_graphics_commands.push_back(signal_elem);
+										out_command_set->graphics.push_back(signal_elem);
 									}
 									{
 										// GraphicsでPushしたState遷移をComputeが待つためのWait.
@@ -1252,14 +1284,14 @@ namespace ngl
 										wait_elem.fence = fence;
 										wait_elem.fence_value = state_transition_fenec_value;
 
-										out_compute_commands.push_back(wait_elem);
+										out_command_set->compute.push_back(wait_elem);
 									}
 								}
 							}
 							else
 							{
 								// Compute TypeのCommandListはそのままPush.
-								out_compute_commands.push_back(command_elem);
+								out_command_set->compute.push_back(command_elem);
 							}
 						}
 					}
@@ -1278,11 +1310,11 @@ namespace ngl
 						
 						if(ETASK_TYPE::GRAPHICS == queue_type)
 						{
-							out_graphics_commands.push_back(signal_elem);
+							out_command_set->graphics.push_back(signal_elem);
 						}
 						else
 						{
-							out_compute_commands.push_back(signal_elem);
+							out_command_set->compute.push_back(signal_elem);
 						}
 					}
 				}
@@ -1294,7 +1326,7 @@ namespace ngl
 				command_elem.type = ERtgSubmitCommandType::CommandList;
 				command_elem.command_list = ref_cmdlist_final;
 
-				out_graphics_commands.push_back(command_elem);
+				out_command_set->graphics.push_back(command_elem);
 			}
 			
 			// ExecuteしたBuilderは使い捨てとすることで状態リセットの実装ミス等を回避する.
@@ -1357,7 +1389,7 @@ namespace ngl
 		// RtgのExecute() で構築して生成したComandListのSequenceをGPUへSubmitするヘルパー関数.
 		void RenderTaskGraphBuilder::SubmitCommand(
 			rhi::GraphicsCommandQueueDep& graphics_queue, rhi::ComputeCommandQueueDep& compute_queue,
-			std::vector<RtgSubmitCommandSequenceElem>& graphics_commands, std::vector<RtgSubmitCommandSequenceElem>& compute_commands)
+			RtgSubmitCommandSet* command_set)
 		{
 			//	連続したCommandListをなるべく一度のExecuteにまとめ, 必要な箇所でFenceを張る.
 			auto submit_sequence = [](std::vector<ngl::rtg::RtgSubmitCommandSequenceElem>& sequence, ngl::rhi::CommandQueueBaseDep& graphics_queue)
@@ -1402,8 +1434,8 @@ namespace ngl
 			};
 			
 			// QueueにSubmit.
-			submit_sequence(graphics_commands, graphics_queue);
-			submit_sequence(compute_commands, compute_queue);
+			submit_sequence(command_set->graphics, graphics_queue);
+			submit_sequence(command_set->compute, compute_queue);
 		}
 		// --------------------------------------------------------------------------------------------------------------------
 		uint32_t RenderTaskGraphManager::s_res_handle_id_counter_ = 0;
@@ -1697,7 +1729,7 @@ namespace ngl
 				if(key.usage_ & access_type_mask::UAV)
 				{
 					new_uav = new rhi::UnorderedAccessViewDep();
-					if (!new_uav->Initialize(p_device_, new_tex.Get(), 0, 0, 1))
+					if (!new_uav->InitializeRwTexture(p_device_, new_tex.Get(), 0, 0, 1))
 					{
 						assert(false);
 						return -1;

@@ -26,8 +26,7 @@ namespace ngl::test
 			const RenderFrameDesc& render_frame_desc,
 			RenderFrameOut& out_frame_out,
 			ngl::rtg::RenderTaskGraphManager& rtg_manager,
-			std::vector<ngl::rtg::RtgSubmitCommandSequenceElem>& out_graphics_cmd,
-			std::vector<ngl::rtg::RtgSubmitCommandSequenceElem>& out_compute_cmd
+			ngl::rtg::RtgSubmitCommandSet* out_command_set
 		) -> void
 	{
 		auto* p_device = render_frame_desc.p_device;
@@ -221,6 +220,7 @@ namespace ngl::test
 						setup_desc.h = screen_h;
 						
 						setup_desc.scene_cbv = scene_cb_h;
+						setup_desc.cubemap_srv = p_scene->skybox_cubemap_srv_;
 						setup_desc.res_skybox_panorama_texture = p_scene->res_skybox_panorama_texture_;
 					}
 					
@@ -350,7 +350,7 @@ namespace ngl::test
 			//	各TaskのRender処理Lambdaはそれぞれ別スレッドで並列実行される可能性がある.
 			thread::JobSystem* p_job_system = (render_frame_desc.debug_multithread_render_pass)? rtg_manager.GetJobSystem() : nullptr;
 			time::Timer::Instance().StartTimer("rtg_builder_execute");
-			rtg_builder.Execute(out_graphics_cmd, out_compute_cmd, p_job_system);
+			rtg_builder.Execute(out_command_set, p_job_system);
 			out_frame_out.stat_rtg_execute_sec = static_cast<float>(time::Timer::Instance().GetElapsedSec("rtg_builder_execute"));
 		}
 	}

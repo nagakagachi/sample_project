@@ -194,7 +194,7 @@ namespace ngl
 			~UnorderedAccessViewDep();
 
 			// TextureのView.
-			bool Initialize(DeviceDep* p_device, const TextureDep* p_texture, u32 mip_slice, u32 first_array_slice, u32 array_size);
+			bool InitializeRwTexture(DeviceDep* p_device, const TextureDep* p_texture, u32 mip_slice, u32 first_array_slice, u32 array_size);
 			// BufferのStructuredBufferView.
 			bool InitializeAsStructured(DeviceDep* p_device, const BufferDep* p_buffer, u32 element_size, u32 element_offset, u32 element_count);
 			// BufferのTypedBufferView.

@@ -54,7 +54,7 @@ namespace ngl::render::task
 				loaddesc.entry_point_name = "main_cs";
 				loaddesc.stage = ngl::rhi::EShaderStage::Compute;
 				loaddesc.shader_model_version = k_shader_model;
-				auto res_shader = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_TASK_SHADER_PATH("screen/generate_lineardepth_cs.hlsl"), &loaddesc);
+				auto res_shader = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_SHADER_PATH("screen/generate_lineardepth_cs.hlsl"), &loaddesc);
 				
 				ngl::rhi::ComputePipelineStateDep::Desc pso_desc = {};
 				pso_desc.cs = &res_shader->data_;

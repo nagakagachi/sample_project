@@ -124,7 +124,7 @@ namespace res
 
 
 				const auto* file_name = p_res->GetFileName();
-				const auto file_name_length = strlen(file_name);
+				const int file_name_length = static_cast<int>(strlen(file_name));
 
 
 				constexpr auto CheckExt = [](const ExtNameStr& ext, const char* file_name, int file_name_length)

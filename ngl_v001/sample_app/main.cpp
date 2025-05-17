@@ -57,8 +57,8 @@ static bool dbgw_enable_feedback_blur_test = true;
 static bool dbgw_enable_sub_view_path = false;
 static bool dbgw_enable_raytrace_pass = false;
 static bool dbgw_view_half_dot_gray = false;
-static bool dbgw_view_gbuffer = true;
-static bool dbgw_view_dshadow = true;
+static bool dbgw_view_gbuffer = false;
+static bool dbgw_view_dshadow = false;
 static float dbgw_dlit_angle_v = 0.4f;
 static float dbgw_dlit_angle_h = 4.1f;
 
@@ -135,7 +135,6 @@ private:
 	ngl::math::Mat33	camera_pose_ = ngl::math::Mat33::Identity();
 	float				camera_fov_y = ngl::math::Deg2Rad(60.0f);// not half fov.
 	PlayerController	player_controller{};
-
 
 	// Meshオブジェクト管理.
 	std::vector<std::shared_ptr<ngl::gfx::StaticMeshComponent>>	mesh_comp_array_;
@@ -276,7 +275,7 @@ bool AppGame::Initialize()
 			assert(false);
 		}
 		tex_rw_uav_ = new ngl::rhi::UnorderedAccessViewDep();
-		if (!tex_rw_uav_->Initialize(&device, tex_rw_.Get(), 0, 0, 1))
+		if (!tex_rw_uav_->InitializeRwTexture(&device, tex_rw_.Get(), 0, 0, 1))
 		{
 			std::cout << "[ERROR] Create RW UAV" << std::endl;
 			assert(false);
@@ -634,7 +633,8 @@ bool AppGame::ExecuteApp()
 			frame_scene.mesh_instance_array_.push_back(e.get());
 		}
 
-		frame_scene.res_skybox_panorama_texture_ = skybox_.GetTexture();
+		frame_scene.skybox_cubemap_srv_ = skybox_.GetCubemap();
+		frame_scene.res_skybox_panorama_texture_ = skybox_.GetPanoramaTexture();
 	}
 
 	// RenderParamのセットアップ.
@@ -713,9 +713,9 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
 		}
 		
 		out_rtg_command_list_set.push_back({});
-		ngl::fwk::RtgSubmitCommandSet& rtg_result = out_rtg_command_list_set.back();
+		ngl::rtg::RtgSubmitCommandSet& rtg_result = out_rtg_command_list_set.back();
 		// Pathの実行 (RenderTaskGraphの構築と実行).
-		TestFrameRenderingPath(render_frame_desc, subview_render_frame_out, gfxfw_.rtg_manager_, rtg_result.graphics, rtg_result.compute);
+		TestFrameRenderingPath(render_frame_desc, subview_render_frame_out, gfxfw_.rtg_manager_, &rtg_result);
 	}
 	
 	static ngl::rtg::RtgResourceHandle h_prev_light{};// 前回フレームハンドルのテスト.
@@ -770,13 +770,14 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
 		swapchain_resource_state_[swapchain_index] = swapchain_final_state;// State変更.
 		
 		out_rtg_command_list_set.push_back({});
-		ngl::fwk::RtgSubmitCommandSet& rtg_result = out_rtg_command_list_set.back();
+		ngl::rtg::RtgSubmitCommandSet& rtg_result = out_rtg_command_list_set.back();
 		// Pathの実行 (RenderTaskGraphの構築と実行).
 		ngl::test::RenderFrameOut render_frame_out{};
-		TestFrameRenderingPath(render_frame_desc, render_frame_out, gfxfw_.rtg_manager_, rtg_result.graphics, rtg_result.compute);
+		TestFrameRenderingPath(render_frame_desc, render_frame_out, gfxfw_.rtg_manager_, &rtg_result);
 		
 		h_prev_light = render_frame_out.h_propagate_lit;// Rtgリソースの一部を次フレームに伝搬する.
 
+		// 統計情報取り込み.
 		{
 			dbgw_stat_primary_rtg_construct = render_frame_out.stat_rtg_construct_sec;
 			dbgw_stat_primary_rtg_compile = render_frame_out.stat_rtg_compile_sec;

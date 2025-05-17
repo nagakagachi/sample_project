@@ -61,6 +61,7 @@ namespace gfx
 
 		std::vector<gfx::StaticMeshComponent*> mesh_instance_array_ = {};
 
+		rhi::RefSrvDep							skybox_cubemap_srv_ = {};
 		res::ResourceHandle<gfx::ResTexture>	res_skybox_panorama_texture_ = {};
 	};
 

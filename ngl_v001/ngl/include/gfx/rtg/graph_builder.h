@@ -94,11 +94,11 @@
 	rtg_manager.Compile(rtg_builder);
 		
 	// Graphを構成するTaskの Render処理Lambda を実行し, CommandListを生成する.
-	rtg_builder.Execute(out_graphics_cmd, out_compute_cmd);
+	rtg_builder.Execute(out_command_set);
 
 	// out_graphics_cmd と out_compute_cmd は非同期コンピュートを考慮したコマンドリスト列.
 	// Managerのヘルパー関数でGPUへSubmitする.
-	ngl::rtg::RenderTaskGraphBuilder::SubmitCommand(graphics_queue_, compute_queue_, out_graphics_cmd, out_compute_cmd);
+	ngl::rtg::RenderTaskGraphBuilder::SubmitCommand(graphics_queue_, compute_queue_, command_set);
  */
 
 
@@ -227,14 +227,14 @@ namespace ngl
 			// 結果はQueueへSubmitするCommandListとFenceのSequence.
 			// 結果のSequenceは外部でQueueに直接Submitすることも可能であるが, ヘルパ関数SubmitCommand()を利用することを推奨する.
 			void Execute(
-				std::vector<RtgSubmitCommandSequenceElem>& out_graphics_commands, std::vector<RtgSubmitCommandSequenceElem>& out_compute_commands,
+				RtgSubmitCommandSet* out_command_set,
 				thread::JobSystem* p_job_system = nullptr
 				);
 
 			// RtgのExecute() で構築して生成したComandListのSequenceをGPUへSubmitするヘルパー関数.
 			static void SubmitCommand(
 				rhi::GraphicsCommandQueueDep& graphics_queue, rhi::ComputeCommandQueueDep& compute_queue,
-				std::vector<RtgSubmitCommandSequenceElem>& graphics_commands, std::vector<RtgSubmitCommandSequenceElem>& compute_commands);
+				RtgSubmitCommandSet* command_set);
 			
 		public:
 			// NodeのHandleに対して割り当て済みリソースを取得する.
@@ -487,7 +487,7 @@ namespace ngl
 		template<typename COMMAND_LIST_TYPE>
 		COMMAND_LIST_TYPE* TaskCommandListAllocator<COMMAND_LIST_TYPE>::GetOrCreate(int index)
 		{
-			assert(NumAllocatedCommandList() > index && u8"範囲外アクセス");
+			assert(NumAllocatedCommandList() > index && u8"CommandListが必要分確保されていない. Alloc() で必要分確保すること.");
 			
 			const int command_list_index = index + user_command_list_array_offset_;// オフセット分をスキップした位置にアクセス.
 			if(nullptr == command_list_array_->at(command_list_index))

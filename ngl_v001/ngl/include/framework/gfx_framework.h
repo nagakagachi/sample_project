@@ -28,14 +28,9 @@ namespace ngl
 }
 namespace ngl::fwk
 {
-// 単一のRtgBuilderによるCommand.
-struct RtgSubmitCommandSet
-{
-	std::vector<ngl::rtg::RtgSubmitCommandSequenceElem> graphics{};
-	std::vector<ngl::rtg::RtgSubmitCommandSequenceElem> compute{};
-};
+
 // フレーム描画の多数のRtg描画によるCommandをリストする.
-using RtgFrameRenderSubmitCommandBuffer = std::vector<RtgSubmitCommandSet>;
+using RtgFrameRenderSubmitCommandBuffer = std::vector<rtg::RtgSubmitCommandSet>;
 	
 // Graphicsフレームワーク.
 //	Deviceやグラフィックスに関わるフレーム処理などをまとめる.

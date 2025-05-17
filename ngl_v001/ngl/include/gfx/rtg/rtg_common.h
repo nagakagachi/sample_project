@@ -288,6 +288,12 @@ namespace ngl::rtg
 		//	Rtgがスケジュールした同期のためのSignalまたはWaitで使用するFenceValue.
 		u64							fence_value = 0;
 	};
+	// 単一のRtgBuilderによるCommand.
+	struct RtgSubmitCommandSet
+	{
+		std::vector<ngl::rtg::RtgSubmitCommandSequenceElem> graphics{};
+		std::vector<ngl::rtg::RtgSubmitCommandSequenceElem> compute{};
+	};
 
 	// Taskが利用するCommandListを取得するためのインターフェイス.
 	//	COMMAND_LIST_TYPE = rhi::GraphicsCommandListDep or rhi::ComputeCommandListDep
@@ -298,11 +304,14 @@ namespace ngl::rtg
 		// Taskが利用するCommandListを必要分確保する. 既定で 1 確保されている状態.
 		//	2以上でAllocした場合でも実際にGetOrCreateでアクセスするまでその要素は生成されない.
 		void Alloc(int num_command_list);
-		// Task用の確保されたindex番目のCommandListを取得, 未生成ならば生成して取得.
+		// Allocで確保されたindex番目のCommandListを取得, 未生成ならば生成して取得.
+		//	command_listのBegin()及びEnd()は利用者側で呼び出す必要はない.
 		COMMAND_LIST_TYPE* GetOrCreate(int index);
 		// 先頭CommandList取得or生成取得.
+		//	command_listのBegin()及びEnd()は利用者側で呼び出す必要はない.
 		COMMAND_LIST_TYPE* GetOrCreate_Front();
 		// 末尾CommandList取得or生成取得.
+		//	command_listのBegin()及びEnd()は利用者側で呼び出す必要はない.
 		COMMAND_LIST_TYPE* GetOrCreate_Back();
 		// 確保されているCommandList数.
 		int NumAllocatedCommandList() const;

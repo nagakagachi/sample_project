@@ -112,7 +112,7 @@ float3 CalcViewSpaceRay(float2 screen_uv, float4x4 proj_mtx)
 // ワールド空間レイ方向からパノラマイメージUVへのマッピング.
 float2 CalcPanoramaTexcoordFromWorldSpaceRay(float3 ray_dir)
 {
-    const float2 panorama_uv = float2(1.0 + atan2(-ray_dir.x, -ray_dir.z) / (2.0*NGL_PI), acos(ray_dir.y) / NGL_PI);
+    const float2 panorama_uv = float2((atan2(-ray_dir.x, -ray_dir.z) / (NGL_PI)) * 0.5 + 0.5, acos(ray_dir.y) / NGL_PI);
     return panorama_uv;
 }
 
