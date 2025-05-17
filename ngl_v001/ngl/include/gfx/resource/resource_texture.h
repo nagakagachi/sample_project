@@ -61,8 +61,8 @@ namespace ngl
 			{
 			}
 
-			bool IsNeedRenderUpdate() const override { return true; }
-			void OnResourceRenderUpdate(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist) override;
+			bool IsNeedRenderThreadInitialize() const override { return true; }
+			void RenderThreadInitialize(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist) override;
 
 			// 読み込んだイメージから生成したTextureやそのView等.
 			rhi::RefTextureDep			ref_texture_ = {};

@@ -45,7 +45,7 @@ namespace ngl
 			{
 			}
 
-			void OnResourceRenderUpdate(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist) override
+			void RenderThreadInitialize(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist) override
 			{
 			}
 

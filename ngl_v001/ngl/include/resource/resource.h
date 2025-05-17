@@ -133,9 +133,9 @@ namespace res
 		virtual ~IResourceRenderUpdater() {}
 
 		// RenderThreadでの初期化が必要なクラスの場合は true を返すようにoverrideする.
-		virtual bool IsNeedRenderUpdate() const { return false; }
-		// RenderThreadでの初期化処理.
-		virtual void OnResourceRenderUpdate(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist) = 0;
+		virtual bool IsNeedRenderThreadInitialize() const { return false; }
+		// 描画コマンドを伴う初期化がある場合の実装. システムによって自動的にRenderThreadからの呼び出しに登録される.
+		virtual void RenderThreadInitialize(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist) = 0;
 
 	};
 

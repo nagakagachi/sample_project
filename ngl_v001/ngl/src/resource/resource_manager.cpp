@@ -33,15 +33,7 @@ namespace res
 
 	ResourceManager::~ResourceManager()
 	{
-		{
-			// Lock.
-			auto lock = std::lock_guard<std::mutex>(res_render_update_mutex_);
-
-			frame_render_update_list_with_handle_.clear();
-		}
-
 		ReleaseCacheAll();
-
 	}
 
 	// 全て破棄.
@@ -87,36 +79,7 @@ namespace res
 		// 完全に破棄. 保持している描画リソースの安全性のために破棄キューに積んでNフレーム後に完全破棄するなども可能.
 		delete p_res;
 	}
-
-
-
-	// システムによりRenderThreadで呼び出される. CommandListに必要な描画コマンドを発行する.
-	void ResourceManager::UpdateResourceOnRender(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist)
-	{
-		// Lock.
-		auto lock = std::lock_guard<std::mutex>(res_render_update_mutex_);
-		{
-			for(auto& e : frame_render_resource_lambda_)
-			{
-				e(p_commandlist);
-			}
-			frame_render_resource_lambda_.clear();
-			
-			for (auto& e : frame_render_update_list_with_handle_)
-			{
-				if (e)
-				{
-					// RenderCommand.
-					e->p_res_->OnResourceRenderUpdate(p_device, p_commandlist);
-
-					e.reset();// 参照リセット.
-				}
-			}
-			// 次フレーム用に空に.
-			frame_render_update_list_with_handle_.clear();
-		}
-	}
-
+	
 	// Thread Safe.
 	detail::ResourceHolderHandle ResourceManager::FindHandle(const char* res_typename, const char* filename)
 	{

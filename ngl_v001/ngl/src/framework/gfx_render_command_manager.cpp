@@ -10,13 +10,15 @@ namespace ngl::fwk
     {
         GfxRenderCommandManager::Instance().PushCommonRenderCommand(func);
     }
-    
+
+    // 任意のRenderCommandをLambdaで登録可能.
     void GfxRenderCommandManager::PushCommonRenderCommand(const CommonRenderCommandType& func)
     {
         std::scoped_lock<std::mutex> lock(m_mutex);
         command_buffer[flip_].push_back(func);
     }
 
+    // GfxFrameworkのRenderThreadから実行される.
     void GfxRenderCommandManager::Execute(rhi::GraphicsCommandListDep* command_list)
     {
         const auto execute_flip_index = flip_;

@@ -81,7 +81,8 @@ namespace ngl::gfx::scene
                         
                 command_list->SetPipelineState(pso_.Get());
                 command_list->SetDescriptorSet(pso_.Get(), &descset);
-                pso_->DispatchHelper(command_list, generated_cubemap_->GetWidth(), generated_cubemap_->GetHeight(), 6);
+                constexpr u32 k_cubemap_plane_count = 6;
+                pso_->DispatchHelper(command_list, generated_cubemap_->GetWidth(), generated_cubemap_->GetHeight(), k_cubemap_plane_count);
             });
             
             return res_sky_texture_.IsValid();

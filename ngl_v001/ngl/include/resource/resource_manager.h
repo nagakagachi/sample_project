@@ -27,9 +27,8 @@
 
 #include "gfx/resource/resource_texture.h"
 
-// other.
-
-
+// Res読み込み時の描画スレッド処理を汎用のRenderCommandで実行する.
+#include "framework/gfx_render_command_manager.h"
 
 namespace ngl
 {
@@ -82,11 +81,6 @@ namespace res
 
 		// Cacheされたリソースをすべて解放. ただし外部で参照が残っている場合はその参照が消えるまでは実体は破棄されない.
 		void ReleaseCacheAll();
-
-	public:
-		// システムによりRenderThreadで呼び出される. CommandListに必要な描画コマンドを発行する.
-		void UpdateResourceOnRender(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist);
-
 	public:
 		// Load.
 		// RES_TYPE は ngl::res::Resource 継承クラス.
@@ -94,12 +88,6 @@ namespace res
 		ResourceHandle<RES_TYPE> LoadResource(rhi::DeviceDep* p_device, const char* filename, typename RES_TYPE::LoadDesc* p_desc);
 
 	public:
-		// FrameのRenderThreadで実行されるLambdaを登録.
-		//	RenderThread先頭, Frameで最初にExecuteされるGraphicsCommandlistを引数に実行されるLambda.
-		//	GraphicsCommandListを使用したRender側初期化が必要なオブジェクト全般で便利に利用するため.
-		inline void AddFrameRenderUpdateLambda(const std::function<void(rhi::GraphicsCommandListDep*)>& f);
-
-		
 		// TextureUpload用の一時Buffer上メモリを確保.
 		void AllocTextureUploadIntermediateBufferMemory(rhi::RefBufferDep& ref_buffer, u8*& p_buffer_memory, u64 require_byte_size, rhi::DeviceDep* p_device);
 		// TextureUpload用の一時Buffer上に適切に配置されたイメージデータをテクスチャにコピーする.
@@ -120,13 +108,6 @@ namespace res
 
 		// タイプ別Map自体へのアクセスMutex. 全体破棄と個別破棄で部分的に再帰するためrecursive_mutexを使用.
 		std::recursive_mutex	res_map_mutex_;
-
-
-		// ResourceのRenderUpdateリスト(参照保持のためハンドル).
-		std::vector<detail::ResourceHolderHandle> frame_render_update_list_with_handle_;
-		std::vector<std::function<void(rhi::GraphicsCommandListDep*)>> frame_render_resource_lambda_;
-		// ResourceのRenderUpdateリストのMutex.
-		std::mutex	res_render_update_mutex_;
 
 		// TextureUploadIntermediateBufferのMutex.
 		std::mutex	res_upload_buffer_mutex_;
@@ -175,23 +156,19 @@ namespace res
 		// データベースに登録.
 		Register(raw_handle);
 
-		// 新規リソースをRenderThread初期化リストへ登録.
-		if (p_res->IsNeedRenderUpdate())
+		if (p_res->IsNeedRenderThreadInitialize())
 		{
-			auto lock = std::lock_guard<std::mutex>(res_render_update_mutex_);
-			frame_render_update_list_with_handle_.push_back(raw_handle);
+			// RenderThreadでの初期化処理を汎用RenderComamndで登録. ハンドル参照を値キャプチャしてカウント保証.
+			fwk::PushCommonRenderCommand([raw_handle](fwk::_CommonRenderCommandArg arg)
+			{
+				auto device = arg.command_list->GetDevice();
+				raw_handle->p_res_->RenderThreadInitialize(device, arg.command_list);
+			});
 		}
 
 		// 新規ハンドルを生成して返す.
 		return handle;
 	}
-	
-	void ResourceManager::AddFrameRenderUpdateLambda(const std::function<void(rhi::GraphicsCommandListDep*)>& f)
-	{
-		auto lock = std::lock_guard<std::mutex>(res_render_update_mutex_);
-		frame_render_resource_lambda_.push_back(f);
-	}
-	
 	
 }
 }

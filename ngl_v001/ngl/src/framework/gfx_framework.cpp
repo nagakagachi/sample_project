@@ -233,10 +233,7 @@ namespace ngl::fwk
 			p_system_frame_begin_command_list_->Begin();// begin.
 
 			{
-				// ResourceManagerのRenderThread処理. TextureLinearBufferや MeshBufferのUploadなど.
-				ngl::res::ResourceManager::Instance().UpdateResourceOnRender(&device_, p_system_frame_begin_command_list_);
-
-				// PushCommonRenderCommandで積み込まれた描画スレッドコマンドを実行.
+				// PushCommonRenderCommandで積み込まれた描画スレッドコマンドを実行. ResourceのRenderThread処理もこの仕組みに登録される.
 				GfxRenderCommandManager::Instance().Execute(p_system_frame_begin_command_list_);
 			}
 			

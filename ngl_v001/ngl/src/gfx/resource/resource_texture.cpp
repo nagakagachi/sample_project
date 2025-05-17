@@ -10,7 +10,7 @@ namespace ngl
 {
 	namespace gfx
 	{
-		void ResTexture::OnResourceRenderUpdate(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist)
+		void ResTexture::RenderThreadInitialize(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist)
 		{
 			assert(ref_texture_.IsValid());
 			
