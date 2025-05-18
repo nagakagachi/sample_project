@@ -30,6 +30,11 @@ namespace ngl::render::task
 			int h{};
 			rhi::ConstantBufferPooledHandle scene_cbv{};
 			rhi::ConstantBufferPooledHandle ref_shadow_cbv{};
+
+			// Diffuse畳み込みIBL Cubemap.
+			rhi::RefSrvDep  ibl_diffuse_cubemap_srv{};
+			// IBLの元になったCubemap. テスト用.
+			rhi::RefSrvDep  ibl_src_cubemap_srv{};
 			
 			bool enable_feedback_blur_test{};
 		};
@@ -194,6 +199,8 @@ namespace ngl::render::task
 					pso_->SetView(&desc_set, "tex_prev_light", ref_prev_lit.Get());
 
 					pso_->SetView(&desc_set, "tex_shadowmap", res_shadowmap.srv_.Get());
+
+					pso_->SetView(&desc_set, "tex_ibl_diffuse", desc_.ibl_diffuse_cubemap_srv.Get());
 						
 					pso_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_wrap.Get());
 					pso_->SetView(&desc_set, "samp_shadow", gfx::GlobalRenderResource::Instance().default_resource_.sampler_shadow_linear.Get());

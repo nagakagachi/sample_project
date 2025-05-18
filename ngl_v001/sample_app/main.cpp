@@ -344,7 +344,7 @@ bool AppGame::Initialize()
 				
 				ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
 				tr.SetDiagonal(ngl::math::Vec4(1.0f));
-				tr = ngl::math::Mat44::RotAxisX(0.1f * ngl::math::k_pi_f * 2.0f) * tr;
+				//tr = ngl::math::Mat44::RotAxisX(0.1f * ngl::math::k_pi_f * 2.0f) * tr;
 				tr.SetColumn3(ngl::math::Vec4(0.0f, 12.0f, 0.0f, 1.0f));
 
 				mc->transform_ = ngl::math::Mat34(tr);
@@ -359,7 +359,7 @@ bool AppGame::Initialize()
 				ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
 				tr.SetDiagonal(ngl::math::Vec4(1.0f, 0.3f, 1.0f, 1.0f));//被均一スケールテスト.
 				tr = ngl::math::Mat44::RotAxisX(0.1f * ngl::math::k_pi_f * 2.0f) * tr;
-				tr.SetColumn3(ngl::math::Vec4(1.5f, 12.0f, 0.0f, 1.0f));
+				tr.SetColumn3(ngl::math::Vec4(2.5f, 12.0f, 0.0f, 1.0f));
 
 				mc->transform_ = ngl::math::Mat34(tr);
 			}
@@ -423,7 +423,16 @@ bool AppGame::Initialize()
 	res_texture_ = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResTexture>(&device, test_load_texture_file_name, &tex_load_desc);
 
 
-	if (!skybox_.InitializeAsPanorama(&device, "../ngl/data/texture/vgl/pisa/pisa.hdr"))
+	constexpr char path_sky_hdr_panorama_pisa[] = "../ngl/data/texture/vgl/pisa/pisa.hdr";
+	constexpr char path_sky_hdr_panorama_ennis[] = "../ngl/data/texture/vgl/ennis/ennis.hdr";
+	constexpr char path_sky_hdr_panorama_grace_new[] = "../ngl/data/texture/vgl/grace-new/grace-new.hdr";
+	constexpr char path_sky_hdr_panorama_uffizi_large[] = "../ngl/data/texture/vgl/uffizi-large/uffizi-large.hdr";
+
+	const auto* path_sky_panorama = path_sky_hdr_panorama_pisa;
+	//const auto* path_sky_panorama = path_sky_hdr_panorama_ennis;
+	//const auto* path_sky_panorama = path_sky_hdr_panorama_grace_new;
+	//const auto* path_sky_panorama = path_sky_hdr_panorama_uffizi_large;
+	if (!skybox_.InitializeAsPanorama(&device, path_sky_panorama))
 	{
 		std::cout << "[ERROR] Initialize SkyBox" << std::endl;
 	}
@@ -633,8 +642,16 @@ bool AppGame::ExecuteApp()
 			frame_scene.mesh_instance_array_.push_back(e.get());
 		}
 
+#if 1
 		frame_scene.skybox_cubemap_srv_ = skybox_.GetCubemapSrv();
 		frame_scene.res_skybox_panorama_texture_ = skybox_.GetPanoramaTexture();
+		
+		frame_scene.sky_ibl_diffuse_cubemap_srv_ = skybox_.GetConvDiffuseCubemapSrv();
+		
+#else
+		frame_scene.skybox_cubemap_srv_ = skybox_.GetConvDiffuseCubemapSrv();
+		frame_scene.res_skybox_panorama_texture_ = skybox_.GetPanoramaTexture();
+#endif
 	}
 
 	// RenderParamのセットアップ.

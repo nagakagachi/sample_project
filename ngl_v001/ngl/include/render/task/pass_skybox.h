@@ -21,6 +21,8 @@ namespace ngl::render::task
 
             rhi::RefSrvDep  cubemap_srv{};
             res::ResourceHandle<gfx::ResTexture>    res_skybox_panorama_texture{};
+            // Diffuse畳み込みIBL Cubemap.
+            rhi::RefSrvDep  ibl_diffuse_cubemap_srv{};
         };
         SetupDesc setup_desc_{};
         
@@ -144,7 +146,11 @@ namespace ngl::render::task
 
                     pso_->SetView(&desc_set, "ngl_cb_sceneview", &setup_desc_.scene_cbv->cbv_);
                     pso_->SetView(&desc_set, "cb_skybox", &cbh->cbv_);
+
                     pso_->SetView(&desc_set, "tex_skybox_cube", setup_desc_.cubemap_srv.Get());
+                    // スカイボックスにデバッグのためDiffuseIBLを表示.
+                    //pso_->SetView(&desc_set, "tex_skybox_cube", setup_desc_.ibl_diffuse_cubemap_srv.Get());
+                    
                     pso_->SetView(&desc_set, "tex_skybox_panorama", setup_desc_.res_skybox_panorama_texture->ref_view_.Get());
                     pso_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_wrap.Get());
 						

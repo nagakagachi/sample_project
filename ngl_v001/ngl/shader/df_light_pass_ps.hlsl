@@ -35,6 +35,8 @@ Texture2D tex_shadowmap;
 SamplerState samp;
 SamplerComparisonState samp_shadow;
 
+TextureCube tex_ibl_diffuse;
+
 
 float4 main_ps(VS_OUTPUT input) : SV_TARGET
 {	
@@ -169,6 +171,12 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	const float cos_term = saturate(dot(gb_normal_ws, L));
 	float3 lit_color = cos_term * brdf * lit_intensity * light_visibility;
 	
+	// IBL
+	{
+		const float3 sky_irradiance = tex_ibl_diffuse.SampleLevel(samp, gb_normal_ws, 0).rgb;
+		lit_color += diffuse_term * sky_irradiance;
+	}
+
 		// ------------------------------------------------------------------------------
 			#if 0
 				// 初回フレームの情報を画面に継続保持して調査するロジック.
@@ -223,11 +231,13 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 			}
 		// ------------------------------------------------------------------------------
 
+#if 0
 	// ambient term.
 	{
 		const float3 k_ambient_rate = float3(0.7, 0.7, 1.0) * 0.15;
 		lit_color += gb_base_color * (1.0/ngl_PI) * ((dot(gb_normal_ws, -L)) * 0.5 + 0.5) * lit_intensity * k_ambient_rate;
 	}
+#endif
 
 	// 過去フレームを使ったフィードバックブラーテスト.
 	if(ngl_cb_lighting_pass.enable_feedback_blur_test)

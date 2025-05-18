@@ -1,7 +1,11 @@
 #ifndef NGL_SHADER_MATH_UTIL_H
 #define NGL_SHADER_MATH_UTIL_H
 
-#define NGL_PI 3.141592653589793
+#define NGL_PI (3.141592653589793)
+#define NGL_2PI (2.0*NGL_PI)
+#define NGL_HALF_PI (0.5*NGL_PI)
+
+#define NGL_EPSILON 0.00001
 
 float Matrix2x2_Determinant(float2x2 m)
 {

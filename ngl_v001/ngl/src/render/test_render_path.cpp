@@ -222,6 +222,7 @@ namespace ngl::test
 						setup_desc.scene_cbv = scene_cb_h;
 						setup_desc.cubemap_srv = p_scene->skybox_cubemap_srv_;
 						setup_desc.res_skybox_panorama_texture = p_scene->res_skybox_panorama_texture_;
+						setup_desc.ibl_diffuse_cubemap_srv = p_scene->sky_ibl_diffuse_cubemap_srv_;
 					}
 					
 					task_skybox->Setup(rtg_builder, p_device, view_info, setup_desc, task_depth->h_depth_, {});
@@ -258,6 +259,9 @@ namespace ngl::test
 						
 						setup_desc.scene_cbv = scene_cb_h;
 						setup_desc.ref_shadow_cbv = task_d_shadow->shadow_sample_cbh_;
+
+						setup_desc.ibl_diffuse_cubemap_srv = p_scene->sky_ibl_diffuse_cubemap_srv_;
+						setup_desc.ibl_src_cubemap_srv = p_scene->skybox_cubemap_srv_;
 
 						setup_desc.enable_feedback_blur_test = render_frame_desc.debugview_enable_feedback_blur_test;
 					}
