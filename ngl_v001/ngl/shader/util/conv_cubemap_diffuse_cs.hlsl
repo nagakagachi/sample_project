@@ -30,25 +30,8 @@ void main(
     const uint plane_index = gid.z;
     const uint2 texel_pos = dtid.xy;
 
-    const float3 plane_axis_front[6] = {
-        float3(1.0, 0.0, 0.0), float3(-1.0, 0.0, 0.0),
-        float3(0.0, 1.0, 0.0), float3(0.0, -1.0, 0.0),
-        float3(0.0, 0.0, 1.0), float3(0.0, 0.0, -1.0),
-    };
-    const float3 plane_axis_up[6] = {
-        float3(0.0, 1.0, 0.0), float3(0.0, 1.0, 0.0),
-        float3(0.0, 0.0, -1.0), float3(0.0, 0.0, -1.0),
-        float3(0.0, 1.0, 0.0), float3(0.0, 1.0, 0.0),
-    };
-    const float3 plane_axis_right[6] = {
-        float3(0.0, 0.0, -1.0), float3(0.0, 0.0, 1.0),
-        float3(1.0, 0.0, 0.0), float3(-1.0, 0.0, 0.0),
-        float3(1.0, 0.0, 0.0), float3(-1.0, 0.0, 0.0),
-    };
-    const float3 front = plane_axis_front[plane_index];
-    const float3 up = plane_axis_up[plane_index];
-    const float3 right = plane_axis_right[plane_index];
-
+    float3 front, up, right;
+    GetCubemapPlaneAxis(plane_index, front, up, right);
 
     float width, height, count;
     uav_cubemap_as_array.GetDimensions(width, height, count);
@@ -83,7 +66,7 @@ void main(
             const float3 dir_ts = float3(sin_theta*cos_phi, sin_theta*sin_phi, cos_theta);
 
             const float3 dir_ws = sample_right*dir_ts.x + sample_up*dir_ts.y + sample_normal*dir_ts.z;
-            //const float3 dir_ws = normalize((sample_right*dir_ts.x + sample_up*dir_ts.y)*0.2 + sample_normal*dir_ts.z);// テスト用にサンプル範囲を絞る.
+            //const float3 dir_ws = normalize((sample_right*dir_ts.x + sample_up*dir_ts.y)*0.03 + sample_normal*dir_ts.z);// テスト用にサンプル範囲を絞る.
 
             const float4 sample_color = tex_cube.SampleLevel(samp, dir_ws, 0);
             // 立体角の重みで積分.
@@ -92,10 +75,7 @@ void main(
     }
     tex_color = tex_color * NGL_PI * (1.0 / (k_azimuth_sample_resolution*k_polar_sample_resolution));
         
-
-    // 書き込み位置. UAVアクセスでのレイアウトでCubemapの下面(-Y)がUV反転しているっぽい.
-    const uint2 write_pos = (0.0 <= front.y)? texel_pos : uint2(width-1, height-1)-texel_pos;
-
+    const uint2 write_pos = texel_pos;
     // 書き込み.
     uav_cubemap_as_array[uint3(write_pos, plane_index)] = tex_color;
 }

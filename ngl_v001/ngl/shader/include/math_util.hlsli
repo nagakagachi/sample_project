@@ -120,4 +120,28 @@ float2 CalcPanoramaTexcoordFromWorldSpaceRay(float3 ray_dir)
     return panorama_uv;
 }
 
+// CubemapのPlane[0,5]に対応する向きベクトルを取得.
+void GetCubemapPlaneAxis(int cube_plane_index, out float3 out_front, out float3 out_up, out float3 out_right)
+{
+    const float3 plane_axis_front[6] = {
+        float3(1.0, 0.0, 0.0), float3(-1.0, 0.0, 0.0),
+        float3(0.0, 1.0, 0.0), float3(0.0, -1.0, 0.0),
+        float3(0.0, 0.0, 1.0), float3(0.0, 0.0, -1.0),
+    };
+    const float3 plane_axis_up[6] = {
+        float3(0.0, 1.0, 0.0), float3(0.0, 1.0, 0.0),
+        float3(0.0, 0.0, -1.0), float3(0.0, 0.0, 1.0),
+        float3(0.0, 1.0, 0.0), float3(0.0, 1.0, 0.0),
+    };
+    const float3 plane_axis_right[6] = {
+        float3(0.0, 0.0, -1.0), float3(0.0, 0.0, 1.0),
+        float3(1.0, 0.0, 0.0), float3(1.0, 0.0, 0.0),
+        float3(1.0, 0.0, 0.0), float3(-1.0, 0.0, 0.0),
+    };
+
+    out_front = plane_axis_front[cube_plane_index];
+    out_up = plane_axis_up[cube_plane_index];
+    out_right = plane_axis_right[cube_plane_index];
+}
+
 #endif

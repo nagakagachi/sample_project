@@ -13,6 +13,7 @@ SamplerState samp;
 
 RWTexture2DArray<float4> uav_cubemap_as_array;
 
+
 [numthreads(16,16,1)]
 void main(
     uint3 dtid    : SV_DispatchThreadID,
@@ -24,25 +25,8 @@ void main(
     const uint plane_index = gid.z;
     const uint2 texel_pos = dtid.xy;
 
-    const float3 plane_axis_front[6] = {
-        float3(1.0, 0.0, 0.0), float3(-1.0, 0.0, 0.0),
-        float3(0.0, 1.0, 0.0), float3(0.0, -1.0, 0.0),
-        float3(0.0, 0.0, 1.0), float3(0.0, 0.0, -1.0),
-    };
-    const float3 plane_axis_up[6] = {
-        float3(0.0, 1.0, 0.0), float3(0.0, 1.0, 0.0),
-        float3(0.0, 0.0, -1.0), float3(0.0, 0.0, -1.0),
-        float3(0.0, 1.0, 0.0), float3(0.0, 1.0, 0.0),
-    };
-    const float3 plane_axis_right[6] = {
-        float3(0.0, 0.0, -1.0), float3(0.0, 0.0, 1.0),
-        float3(1.0, 0.0, 0.0), float3(-1.0, 0.0, 0.0),
-        float3(1.0, 0.0, 0.0), float3(-1.0, 0.0, 0.0),
-    };
-    const float3 front = plane_axis_front[plane_index];
-    const float3 up = plane_axis_up[plane_index];
-    const float3 right = plane_axis_right[plane_index];
-
+    float3 front, up, right;
+    GetCubemapPlaneAxis(plane_index, front, up, right);
 
     float width, height, count;
     uav_cubemap_as_array.GetDimensions(width, height, count);
