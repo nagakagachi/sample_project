@@ -4,6 +4,9 @@
 
 Dispatchは x,y はplaneの解像度依存, z はCubemapの6面に対応する6を指定する
 
+参考
+https://learnopengl.com/PBR/IBL/Diffuse-irradiance
+
 #endif
 
 #include "../include/math_util.hlsli"
