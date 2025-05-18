@@ -174,7 +174,9 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	// IBL
 	{
 		const float3 sky_irradiance = tex_ibl_diffuse.SampleLevel(samp, gb_normal_ws, 0).rgb;
-		lit_color += diffuse_term * sky_irradiance;
+		//lit_color += diffuse_term * sky_irradiance;
+
+		lit_color = diffuse_term * sky_irradiance;
 	}
 
 		// ------------------------------------------------------------------------------

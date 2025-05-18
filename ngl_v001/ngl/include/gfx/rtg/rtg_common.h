@@ -3,12 +3,23 @@
 #include "text/hash_text.h"
 #include "rhi/rhi.h"
 
+namespace ngl
+{
+	
+	// NGL側のディレクトリのシェーダファイルパスを有効なパスにする.
+	static constexpr char k_shader_path_base[] = "../ngl/shader/";
+	#define NGL_RENDER_SHADER_PATH(shader_file) text::FixedString<128>("%s/%s", ngl::k_shader_path_base, shader_file)
+	static constexpr char k_shader_model[] = "6_3";
+	
+}
+
 namespace ngl::rtg
 {
 	class RenderTaskGraphBuilder;
 	class RenderTaskGraphManager;
 	using RtgNameType = text::HashText<64>;
 
+	
 	enum class ETASK_TYPE : int
 	{
 		GRAPHICS = 0,

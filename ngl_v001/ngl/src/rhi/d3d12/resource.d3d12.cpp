@@ -329,7 +329,8 @@ namespace ngl
 				}
 			}
 			assert(resource_desc.Width > 0 && resource_desc.Height > 0);
-			assert(resource_desc.MipLevels > 0 && resource_desc.DepthOrArraySize > 0 && resource_desc.SampleDesc.Count > 0);
+			//assert(resource_desc.MipLevels > 0 && resource_desc.DepthOrArraySize > 0 && resource_desc.SampleDesc.Count > 0);
+			assert(resource_desc.DepthOrArraySize > 0 && resource_desc.SampleDesc.Count > 0);
 			
 			// クリア値
 			D3D12_CLEAR_VALUE clearValue = {};

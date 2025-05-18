@@ -6,6 +6,8 @@
 
 #include "framework/gfx_render_command_manager.h"
 
+#include "gfx/command_helper.h"
+
 namespace ngl::gfx::scene
 {
     class SkyBox
@@ -30,46 +32,60 @@ namespace ngl::gfx::scene
 
             // 内部で生成するCubemap.
             auto FuncCreateCubemapResources = [p_device](
-                u32 resolution,
+                u32 resolution, u32 mip_count,
                 rhi::RefTextureDep* out_cubemap,
-                rhi::RefSrvDep* out_srv = {},
-                rhi::RefUavDep* out_uav = {}
+                rhi::RefSrvDep* out_mip0_srv = {},
+                rhi::RefUavDep* out_mip0_uav = {}
                 )
             {
                 constexpr u32 k_cubemap_plane_count = 6;
 
                 // Textureは必須.
                 assert(out_cubemap);
+
+                const u32 log_2_reso = ngl::MostSignificantBit32(resolution);
+                assert(0 < log_2_reso);
+                const u32 max_mip_count = log_2_reso + 1;
+
+                u32 gen_mip_count = std::min(mip_count, max_mip_count);
+                if (0 == gen_mip_count)
+                {
+                    gen_mip_count = max_mip_count;
+                }
                 
-                const bool is_need_uav = (nullptr != out_uav);
+                const bool is_need_uav = (nullptr != out_mip0_uav);
                 
                 (*out_cubemap) = new rhi::TextureDep();
                 {
                     rhi::TextureDep::Desc cubemap_desc{};
                     rhi::TextureDep::Desc::InitializeAsCubemap(cubemap_desc, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT, resolution, resolution, false, is_need_uav);
+                    // MipCount設定.
+                    cubemap_desc.mip_count = gen_mip_count
+                    ;
                     if (!(*out_cubemap)->Initialize(p_device, cubemap_desc))
                         assert(false);
                 }
 
-                if (out_srv)
+                if (out_mip0_srv)
                 {
-                    (*out_srv) = new rhi::ShaderResourceViewDep();
-                    if (!(*out_srv)->InitializeAsTexture(p_device, (*out_cubemap).Get(), 0, 1, 0, 1))
+                    (*out_mip0_srv) = new rhi::ShaderResourceViewDep();
+                    if (!(*out_mip0_srv)->InitializeAsTexture(p_device, (*out_cubemap).Get(), 0, gen_mip_count, 0, 1))
                         assert(false);
                 }
-                if (out_uav)
+                // UavはMip0について作成.
+                if (out_mip0_uav)
                 {
-                    (*out_uav) = new rhi::UnorderedAccessViewDep();
-                    if (!(*out_uav)->InitializeRwTexture(p_device, (*out_cubemap).Get(), 0, 0, k_cubemap_plane_count))
+                    (*out_mip0_uav) = new rhi::UnorderedAccessViewDep();
+                    if (!(*out_mip0_uav)->InitializeRwTexture(p_device, (*out_cubemap).Get(), 0, 0, k_cubemap_plane_count))
                         assert(false);
                 }
             };
 
             // Panoramaから生成するCubemap.
-            FuncCreateCubemapResources(512, &generated_cubemap_, &generated_cubemap_plane_array_srv_, &generated_cubemap_plane_array_uav_);
+            FuncCreateCubemapResources(512, 0, &generated_cubemap_, &generated_cubemap_plane_array_srv_, &generated_cubemap_plane_array_uav_);
 
             // Diffuse Conv Cubemap. 最終的にはTextureではなくSHにしてしまいたい.
-            FuncCreateCubemapResources(512, &conv_diffuse_cubemap_, &conv_diffuse_cubemap_pnale_array_srv_, &conv_diffuse_cubemap_plane_array_uav_);
+            FuncCreateCubemapResources(512, 1, &conv_diffuse_cubemap_, &conv_diffuse_cubemap_pnale_array_srv_, &conv_diffuse_cubemap_plane_array_uav_);
             
             // PSOセットアップ.
             {
@@ -124,6 +140,7 @@ namespace ngl::gfx::scene
                 // Panorama to Cubemap.
                 {
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "Panorama_to_Cubemap")
+                   constexpr u32 k_cubemap_plane_count = 6;
                     
                     // UAVステートへ.
                    command_list->ResourceBarrier(generated_cubemap_.Get(), cubemap_init_state, rhi::EResourceState::UnorderedAccess);
@@ -135,16 +152,26 @@ namespace ngl::gfx::scene
                         
                    command_list->SetPipelineState(pso_panorama_to_cube_.Get());
                    command_list->SetDescriptorSet(pso_panorama_to_cube_.Get(), &descset);
-                   constexpr u32 k_cubemap_plane_count = 6;
                    pso_panorama_to_cube_->DispatchHelper(command_list, generated_cubemap_->GetWidth(), generated_cubemap_->GetHeight(), k_cubemap_plane_count);
 
                    // UAVからSrvステートへ.
                    command_list->ResourceBarrier(generated_cubemap_.Get(), rhi::EResourceState::UnorderedAccess, rhi::EResourceState::ShaderRead);
                 }
 
+                
+                // Cubemap Mip生成.
+                {
+                    // Mipmap生成.
+                    ngl::gfx::helper::GenerateCubemapMipmapCompute(command_list, generated_cubemap_.Get(), rhi::EResourceState::ShaderRead,
+                        global_res.default_resource_.sampler_linear_clamp.Get(), 1, generated_cubemap_->GetMipCount()-1);
+                    
+                }
+
+                
                 // Diffuse IBL Cubemap畳み込み.
                 {
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "Conv_Diffuse")
+                    constexpr u32 k_cubemap_plane_count = 6;
                     
                     // UAVステートへ.
                    command_list->ResourceBarrier(conv_diffuse_cubemap_.Get(), cubemap_init_state, rhi::EResourceState::UnorderedAccess);
@@ -156,7 +183,6 @@ namespace ngl::gfx::scene
                         
                    command_list->SetPipelineState(pso_conv_cube_diffuse_.Get());
                    command_list->SetDescriptorSet(pso_conv_cube_diffuse_.Get(), &descset);
-                   constexpr u32 k_cubemap_plane_count = 6;
                    pso_conv_cube_diffuse_->DispatchHelper(command_list, conv_diffuse_cubemap_->GetWidth(), conv_diffuse_cubemap_->GetHeight(), k_cubemap_plane_count);
 
                    // UAVからSrvステートへ.
@@ -195,7 +221,6 @@ namespace ngl::gfx::scene
         res::ResourceHandle<gfx::ResTexture> res_sky_texture_;
 
 		rhi::RhiRef<rhi::ComputePipelineStateDep> pso_panorama_to_cube_;
-        
         rhi::RhiRef<rhi::ComputePipelineStateDep> pso_conv_cube_diffuse_;
         
         rhi::RefTextureDep generated_cubemap_;

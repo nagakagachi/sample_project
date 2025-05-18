@@ -4,14 +4,7 @@
 #include "text/hash_text.h"
 
 namespace ngl::render::task
-{
-    // NGL側のディレクトリのシェーダファイルパスを有効なパスにする.
-    static constexpr char k_shader_path_base[] = "../ngl/shader/";
-    #define NGL_RENDER_SHADER_PATH(shader_file) text::FixedString<128>("%s/%s", ngl::render::task::k_shader_path_base, shader_file)
-
-    static constexpr char k_shader_model[] = "6_3";
-
-    
+{   
     // Pass用のView情報.
     struct RenderPassViewInfo
     {

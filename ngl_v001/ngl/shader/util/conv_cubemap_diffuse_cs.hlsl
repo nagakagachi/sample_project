@@ -66,7 +66,6 @@ void main(
             const float3 dir_ts = float3(sin_theta*cos_phi, sin_theta*sin_phi, cos_theta);
 
             const float3 dir_ws = sample_right*dir_ts.x + sample_up*dir_ts.y + sample_normal*dir_ts.z;
-            //const float3 dir_ws = normalize((sample_right*dir_ts.x + sample_up*dir_ts.y)*0.03 + sample_normal*dir_ts.z);// テスト用にサンプル範囲を絞る.
 
             const float4 sample_color = tex_cube.SampleLevel(samp, dir_ws, 0);
             // 立体角の重みで積分.

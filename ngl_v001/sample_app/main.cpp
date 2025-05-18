@@ -428,9 +428,9 @@ bool AppGame::Initialize()
 	constexpr char path_sky_hdr_panorama_grace_new[] = "../ngl/data/texture/vgl/grace-new/grace-new.hdr";
 	constexpr char path_sky_hdr_panorama_uffizi_large[] = "../ngl/data/texture/vgl/uffizi-large/uffizi-large.hdr";
 
-	const auto* path_sky_panorama = path_sky_hdr_panorama_pisa;
+	//const auto* path_sky_panorama = path_sky_hdr_panorama_pisa;
 	//const auto* path_sky_panorama = path_sky_hdr_panorama_ennis;
-	//const auto* path_sky_panorama = path_sky_hdr_panorama_grace_new;
+	const auto* path_sky_panorama = path_sky_hdr_panorama_grace_new;
 	//const auto* path_sky_panorama = path_sky_hdr_panorama_uffizi_large;
 	if (!skybox_.InitializeAsPanorama(&device, path_sky_panorama))
 	{

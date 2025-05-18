@@ -65,7 +65,7 @@ namespace ngl::render::task
                 {
                     loaddesc_vs.entry_point_name = "main_vs";
                     loaddesc_vs.stage = ngl::rhi::EShaderStage::Vertex;
-                    loaddesc_vs.shader_model_version = task::k_shader_model;
+                    loaddesc_vs.shader_model_version = k_shader_model;
                 }
                 // ReverseZで最遠方(Z=0)のフルスクリーントライアングル描画.
                 auto res_shader_vs = res_mgr.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_SHADER_PATH("screen/fullscr_procedural_z0_vs.hlsl"), &loaddesc_vs);
@@ -74,7 +74,7 @@ namespace ngl::render::task
                 {
                     loaddesc_ps.entry_point_name = "main_ps";
                     loaddesc_ps.stage = ngl::rhi::EShaderStage::Pixel;
-                    loaddesc_ps.shader_model_version = task::k_shader_model;
+                    loaddesc_ps.shader_model_version = k_shader_model;
                 }
                 auto res_shader_ps = res_mgr.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_SHADER_PATH("skybox_pass_ps.hlsl"), &loaddesc_ps);
 
