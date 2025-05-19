@@ -1,4 +1,4 @@
-# sample_projct
+# sample_project
 
 DirectX12 Toy Renderer (WIP).
 
