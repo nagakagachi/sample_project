@@ -1,7 +1,8 @@
 # sample_projct
 
 DirectX12 Toy Renderer (WIP).
-![Image](https://github.com/user-attachments/assets/31ded6f9-f69a-4df2-b1c3-23433d0c02af)
+
+<img src="https://github.com/user-attachments/assets/27dd00d2-3c3e-4328-940e-12b93a8f1640" width="50%"><img src="https://github.com/user-attachments/assets/31ded6f9-f69a-4df2-b1c3-23433d0c02af" width="50%">
 
 This repository is currently implementing the RenderTaskGraph (RenderGraph). </br>
 The following reference materials are available on RenderGraph. </br>
