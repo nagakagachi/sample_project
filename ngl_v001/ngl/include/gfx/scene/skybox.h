@@ -85,7 +85,7 @@ namespace ngl::gfx::scene
             FuncCreateCubemapResources(512, 0, &generated_cubemap_, &generated_cubemap_plane_array_srv_, &generated_cubemap_plane_array_uav_);
 
             // Diffuse Conv Cubemap. 最終的にはTextureではなくSHにしてしまいたい.
-            FuncCreateCubemapResources(512, 1, &conv_diffuse_cubemap_, &conv_diffuse_cubemap_pnale_array_srv_, &conv_diffuse_cubemap_plane_array_uav_);
+            FuncCreateCubemapResources(64, 1, &conv_diffuse_cubemap_, &conv_diffuse_cubemap_pnale_array_srv_, &conv_diffuse_cubemap_plane_array_uav_);
             
             // PSOセットアップ.
             {
@@ -134,6 +134,7 @@ namespace ngl::gfx::scene
             {
                 auto& global_res = gfx::GlobalRenderResource::Instance();
                 auto* command_list = arg.command_list;
+                auto* device = command_list->GetDevice();
                 
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "Generate_Sky_Cubemap")
 
@@ -172,11 +173,25 @@ namespace ngl::gfx::scene
                 {
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "Conv_Diffuse")
                     constexpr u32 k_cubemap_plane_count = 6;
+
+                    struct CbConvCubemapDiffuse
+                    {
+                        // ソースのCubemapの解像度に対して畳み込みサンプリングのアンダーサンプリングを緩和するためにMipmapを利用する.
+                        u32 use_mip_to_prevent_undersampling;
+                    };
+                    auto cbh = device->GetConstantBufferPool()->Alloc(sizeof(CbConvCubemapDiffuse));
+                    if (auto* map_ptr = cbh->buffer_.MapAs<CbConvCubemapDiffuse>())
+                    {
+                        map_ptr->use_mip_to_prevent_undersampling = 1;// Mipによるエイリアシング抑制有効.
+                        
+                        cbh->buffer_.Unmap();
+                    }
                     
                     // UAVステートへ.
                    command_list->ResourceBarrier(conv_diffuse_cubemap_.Get(), cubemap_init_state, rhi::EResourceState::UnorderedAccess);
                 
                    rhi::DescriptorSetDep descset{};
+                    pso_conv_cube_diffuse_->SetView(&descset, "cb_conv_cubemap_diffuse", &cbh->cbv_);
                    pso_conv_cube_diffuse_->SetView(&descset, "tex_cube", generated_cubemap_plane_array_srv_.Get());
                    pso_conv_cube_diffuse_->SetView(&descset, "samp", global_res.default_resource_.sampler_linear_wrap.Get());
                    pso_conv_cube_diffuse_->SetView(&descset, "uav_cubemap_as_array", conv_diffuse_cubemap_plane_array_uav_.Get());
