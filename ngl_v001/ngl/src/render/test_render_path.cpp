@@ -223,6 +223,7 @@ namespace ngl::test
 						setup_desc.cubemap_srv = p_scene->skybox_cubemap_srv_;
 						setup_desc.res_skybox_panorama_texture = p_scene->res_skybox_panorama_texture_;
 						setup_desc.ibl_diffuse_cubemap_srv = p_scene->sky_ibl_diffuse_cubemap_srv_;
+						setup_desc.ibl_ggx_specular_cubemap_srv = p_scene->sky_ibl_specular_cubemap_srv_;
 					}
 					
 					task_skybox->Setup(rtg_builder, p_device, view_info, setup_desc, task_depth->h_depth_, {});

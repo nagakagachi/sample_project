@@ -64,6 +64,7 @@ namespace gfx
 		rhi::RefSrvDep							skybox_cubemap_srv_ = {};
 		res::ResourceHandle<gfx::ResTexture>	res_skybox_panorama_texture_ = {};
 		rhi::RefSrvDep							sky_ibl_diffuse_cubemap_srv_ = {};
+		rhi::RefSrvDep							sky_ibl_specular_cubemap_srv_ = {};
 	};
 
 }

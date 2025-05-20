@@ -13,7 +13,7 @@ https://learnopengl.com/PBR/IBL/Diffuse-irradiance
 
 // 方位角(半球の周囲)のサンプル分割数.
 // ソースCubemap解像度に対してサンプル数が少ないとアンダーサンプリングで高輝度ノイズが発生するため, Mipmapを利用した補正機能を用意してある.
-#define CONV_DIFFUSE_AZIMUTH_RESOLUTION 256
+#define CONV_DIFFUSE_AZIMUTH_RESOLUTION (256)
 
 struct CbConvCubemapDiffuse
 {
@@ -97,8 +97,7 @@ void main(
         }
     }
     tex_color = tex_color * NGL_PI * (1.0 / (k_azimuth_sample_resolution*k_polar_sample_resolution));
-        
-    const uint2 write_pos = texel_pos;
+    
     // 書き込み.
-    uav_cubemap_as_array[uint3(write_pos, plane_index)] = tex_color;
+    uav_cubemap_as_array[uint3(texel_pos, plane_index)] = tex_color;
 }

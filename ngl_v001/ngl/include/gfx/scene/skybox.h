@@ -10,6 +10,13 @@
 
 namespace ngl::gfx::scene
 {
+    /**
+     * @class SkyBox
+     *
+     * SkyBoxクラスはスカイボックスの生成と初期化を担当し、主にパノラマテクスチャから生成します。
+     * パノラマからキューブマップを生成し、拡散畳み込みを行い、関連する描画やリソースタスクを
+     * 管理する機能を提供します。
+     */
     class SkyBox
     {
     public:
@@ -39,6 +46,9 @@ namespace ngl::gfx::scene
                 )
             {
                 constexpr u32 k_cubemap_plane_count = 6;
+
+                // サイズは二の冪に限定するためチェック.
+                assert((resolution != 0) && (resolution & (resolution - 1)) == 0);
 
                 // Textureは必須.
                 assert(out_cubemap);
@@ -81,11 +91,16 @@ namespace ngl::gfx::scene
                 }
             };
 
-            // Panoramaから生成するCubemap.
+            // Panoramaから生成するCubemap. エイリアシング対策のためにMip生成.
             FuncCreateCubemapResources(512, 0, &generated_cubemap_, &generated_cubemap_plane_array_srv_, &generated_cubemap_plane_array_uav_);
 
-            // Diffuse Conv Cubemap. 最終的にはTextureではなくSHにしてしまいたい.
+            // Diffuse Conv Cubemap. Mip無し. 最終的にはTextureではなくSHにしてしまいたい.
             FuncCreateCubemapResources(64, 1, &conv_diffuse_cubemap_, &conv_diffuse_cubemap_pnale_array_srv_, &conv_diffuse_cubemap_plane_array_uav_);
+            
+            // GGX Specular Conv Cubemap. 全Miplevel.
+            FuncCreateCubemapResources(512, 0, &conv_ggx_specular_cubemap_, &conv_ggx_specular_cubemap_pnale_array_srv_, &conv_ggx_specular_cubemap_plane_array_uav_);
+
+            
             
             // PSOセットアップ.
             {
@@ -126,6 +141,26 @@ namespace ngl::gfx::scene
                     if (!pso_conv_cube_diffuse_->Initialize(p_device, pso_desc))
                         assert(false);
                 }
+                
+                pso_conv_cube_ggx_specular_ = new rhi::ComputePipelineStateDep();
+                {
+                    gfx::ResShader::LoadDesc loaddesc{};
+                    {
+                        loaddesc.entry_point_name = "main";
+                        loaddesc.stage = ngl::rhi::EShaderStage::Compute;
+                        loaddesc.shader_model_version = "6_3";
+                    }
+                    auto res_shader = res_mgr.LoadResource<gfx::ResShader>(p_device,
+                                                NGL_RENDER_SHADER_PATH("util/conv_cubemap_ggx_specular_cs.hlsl"),
+                                                &loaddesc);
+                
+                    rhi::ComputePipelineStateDep::Desc pso_desc{};
+                    pso_desc.cs = &res_shader->data_;
+
+                    if (!pso_conv_cube_ggx_specular_->Initialize(p_device, pso_desc))
+                        assert(false);
+                }
+                
             }
 
             // Cubemap生成のRenderCommand登録.
@@ -203,6 +238,43 @@ namespace ngl::gfx::scene
                    // UAVからSrvステートへ.
                    command_list->ResourceBarrier(conv_diffuse_cubemap_.Get(), rhi::EResourceState::UnorderedAccess, rhi::EResourceState::ShaderRead);
                 }
+                   
+               // GGX Specular IBL Cubemap畳み込み. 現状はMip0のみ.
+               {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "Conv_GGX_Specular")
+                    constexpr u32 k_cubemap_plane_count = 6;
+                   
+                    struct CbConvCubemapGgxSpecular
+                    {
+                        // ソースのCubemapの解像度に対して畳み込みサンプリングのアンダーサンプリングを緩和するためにMipmapを利用する.
+                        u32 use_mip_to_prevent_undersampling;
+                        float roughness;
+                    };
+                    auto cbh = device->GetConstantBufferPool()->Alloc(sizeof(CbConvCubemapGgxSpecular));
+                    if (auto* map_ptr = cbh->buffer_.MapAs<CbConvCubemapGgxSpecular>())
+                    {
+                        map_ptr->use_mip_to_prevent_undersampling = 1;// Mipによるエイリアシング抑制有効.
+                        map_ptr->roughness = 0.2f;
+                        
+                        cbh->buffer_.Unmap();
+                    }
+                    
+                    // UAVステートへ.
+                   command_list->ResourceBarrier(conv_ggx_specular_cubemap_.Get(), cubemap_init_state, rhi::EResourceState::UnorderedAccess);
+                                   
+                   rhi::DescriptorSetDep descset{};
+                   pso_conv_cube_ggx_specular_->SetView(&descset, "cb_conv_cubemap_ggx_specular", &cbh->cbv_);
+                   pso_conv_cube_ggx_specular_->SetView(&descset, "tex_cube", generated_cubemap_plane_array_srv_.Get());
+                   pso_conv_cube_ggx_specular_->SetView(&descset, "samp", global_res.default_resource_.sampler_linear_wrap.Get());
+                   pso_conv_cube_ggx_specular_->SetView(&descset, "uav_cubemap_as_array", conv_ggx_specular_cubemap_plane_array_uav_.Get());
+                        
+                   command_list->SetPipelineState(pso_conv_cube_ggx_specular_.Get());
+                   command_list->SetDescriptorSet(pso_conv_cube_ggx_specular_.Get(), &descset);
+                   pso_conv_cube_ggx_specular_->DispatchHelper(command_list, conv_ggx_specular_cubemap_->GetWidth(), conv_ggx_specular_cubemap_->GetHeight(), k_cubemap_plane_count);
+                   
+                   // UAVからSrvステートへ.
+                   command_list->ResourceBarrier(conv_ggx_specular_cubemap_.Get(), rhi::EResourceState::UnorderedAccess, rhi::EResourceState::ShaderRead);
+                }
                 
             });
             
@@ -226,6 +298,15 @@ namespace ngl::gfx::scene
         {
             return conv_diffuse_cubemap_pnale_array_srv_;
         }
+        rhi::RefTextureDep GetConvGgxSpecularCubemap() const
+        {
+            return conv_ggx_specular_cubemap_;
+        }
+        rhi::RefSrvDep GetConvGgxSpecularCubemapSrv() const
+        {
+            return conv_ggx_specular_cubemap_pnale_array_srv_;
+        }
+        
         // パノラマ 基本的には確認用.
         res::ResourceHandle<gfx::ResTexture> GetPanoramaTexture() const
         {
@@ -233,17 +314,27 @@ namespace ngl::gfx::scene
         }
         
     private:
+        // HDR Sky Panorama Texture.
+        //  扱いやすさや入手のしやすさから空のHDRイメージはパノラマテクスチャをソースとする.
         res::ResourceHandle<gfx::ResTexture> res_sky_texture_;
 
 		rhi::RhiRef<rhi::ComputePipelineStateDep> pso_panorama_to_cube_;
         rhi::RhiRef<rhi::ComputePipelineStateDep> pso_conv_cube_diffuse_;
-        
+        rhi::RhiRef<rhi::ComputePipelineStateDep> pso_conv_cube_ggx_specular_;
+
+        // Mipmap有りのSky Cubemap. Panoramaイメージから生成される.
         rhi::RefTextureDep generated_cubemap_;
         rhi::RefUavDep generated_cubemap_plane_array_uav_;
         rhi::RefSrvDep generated_cubemap_plane_array_srv_;
-        
+
+        // Sky Cubemapから畳み込みで生成されるDiffuse IBL Cubemap.
         rhi::RefTextureDep conv_diffuse_cubemap_;
         rhi::RefUavDep conv_diffuse_cubemap_plane_array_uav_;
         rhi::RefSrvDep conv_diffuse_cubemap_pnale_array_srv_;
+        
+        // Sky Cubemapから畳み込みで生成されるGGX Specular IBL Cubemap.
+        rhi::RefTextureDep conv_ggx_specular_cubemap_;
+        rhi::RefUavDep conv_ggx_specular_cubemap_plane_array_uav_;
+        rhi::RefSrvDep conv_ggx_specular_cubemap_pnale_array_srv_;
     };
 }
