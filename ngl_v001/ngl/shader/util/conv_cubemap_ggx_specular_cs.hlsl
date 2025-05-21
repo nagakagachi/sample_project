@@ -66,7 +66,9 @@ void main(
 
     float4 tex_color = (float4)0;
     float total_weight = 0.0;
-    // Importance Sampling GGX.
+
+    // Importance Sampling GGX with SplitSumApprox.
+    // https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf
     for(int si = 0; si < CONV_GGX_SPECULAR_SAMPLING_COUNT; ++si)
     {
         const float2 xi = Hammersley2d(si, CONV_GGX_SPECULAR_SAMPLING_COUNT);
@@ -79,8 +81,9 @@ void main(
         {
             const float4 cubemap_color = tex_cube.SampleLevel(samp, L, 0);
 
-            tex_color += cubemap_color * NdotL;// cos重み付け.
-            total_weight += NdotL;// 重みトータル.
+            // Split Sum Approx における近似GGXサンプリングの場合の誤差を改善するために cos 重み付け平均が提案されている.
+            tex_color += cubemap_color * NdotL;
+            total_weight += NdotL;
         }
     }
     tex_color /= total_weight;// 重みで正規化.

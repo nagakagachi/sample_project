@@ -161,6 +161,7 @@ float2 Hammersley2d(uint i, uint N)
 {
     return float2(float(i)/float(N), RadicalInverse_VdC(i));
 }
+//
 // https://learnopengl.com/PBR/IBL/Specular-IBL
 float3 ImportanceSampleGGX(float2 Xi, float3 N, float roughness)
 {
@@ -182,7 +183,7 @@ float3 ImportanceSampleGGX(float2 Xi, float3 N, float roughness)
     float3 bitangent = cross(N, tangent);
 	
     float3 sampleVec = tangent * H.x + bitangent * H.y + N * H.z;
-    return normalize(sampleVec);
+    return sampleVec;
 }  
 
 #endif
