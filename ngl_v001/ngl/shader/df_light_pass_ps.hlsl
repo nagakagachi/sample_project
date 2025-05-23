@@ -77,7 +77,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	const float3 to_pixel_ray_ws = normalize(to_pixel_vec_ws);
 
 	
-	const float3 lit_intensity = float3(1.0, 1.0, 1.0) * ngl_PI * 1.5;
+	const float3 lit_intensity = float3(1.0, 1.0, 1.0) * NGL_PI * 1.5;
 	const float3 lit_dir = normalize(ngl_cb_shadowview.cb_shadow_view_inv_mtx[0]._m02_m12_m22);// InvShadowViewMtxから向きベクトルを取得.
 
 
@@ -227,7 +227,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 				return float4(k_lit_nan_key_color, 0.0);
 			}
 			// NaNチェック. 前回フレームのバッファがNaNキー色の場合は, そのまま返す.
-			if(all(prev_light == k_lit_nan_key_color))
+			if(all(prev_light.rgb == k_lit_nan_key_color))
 			{
 				return float4(k_lit_nan_key_color, 0.0);
 			}
@@ -237,7 +237,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	// ambient term.
 	{
 		const float3 k_ambient_rate = float3(0.7, 0.7, 1.0) * 0.15;
-		lit_color += gb_base_color * (1.0/ngl_PI) * ((dot(gb_normal_ws, -L)) * 0.5 + 0.5) * lit_intensity * k_ambient_rate;
+		lit_color += gb_base_color * (1.0/NGL_PI) * ((dot(gb_normal_ws, -L)) * 0.5 + 0.5) * lit_intensity * k_ambient_rate;
 	}
 #endif
 
@@ -249,7 +249,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		const float length_from_center = length(dist_from_center);
 		const float k_lenght_min = 0.4;
 		float prev_blend_rate = saturate((length_from_center - k_lenght_min)*5.0);
-		lit_color = lerp(lit_color, prev_light, prev_blend_rate * 0.95);
+		lit_color = lerp(lit_color, prev_light.rgb, prev_blend_rate * 0.95);
 	}
 
 	return float4(lit_color, 1.0);

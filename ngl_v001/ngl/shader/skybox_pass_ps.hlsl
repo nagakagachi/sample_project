@@ -19,6 +19,7 @@ struct CbSkyBox
 {
 	float	exposure;
 	uint	panorama_mode;
+    float   debug_mip_bias;
 };
 ConstantBuffer<CbSkyBox> cb_skybox;
 
@@ -37,12 +38,12 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	float4 tex_color = (float4)0;
 	if(0 == cb_skybox.panorama_mode)
 	{
-		tex_color = tex_skybox_cube.SampleLevel(samp, ray_ws, 0);
+		tex_color = tex_skybox_cube.SampleLevel(samp, ray_ws, cb_skybox.debug_mip_bias);
 	}
 	else
 	{
 		const float2 panorama_uv = CalcPanoramaTexcoordFromWorldSpaceRay(ray_ws);
-		tex_color = tex_skybox_panorama.SampleLevel(samp, panorama_uv, 0);
+		tex_color = tex_skybox_panorama.SampleLevel(samp, panorama_uv, cb_skybox.debug_mip_bias);
 	}
 
 	return tex_color * cb_skybox.exposure;

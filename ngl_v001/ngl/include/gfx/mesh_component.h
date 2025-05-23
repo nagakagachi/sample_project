@@ -61,10 +61,22 @@ namespace gfx
 
 		std::vector<gfx::StaticMeshComponent*> mesh_instance_array_ = {};
 
+		// sky.
 		rhi::RefSrvDep							skybox_cubemap_srv_ = {};
 		res::ResourceHandle<gfx::ResTexture>	res_skybox_panorama_texture_ = {};
 		rhi::RefSrvDep							sky_ibl_diffuse_cubemap_srv_ = {};
 		rhi::RefSrvDep							sky_ibl_specular_cubemap_srv_ = {};
+		enum class EDebugMode
+		{
+			None,
+			SrcCubemap,
+			IblSpecular,
+			IblDiffuse,
+
+			_MAX
+		};
+		EDebugMode sky_debug_mode_ = EDebugMode::None;
+		float sky_debug_mip_bias_ = 0.0f;
 	};
 
 }

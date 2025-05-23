@@ -66,6 +66,8 @@ static float dbgw_stat_primary_rtg_construct = {};
 static float dbgw_stat_primary_rtg_compile = {};
 static float dbgw_stat_primary_rtg_execute = {};
 
+static int dbgw_sky_debug_mode = {};
+static float dbgw_sky_debug_mip_bias = 0.0f;
 
 class PlayerController
 {
@@ -551,12 +553,13 @@ bool AppGame::ExecuteApp()
 		ImGui::TextColored(ImColor(1.0f, 0.9f, 0.9f), "     (Unreal Engine Like)");
 		ImGui::TextColored(ImColor(1.0f, 0.2f, 0.2f), " ");
 		
+		ImGui::SetNextItemOpen(false, ImGuiCond_Once);
 		if (ImGui::CollapsingHeader("View Info"))
 		{
 			ImGui::Text("Camera Dir:			%.3f, %.3f, %.3f", camera_pose_.GetColumn2().x, camera_pose_.GetColumn2().y, camera_pose_.GetColumn2().z);
 		}
 		
-		ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+		ImGui::SetNextItemOpen(false, ImGuiCond_Once);
 		if (ImGui::CollapsingHeader("Debug Perf"))
 		{
 			ImGui::Text("Delta:			%f [ms]", delta_sec*1000.0f);
@@ -580,6 +583,7 @@ bool AppGame::ExecuteApp()
 			ImGui::Checkbox("Enable MultiThread RenderPass", &dbgw_multithread_render_pass);
 			ImGui::Checkbox("Enable MultiThread CascadeShadow", &dbgw_multithread_cascade_shadow);
 		}
+		ImGui::SetNextItemOpen(false, ImGuiCond_Once);
 		if(ImGui::CollapsingHeader("RHI"))
 		{
 			const auto free_dynamic_descriptor_count = gfxfw_.device_.GeDynamicDescriptorManager()->GetFreeDescriptorCount();
@@ -589,20 +593,47 @@ bool AppGame::ExecuteApp()
 				free_dynamic_descriptor_count, max_dynamic_descriptor_count, 100.0f * (float)free_dynamic_descriptor_count/(float)max_dynamic_descriptor_count);
 		}
 		
-		ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+		ImGui::SetNextItemOpen(false, ImGuiCond_Once);
 		if (ImGui::CollapsingHeader("Debug View"))
 		{
 			ImGui::Checkbox("View GBuffer", &dbgw_view_gbuffer);
 			ImGui::Checkbox("View Directional Shadow Atlas", &dbgw_view_dshadow);
 			ImGui::Checkbox("View Half Dot Gray", &dbgw_view_half_dot_gray);
 		}
-		ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+		ImGui::SetNextItemOpen(false, ImGuiCond_Once);
 		if (ImGui::CollapsingHeader("Directional Light"))
 		{
 			ImGui::SliderFloat("DirectionalLight Angle V", &dbgw_dlit_angle_v, 0.0f, ngl::math::k_pi_f*2.0f);
 			ImGui::SliderFloat("DirectionalLight Angle H", &dbgw_dlit_angle_h, 0.0f, ngl::math::k_pi_f*2.0f);
 		}
+
 		ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+		if (ImGui::CollapsingHeader("Sky"))
+		{
+			if (ImGui::CollapsingHeader("IBL"))
+			{
+				bool param_prevent_aliasing_mode_diffuse = skybox_.GetParam_PreventAliasingModeDiffuse();
+				bool param_prevent_aliasing_mode_specular = skybox_.GetParam_PreventAliasingModeSpecular();
+				
+				ImGui::Checkbox("prevent aliasing mode diffuse", &param_prevent_aliasing_mode_diffuse);
+				ImGui::Checkbox("prevent aliasing mode specular", &param_prevent_aliasing_mode_specular);
+
+				skybox_.SetParam_PreventAliasingModeDiffuse(param_prevent_aliasing_mode_diffuse);
+				skybox_.SetParam_PreventAliasingModeSpecular(param_prevent_aliasing_mode_specular);
+
+				if (ImGui::Button("recalculate"))
+				{
+					skybox_.RecalculateIblTexture();
+				}
+			}
+
+			ImGui::SliderInt("sky debug mode", &dbgw_sky_debug_mode, 0, static_cast<int>(ngl::gfx::SceneRepresentation::EDebugMode::_MAX)-1);
+			ImGui::SliderFloat("sky debug mip bias", &dbgw_sky_debug_mip_bias, 0.0f, 12.0f);
+			
+		}
+		
+		
+		ImGui::SetNextItemOpen(false, ImGuiCond_Once);
 		if (ImGui::CollapsingHeader("Pass Setting"))
 		{
 			ImGui::Checkbox("Enable Feedback Blur Test", &dbgw_enable_feedback_blur_test);
@@ -642,17 +673,16 @@ bool AppGame::ExecuteApp()
 			frame_scene.mesh_instance_array_.push_back(e.get());
 		}
 
-#if 1
-		frame_scene.skybox_cubemap_srv_ = skybox_.GetCubemapSrv();
-		frame_scene.res_skybox_panorama_texture_ = skybox_.GetPanoramaTexture();
-		
-		frame_scene.sky_ibl_diffuse_cubemap_srv_ = skybox_.GetConvDiffuseCubemapSrv();
-		frame_scene.sky_ibl_specular_cubemap_srv_ = skybox_.GetConvGgxSpecularCubemapSrv();
-		
-#else
-		frame_scene.skybox_cubemap_srv_ = skybox_.GetConvDiffuseCubemapSrv();
-		frame_scene.res_skybox_panorama_texture_ = skybox_.GetPanoramaTexture();
-#endif
+		// sky.
+		{
+			frame_scene.skybox_cubemap_srv_ = skybox_.GetCubemapSrv();
+			frame_scene.res_skybox_panorama_texture_ = skybox_.GetPanoramaTexture();
+			frame_scene.sky_ibl_diffuse_cubemap_srv_ = skybox_.GetConvDiffuseCubemapSrv();
+			frame_scene.sky_ibl_specular_cubemap_srv_ = skybox_.GetConvGgxSpecularCubemapSrv();
+
+			frame_scene.sky_debug_mode_ = static_cast<ngl::gfx::SceneRepresentation::EDebugMode>(dbgw_sky_debug_mode);
+			frame_scene.sky_debug_mip_bias_ = dbgw_sky_debug_mip_bias;
+		}
 	}
 
 	// RenderParamのセットアップ.

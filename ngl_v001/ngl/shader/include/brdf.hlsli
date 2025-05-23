@@ -4,8 +4,10 @@
 // nglのmatrix系ははrow-majorメモリレイアウトであるための指定.
 #pragma pack_matrix( row_major )
 
+#include "math_util.hlsli"
 
-#define ngl_PI 3.14159265358979323846
+
+//#define ngl_PI 3.14159265358979323846
 #define ngl_EPSILON 1e-6
 
 // GGXの知覚的Roughnessの下限制限をしてハイライトを残すための値.
@@ -48,7 +50,7 @@ float brdf_trowbridge_reitz_D(float perceptual_roughness, float3 N, float3 V, fl
 	const float3 h = ngl_safe_normalize(V + L);
 	const float n_o_h = dot(N, h);
 	const float tmp = (1.0 + n_o_h*n_o_h * (a2 - 1.0));
-	const float D = (a2) / (ngl_PI * tmp*tmp);
+	const float D = (a2) / (NGL_PI * tmp*tmp);
 	return D;
 }
 // Height-Correlated Smith Masking-Shadowing
@@ -81,11 +83,57 @@ float3 brdf_standard_ggx(float3 base_color, float perceptual_roughness, float me
 
 float3 brdf_lambert(float3 base_color, float perceptual_roughness, float metalness, float3 N, float3 V, float3 L)
 {
-	const float lambert = 1.0 / ngl_PI;
+	const float lambert = 1.0 / NGL_PI;
 
 	const float3 diffuse = lerp(base_color, 0.0, metalness) * lambert;
 	return diffuse;
 }
+
+
+
+// ----------------------------------------------------------------------------------
+// Sampling.
+
+// Hammersley Sequence で利用.
+// https://learnopengl.com/PBR/IBL/Specular-IBL
+float RadicalInverse_VdC(uint bits) 
+{
+	bits = (bits << 16u) | (bits >> 16u);
+	bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+	bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+	bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+	bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+	return float(bits) * 2.3283064365386963e-10; // / 0x100000000
+}
+// https://learnopengl.com/PBR/IBL/Specular-IBL
+float2 Hammersley2d(uint i, uint N)
+{
+	return float2(float(i)/float(N), RadicalInverse_VdC(i));
+}
+//
+// https://learnopengl.com/PBR/IBL/Specular-IBL
+float3 ImportanceSampleHalfVectorGGX(float2 Xi, float3 N, float roughness)
+{
+	float a = roughness*roughness;
+	
+	float phi = 2.0 * NGL_PI * Xi.x;
+	float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
+	float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
+	
+	// from spherical coordinates to cartesian coordinates
+	float3 H;
+	H.x = cos(phi) * sinTheta;
+	H.y = sin(phi) * sinTheta;
+	H.z = cosTheta;
+	
+	// from tangent-space vector to world-space sample vector
+	float3 up        = abs(N.z) < 0.999 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+	float3 tangent   = normalize(cross(up, N));
+	float3 bitangent = cross(N, tangent);
+	
+	float3 sampleVec = tangent * H.x + bitangent * H.y + N * H.z;
+	return sampleVec;
+}  
 
 
 #endif // NGL_SHADER_BRDF_H

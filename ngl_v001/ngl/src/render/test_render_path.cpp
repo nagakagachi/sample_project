@@ -8,6 +8,8 @@
 #include "util/time/timer.h"
 
 // Pass.
+#include "gfx/mesh_component.h"
+#include "gfx/mesh_component.h"
 #include "render/task/pass_pre_z.h"
 #include "render/task/pass_gbuffer.h"
 #include "render/task/pass_cascade_shadow.h"
@@ -224,6 +226,38 @@ namespace ngl::test
 						setup_desc.res_skybox_panorama_texture = p_scene->res_skybox_panorama_texture_;
 						setup_desc.ibl_diffuse_cubemap_srv = p_scene->sky_ibl_diffuse_cubemap_srv_;
 						setup_desc.ibl_ggx_specular_cubemap_srv = p_scene->sky_ibl_specular_cubemap_srv_;
+
+						{
+							switch (p_scene->sky_debug_mode_)
+							{
+							case gfx::SceneRepresentation::EDebugMode::SrcCubemap:
+								{
+									setup_desc.debug_mode = render::task::PassSkybox::EDebugMode::SrcCubemap;
+									break;
+								}
+							case gfx::SceneRepresentation::EDebugMode::IblSpecular:
+								{
+									setup_desc.debug_mode = render::task::PassSkybox::EDebugMode::IblSpecular;
+									break;
+								}
+							case gfx::SceneRepresentation::EDebugMode::IblDiffuse:
+								{
+									setup_desc.debug_mode = render::task::PassSkybox::EDebugMode::IblDiffuse;
+									break;
+								}
+							case gfx::SceneRepresentation::EDebugMode::None:
+								{
+									setup_desc.debug_mode = render::task::PassSkybox::EDebugMode::None;
+									break;
+								}
+							default:
+								{
+									assert(false);
+									break;
+								}
+							}
+						}
+						setup_desc.debug_mip_bias = p_scene->sky_debug_mip_bias_;
 					}
 					
 					task_skybox->Setup(rtg_builder, p_device, view_info, setup_desc, task_depth->h_depth_, {});

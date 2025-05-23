@@ -4,9 +4,7 @@
 // nglのmatrix系ははrow-majorメモリレイアウトであるための指定.
 #pragma pack_matrix( row_major )
 
-
-#define ngl_PI 3.14159265358979323846
-#define ngl_EPSILON 1e-6
+#include "math_util.hlsli"
 
 float CalcLuminance_Rec709(float3 input)
 {

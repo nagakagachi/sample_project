@@ -25,6 +25,128 @@ namespace ngl::gfx::scene
         }
         ~SkyBox() = default;
 
+        // 現在のパラメータでIBL Cubemapを再計算する描画コマンドを発行する.
+        void RecalculateIblTexture()
+        {
+            // Diffuse.
+            {
+                constexpr u32 k_cubemap_plane_count = 6;
+                
+                const rhi::EResourceState prev_state = conv_diffuse_cubemap_state_;
+                constexpr auto next_state = rhi::EResourceState::ShaderRead;
+                conv_diffuse_cubemap_state_ = next_state;
+                const auto prevent_aliasing_mode = prevent_aliasing_mode_diffuse_;
+                ngl::fwk::PushCommonRenderCommand([this, prev_state, next_state, prevent_aliasing_mode](ngl::fwk::ComonRenderCommandArg arg)
+                {
+                    auto& global_res = gfx::GlobalRenderResource::Instance();
+                    auto* command_list = arg.command_list;
+                    auto* device = command_list->GetDevice();
+                
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "RecalculateIblTexture_Diffuse")
+                
+                    // Diffuse IBL Cubemap畳み込み.
+                    {
+                        NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "Conv_Diffuse")
+
+                        struct CbConvCubemapDiffuse
+                        {
+                            // ソースのCubemapの解像度に対して畳み込みサンプリングのアンダーサンプリングを緩和するためにMipmapを利用する.
+                            u32 use_mip_to_prevent_undersampling;
+                        };
+                        auto cbh = device->GetConstantBufferPool()->Alloc(sizeof(CbConvCubemapDiffuse));
+                        if (auto* map_ptr = cbh->buffer_.MapAs<CbConvCubemapDiffuse>())
+                        {
+                            map_ptr->use_mip_to_prevent_undersampling = prevent_aliasing_mode;// Mipによるエイリアシング抑制有効.
+                        
+                            cbh->buffer_.Unmap();
+                        }
+                    
+                        // UAVステートへ.
+                       command_list->ResourceBarrier(conv_diffuse_cubemap_.Get(), prev_state, rhi::EResourceState::UnorderedAccess);
+                
+                       rhi::DescriptorSetDep descset{};
+                        pso_conv_cube_diffuse_->SetView(&descset, "cb_conv_cubemap_diffuse", &cbh->cbv_);
+                       pso_conv_cube_diffuse_->SetView(&descset, "tex_cube", generated_cubemap_plane_array_srv_.Get());
+                       pso_conv_cube_diffuse_->SetView(&descset, "samp", global_res.default_resource_.sampler_linear_wrap.Get());
+                       pso_conv_cube_diffuse_->SetView(&descset, "uav_cubemap_as_array", conv_diffuse_cubemap_plane_array_uav_.Get());
+                        
+                       command_list->SetPipelineState(pso_conv_cube_diffuse_.Get());
+                       command_list->SetDescriptorSet(pso_conv_cube_diffuse_.Get(), &descset);
+                       pso_conv_cube_diffuse_->DispatchHelper(command_list, conv_diffuse_cubemap_->GetWidth(), conv_diffuse_cubemap_->GetHeight(), k_cubemap_plane_count);
+
+                       // UAVからSrvステートへ.
+                       command_list->ResourceBarrier(conv_diffuse_cubemap_.Get(), rhi::EResourceState::UnorderedAccess, next_state);
+                    }
+                });
+            }
+
+            const u32 specular_ibl_mip_count = conv_ggx_specular_cubemap_->GetMipCount();
+            // Supecular.
+            for (u32 mip_i = 0; mip_i < specular_ibl_mip_count; ++mip_i)
+            {
+                constexpr u32 k_cubemap_plane_count = 6;
+                
+                const u32 target_mip_level = mip_i;
+                const float target_roughness = static_cast<float>(target_mip_level) / std::max(1.0f, static_cast<float>(specular_ibl_mip_count - 1)); // 0.2
+                
+                const rhi::EResourceState prev_state = conv_ggx_specular_cubemap_state_;
+                constexpr auto next_state = rhi::EResourceState::ShaderRead;
+                conv_ggx_specular_cubemap_state_ = next_state;
+                const auto prevent_aliasing_mode = prevent_aliasing_mode_specular_;
+                ngl::fwk::PushCommonRenderCommand([this, target_mip_level, target_roughness,  prev_state, next_state, prevent_aliasing_mode](ngl::fwk::ComonRenderCommandArg arg)
+                {
+                    auto& global_res = gfx::GlobalRenderResource::Instance();
+                    auto* command_list = arg.command_list;
+                    auto* device = command_list->GetDevice();
+
+                    // Mip書き込み作業用に使い捨てUAV生成.
+                    rhi::RefUavDep mip_uav = new rhi::UnorderedAccessViewDep();
+                    if (!mip_uav->InitializeRwTexture(device, conv_ggx_specular_cubemap_.Get(), target_mip_level, 0, k_cubemap_plane_count))
+                        assert(false);
+                    
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "RecalculateIblTexture_Specular")
+                
+                   // GGX Specular IBL Cubemap畳み込み. 現状はテストのためMip0のみ.
+                   {
+                        NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "Conv_GGX_Specular")
+                   
+                        struct CbConvCubemapGgxSpecular
+                        {
+                            // ソースのCubemapの解像度に対して畳み込みサンプリングのアンダーサンプリングを緩和するためにMipmapを利用する.
+                            u32 use_mip_to_prevent_undersampling;
+                            float roughness;
+                        };
+                        auto cbh = device->GetConstantBufferPool()->Alloc(sizeof(CbConvCubemapGgxSpecular));
+                        if (auto* map_ptr = cbh->buffer_.MapAs<CbConvCubemapGgxSpecular>())
+                        {
+                            map_ptr->use_mip_to_prevent_undersampling = prevent_aliasing_mode;// Mipによるエイリアシング抑制有効.
+                            map_ptr->roughness = target_roughness;
+                        
+                            cbh->buffer_.Unmap();
+                        }
+                    
+                        // UAVステートへ.
+                       command_list->ResourceBarrier(conv_ggx_specular_cubemap_.Get(), prev_state, rhi::EResourceState::UnorderedAccess);
+                                   
+                       rhi::DescriptorSetDep descset{};
+                       pso_conv_cube_ggx_specular_->SetView(&descset, "cb_conv_cubemap_ggx_specular", &cbh->cbv_);
+                       pso_conv_cube_ggx_specular_->SetView(&descset, "tex_cube", generated_cubemap_plane_array_srv_.Get());
+                       pso_conv_cube_ggx_specular_->SetView(&descset, "samp", global_res.default_resource_.sampler_linear_wrap.Get());
+                       pso_conv_cube_ggx_specular_->SetView(&descset, "uav_cubemap_as_array", mip_uav.Get());
+                        
+                       command_list->SetPipelineState(pso_conv_cube_ggx_specular_.Get());
+                       command_list->SetDescriptorSet(pso_conv_cube_ggx_specular_.Get(), &descset);
+                       pso_conv_cube_ggx_specular_->DispatchHelper(command_list, conv_ggx_specular_cubemap_->GetWidth() >> target_mip_level, conv_ggx_specular_cubemap_->GetHeight() >> target_mip_level, k_cubemap_plane_count);
+                   
+                       // UAVからSrvステートへ.
+                       command_list->ResourceBarrier(conv_ggx_specular_cubemap_.Get(), rhi::EResourceState::UnorderedAccess, next_state);
+                    }
+                
+                });
+            }
+            
+        }
+        
         bool InitializeAsPanorama(rhi::DeviceDep* p_device, const char* sky_testure_file_path)
         {
             auto& res_mgr = res::ResourceManager::Instance();
@@ -95,10 +217,10 @@ namespace ngl::gfx::scene
             FuncCreateCubemapResources(512, 0, &generated_cubemap_, &generated_cubemap_plane_array_srv_, &generated_cubemap_plane_array_uav_);
 
             // Diffuse Conv Cubemap. Mip無し. 最終的にはTextureではなくSHにしてしまいたい.
-            FuncCreateCubemapResources(64, 1, &conv_diffuse_cubemap_, &conv_diffuse_cubemap_pnale_array_srv_, &conv_diffuse_cubemap_plane_array_uav_);
+            FuncCreateCubemapResources(64, 1, &conv_diffuse_cubemap_, &conv_diffuse_cubemap_plane_array_srv_, &conv_diffuse_cubemap_plane_array_uav_);
             
             // GGX Specular Conv Cubemap. 全Miplevel.
-            FuncCreateCubemapResources(512, 0, &conv_ggx_specular_cubemap_, &conv_ggx_specular_cubemap_pnale_array_srv_, &conv_ggx_specular_cubemap_plane_array_uav_);
+            FuncCreateCubemapResources(512, 0, &conv_ggx_specular_cubemap_, &conv_ggx_specular_cubemap_plane_array_srv_, &conv_ggx_specular_cubemap_plane_array_uav_);
 
             
             
@@ -160,12 +282,14 @@ namespace ngl::gfx::scene
                     if (!pso_conv_cube_ggx_specular_->Initialize(p_device, pso_desc))
                         assert(false);
                 }
-                
             }
 
-            // Cubemap生成のRenderCommand登録.
-            const rhi::EResourceState cubemap_init_state = rhi::EResourceState::Common;
-            ngl::fwk::PushCommonRenderCommand([this, cubemap_init_state](ngl::fwk::ComonRenderCommandArg arg)
+            
+            // PanoramaからCubemapとMip計算をする描画コマンド発行.
+            const rhi::EResourceState cubemap_init_state = generated_cubemap_state_;
+            constexpr rhi::EResourceState cubemap_next_state = rhi::EResourceState::ShaderRead;
+            generated_cubemap_state_ = cubemap_next_state;
+            ngl::fwk::PushCommonRenderCommand([this, cubemap_init_state, cubemap_next_state](ngl::fwk::ComonRenderCommandArg arg)
             {
                 auto& global_res = gfx::GlobalRenderResource::Instance();
                 auto* command_list = arg.command_list;
@@ -191,92 +315,20 @@ namespace ngl::gfx::scene
                    pso_panorama_to_cube_->DispatchHelper(command_list, generated_cubemap_->GetWidth(), generated_cubemap_->GetHeight(), k_cubemap_plane_count);
 
                    // UAVからSrvステートへ.
-                   command_list->ResourceBarrier(generated_cubemap_.Get(), rhi::EResourceState::UnorderedAccess, rhi::EResourceState::ShaderRead);
+                   command_list->ResourceBarrier(generated_cubemap_.Get(), rhi::EResourceState::UnorderedAccess, cubemap_next_state);
                 }
 
-                
                 // Cubemap Mip生成.
                 {
                     // Mipmap生成.
-                    ngl::gfx::helper::GenerateCubemapMipmapCompute(command_list, generated_cubemap_.Get(), rhi::EResourceState::ShaderRead,
+                    ngl::gfx::helper::GenerateCubemapMipmapCompute(command_list, generated_cubemap_.Get(), cubemap_next_state,
                         global_res.default_resource_.sampler_linear_clamp.Get(), 1, generated_cubemap_->GetMipCount()-1);
                     
                 }
-
-                
-                // Diffuse IBL Cubemap畳み込み.
-                {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "Conv_Diffuse")
-                    constexpr u32 k_cubemap_plane_count = 6;
-
-                    struct CbConvCubemapDiffuse
-                    {
-                        // ソースのCubemapの解像度に対して畳み込みサンプリングのアンダーサンプリングを緩和するためにMipmapを利用する.
-                        u32 use_mip_to_prevent_undersampling;
-                    };
-                    auto cbh = device->GetConstantBufferPool()->Alloc(sizeof(CbConvCubemapDiffuse));
-                    if (auto* map_ptr = cbh->buffer_.MapAs<CbConvCubemapDiffuse>())
-                    {
-                        map_ptr->use_mip_to_prevent_undersampling = 1;// Mipによるエイリアシング抑制有効.
-                        
-                        cbh->buffer_.Unmap();
-                    }
-                    
-                    // UAVステートへ.
-                   command_list->ResourceBarrier(conv_diffuse_cubemap_.Get(), cubemap_init_state, rhi::EResourceState::UnorderedAccess);
-                
-                   rhi::DescriptorSetDep descset{};
-                    pso_conv_cube_diffuse_->SetView(&descset, "cb_conv_cubemap_diffuse", &cbh->cbv_);
-                   pso_conv_cube_diffuse_->SetView(&descset, "tex_cube", generated_cubemap_plane_array_srv_.Get());
-                   pso_conv_cube_diffuse_->SetView(&descset, "samp", global_res.default_resource_.sampler_linear_wrap.Get());
-                   pso_conv_cube_diffuse_->SetView(&descset, "uav_cubemap_as_array", conv_diffuse_cubemap_plane_array_uav_.Get());
-                        
-                   command_list->SetPipelineState(pso_conv_cube_diffuse_.Get());
-                   command_list->SetDescriptorSet(pso_conv_cube_diffuse_.Get(), &descset);
-                   pso_conv_cube_diffuse_->DispatchHelper(command_list, conv_diffuse_cubemap_->GetWidth(), conv_diffuse_cubemap_->GetHeight(), k_cubemap_plane_count);
-
-                   // UAVからSrvステートへ.
-                   command_list->ResourceBarrier(conv_diffuse_cubemap_.Get(), rhi::EResourceState::UnorderedAccess, rhi::EResourceState::ShaderRead);
-                }
-                   
-               // GGX Specular IBL Cubemap畳み込み. 現状はMip0のみ.
-               {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "Conv_GGX_Specular")
-                    constexpr u32 k_cubemap_plane_count = 6;
-                   
-                    struct CbConvCubemapGgxSpecular
-                    {
-                        // ソースのCubemapの解像度に対して畳み込みサンプリングのアンダーサンプリングを緩和するためにMipmapを利用する.
-                        u32 use_mip_to_prevent_undersampling;
-                        float roughness;
-                    };
-                    auto cbh = device->GetConstantBufferPool()->Alloc(sizeof(CbConvCubemapGgxSpecular));
-                    if (auto* map_ptr = cbh->buffer_.MapAs<CbConvCubemapGgxSpecular>())
-                    {
-                        map_ptr->use_mip_to_prevent_undersampling = 1;// Mipによるエイリアシング抑制有効.
-                        map_ptr->roughness = 0.2f;
-                        
-                        cbh->buffer_.Unmap();
-                    }
-                    
-                    // UAVステートへ.
-                   command_list->ResourceBarrier(conv_ggx_specular_cubemap_.Get(), cubemap_init_state, rhi::EResourceState::UnorderedAccess);
-                                   
-                   rhi::DescriptorSetDep descset{};
-                   pso_conv_cube_ggx_specular_->SetView(&descset, "cb_conv_cubemap_ggx_specular", &cbh->cbv_);
-                   pso_conv_cube_ggx_specular_->SetView(&descset, "tex_cube", generated_cubemap_plane_array_srv_.Get());
-                   pso_conv_cube_ggx_specular_->SetView(&descset, "samp", global_res.default_resource_.sampler_linear_wrap.Get());
-                   pso_conv_cube_ggx_specular_->SetView(&descset, "uav_cubemap_as_array", conv_ggx_specular_cubemap_plane_array_uav_.Get());
-                        
-                   command_list->SetPipelineState(pso_conv_cube_ggx_specular_.Get());
-                   command_list->SetDescriptorSet(pso_conv_cube_ggx_specular_.Get(), &descset);
-                   pso_conv_cube_ggx_specular_->DispatchHelper(command_list, conv_ggx_specular_cubemap_->GetWidth(), conv_ggx_specular_cubemap_->GetHeight(), k_cubemap_plane_count);
-                   
-                   // UAVからSrvステートへ.
-                   command_list->ResourceBarrier(conv_ggx_specular_cubemap_.Get(), rhi::EResourceState::UnorderedAccess, rhi::EResourceState::ShaderRead);
-                }
-                
             });
+
+            // CubemapからIBLテクスチャ再計算.
+            RecalculateIblTexture();
             
             return res_sky_texture_.IsValid();
         }
@@ -296,7 +348,7 @@ namespace ngl::gfx::scene
         }
         rhi::RefSrvDep GetConvDiffuseCubemapSrv() const
         {
-            return conv_diffuse_cubemap_pnale_array_srv_;
+            return conv_diffuse_cubemap_plane_array_srv_;
         }
         rhi::RefTextureDep GetConvGgxSpecularCubemap() const
         {
@@ -304,7 +356,7 @@ namespace ngl::gfx::scene
         }
         rhi::RefSrvDep GetConvGgxSpecularCubemapSrv() const
         {
-            return conv_ggx_specular_cubemap_pnale_array_srv_;
+            return conv_ggx_specular_cubemap_plane_array_srv_;
         }
         
         // パノラマ 基本的には確認用.
@@ -312,6 +364,12 @@ namespace ngl::gfx::scene
         {
             return res_sky_texture_;
         }
+
+    public:
+        void SetParam_PreventAliasingModeDiffuse(bool v){prevent_aliasing_mode_diffuse_ = v;}
+        bool GetParam_PreventAliasingModeDiffuse() const {return prevent_aliasing_mode_diffuse_;}
+        void SetParam_PreventAliasingModeSpecular(bool v){prevent_aliasing_mode_specular_ = v;}
+        bool GetParam_PreventAliasingModeSpecular() const {return prevent_aliasing_mode_specular_;}
         
     private:
         // HDR Sky Panorama Texture.
@@ -326,15 +384,25 @@ namespace ngl::gfx::scene
         rhi::RefTextureDep generated_cubemap_;
         rhi::RefUavDep generated_cubemap_plane_array_uav_;
         rhi::RefSrvDep generated_cubemap_plane_array_srv_;
+        rhi::EResourceState generated_cubemap_state_ = rhi::EResourceState::Common;
+        
 
         // Sky Cubemapから畳み込みで生成されるDiffuse IBL Cubemap.
         rhi::RefTextureDep conv_diffuse_cubemap_;
         rhi::RefUavDep conv_diffuse_cubemap_plane_array_uav_;
-        rhi::RefSrvDep conv_diffuse_cubemap_pnale_array_srv_;
+        rhi::RefSrvDep conv_diffuse_cubemap_plane_array_srv_;
+        rhi::EResourceState conv_diffuse_cubemap_state_ = rhi::EResourceState::Common;
         
         // Sky Cubemapから畳み込みで生成されるGGX Specular IBL Cubemap.
         rhi::RefTextureDep conv_ggx_specular_cubemap_;
         rhi::RefUavDep conv_ggx_specular_cubemap_plane_array_uav_;
-        rhi::RefSrvDep conv_ggx_specular_cubemap_pnale_array_srv_;
+        rhi::RefSrvDep conv_ggx_specular_cubemap_plane_array_srv_;
+        rhi::EResourceState conv_ggx_specular_cubemap_state_ = rhi::EResourceState::Common;
+
+        
+        // IBLテクスチャ計算に関するパラメータ.
+        bool prevent_aliasing_mode_diffuse_ = true;
+        bool prevent_aliasing_mode_specular_ = true;
+        
     };
 }
