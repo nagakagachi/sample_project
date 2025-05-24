@@ -62,7 +62,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	// GBuffer Decode.
 	float3 gb_base_color = gb0.xyz;
 	float gb_occlusion = gb0.w;
-	float3 gb_normal_ws = gb1.xyz * 2.0 - 1.0;// gbufferからWorldNormalデコード.
+	float3 gb_normal_ws = normalize(gb1.xyz * 2.0 - 1.0);// gbufferからWorldNormalデコード.
 	float gb_roughness = gb2.x;
 	float gb_metalness = gb2.y;
 	float gb_surface_option = gb2.z;
