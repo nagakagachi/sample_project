@@ -173,12 +173,12 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	const float cos_term = saturate(dot(gb_normal_ws, L));
 	float3 lit_color = cos_term * brdf * lit_intensity * light_visibility;
 	
-	// IBL
+	// IBL評価.
 	{
 		const float3 ibl_R = 2 * dot( V, gb_normal_ws ) * gb_normal_ws - V;
 		const float3 F0 = compute_F0_default(gb_base_color, gb_metalness);
 		
-		float2 ibl_dfg = tex_ibl_dfg.SampleLevel(samp, float2(max(dot(gb_normal_ws, V), 0.0), gb_roughness), 0).rg;
+		float4 ibl_dfg = tex_ibl_dfg.SampleLevel(samp, float2(max(dot(gb_normal_ws, V), 0.0), gb_roughness), 0);
 
 		uint ibl_spec_miplevel, ibl_spec_width, ibl_spec_height, ibl_spec_mipcount;
 		tex_ibl_specular.GetDimensions(ibl_spec_miplevel, ibl_spec_width, ibl_spec_height, ibl_spec_mipcount);

@@ -6,17 +6,22 @@ Y-axis: Roughness (0.0 - 1.0)
 output: 
     R: Scale
     G: Bias
-    B: unused
-    A: unused
 
 参考
+https://github.com/derkreature/IBLBaker/blob/master/data/shadersD3D11/smith.brdf
+https://github.com/derkreature/IBLBaker/blob/master/data/shadersD3D11/IblBrdf.hlsl
+
+
 https://learnopengl.com/PBR/IBL/Specular-IBL
 https://cdn2.unrealengine.com/Resources/files/2013SiggraphPresentationsNotes-26915738.pdf
 https://bruop.github.io/ibl/
 https://github.com/SaschaWillems/Vulkan-glTF-PBR/blob/master/data/shaders/genbrdflut.frag
 http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
+https://github.com/derkreature/IBLBaker/blob/master/data/shadersD3D11/IblBrdf.hlsl
+http://graphicrants.blogspot.com/2013/08/specular-brdf-reference.html
 
 #endif
+
 
 #include "../include/math_util.hlsli"
 #include "../include/brdf.hlsli"
@@ -26,65 +31,82 @@ http://holger.dammertz.org/stuff/notes_HammersleyOnHemisphere.html
 RWTexture2D<float4> uav_brdf_lut;
 
 
-
-float GDFG(float NoV, float NoL, float roughness) {
-    float a2 = roughness * roughness;
-    float GGXL = NoV * sqrt((-NoL * a2 + NoL) * NoL + a2);
-    float GGXV = NoL * sqrt((-NoV * a2 + NoV) * NoV + a2);
-    return (2 * NoL) / (GGXV + GGXL);
+//------------------------------------------------------------------------------------//
+// LUT compute functions used by IblBrdf.hlsl                                         //
+//------------------------------------------------------------------------------------//
+// Geometry term
+// http://graphicrants.blogspot.com.au/2013/08/specular-brdf-reference.html
+// I could not have arrived at this without the notes at :
+// http://www.gamedev.net/topic/658769-ue4-ibl-glsl/
+//　GGX Geometry Term for Smith's method.
+float GGX_G(float NoV, float roughness_pow2)
+{
+    float r2 = pow(roughness_pow2, 2);
+    return NoV*2 / (NoV + sqrt((NoV*NoV) * (1.0f - r2) + r2));
 }
 
-[numthreads(16,16,1)]
-void main(
-    uint3 dtid    : SV_DispatchThreadID,
-    uint3 gtid    : SV_GroupThreadID,
-    uint3 gid     : SV_GroupID,
-    uint  gindex  : SV_GroupIndex
-)
+// Fresnel Term.
+// Inputs, view dot half angle.
+float fresnelForLut(float VoH)
+{
+    return pow(1.0-VoH, 5);
+}
+
+// Summation of Lut term while iterating over samples
+float2 sumLut(float2 current, float G, float V, float F, float VoH, float NoL, float NoH, float NoV)
+{
+    float G_Vis = (G * V) * VoH / (NoH * NoV);
+    current.x += (1.0 - F) * G_Vis;
+    current.y += F * G_Vis;
+
+    return current;
+}
+
+float2 integrate_split_sum_approx_scale_bias(float roughness, float NoV)
+{
+    const float3 N = float3(0.0f, 0.0f, 1.0f);
+    const float3 V = float3(sqrt(1.0f - NoV * NoV), 0.0f, NoV);
+    const float roughness_pow2 = roughness*roughness;
+    
+    const precise float Vis = GGX_G(NoV, roughness_pow2);
+
+    float2 result = float2(0,0);
+    for (uint i = 0; i < GGX_BRDF_LUT_SAMPLING_COUNT; i++)
+    {
+        const float2 Xi = Hammersley2d(i, GGX_BRDF_LUT_SAMPLING_COUNT);
+        const float3 H = ImportanceSampleHemisphereHalfVectorGGX(Xi, roughness);
+        
+        const precise float3 L = 2.0f * dot(V, H) * H - V;
+
+        const float NoL = saturate(L.z);
+        const float NoH = saturate(H.z);
+        const float VoH = saturate(dot(V, H));
+        const float NoV = saturate(dot(N, V));
+        if (NoL > 0)
+        {
+            // DirectX等では roughness が0に近い領域で計算誤差が大きくなりライン上のアーティファクトが発生するため, precise 指定が必要. 
+            const precise float G = GGX_G(NoL, roughness_pow2);
+            const precise float F = fresnelForLut(VoH);
+            result = sumLut(result, G, Vis, F, VoH, NoL, NoH, NoV); 
+        }
+    }
+
+    result /= float(GGX_BRDF_LUT_SAMPLING_COUNT);
+    return result;
+}
+
+
+[numthreads(16, 16, 1)]
+void main(uint2 id : SV_DispatchThreadID)
 {
     float output_width, output_height;
     uav_brdf_lut.GetDimensions(output_width, output_height);
 
-    #if 1
-        // HLSLの場合roughnessが0に近い箇所でギャップが発生し黒いライン状になってしまうため, Y(roughness)のみ若干オフセット.
-        const float2 uv = (float2(dtid.xy) + float2(0.5, 2.5)) / float2(output_width, output_height);
-    #else
-        const float2 uv = (float2(dtid.xy) + float2(0.5, 0.5)) / float2(output_width, output_height);
-    #endif
+    float roughness = (float)(id.y+0.5) / (float)output_height;
+    float NoV = (float)(id.x+0.5)  / (float)output_width;
+    
+    float2 result = integrate_split_sum_approx_scale_bias(roughness, NoV); 
 
-    const float NoV = uv.x;
-    const float perceptual_roughness = uv.y;
-
-    const float3 V = float3(sqrt(1.0 - NoV * NoV), 0.0, NoV);
-    const float3 N = float3(0.0, 0.0, 1.0);
-
-    // IBL DFG LUT Importance Sampling.
-    // https://google.github.io/filament/Filament.html
-    float2 dfg_xy = float2(0.0, 0.0);
-    for(int si = 0; si < GGX_BRDF_LUT_SAMPLING_COUNT; ++si)
-    {
-        const float2 xi = Hammersley2d(si, GGX_BRDF_LUT_SAMPLING_COUNT);
-        
-        const float3 H = ImportanceSampleHemisphereHalfVectorGGX(xi, perceptual_roughness);
-        const float3 L = normalize(2.0 * dot(V, H) * H - V);
-
-        const float NoL = max(L.z, 0.0);
-        const float NoH = max(H.z, 0.0);
-        const float VoH = max(dot(V, H), 0.0);
-
-        if(NoL > 0.0)
-        {
-            const float roughness_a = perceptual_roughness*perceptual_roughness;
-            float G = GDFG(NoV, NoL, roughness_a);
-            float Gv = G * VoH / NoH;
-            float Fc = pow(1.0 - VoH, 5.0);
-            dfg_xy.x += Gv * (1.0 - Fc);
-            dfg_xy.y += Gv * Fc;
-        }
-    }
-
-    dfg_xy /= float(GGX_BRDF_LUT_SAMPLING_COUNT);
-    uav_brdf_lut[dtid.xy] = float4(dfg_xy.x, dfg_xy.y, 0.0, 0.0);
+    ////uav_brdf_lut[int2(id.x, (output_width-1)-id.y)] = float4(result.x, result.y, roughness, 1);
+    uav_brdf_lut[int2(id.x, id.y)] = float4(result.x, result.y, roughness, 0);
 }
-
-

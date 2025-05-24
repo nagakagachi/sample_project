@@ -77,15 +77,6 @@ float brdf_smith_ggx_correlated_V(float perceptual_roughness, float3 N, float3 V
 	const float V_term = 0.5 / (d0 + d1 + ngl_EPSILON);// zero divide対策.
 	return V_term;
 }
-// V項に含まれる 1/(4*NoV*NoL) を除外してG項に戻す. G項を要求するサンプリングなどに利用.
-float brdf_smith_ggx_correlated_G(float perceptual_roughness, float3 N, float3 V, float3 L)
-{
-	const float NoV = saturate(dot(N,V));
-	const float NoL = saturate(dot(N,L));
-
-	const float V_term = brdf_smith_ggx_correlated_V(perceptual_roughness, N, V, L);
-	return V_term * (4*NoV*NoL);
-}
 float3 brdf_standard_ggx(float3 base_color, float perceptual_roughness, float metalness, float3 N, float3 V, float3 L)
 {
 	const float3 F0 =  compute_F0_default(base_color, metalness);
