@@ -66,6 +66,8 @@ namespace gfx
 		res::ResourceHandle<gfx::ResTexture>	res_skybox_panorama_texture_ = {};
 		rhi::RefSrvDep							sky_ibl_diffuse_cubemap_srv_ = {};
 		rhi::RefSrvDep							sky_ibl_specular_cubemap_srv_ = {};
+		rhi::RefSrvDep							sky_ibl_specular_dfg_srv_ = {};
+		
 		enum class EDebugMode
 		{
 			None,

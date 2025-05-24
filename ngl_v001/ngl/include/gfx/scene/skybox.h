@@ -222,7 +222,31 @@ namespace ngl::gfx::scene
             // GGX Specular Conv Cubemap. 全Miplevel.
             FuncCreateCubemapResources(512, 0, &conv_ggx_specular_cubemap_, &conv_ggx_specular_cubemap_plane_array_srv_, &conv_ggx_specular_cubemap_plane_array_uav_);
 
-            
+            // IBL DFG LUT.
+            {
+                const int k_dfg_lut_resolution = 128;
+                conv_ggx_dfg_lut_ = new rhi::TextureDep();
+                {
+                    const auto lut_format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
+                    //const auto lut_format = rhi::EResourceFormat::Format_R32G32B32A32_FLOAT;
+                    //const auto lut_format = rhi::EResourceFormat::Format_R16G16_FLOAT;
+                    //const auto lut_format = rhi::EResourceFormat::Format_R32G32_FLOAT;
+
+                    rhi::TextureDep::Desc tex_desc{};
+                    rhi::TextureDep::Desc::InitializeAsTexture2D(tex_desc, lut_format, k_dfg_lut_resolution, k_dfg_lut_resolution, false, true);
+                    if (!conv_ggx_dfg_lut_->Initialize(p_device, tex_desc))
+                        assert(false);
+                }
+
+                conv_ggx_dfg_lut_srv_ = new rhi::ShaderResourceViewDep();
+                if (!conv_ggx_dfg_lut_srv_->InitializeAsTexture(p_device, conv_ggx_dfg_lut_.Get(), 0, 1, 0, 1))
+                    assert(false);
+
+                conv_ggx_dfg_lut_uav_ = new rhi::UnorderedAccessViewDep();
+                if (!conv_ggx_dfg_lut_uav_->InitializeRwTexture(p_device, conv_ggx_dfg_lut_.Get(), 0, 0, 1))
+                    assert(false);
+            }
+
             
             // PSOセットアップ.
             {
@@ -235,7 +259,7 @@ namespace ngl::gfx::scene
                         loaddesc.shader_model_version = "6_3";
                     }
                     auto res_shader = res_mgr.LoadResource<gfx::ResShader>(p_device,
-                                                NGL_RENDER_SHADER_PATH("util/panorama_to_cubemap_cs.hlsl"),
+                                                NGL_RENDER_SHADER_PATH("sky/panorama_to_cubemap_cs.hlsl"),
                                                 &loaddesc);
                 
                     rhi::ComputePipelineStateDep::Desc pso_desc{};
@@ -254,7 +278,7 @@ namespace ngl::gfx::scene
                         loaddesc.shader_model_version = "6_3";
                     }
                     auto res_shader = res_mgr.LoadResource<gfx::ResShader>(p_device,
-                                                NGL_RENDER_SHADER_PATH("util/conv_cubemap_diffuse_cs.hlsl"),
+                                                NGL_RENDER_SHADER_PATH("ibl/conv_cubemap_diffuse_cs.hlsl"),
                                                 &loaddesc);
                 
                     rhi::ComputePipelineStateDep::Desc pso_desc{};
@@ -273,7 +297,7 @@ namespace ngl::gfx::scene
                         loaddesc.shader_model_version = "6_3";
                     }
                     auto res_shader = res_mgr.LoadResource<gfx::ResShader>(p_device,
-                                                NGL_RENDER_SHADER_PATH("util/conv_cubemap_ggx_specular_cs.hlsl"),
+                                                NGL_RENDER_SHADER_PATH("ibl/conv_cubemap_ggx_specular_cs.hlsl"),
                                                 &loaddesc);
                 
                     rhi::ComputePipelineStateDep::Desc pso_desc{};
@@ -282,52 +306,103 @@ namespace ngl::gfx::scene
                     if (!pso_conv_cube_ggx_specular_->Initialize(p_device, pso_desc))
                         assert(false);
                 }
+
+                pso_conv_dfg_lut_ = new rhi::ComputePipelineStateDep();
+                {
+                    gfx::ResShader::LoadDesc loaddesc{};
+                    {
+                        loaddesc.entry_point_name = "main";
+                        loaddesc.stage = ngl::rhi::EShaderStage::Compute;
+                        loaddesc.shader_model_version = "6_3";
+                    }
+                    auto res_shader = res_mgr.LoadResource<gfx::ResShader>(p_device,
+                                                NGL_RENDER_SHADER_PATH("ibl/gen_ggx_specular_ibl_brdf_lut_cs.hlsl"),
+                                                &loaddesc);
+                
+                    rhi::ComputePipelineStateDep::Desc pso_desc{};
+                    pso_desc.cs = &res_shader->data_;
+
+                    if (!pso_conv_dfg_lut_->Initialize(p_device, pso_desc))
+                        assert(false);
+                }
             }
 
             
             // PanoramaからCubemapとMip計算をする描画コマンド発行.
-            const rhi::EResourceState cubemap_init_state = generated_cubemap_state_;
-            constexpr rhi::EResourceState cubemap_next_state = rhi::EResourceState::ShaderRead;
-            generated_cubemap_state_ = cubemap_next_state;
-            ngl::fwk::PushCommonRenderCommand([this, cubemap_init_state, cubemap_next_state](ngl::fwk::ComonRenderCommandArg arg)
             {
-                auto& global_res = gfx::GlobalRenderResource::Instance();
-                auto* command_list = arg.command_list;
-                auto* device = command_list->GetDevice();
-                
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "Generate_Sky_Cubemap")
-
-                // Panorama to Cubemap.
+                const rhi::EResourceState cubemap_init_state = generated_cubemap_state_;
+                constexpr rhi::EResourceState cubemap_next_state = rhi::EResourceState::ShaderRead;
+                generated_cubemap_state_ = cubemap_next_state;
+                ngl::fwk::PushCommonRenderCommand([this, cubemap_init_state, cubemap_next_state](ngl::fwk::ComonRenderCommandArg arg)
                 {
+                    auto& global_res = gfx::GlobalRenderResource::Instance();
+                    auto* command_list = arg.command_list;
+                    auto* device = command_list->GetDevice();
+                    
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "Panorama_to_Cubemap")
-                   constexpr u32 k_cubemap_plane_count = 6;
-                    
-                    // UAVステートへ.
-                   command_list->ResourceBarrier(generated_cubemap_.Get(), cubemap_init_state, rhi::EResourceState::UnorderedAccess);
-                
-                   rhi::DescriptorSetDep descset{};
-                   pso_panorama_to_cube_->SetView(&descset, "tex_panorama", res_sky_texture_->ref_view_.Get());
-                   pso_panorama_to_cube_->SetView(&descset, "samp", global_res.default_resource_.sampler_linear_clamp.Get());
-                   pso_panorama_to_cube_->SetView(&descset, "uav_cubemap_as_array", generated_cubemap_plane_array_uav_.Get());
+
+                    // Panorama to Cubemap.
+                    {
+                        constexpr u32 k_cubemap_plane_count = 6;
                         
-                   command_list->SetPipelineState(pso_panorama_to_cube_.Get());
-                   command_list->SetDescriptorSet(pso_panorama_to_cube_.Get(), &descset);
-                   pso_panorama_to_cube_->DispatchHelper(command_list, generated_cubemap_->GetWidth(), generated_cubemap_->GetHeight(), k_cubemap_plane_count);
+                        // UAVステートへ.
+                        command_list->ResourceBarrier(generated_cubemap_.Get(), cubemap_init_state, rhi::EResourceState::UnorderedAccess);
+                        
+                        rhi::DescriptorSetDep descset{};
+                        pso_panorama_to_cube_->SetView(&descset, "tex_panorama", res_sky_texture_->ref_view_.Get());
+                        pso_panorama_to_cube_->SetView(&descset, "samp", global_res.default_resource_.sampler_linear_clamp.Get());
+                        pso_panorama_to_cube_->SetView(&descset, "uav_cubemap_as_array", generated_cubemap_plane_array_uav_.Get());
+                                
+                        command_list->SetPipelineState(pso_panorama_to_cube_.Get());
+                        command_list->SetDescriptorSet(pso_panorama_to_cube_.Get(), &descset);
+                        pso_panorama_to_cube_->DispatchHelper(command_list, generated_cubemap_->GetWidth(), generated_cubemap_->GetHeight(), k_cubemap_plane_count);
 
-                   // UAVからSrvステートへ.
-                   command_list->ResourceBarrier(generated_cubemap_.Get(), rhi::EResourceState::UnorderedAccess, cubemap_next_state);
-                }
+                        // UAVからSrvステートへ.
+                        command_list->ResourceBarrier(generated_cubemap_.Get(), rhi::EResourceState::UnorderedAccess, cubemap_next_state);
+                    }
 
-                // Cubemap Mip生成.
+                    // Cubemap Mip生成.
+                    {
+                        // Mipmap生成.
+                        ngl::gfx::helper::GenerateCubemapMipmapCompute(command_list, generated_cubemap_.Get(), cubemap_next_state,
+                            global_res.default_resource_.sampler_linear_clamp.Get(), 1, generated_cubemap_->GetMipCount()-1);
+                        
+                    }
+                });
+            }
+
+            // DFG LUT生成.
+            {
+                const rhi::EResourceState init_state = conv_ggx_dfg_lut_state_;
+                constexpr rhi::EResourceState next_state = rhi::EResourceState::ShaderRead;
+                conv_ggx_dfg_lut_state_ = next_state;
+                ngl::fwk::PushCommonRenderCommand([this, init_state, next_state](ngl::fwk::ComonRenderCommandArg arg)
                 {
-                    // Mipmap生成.
-                    ngl::gfx::helper::GenerateCubemapMipmapCompute(command_list, generated_cubemap_.Get(), cubemap_next_state,
-                        global_res.default_resource_.sampler_linear_clamp.Get(), 1, generated_cubemap_->GetMipCount()-1);
+                    auto& global_res = gfx::GlobalRenderResource::Instance();
+                    auto* command_list = arg.command_list;
+                    auto* device = command_list->GetDevice();
                     
-                }
-            });
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "Generate_Ibl_DFG_LUT")
 
-            // CubemapからIBLテクスチャ再計算.
+                    {
+                        // UAVステートへ.
+                        command_list->ResourceBarrier(conv_ggx_dfg_lut_.Get(), init_state, rhi::EResourceState::UnorderedAccess);
+                        
+                        rhi::DescriptorSetDep descset{};
+                        pso_conv_dfg_lut_->SetView(&descset, "uav_brdf_lut", conv_ggx_dfg_lut_uav_.Get());
+                                
+                        command_list->SetPipelineState(pso_conv_dfg_lut_.Get());
+                        command_list->SetDescriptorSet(pso_conv_dfg_lut_.Get(), &descset);
+                        pso_conv_dfg_lut_->DispatchHelper(command_list, conv_ggx_dfg_lut_->GetWidth(), conv_ggx_dfg_lut_->GetHeight(), 1);
+
+                        // UAVからSrvステートへ.
+                        command_list->ResourceBarrier(conv_ggx_dfg_lut_.Get(), rhi::EResourceState::UnorderedAccess, next_state);
+                    }
+                });
+            }
+
+
+            // IBL DiffuseとSpecularを再計算.
             RecalculateIblTexture();
             
             return res_sky_texture_.IsValid();
@@ -358,6 +433,14 @@ namespace ngl::gfx::scene
         {
             return conv_ggx_specular_cubemap_plane_array_srv_;
         }
+        rhi::RefTextureDep GetConvGgxDfgLut() const
+        {
+            return conv_diffuse_cubemap_;
+        }
+        rhi::RefSrvDep GetConvGgxDfgLutSrv() const
+        {
+            return conv_ggx_dfg_lut_srv_;
+        }
         
         // パノラマ 基本的には確認用.
         res::ResourceHandle<gfx::ResTexture> GetPanoramaTexture() const
@@ -379,6 +462,7 @@ namespace ngl::gfx::scene
 		rhi::RhiRef<rhi::ComputePipelineStateDep> pso_panorama_to_cube_;
         rhi::RhiRef<rhi::ComputePipelineStateDep> pso_conv_cube_diffuse_;
         rhi::RhiRef<rhi::ComputePipelineStateDep> pso_conv_cube_ggx_specular_;
+        rhi::RhiRef<rhi::ComputePipelineStateDep> pso_conv_dfg_lut_;
 
         // Mipmap有りのSky Cubemap. Panoramaイメージから生成される.
         rhi::RefTextureDep generated_cubemap_;
@@ -398,6 +482,12 @@ namespace ngl::gfx::scene
         rhi::RefUavDep conv_ggx_specular_cubemap_plane_array_uav_;
         rhi::RefSrvDep conv_ggx_specular_cubemap_plane_array_srv_;
         rhi::EResourceState conv_ggx_specular_cubemap_state_ = rhi::EResourceState::Common;
+
+        // IBL DFG LUT.
+        rhi::RefTextureDep conv_ggx_dfg_lut_;
+        rhi::RefUavDep conv_ggx_dfg_lut_uav_;
+        rhi::RefSrvDep conv_ggx_dfg_lut_srv_;
+        rhi::EResourceState conv_ggx_dfg_lut_state_ = rhi::EResourceState::Common;
 
         
         // IBLテクスチャ計算に関するパラメータ.

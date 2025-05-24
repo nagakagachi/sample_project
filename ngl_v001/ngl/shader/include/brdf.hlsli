@@ -1,3 +1,10 @@
+/*
+
+参考
+https://google.github.io/filament/Filament.md.html
+
+*/
+
 #ifndef NGL_SHADER_BRDF_H
 #define NGL_SHADER_BRDF_H
 
@@ -40,6 +47,7 @@ float3 brdf_schlick_F(float3 F0, float3 N, float3 V, float3 L)
 	const float3 F = F0 + (1.0 - F0) * (tmp*tmp*tmp*tmp*tmp);
 	return F;
 }
+
 float brdf_trowbridge_reitz_D(float perceptual_roughness, float3 N, float3 V, float3 L)
 {
 	const float limited_perceptual_roughness = clamp(perceptual_roughness, ngl_MIN_PERCEPTUAL_ROUGHNESS, 1.0);
@@ -53,9 +61,9 @@ float brdf_trowbridge_reitz_D(float perceptual_roughness, float3 N, float3 V, fl
 	const float D = (a2) / (NGL_PI * tmp*tmp);
 	return D;
 }
-// Height-Correlated Smith Masking-Shadowing
-// マイクロファセットBRDFの分母 4*NoV*NoL の項を含み単純化されたもの.
-float brdf_smith_ggx_correlated_G(float perceptual_roughness, float3 N, float3 V, float3 L)
+// V項, Height-Correlated Smith Masking-Shadowing
+// G項に相当するが, 最適化でBRDFの 1/(4*NoV*NoL) を含む形になっている. 使用する場合はBRDFの 1/(4*NoV*NoL) がV項に含まれている分簡略化される.
+float brdf_smith_ggx_correlated_V(float perceptual_roughness, float3 N, float3 V, float3 L)
 {
 	const float limited_perceptual_roughness = clamp(perceptual_roughness, ngl_MIN_PERCEPTUAL_ROUGHNESS, 1.0);
 	const float a = limited_perceptual_roughness*limited_perceptual_roughness;
@@ -66,8 +74,17 @@ float brdf_smith_ggx_correlated_G(float perceptual_roughness, float3 N, float3 V
 	
 	const float d0 = uo * sqrt(a2 + ui * (ui - a2 * ui));
 	const float d1 = ui * sqrt(a2 + uo * (uo - a2 * uo));
-	const float G = 0.5 / (d0 + d1 + ngl_EPSILON);// zero divide対策.
-	return G;
+	const float V_term = 0.5 / (d0 + d1 + ngl_EPSILON);// zero divide対策.
+	return V_term;
+}
+// V項に含まれる 1/(4*NoV*NoL) を除外してG項に戻す. G項を要求するサンプリングなどに利用.
+float brdf_smith_ggx_correlated_G(float perceptual_roughness, float3 N, float3 V, float3 L)
+{
+	const float NoV = saturate(dot(N,V));
+	const float NoL = saturate(dot(N,L));
+
+	const float V_term = brdf_smith_ggx_correlated_V(perceptual_roughness, N, V, L);
+	return V_term * (4*NoV*NoL);
 }
 float3 brdf_standard_ggx(float3 base_color, float perceptual_roughness, float metalness, float3 N, float3 V, float3 L)
 {
@@ -75,8 +92,8 @@ float3 brdf_standard_ggx(float3 base_color, float perceptual_roughness, float me
 	
 	const float3 brdf_F = brdf_schlick_F(F0, N, V, L);
 	const float brdf_D = brdf_trowbridge_reitz_D(perceptual_roughness, N, V, L);
-	// マイクロファセットBRDFの分母の 4*NoV*NoL 項は式の単純化のためG項に含まれる.[Lagarde].
-	const float brdf_G = brdf_smith_ggx_correlated_G(perceptual_roughness, N, V, L);
+	// マイクロファセットBRDFの 1/(4*NoV*NoL) はHeight Correlated のV項に含まれる.[Lagarde].
+	const float brdf_G = brdf_smith_ggx_correlated_V(perceptual_roughness, N, V, L);
 
 	return brdf_D * brdf_F * brdf_G;
 }
@@ -93,6 +110,8 @@ float3 brdf_lambert(float3 base_color, float perceptual_roughness, float metalne
 
 // ----------------------------------------------------------------------------------
 // Sampling.
+// https://learnopengl.com/PBR/IBL/Specular-IBL
+// https://github.com/google/filament/blob/6d44db3ca02f1b21f1597c2b5023add804552a21/libs/ibl/src/CubemapIBL.cpp#L50
 
 // Hammersley Sequence で利用.
 // https://learnopengl.com/PBR/IBL/Specular-IBL
@@ -105,35 +124,73 @@ float RadicalInverse_VdC(uint bits)
 	bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
 	return float(bits) * 2.3283064365386963e-10; // / 0x100000000
 }
-// https://learnopengl.com/PBR/IBL/Specular-IBL
 float2 Hammersley2d(uint i, uint N)
 {
-	return float2(float(i)/float(N), RadicalInverse_VdC(i));
+	#if 0
+		return float2(float(i)/float(N), RadicalInverse_VdC(i));
+	#else
+		// https://google.github.io/filament/Filament.html
+		uint bits = i;
+		bits = (bits << 16) | (bits >> 16);
+		bits = ((bits & 0x55555555) << 1) | ((bits & 0xAAAAAAAA) >> 1);
+		bits = ((bits & 0x33333333) << 2) | ((bits & 0xCCCCCCCC) >> 2);
+		bits = ((bits & 0x0F0F0F0F) << 4) | ((bits & 0xF0F0F0F0) >> 4);
+		bits = ((bits & 0x00FF00FF) << 8) | ((bits & 0xFF00FF00) >> 8);
+		return float2((float)i / (float)N, bits / exp2(32));
+	#endif
 }
-//
-// https://learnopengl.com/PBR/IBL/Specular-IBL
-float3 ImportanceSampleHalfVectorGGX(float2 Xi, float3 N, float roughness)
+// Sample Hemisphere HalfVector with GGX D.
+float3 ImportanceSampleHemisphereHalfVectorGGX(float2 Xi, float perceptual_roughness)
 {
-	float a = roughness*roughness;
+	const float a = perceptual_roughness*perceptual_roughness;
 	
-	float phi = 2.0 * NGL_PI * Xi.x;
-	float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
-	float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
+	const float phi = 2.0 * NGL_PI * Xi.x;
+	const float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
+	const float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
 	
 	// from spherical coordinates to cartesian coordinates
 	float3 H;
 	H.x = cos(phi) * sinTheta;
 	H.y = sin(phi) * sinTheta;
 	H.z = cosTheta;
-	
-	// from tangent-space vector to world-space sample vector
-	float3 up        = abs(N.z) < 0.999 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
-	float3 tangent   = normalize(cross(up, N));
-	float3 bitangent = cross(N, tangent);
-	
-	float3 sampleVec = tangent * H.x + bitangent * H.y + N * H.z;
-	return sampleVec;
-}  
+	return H;
+}
+//
+// https://learnopengl.com/PBR/IBL/Specular-IBL
+float3 ImportanceSampleHalfVectorGGX(float2 Xi, float3 N, float perceptual_roughness)
+{
+	#if 1
+		const float3 hemisphere_H = ImportanceSampleHemisphereHalfVectorGGX(Xi, perceptual_roughness);
+		
+		// from tangent-space vector to world-space sample vector
+		float3 up        = abs(N.z) < 0.999 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+		float3 tangent   = normalize(cross(up, N));
+		float3 bitangent = cross(N, tangent);
+		
+		float3 sampleVec = tangent * hemisphere_H.x + bitangent * hemisphere_H.y + N * hemisphere_H.z;
+		return sampleVec;
+	#else
+		float a = perceptual_roughness*perceptual_roughness;
+		
+		float phi = 2.0 * NGL_PI * Xi.x;
+		float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
+		float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
+		
+		// from spherical coordinates to cartesian coordinates
+		float3 H;
+		H.x = cos(phi) * sinTheta;
+		H.y = sin(phi) * sinTheta;
+		H.z = cosTheta;
+		
+		// from tangent-space vector to world-space sample vector
+		float3 up        = abs(N.z) < 0.999 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+		float3 tangent   = normalize(cross(up, N));
+		float3 bitangent = cross(N, tangent);
+		
+		float3 sampleVec = tangent * H.x + bitangent * H.y + N * H.z;
+		return sampleVec;
+	#endif
+}
 
 
 #endif // NGL_SHADER_BRDF_H

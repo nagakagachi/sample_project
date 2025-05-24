@@ -296,6 +296,8 @@ namespace ngl::test
 						setup_desc.ref_shadow_cbv = task_d_shadow->shadow_sample_cbh_;
 
 						setup_desc.ibl_diffuse_cubemap_srv = p_scene->sky_ibl_diffuse_cubemap_srv_;
+						setup_desc.ibl_specular_cubemap_srv = p_scene->sky_ibl_specular_cubemap_srv_;
+						setup_desc.ibl_specular_dfg_srv = p_scene->sky_ibl_specular_dfg_srv_;
 						setup_desc.ibl_src_cubemap_srv = p_scene->skybox_cubemap_srv_;
 
 						setup_desc.enable_feedback_blur_test = render_frame_desc.debugview_enable_feedback_blur_test;

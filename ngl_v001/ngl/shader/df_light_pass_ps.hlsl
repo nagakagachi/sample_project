@@ -36,6 +36,8 @@ SamplerState samp;
 SamplerComparisonState samp_shadow;
 
 TextureCube tex_ibl_diffuse;
+TextureCube tex_ibl_specular;
+Texture2D tex_ibl_dfg;
 
 
 float4 main_ps(VS_OUTPUT input) : SV_TARGET
@@ -61,7 +63,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	float3 gb_base_color = gb0.xyz;
 	float gb_occlusion = gb0.w;
 	float3 gb_normal_ws = gb1.xyz * 2.0 - 1.0;// gbufferからWorldNormalデコード.
-	float gb_rounghness = gb2.x;
+	float gb_roughness = gb2.x;
 	float gb_metalness = gb2.y;
 	float gb_surface_option = gb2.z;
 	float gb_material_id = gb2.w;
@@ -165,18 +167,27 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		light_visibility = lerp(cascade_blend_lit_sample[0], cascade_blend_lit_sample[1], cascade_blend_rate);
 	}
 	
-	const float3 specular_term = brdf_standard_ggx(gb_base_color, gb_rounghness, gb_metalness, gb_normal_ws, V, L);
-	const float3 diffuse_term = brdf_lambert(gb_base_color, gb_rounghness, gb_metalness, gb_normal_ws, V, L);
+	const float3 specular_term = brdf_standard_ggx(gb_base_color, gb_roughness, gb_metalness, gb_normal_ws, V, L);
+	const float3 diffuse_term = brdf_lambert(gb_base_color, gb_roughness, gb_metalness, gb_normal_ws, V, L);
 	const float3 brdf = specular_term + diffuse_term;
 	const float cos_term = saturate(dot(gb_normal_ws, L));
 	float3 lit_color = cos_term * brdf * lit_intensity * light_visibility;
 	
 	// IBL
 	{
-		const float3 sky_irradiance = tex_ibl_diffuse.SampleLevel(samp, gb_normal_ws, 0).rgb;
-		lit_color += diffuse_term * sky_irradiance;
+		const float3 ibl_R = 2 * dot( V, gb_normal_ws ) * gb_normal_ws - V;
+		const float3 F0 = compute_F0_default(gb_base_color, gb_metalness);
+		
+		float2 ibl_dfg = tex_ibl_dfg.SampleLevel(samp, float2(max(dot(gb_normal_ws, V), 0.0), gb_roughness), 0).rg;
 
-		//lit_color = diffuse_term * sky_irradiance;
+		uint ibl_spec_miplevel, ibl_spec_width, ibl_spec_height, ibl_spec_mipcount;
+		tex_ibl_specular.GetDimensions(ibl_spec_miplevel, ibl_spec_width, ibl_spec_height, ibl_spec_mipcount);
+		const float3 sky_specular = tex_ibl_specular.SampleLevel(samp, ibl_R, (float)(ibl_spec_mipcount-1.0) * gb_roughness).rgb;
+
+		lit_color += sky_specular * (F0 * ibl_dfg.x + ibl_dfg.y);
+
+		const float3 sky_diffuse = tex_ibl_diffuse.SampleLevel(samp, gb_normal_ws, 0).rgb;
+		lit_color += diffuse_term * sky_diffuse;
 	}
 
 		// ------------------------------------------------------------------------------
@@ -201,7 +212,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 						}
 						if(0.4 > input.uv.x)
 						{
-							return float4(gb_rounghness.xxx, 0.0);
+							return float4(gb_roughness.xxx, 0.0);
 						}
 						if(0.5 > input.uv.x)
 						{

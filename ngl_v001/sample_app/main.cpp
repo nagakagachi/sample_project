@@ -679,6 +679,7 @@ bool AppGame::ExecuteApp()
 			frame_scene.res_skybox_panorama_texture_ = skybox_.GetPanoramaTexture();
 			frame_scene.sky_ibl_diffuse_cubemap_srv_ = skybox_.GetConvDiffuseCubemapSrv();
 			frame_scene.sky_ibl_specular_cubemap_srv_ = skybox_.GetConvGgxSpecularCubemapSrv();
+			frame_scene.sky_ibl_specular_dfg_srv_ = skybox_.GetConvGgxDfgLutSrv();
 
 			frame_scene.sky_debug_mode_ = static_cast<ngl::gfx::SceneRepresentation::EDebugMode>(dbgw_sky_debug_mode);
 			frame_scene.sky_debug_mip_bias_ = dbgw_sky_debug_mip_bias;

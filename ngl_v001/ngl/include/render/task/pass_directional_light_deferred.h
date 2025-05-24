@@ -33,6 +33,11 @@ namespace ngl::render::task
 
 			// Diffuse畳み込みIBL Cubemap.
 			rhi::RefSrvDep  ibl_diffuse_cubemap_srv{};
+			// pecular畳み込みIBL Cubemap.
+			rhi::RefSrvDep  ibl_specular_cubemap_srv{};
+			// Specular DFG LUT.
+			rhi::RefSrvDep  ibl_specular_dfg_srv{};
+
 			// IBLの元になったCubemap. テスト用.
 			rhi::RefSrvDep  ibl_src_cubemap_srv{};
 			
@@ -201,6 +206,8 @@ namespace ngl::render::task
 					pso_->SetView(&desc_set, "tex_shadowmap", res_shadowmap.srv_.Get());
 
 					pso_->SetView(&desc_set, "tex_ibl_diffuse", desc_.ibl_diffuse_cubemap_srv.Get());
+					pso_->SetView(&desc_set, "tex_ibl_specular", desc_.ibl_specular_cubemap_srv.Get());
+					pso_->SetView(&desc_set, "tex_ibl_dfg", desc_.ibl_specular_dfg_srv.Get());
 						
 					pso_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_wrap.Get());
 					pso_->SetView(&desc_set, "samp_shadow", gfx::GlobalRenderResource::Instance().default_resource_.sampler_shadow_linear.Get());
