@@ -2,6 +2,7 @@
 
 #include <memory>
 
+#include "framework/gfx_scene.h"
 #include "util/noncopyable.h"
 #include "math/math.h"
 #include "render/standard_render_model.h"
@@ -61,12 +62,10 @@ namespace gfx
 
 		std::vector<gfx::StaticMeshComponent*> mesh_instance_array_ = {};
 
-		// sky.
-		rhi::RefSrvDep							skybox_cubemap_srv_ = {};
-		res::ResourceHandle<gfx::ResTexture>	res_skybox_panorama_texture_ = {};
-		rhi::RefSrvDep							sky_ibl_diffuse_cubemap_srv_ = {};
-		rhi::RefSrvDep							sky_ibl_specular_cubemap_srv_ = {};
-		rhi::RefSrvDep							sky_ibl_specular_dfg_srv_ = {};
+		// GfxScene
+		fwk::GfxScene*							gfx_scene_{};
+		// Gfx SkyBox.
+		fwk::GfxSceneInstanceId					skybox_proxy_id_{};
 		
 		enum class EDebugMode
 		{

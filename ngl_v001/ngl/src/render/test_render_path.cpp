@@ -222,11 +222,10 @@ namespace ngl::test
 						setup_desc.h = screen_h;
 						
 						setup_desc.scene_cbv = scene_cb_h;
-						setup_desc.cubemap_srv = p_scene->skybox_cubemap_srv_;
-						setup_desc.res_skybox_panorama_texture = p_scene->res_skybox_panorama_texture_;
-						setup_desc.ibl_diffuse_cubemap_srv = p_scene->sky_ibl_diffuse_cubemap_srv_;
-						setup_desc.ibl_ggx_specular_cubemap_srv = p_scene->sky_ibl_specular_cubemap_srv_;
 
+						setup_desc.scene = p_scene->gfx_scene_;
+						setup_desc.skybox_proxy_id = p_scene->skybox_proxy_id_;// 個別リソースではなくGfxSceneProxyIDを渡してPass側で参照する.
+						
 						{
 							switch (p_scene->sky_debug_mode_)
 							{
@@ -294,12 +293,10 @@ namespace ngl::test
 						
 						setup_desc.scene_cbv = scene_cb_h;
 						setup_desc.ref_shadow_cbv = task_d_shadow->shadow_sample_cbh_;
-
-						setup_desc.ibl_diffuse_cubemap_srv = p_scene->sky_ibl_diffuse_cubemap_srv_;
-						setup_desc.ibl_specular_cubemap_srv = p_scene->sky_ibl_specular_cubemap_srv_;
-						setup_desc.ibl_specular_dfg_srv = p_scene->sky_ibl_specular_dfg_srv_;
-						setup_desc.ibl_src_cubemap_srv = p_scene->skybox_cubemap_srv_;
-
+						
+						setup_desc.scene = p_scene->gfx_scene_;
+						setup_desc.skybox_proxy_id = p_scene->skybox_proxy_id_;
+						
 						setup_desc.enable_feedback_blur_test = render_frame_desc.debugview_enable_feedback_blur_test;
 					}
 					task_light->Setup(rtg_builder, p_device, view_info,

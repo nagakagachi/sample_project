@@ -27,15 +27,8 @@ namespace ngl::render::task
 			
             rhi::ConstantBufferPooledHandle scene_cbv{};
 
-            // Skyのパノラマテクスチャ.
-            res::ResourceHandle<gfx::ResTexture>    res_skybox_panorama_texture{};
-
-            // SkyのCubemap版.
-            rhi::RefSrvDep  cubemap_srv{};
-            // Diffuse畳み込みIBL Cubemap.
-            rhi::RefSrvDep  ibl_diffuse_cubemap_srv{};
-            // Ggx Specular畳み込みIBL Cubemap.
-            rhi::RefSrvDep  ibl_ggx_specular_cubemap_srv{};
+            fwk::GfxScene* scene{};
+            fwk::GfxSceneInstanceId skybox_proxy_id{};
 
             EDebugMode  debug_mode = EDebugMode::None;
             float       debug_mip_bias = 0.0f;
@@ -134,21 +127,24 @@ namespace ngl::render::task
                     auto res_light = builder.GetAllocatedResource(this, h_light_);
 
 
-                    rhi::ShaderResourceViewDep* cube_srv = setup_desc_.cubemap_srv.Get();
+                    // SkyboxProxyから情報取り出し.
+                    auto* skybox_proxy = setup_desc_.scene->buffer_skybox_.proxy_buffer_[setup_desc_.skybox_proxy_id.GetIndex()];
+                    
+                    rhi::ShaderResourceViewDep* cube_srv = skybox_proxy->src_cubemap_plane_array_srv_.Get();
                     bool is_panorama_mode = true;
                     if (EDebugMode::SrcCubemap == setup_desc_.debug_mode)
                     {
-                        cube_srv = setup_desc_.cubemap_srv.Get();
+                        cube_srv = skybox_proxy->src_cubemap_plane_array_srv_.Get();
                         is_panorama_mode = false;
                     }
                     else if (EDebugMode::IblDiffuse == setup_desc_.debug_mode)
                     {
-                        cube_srv = setup_desc_.ibl_diffuse_cubemap_srv.Get();
+                        cube_srv = skybox_proxy->ibl_diffuse_cubemap_plane_array_srv_.Get();
                         is_panorama_mode = false;
                     }
                     else if (EDebugMode::IblSpecular == setup_desc_.debug_mode)
                     {
-                        cube_srv = setup_desc_.ibl_ggx_specular_cubemap_srv.Get();
+                        cube_srv = skybox_proxy->ibl_ggx_specular_cubemap_plane_array_srv_.Get();;
                         is_panorama_mode = false;
                     }
                     
@@ -184,7 +180,8 @@ namespace ngl::render::task
                     pso_->SetView(&desc_set, "cb_skybox", &cbh->cbv_);
                     pso_->SetView(&desc_set, "tex_skybox_cube", cube_srv);
                     
-                    pso_->SetView(&desc_set, "tex_skybox_panorama", setup_desc_.res_skybox_panorama_texture->ref_view_.Get());
+                    pso_->SetView(&desc_set, "tex_skybox_panorama", skybox_proxy->panorama_texture_srv_.Get());
+                    
                     pso_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_wrap.Get());
 						
                     command_list->SetDescriptorSet(pso_.Get(), &desc_set);

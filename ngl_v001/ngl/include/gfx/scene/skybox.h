@@ -1,5 +1,8 @@
 ﻿#pragma once
 
+#include "util/bit_operation.h"
+
+#include "gfx/rtg/rtg_common.h"
 #include "gfx/render/global_render_resource.h"
 #include "render/task/pass_common.h"
 #include "resource/resource_manager.h"
@@ -8,8 +11,11 @@
 
 #include "gfx/command_helper.h"
 
+#include "framework/gfx_scene.h"
+
 namespace ngl::gfx::scene
 {
+    
     /**
      * @class SkyBox
      *
@@ -18,12 +24,54 @@ namespace ngl::gfx::scene
      * 管理する機能を提供します。
      */
     class SkyBox
-    {
+    {   
     public:
-        SkyBox()
-        {
-        }
         ~SkyBox() = default;
+        
+        bool InitializeGfx(fwk::GfxScene* scene)
+        {
+            return gfx_skybox_entity_.Initialize(scene);
+        }
+        void FinalizeGfx()
+        {
+            gfx_skybox_entity_.Finalize();;
+        }
+        fwk::GfxSceneInstanceId GetSkyBoxProxyId() const
+        {
+            return gfx_skybox_entity_.proxy_id_;
+        }
+        void UpdateGfx()
+        {
+            assert(fwk::GfxSceneInstanceId::IsValid(gfx_skybox_entity_.proxy_id_));
+            assert(gfx_skybox_entity_.scene_);
+
+            fwk::PushCommonRenderCommand([this](fwk::ComonRenderCommandArg arg)
+            {
+                // TODO. Entityが破棄されると即時Proxyが破棄されるため, 破棄フレームでもRenderThreadで安全にアクセスできるようにEntityの破棄リスト対応する必要がある.
+                auto* proxy = gfx_skybox_entity_.scene_->buffer_skybox_.proxy_buffer_[gfx_skybox_entity_.proxy_id_.GetIndex()];
+                assert(proxy);
+
+                proxy->panorama_texture_ = this->res_sky_texture_->ref_texture_;
+                proxy->panorama_texture_srv_ = this->res_sky_texture_->ref_view_;
+
+                // Mipmap有りのSky Cubemap. Panoramaイメージから生成される.
+                proxy->src_cubemap_ = this->generated_cubemap_;
+                proxy->src_cubemap_plane_array_srv_ = this->generated_cubemap_plane_array_srv_;
+
+                // Sky Cubemapから畳み込みで生成されるDiffuse IBL Cubemap.
+                proxy->ibl_diffuse_cubemap_ = this->conv_diffuse_cubemap_;
+                proxy->ibl_diffuse_cubemap_plane_array_srv_ = this->conv_diffuse_cubemap_plane_array_srv_;
+                
+                // Sky Cubemapから畳み込みで生成されるGGX Specular IBL Cubemap.
+                proxy->ibl_ggx_specular_cubemap_ = this->conv_ggx_specular_cubemap_;
+                proxy->ibl_ggx_specular_cubemap_plane_array_srv_ = this->conv_ggx_specular_cubemap_plane_array_srv_;
+
+                // IBL DFG LUT.
+                proxy->ibl_ggx_dfg_lut_ = this->conv_ggx_dfg_lut_;
+                proxy->ibl_ggx_dfg_lut_srv_ = this->conv_ggx_dfg_lut_srv_;
+            });
+        }
+        
 
         // 現在のパラメータでIBL Cubemapを再計算する描画コマンドを発行する.
         void RecalculateIblTexture()
@@ -147,7 +195,7 @@ namespace ngl::gfx::scene
             
         }
         
-        bool InitializeAsPanorama(rhi::DeviceDep* p_device, const char* sky_testure_file_path)
+        bool SetupAsPanorama(rhi::DeviceDep* p_device, const char* sky_testure_file_path)
         {
             auto& res_mgr = res::ResourceManager::Instance();
             
@@ -453,6 +501,10 @@ namespace ngl::gfx::scene
         bool GetParam_PreventAliasingModeDiffuse() const {return prevent_aliasing_mode_diffuse_;}
         void SetParam_PreventAliasingModeSpecular(bool v){prevent_aliasing_mode_specular_ = v;}
         bool GetParam_PreventAliasingModeSpecular() const {return prevent_aliasing_mode_specular_;}
+
+    private:
+        // Gfx用.
+        fwk::GfxSkyBoxEntity gfx_skybox_entity_;
         
     private:
         // HDR Sky Panorama Texture.
@@ -493,6 +545,5 @@ namespace ngl::gfx::scene
         // IBLテクスチャ計算に関するパラメータ.
         bool prevent_aliasing_mode_diffuse_ = true;
         bool prevent_aliasing_mode_specular_ = true;
-        
     };
 }

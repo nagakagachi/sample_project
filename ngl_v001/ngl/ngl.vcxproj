@@ -116,6 +116,7 @@
     <ClInclude Include="include\boot\win\boot_application.win.h" />
     <ClInclude Include="include\file\file.h" />
     <ClInclude Include="include\framework\gfx_render_command_manager.h" />
+    <ClInclude Include="include\framework\gfx_scene.h" />
     <ClInclude Include="include\gfx\command_helper.h" />
     <ClInclude Include="include\gfx\common_struct.h" />
     <ClInclude Include="include\framework\gfx_framework.h" />
@@ -208,6 +209,7 @@
     <ClCompile Include="src\boot\win\boot_application.win.cpp" />
     <ClCompile Include="src\file\file.cpp" />
     <ClCompile Include="src\framework\gfx_render_command_manager.cpp" />
+    <ClCompile Include="src\framework\gfx_scene.cpp" />
     <ClCompile Include="src\gfx\command_helper.cpp" />
     <ClCompile Include="src\framework\gfx_framework.cpp" />
     <ClCompile Include="src\gfx\material\material_shader_generator.cpp" />
@@ -221,6 +223,82 @@
     <ClCompile Include="src\gfx\resource\resource_mesh.cpp" />
     <ClCompile Include="src\gfx\resource\resource_texture.cpp" />
     <ClCompile Include="src\gfx\rtg\graph_builder.cpp" />
+    <ClCompile Include="src\gfx\scene\skybox.cpp">
+      <RuntimeLibrary>MultiThreadedDebugDll</RuntimeLibrary>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <Optimization>Disabled</Optimization>
+      <SupportJustMyCode>true</SupportJustMyCode>
+      <AssemblerOutput>NoListing</AssemblerOutput>
+      <AssemblerListingLocation>x64\Debug\</AssemblerListingLocation>
+      <UndefineAllPreprocessorDefinitions>false</UndefineAllPreprocessorDefinitions>
+      <BrowseInformation>false</BrowseInformation>
+      <BrowseInformationFile>x64\Debug\</BrowseInformationFile>
+      <CompileAs>Default</CompileAs>
+      <ConformanceMode>true</ConformanceMode>
+      <DiagnosticsFormat>Column</DiagnosticsFormat>
+      <DisableLanguageExtensions>false</DisableLanguageExtensions>
+      <ErrorReporting>Prompt</ErrorReporting>
+      <ExpandAttributedSource>false</ExpandAttributedSource>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <EnableASAN>false</EnableASAN>
+      <EnableFuzzer>false</EnableFuzzer>
+      <EnableFiberSafeOptimizations>false</EnableFiberSafeOptimizations>
+      <EnableEnhancedInstructionSet>NotSet</EnableEnhancedInstructionSet>
+      <FloatingPointModel>Precise</FloatingPointModel>
+      <ForceConformanceInForLoopScope>true</ForceConformanceInForLoopScope>
+      <ForcedIncludeFiles>pch.h</ForcedIncludeFiles>
+      <GenerateModuleDependencies>false</GenerateModuleDependencies>
+      <GenerateSourceDependencies>false</GenerateSourceDependencies>
+      <GenerateXMLDocumentationFiles>false</GenerateXMLDocumentationFiles>
+      <InlineFunctionExpansion>Default</InlineFunctionExpansion>
+      <IntrinsicFunctions>false</IntrinsicFunctions>
+      <IgnoreStandardIncludePath>false</IgnoreStandardIncludePath>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard_C>Default</LanguageStandard_C>
+      <MinimalRebuild>false</MinimalRebuild>
+      <ModuleDependenciesFile>x64\Debug\</ModuleDependenciesFile>
+      <ModuleOutputFile>x64\Debug\</ModuleOutputFile>
+      <OmitDefaultLibName>false</OmitDefaultLibName>
+      <FavorSizeOrSpeed>Neither</FavorSizeOrSpeed>
+      <WholeProgramOptimization>false</WholeProgramOptimization>
+      <ObjectFileName>x64\Debug\</ObjectFileName>
+      <CallingConvention>Cdecl</CallingConvention>
+      <ProgramDataBaseFileName>K:\GitHub\sample_projct_lib\ngl_v001\x64\Debug\ngl.pdb</ProgramDataBaseFileName>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>x64\Debug\ngl.pch</PrecompiledHeaderOutputFile>
+      <PreprocessToFile>false</PreprocessToFile>
+      <PreprocessKeepComments>false</PreprocessKeepComments>
+      <PreprocessSuppressLineNumbers>false</PreprocessSuppressLineNumbers>
+      <RemoveUnreferencedCodeData>true</RemoveUnreferencedCodeData>
+      <ScanSourceForModuleDependencies>false</ScanSourceForModuleDependencies>
+      <ShowIncludes>false</ShowIncludes>
+      <SourceDependenciesFile>x64\Debug\</SourceDependenciesFile>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <BufferSecurityCheck>true</BufferSecurityCheck>
+      <SmallerTypeCheck>false</SmallerTypeCheck>
+      <SpectreMitigation>false</SpectreMitigation>
+      <StructMemberAlignment>Default</StructMemberAlignment>
+      <TrackerLogDirectory>x64\Debug\ngl.tlog\</TrackerLogDirectory>
+      <TranslateIncludes>false</TranslateIncludes>
+      <MinimalRebuildFromTracking>true</MinimalRebuildFromTracking>
+      <TreatWarningAsError>false</TreatWarningAsError>
+      <TreatWChar_tAsBuiltInType>true</TreatWChar_tAsBuiltInType>
+      <UseFullPaths>true</UseFullPaths>
+      <WarningLevel>Level3</WarningLevel>
+      <XMLDocumentationFileName>x64\Debug\</XMLDocumentationFileName>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+      <IntelJCCErratum>false</IntelJCCErratum>
+      <BuildStlModules>false</BuildStlModules>
+      <TreatAngleIncludeAsExternal>false</TreatAngleIncludeAsExternal>
+      <ExternalWarningLevel>InheritWarningLevel</ExternalWarningLevel>
+      <TreatExternalTemplatesAsInternal>true</TreatExternalTemplatesAsInternal>
+      <DisableAnalyzeExternal>false</DisableAnalyzeExternal>
+      <PreprocessorDefinitions>_DEBUG;_LIB;_UNICODE;UNICODE;</PreprocessorDefinitions>
+      <SDLCheck>true</SDLCheck>
+      <AdditionalIncludeDirectories>K:\GitHub\sample_projct_lib\ngl_v001\packages\WinPixEventRuntime.1.0.240308001\build\..\Include\WinPixEventRuntime;K:\GitHub\sample_projct_lib\ngl_v001\packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\include;K:\GitHub\sample_projct_lib\ngl_v001\packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\include\d3dx12;K:\GitHub\sample_projct_lib\ngl_v001\packages\Microsoft.Direct3D.D3D12.1.615.1\build\native\;K:\GitHub\sample_projct_lib\ngl_v001\packages\Microsoft.Direct3D.DXC.1.8.2502.8\build\native\include;.\include;.\external\assimp\include;.\external\DirectXTex;.\external\imgui;.\external\tinyxml2;</AdditionalIncludeDirectories>
+      <LibCompiled>true</LibCompiled>
+    </ClCompile>
     <ClCompile Include="src\gfx\texture_loader_directxtex.cpp" />
     <ClCompile Include="src\imgui\imgui_interface.cpp" />
     <ClCompile Include="src\math\math.cpp" />

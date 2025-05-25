@@ -37,6 +37,7 @@
 
 #include "gfx/scene/skybox.h"
 
+
 // マテリアルシェーダ関連.
 #include "gfx/material/material_shader_generator.h"
 #include "gfx/material/material_shader_manager.h"
@@ -133,6 +134,7 @@ private:
 	ngl::fwk::GraphicsFramework		gfxfw_{};
 	std::vector<ngl::rhi::EResourceState>		swapchain_resource_state_;
 
+	
 	ngl::math::Vec3		camera_pos_ = {0.0f, 2.0f, -1.0f};
 	ngl::math::Mat33	camera_pose_ = ngl::math::Mat33::Identity();
 	float				camera_fov_y = ngl::math::Deg2Rad(60.0f);// not half fov.
@@ -145,7 +147,9 @@ private:
 	// RaytraceScene.
 	ngl::gfx::RtSceneManager					rt_scene_;
 
-	ngl::gfx::scene::SkyBox						skybox_;
+	
+	ngl::fwk::GfxScene							gfx_scene_{};
+	ngl::gfx::scene::SkyBox						skybox_{};
 
 	
 	ngl::rhi::RefTextureDep						tex_rw_;
@@ -184,7 +188,9 @@ AppGame::~AppGame()
 		PushRenderParam({});
 		SyncRenderParam();
 	}
-	skybox_ = {};
+
+	skybox_.FinalizeGfx();
+	
 	rt_scene_ = {};
 
 	// リソース参照クリア.
@@ -283,6 +289,29 @@ bool AppGame::Initialize()
 			assert(false);
 		}
 	}
+
+
+	// GfxScene初期化.
+	{
+		gfx_scene_.buffer_skybox_.Initialize(128);
+	}
+
+	constexpr char path_sky_hdr_panorama_pisa[] = "../ngl/data/texture/vgl/pisa/pisa.hdr";
+	constexpr char path_sky_hdr_panorama_ennis[] = "../ngl/data/texture/vgl/ennis/ennis.hdr";
+	constexpr char path_sky_hdr_panorama_grace_new[] = "../ngl/data/texture/vgl/grace-new/grace-new.hdr";
+	constexpr char path_sky_hdr_panorama_uffizi_large[] = "../ngl/data/texture/vgl/uffizi-large/uffizi-large.hdr";
+
+	//const auto* path_sky_panorama = path_sky_hdr_panorama_pisa;
+	//const auto* path_sky_panorama = path_sky_hdr_panorama_ennis;
+	const auto* path_sky_panorama = path_sky_hdr_panorama_grace_new;// 高周波.
+	//const auto* path_sky_panorama = path_sky_hdr_panorama_uffizi_large;
+	skybox_.InitializeGfx(&gfx_scene_);
+	if (!skybox_.SetupAsPanorama(&device, path_sky_panorama))
+	{
+		std::cout << "[ERROR] Initialize SkyBox" << std::endl;
+	}
+
+	
 
 	// モデル読みこみ.
 	{
@@ -425,21 +454,8 @@ bool AppGame::Initialize()
 	res_texture_ = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResTexture>(&device, test_load_texture_file_name, &tex_load_desc);
 
 
-	constexpr char path_sky_hdr_panorama_pisa[] = "../ngl/data/texture/vgl/pisa/pisa.hdr";
-	constexpr char path_sky_hdr_panorama_ennis[] = "../ngl/data/texture/vgl/ennis/ennis.hdr";
-	constexpr char path_sky_hdr_panorama_grace_new[] = "../ngl/data/texture/vgl/grace-new/grace-new.hdr";
-	constexpr char path_sky_hdr_panorama_uffizi_large[] = "../ngl/data/texture/vgl/uffizi-large/uffizi-large.hdr";
-
-	//const auto* path_sky_panorama = path_sky_hdr_panorama_pisa;
-	//const auto* path_sky_panorama = path_sky_hdr_panorama_ennis;
-	const auto* path_sky_panorama = path_sky_hdr_panorama_grace_new;// 高周波.
-	//const auto* path_sky_panorama = path_sky_hdr_panorama_uffizi_large;
-	if (!skybox_.InitializeAsPanorama(&device, path_sky_panorama))
-	{
-		std::cout << "[ERROR] Initialize SkyBox" << std::endl;
-	}
-
 	
+
 	ngl::time::Timer::Instance().StartTimer("app_frame_sec");
 	return true;
 }
@@ -673,14 +689,15 @@ bool AppGame::ExecuteApp()
 			frame_scene.mesh_instance_array_.push_back(e.get());
 		}
 
+		// GfxScene.
+		frame_scene.gfx_scene_ = &gfx_scene_;
+		
 		// sky.
 		{
-			frame_scene.skybox_cubemap_srv_ = skybox_.GetCubemapSrv();
-			frame_scene.res_skybox_panorama_texture_ = skybox_.GetPanoramaTexture();
-			frame_scene.sky_ibl_diffuse_cubemap_srv_ = skybox_.GetConvDiffuseCubemapSrv();
-			frame_scene.sky_ibl_specular_cubemap_srv_ = skybox_.GetConvGgxSpecularCubemapSrv();
-			frame_scene.sky_ibl_specular_dfg_srv_ = skybox_.GetConvGgxDfgLutSrv();
-
+			// GfxSceneComponentの仕組みでSkyBox情報を取り扱うテスト
+			skybox_.UpdateGfx();
+			frame_scene.skybox_proxy_id_ = skybox_.GetSkyBoxProxyId();
+			
 			frame_scene.sky_debug_mode_ = static_cast<ngl::gfx::SceneRepresentation::EDebugMode>(dbgw_sky_debug_mode);
 			frame_scene.sky_debug_mip_bias_ = dbgw_sky_debug_mip_bias;
 		}

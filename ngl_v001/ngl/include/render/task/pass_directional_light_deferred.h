@@ -31,15 +31,8 @@ namespace ngl::render::task
 			rhi::ConstantBufferPooledHandle scene_cbv{};
 			rhi::ConstantBufferPooledHandle ref_shadow_cbv{};
 
-			// Diffuse畳み込みIBL Cubemap.
-			rhi::RefSrvDep  ibl_diffuse_cubemap_srv{};
-			// pecular畳み込みIBL Cubemap.
-			rhi::RefSrvDep  ibl_specular_cubemap_srv{};
-			// Specular DFG LUT.
-			rhi::RefSrvDep  ibl_specular_dfg_srv{};
-
-			// IBLの元になったCubemap. テスト用.
-			rhi::RefSrvDep  ibl_src_cubemap_srv{};
+			fwk::GfxScene* scene{};
+			fwk::GfxSceneInstanceId skybox_proxy_id{};
 			
 			bool enable_feedback_blur_test{};
 		};
@@ -162,6 +155,9 @@ namespace ngl::render::task
 					// 前回フレームのライトリソースが無効な場合は、グローバルリソースのデフォルトを使用.
 					rhi::RefSrvDep ref_prev_lit = (res_prev_light.srv_.IsValid())? res_prev_light.srv_ : global_res.default_resource_.tex_black->ref_view_;
 
+					// SkyboxProxyから情報取り出し.
+					auto* skybox_proxy = desc_.scene->buffer_skybox_.proxy_buffer_[desc_.skybox_proxy_id.GetIndex()];
+					
 					// LightingPass定数バッファ.
 					struct CbLightingPass
 					{
@@ -205,10 +201,10 @@ namespace ngl::render::task
 
 					pso_->SetView(&desc_set, "tex_shadowmap", res_shadowmap.srv_.Get());
 
-					pso_->SetView(&desc_set, "tex_ibl_diffuse", desc_.ibl_diffuse_cubemap_srv.Get());
-					pso_->SetView(&desc_set, "tex_ibl_specular", desc_.ibl_specular_cubemap_srv.Get());
-					pso_->SetView(&desc_set, "tex_ibl_dfg", desc_.ibl_specular_dfg_srv.Get());
-						
+					pso_->SetView(&desc_set, "tex_ibl_diffuse", skybox_proxy->ibl_diffuse_cubemap_plane_array_srv_.Get());
+					pso_->SetView(&desc_set, "tex_ibl_specular", skybox_proxy->ibl_ggx_specular_cubemap_plane_array_srv_.Get());
+					pso_->SetView(&desc_set, "tex_ibl_dfg", skybox_proxy->ibl_ggx_dfg_lut_srv_.Get());
+
 					pso_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
 					pso_->SetView(&desc_set, "samp_shadow", gfx::GlobalRenderResource::Instance().default_resource_.sampler_shadow_linear.Get());
 						
