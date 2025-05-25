@@ -23,14 +23,18 @@ https://google.github.io/filament/Filament.md.html
 
 
 // reflectance : 誘電体の場合の正規化反射率[0,1]
-float3 compute_F0(const float3 base_color, float metallic, float dielectric_reflectance) {
-	return (base_color * metallic) + (0.16 * dielectric_reflectance * dielectric_reflectance * (1.0 - metallic));
+float3 compute_F0(const float3 base_color, float metalness, float dielectric_reflectance) {
+	return (base_color * metalness) + (0.16 * dielectric_reflectance * dielectric_reflectance * (1.0 - metalness));
 }
 // 誘電体の正規化反射率(reflectance)に一般的な値な値を採用して計算.
-float3 compute_F0_default(const float3 base_color, float metallic) {
-	const float k_dielectric_reflectance = 0.5;// compute_F0()の metallic==0 で一般的な誘電体のスペキュラF0である0.04になるような値.
-	return compute_F0(base_color, metallic, k_dielectric_reflectance);
+float3 compute_F0_default(const float3 base_color, float metalness) {
+	const float k_dielectric_reflectance = 0.5;// compute_F0()の metalness==0 で一般的な誘電体のスペキュラF0である0.04になるような値.
+	return compute_F0(base_color, metalness, k_dielectric_reflectance);
 }
+float3 compute_diffuse_reflectance(const float3 base_color, float metalness) {
+	return base_color * (1.0 - metalness);
+}
+
 
 // HalfVectorの計算は初回フレームなどの特異な状況でNaNが発生することが多いため安全な正規化を用意.
 float3 ngl_safe_normalize(float3 v)
@@ -45,6 +49,14 @@ float3 brdf_schlick_F(float3 F0, float3 N, float3 V, float3 L)
 	const float v_o_h = saturate(dot(V, h));
 	const float tmp = (1.0 - v_o_h);
 	const float3 F = F0 + (1.0 - F0) * (tmp*tmp*tmp*tmp*tmp);
+	return F;
+}
+float3 brdf_schlick_roughness_F(float3 F0, float roughness, float3 N, float3 V, float3 L)
+{
+	const float3 h = ngl_safe_normalize(V + L);
+	const float v_o_h = saturate(dot(V, h));
+	const float tmp = (1.0 - v_o_h);
+	const float3 F = F0 + (max((1.0 - roughness).xxx, F0) - F0) * (tmp*tmp*tmp*tmp*tmp);
 	return F;
 }
 
@@ -93,7 +105,7 @@ float3 brdf_lambert(float3 base_color, float perceptual_roughness, float metalne
 {
 	const float lambert = 1.0 / NGL_PI;
 
-	const float3 diffuse = lerp(base_color, 0.0, metalness) * lambert;
+	const float3 diffuse = compute_diffuse_reflectance(base_color, metalness) * lambert;
 	return diffuse;
 }
 

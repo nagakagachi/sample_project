@@ -209,7 +209,7 @@ namespace ngl::render::task
 					pso_->SetView(&desc_set, "tex_ibl_specular", desc_.ibl_specular_cubemap_srv.Get());
 					pso_->SetView(&desc_set, "tex_ibl_dfg", desc_.ibl_specular_dfg_srv.Get());
 						
-					pso_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_wrap.Get());
+					pso_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
 					pso_->SetView(&desc_set, "samp_shadow", gfx::GlobalRenderResource::Instance().default_resource_.sampler_shadow_linear.Get());
 						
 					gfx_commandlist->SetDescriptorSet(pso_.Get(), &desc_set);

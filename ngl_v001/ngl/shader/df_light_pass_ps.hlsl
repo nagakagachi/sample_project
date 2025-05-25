@@ -40,6 +40,62 @@ TextureCube tex_ibl_specular;
 Texture2D tex_ibl_dfg;
 
 
+// IBL評価. 標準.
+void EvalDirectionalLightStandard
+(
+	out float3 out_diffuse, out float3 out_specular,
+
+	float3 light_intensity, float3 L, 
+	float3 N, float3 V,
+	float3 base_color, float roughness, float metalness
+)
+{
+	const float3 F = brdf_schlick_roughness_F(compute_F0_default(base_color, metalness), roughness, N, V, L);// Roughnessを考慮したFresnel
+	const float3 kD = (1.0 - F);
+
+	const float3 diffuse_term = brdf_lambert(base_color, roughness, metalness, N, V, L);
+	const float3 specular_term = brdf_standard_ggx(base_color, roughness, metalness, N, V, L);
+	const float3 brdf = specular_term + diffuse_term;
+	const float cos_term = saturate(dot(N, L));
+
+	//out_diffuse = (float3)0;
+	out_diffuse = cos_term * diffuse_term * kD * light_intensity;
+	
+	//out_specular = (float3)0;
+	out_specular = cos_term * specular_term * light_intensity;
+}
+
+// IBL評価. 標準.
+void EvalIblDiffuseStandard
+(
+	out float3 out_diffuse, out float3 out_specular,
+
+	TextureCube tex_cube_ibl_diffuse, TextureCube tex_cube_ibl_spacular, Texture2D tex_2d_specular_dfg, SamplerState samp, 
+	float3 N, float3 V, 
+	float3 base_color, float roughness, float metalness
+)
+{
+	const float3 L_Reflect = 2 * dot( V, N ) * N - V;
+	const float3 F = brdf_schlick_roughness_F(compute_F0_default(base_color, metalness), roughness, N, V, L_Reflect);// Roughnessを考慮したFresnel
+	const float3 kD = (1.0 - F);
+
+	const float3 brdf_diffuse = brdf_lambert(base_color, roughness, metalness, N, V, L_Reflect);// diffuse BRDF.
+
+	// Roughnessによる読み取りMipの計算.
+	uint ibl_spec_miplevel, ibl_spec_width, ibl_spec_height, ibl_spec_mipcount;
+	tex_cube_ibl_spacular.GetDimensions(ibl_spec_miplevel, ibl_spec_width, ibl_spec_height, ibl_spec_mipcount);
+	const float ibl_specular_mip = (float)(ibl_spec_mipcount-1.0) * roughness;
+
+	const float3 irradiance_specular = tex_cube_ibl_spacular.SampleLevel(samp, L_Reflect, ibl_specular_mip).rgb;
+	const float4 specular_dfg = tex_2d_specular_dfg.SampleLevel(samp, float2(saturate(dot(N, V)), roughness), 0);
+	const float3 irradiance_diffuse = tex_cube_ibl_diffuse.SampleLevel(samp, N, 0).rgb;
+
+	// FresnelでDiffuseとSpecularに分配.
+	out_diffuse = brdf_diffuse * kD * irradiance_diffuse;
+	out_specular = irradiance_specular * (F * specular_dfg.x + specular_dfg.y);
+}
+
+
 float4 main_ps(VS_OUTPUT input) : SV_TARGET
 {	
 	// リニアView深度.
@@ -86,6 +142,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	const float3 V = -to_pixel_ray_ws;
 	const float3 L = -lit_dir;
 	
+	// Directional Shadow.
 	float light_visibility = 1.0;
 	int sample_cascade_index_debug = 0;
 	{
@@ -167,27 +224,29 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		light_visibility = lerp(cascade_blend_lit_sample[0], cascade_blend_lit_sample[1], cascade_blend_rate);
 	}
 	
-	const float3 specular_term = brdf_standard_ggx(gb_base_color, gb_roughness, gb_metalness, gb_normal_ws, V, L);
-	const float3 diffuse_term = brdf_lambert(gb_base_color, gb_roughness, gb_metalness, gb_normal_ws, V, L);
-	const float3 brdf = specular_term + diffuse_term;
-	const float cos_term = saturate(dot(gb_normal_ws, L));
-	float3 lit_color = cos_term * brdf * lit_intensity * light_visibility;
-	
-	// IBL評価.
+	float3 lit_color = (float3)0;
+
+	// Directional Lit.
 	{
-		const float3 ibl_R = 2 * dot( V, gb_normal_ws ) * gb_normal_ws - V;
-		const float3 F0 = compute_F0_default(gb_base_color, gb_metalness);
+		float3 dlit_diffuse, dlit_specular;
+		EvalDirectionalLightStandard(dlit_diffuse, dlit_specular, lit_intensity, L, gb_normal_ws, V, gb_base_color, gb_roughness, gb_metalness);
+
+		lit_color += (dlit_diffuse + dlit_specular) * light_visibility;
 		
-		float4 ibl_dfg = tex_ibl_dfg.SampleLevel(samp, float2(max(dot(gb_normal_ws, V), 0.0), gb_roughness), 0);
+		//lit_color += (dlit_diffuse) * light_visibility;// テスト.
+		//lit_color += (dlit_specular) * light_visibility;// テスト.
+	}
+	
+	// IBL.
+	{
+		float3 ibl_diffuse, ibl_specular;
+		EvalIblDiffuseStandard(ibl_diffuse, ibl_specular, tex_ibl_diffuse, tex_ibl_specular, tex_ibl_dfg, samp, gb_normal_ws, V, gb_base_color, gb_roughness, gb_metalness);
 
-		uint ibl_spec_miplevel, ibl_spec_width, ibl_spec_height, ibl_spec_mipcount;
-		tex_ibl_specular.GetDimensions(ibl_spec_miplevel, ibl_spec_width, ibl_spec_height, ibl_spec_mipcount);
-		const float3 sky_specular = tex_ibl_specular.SampleLevel(samp, ibl_R, (float)(ibl_spec_mipcount-1.0) * gb_roughness).rgb;
-
-		lit_color += sky_specular * (F0 * ibl_dfg.x + ibl_dfg.y);
-
-		const float3 sky_diffuse = tex_ibl_diffuse.SampleLevel(samp, gb_normal_ws, 0).rgb;
-		lit_color += diffuse_term * sky_diffuse;
+		lit_color += ibl_diffuse + ibl_specular;
+		
+		//lit_color = ibl_diffuse + ibl_specular;// テスト
+		//lit_color = ibl_diffuse;// テスト.
+		//lit_color = ibl_specular;// テスト.
 	}
 
 
