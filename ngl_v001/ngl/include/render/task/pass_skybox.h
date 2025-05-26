@@ -28,7 +28,7 @@ namespace ngl::render::task
             rhi::ConstantBufferPooledHandle scene_cbv{};
 
             fwk::GfxScene* scene{};
-            fwk::GfxSceneInstanceId skybox_proxy_id{};
+            fwk::GfxSceneEntityId skybox_proxy_id{};
 
             EDebugMode  debug_mode = EDebugMode::None;
             float       debug_mip_bias = 0.0f;

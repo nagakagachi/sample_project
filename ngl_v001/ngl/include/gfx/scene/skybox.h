@@ -30,25 +30,29 @@ namespace ngl::gfx::scene
         
         bool InitializeGfx(fwk::GfxScene* scene)
         {
+            // GfxSceneのSkyBoxの初期化と対応するProxyの確保.
             return gfx_skybox_entity_.Initialize(scene);
         }
         void FinalizeGfx()
         {
+            // GfxSceneのSkyBox Proxyの解放.
             gfx_skybox_entity_.Finalize();;
         }
-        fwk::GfxSceneInstanceId GetSkyBoxProxyId() const
+        fwk::GfxSceneEntityId GetSkyBoxProxyId() const
         {
-            return gfx_skybox_entity_.proxy_id_;
+            // GfxScene上で識別可能なSkyBox ProxyのID.
+            return gfx_skybox_entity_.proxy_info_.proxy_id_;
         }
         void UpdateGfx()
         {
-            assert(fwk::GfxSceneInstanceId::IsValid(gfx_skybox_entity_.proxy_id_));
-            assert(gfx_skybox_entity_.scene_);
+            assert(fwk::GfxSceneEntityId::IsValid(gfx_skybox_entity_.proxy_info_.proxy_id_));
+            assert(gfx_skybox_entity_.proxy_info_.scene_);
 
+            // GfxScene上のSkyBox Proxyの情報を更新するRenderCommand. ProxyはIDによってRenderPassからアクセス可能で, SkyBoxの描画パラメータ送付に利用される.
             fwk::PushCommonRenderCommand([this](fwk::ComonRenderCommandArg arg)
             {
                 // TODO. Entityが破棄されると即時Proxyが破棄されるため, 破棄フレームでもRenderThreadで安全にアクセスできるようにEntityの破棄リスト対応する必要がある.
-                auto* proxy = gfx_skybox_entity_.scene_->buffer_skybox_.proxy_buffer_[gfx_skybox_entity_.proxy_id_.GetIndex()];
+                auto* proxy = gfx_skybox_entity_.GetProxy();
                 assert(proxy);
 
                 proxy->panorama_texture_ = this->res_sky_texture_->ref_texture_;

@@ -32,7 +32,7 @@ namespace ngl::render::task
 			rhi::ConstantBufferPooledHandle ref_shadow_cbv{};
 
 			fwk::GfxScene* scene{};
-			fwk::GfxSceneInstanceId skybox_proxy_id{};
+			fwk::GfxSceneEntityId skybox_proxy_id{};
 			
 			bool enable_feedback_blur_test{};
 		};

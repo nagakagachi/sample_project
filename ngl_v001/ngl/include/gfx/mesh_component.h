@@ -65,7 +65,7 @@ namespace gfx
 		// GfxScene
 		fwk::GfxScene*							gfx_scene_{};
 		// Gfx SkyBox.
-		fwk::GfxSceneInstanceId					skybox_proxy_id_{};
+		fwk::GfxSceneEntityId					skybox_proxy_id_{};
 		
 		enum class EDebugMode
 		{
