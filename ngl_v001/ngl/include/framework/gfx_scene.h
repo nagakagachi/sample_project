@@ -20,13 +20,13 @@ namespace ngl::fwk
             EntityType毎に特殊化するためのベース宣言. GfxSceneProxyBuffer<T> 毎にメンバ変数宣言とそれを返す特殊化を定義することで, EntityType毎に別のメンバGfxSceneProxyBuffer上に実体確保できるようになる.
         example:
             GfxSceneProxyBuffer<GfxSkyBoxEntity> buffer_skybox_;
-            template<> GfxSceneProxyBuffer<GfxSkyBoxEntity>* GetEntityTypeRegister()
+            template<> GfxSceneProxyBuffer<GfxSkyBoxEntity>* GetEntityProxyBuffer()
             {
                 return &buffer_skybox_;
             }
         */
         template<typename ENTITY_TYPE, typename DUMMY = void>
-        GfxSceneProxyBuffer<ENTITY_TYPE>* GetEntityTypeRegister(){
+        GfxSceneProxyBuffer<ENTITY_TYPE>* GetEntityProxyBuffer(){
             assert(false && u8"not implemented"); return {};
         }
 
@@ -39,13 +39,13 @@ namespace ngl::fwk
         // GfxSkyBoxEntity 用のバッファとメソッド特殊化定義.
         //  クラススコープでの完全特殊化はC++17以前ではコンパイルできない場合があるため別の記述方法を検討.
         GfxSceneProxyBuffer<GfxSkyBoxEntity> buffer_skybox_;
-        template<> GfxSceneProxyBuffer<GfxSkyBoxEntity>* GetEntityTypeRegister()
+        template<> GfxSceneProxyBuffer<GfxSkyBoxEntity>* GetEntityProxyBuffer()
         {
             return &buffer_skybox_;
         }
         
         // TODO. other EntityTypes
-        // GfxSceneProxyBuffer<Gfx***Entity> buffer_skybox_;
+        // GfxSceneProxyBuffer<Gfx***Entity> buffer_***_;
 
 
         
@@ -66,14 +66,14 @@ namespace ngl::fwk
 
 
     // GfxScene
-    // Entity別のRegisterから確保するための. EntityType型別に特殊化された GetEntityTypeRegister() に対して操作する.
+    // Entity別のBufferから確保するための. EntityType型別に特殊化された GetEntityProxyBuffer() に対して操作する.
     template<typename ENTITY_TYPE>
     GfxProxyInfo GfxScene::AllocProxy()
     {
-        // GfxScene側で特殊化しているはずのEntity型のRegisterを取得する.
-        auto* entity_register = GetEntityTypeRegister<ENTITY_TYPE>();
+        // GfxScene側で特殊化しているはずのEntity型のBufferを取得する.
+        auto* entity_proxy_buffer = GetEntityProxyBuffer<ENTITY_TYPE>();
 
-        const auto proxy_id = entity_register->Alloc();// 対応するTypeのBufferから確保.
+        const auto proxy_id = entity_proxy_buffer->Alloc();// 対応するTypeのBufferから確保.
 
         assert(GfxSceneEntityId::IsValid(proxy_id));
         GfxProxyInfo proxy_info{};
@@ -83,19 +83,19 @@ namespace ngl::fwk
         }
         return proxy_info;
     }
-    // Entity別のRegisterに確保した要素を解放する. EntityType型別に特殊化された GetEntityTypeRegister() に対して操作する.
+    // Entity別のBufferに確保した要素を解放する. EntityType型別に特殊化された GetEntityProxyBuffer() に対して操作する.
     template<typename ENTITY_TYPE>
     void GfxScene::DeallocProxy(GfxProxyInfo& proxy_info)
     {
-        // GfxScene側で特殊化しているはずのEntity型のRegisterを取得する.
-        auto* entity_register = GetEntityTypeRegister<ENTITY_TYPE>();
+        // GfxScene側で特殊化しているはずのEntity型のBufferを取得する.
+        auto* entity_proxy_buffer = GetEntityProxyBuffer<ENTITY_TYPE>();
 
         assert(proxy_info.scene_ == this);
         assert(GfxSceneEntityId::IsValid(proxy_info.proxy_id_));
 
         if (GfxSceneEntityId::IsValid(proxy_info.proxy_id_))
         {
-            entity_register->Dealloc(proxy_info.proxy_id_);// 対応するTypeのBufferから確保.
+            entity_proxy_buffer->Dealloc(proxy_info.proxy_id_);// 対応するTypeのBufferから確保.
 
             proxy_info = {};// 内容クリア.
         }
@@ -134,9 +134,9 @@ namespace ngl::fwk
         assert(nullptr != proxy_info_.scene_);
         if (GfxSceneEntityId::IsValid(proxy_info_.proxy_id_))
         {
-            // GfxScene側で特殊化しているはずのEntity型のRegisterを取得する.
-            auto proxy_register = proxy_info_.scene_->GetEntityTypeRegister<ENTITY_CLASS_TYPE>();
-            return proxy_register->proxy_buffer_[proxy_info_.proxy_id_.GetIndex()];
+            // GfxScene側で特殊化しているはずのEntity型のBufferを取得する.
+            auto entity_proxy_buffer = proxy_info_.scene_->GetEntityProxyBuffer<ENTITY_CLASS_TYPE>();
+            return entity_proxy_buffer->proxy_buffer_[proxy_info_.proxy_id_.GetIndex()];
         }
         return {};
     }
