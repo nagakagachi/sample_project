@@ -117,6 +117,7 @@
     <ClInclude Include="include\file\file.h" />
     <ClInclude Include="include\framework\gfx_render_command_manager.h" />
     <ClInclude Include="include\framework\gfx_scene.h" />
+    <ClInclude Include="include\framework\gfx_scene.inl" />
     <ClInclude Include="include\framework\gfx_scene_entity.h" />
     <ClInclude Include="include\framework\gfx_scene_skybox.h" />
     <ClInclude Include="include\gfx\command_helper.h" />

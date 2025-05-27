@@ -36,7 +36,7 @@ namespace ngl::gfx::scene
         void FinalizeGfx()
         {
             // GfxSceneのSkyBox Proxyの解放.
-            gfx_skybox_entity_.Finalize();;
+            gfx_skybox_entity_.Finalize();
         }
         fwk::GfxSceneEntityId GetSkyBoxProxyId() const
         {
