@@ -12,30 +12,43 @@
 namespace ngl
 {
 namespace gfx
-{
-	void RenderMeshWithMaterial(rhi::GraphicsCommandListDep& command_list
-		, const char* pass_name, const std::vector<gfx::StaticMeshComponent*>& mesh_instance_array, const RenderMeshResource& render_mesh_resouce)
+{	
+	void RenderMeshWithMaterial(rhi::GraphicsCommandListDep& command_list,
+		const char* pass_name, fwk::GfxScene* gfx_scene, const std::vector<fwk::GfxSceneEntityId>& mesh_proxy_id_array, const RenderMeshResource& render_mesh_resouce)
 	{
     	auto default_white_tex_srv = GlobalRenderResource::Instance().default_resource_.tex_white->ref_view_;
     	auto default_black_tex_srv = GlobalRenderResource::Instance().default_resource_.tex_black->ref_view_;
     	auto default_normal_tex_srv = GlobalRenderResource::Instance().default_resource_.tex_default_normal->ref_view_;
-		
-		for (int mesh_comp_i = 0; mesh_comp_i < mesh_instance_array.size(); ++mesh_comp_i)
+
+		auto* mesh_proxy_buffer = gfx_scene->GetEntityProxyBuffer<fwk::GfxMeshEntity>();
+		for (int mesh_comp_i = 0; mesh_comp_i < mesh_proxy_id_array.size(); ++mesh_comp_i)
 		{
-			const auto* e = mesh_instance_array[mesh_comp_i];
+			const auto proxy_id = mesh_proxy_id_array[mesh_comp_i];
+			assert(fwk::GfxSceneEntityId::IsValid(proxy_id));
+			
+			auto* mesh_proxy = mesh_proxy_buffer->proxy_buffer_[proxy_id.GetIndex()];
+			auto* model = mesh_proxy->model_;
 
-			auto cbv_instance = e->GetInstanceBufferView();
 
+			auto mesh_instance_cbh = command_list.GetDevice()->GetConstantBufferPool()->Alloc(sizeof(InstanceInfo));
+			if (auto* map_ptr = mesh_instance_cbh->buffer_.MapAs<InstanceInfo>())
+			{
+				map_ptr->mtx = mesh_proxy->transform_;
+				map_ptr->mtx_cofactor = math::Mat34(math::Mat33::Cofactor(mesh_proxy->transform_.GetMat33()));// 余因子行列.
 
-			for (int shape_i = 0; shape_i < e->model_.res_mesh_->data_.shape_array_.size(); ++shape_i)
+				mesh_instance_cbh->buffer_.Unmap();
+			}
+			
+
+			for (int shape_i = 0; shape_i < model->res_mesh_->data_.shape_array_.size(); ++shape_i)
 			{
 				// Geometry.
-				auto& shape = e->model_.res_mesh_->data_.shape_array_[shape_i];
-				const auto& shape_mat_index = e->model_.res_mesh_->shape_material_index_array_[shape_i];
-				const auto& mat_data = e->model_.material_array_[shape_mat_index];
+				auto& shape = model->res_mesh_->data_.shape_array_[shape_i];
+				const auto& shape_mat_index = model->res_mesh_->shape_material_index_array_[shape_i];
+				const auto& mat_data = model->material_array_[shape_mat_index];
 
 				// Shapeに対応したMaterial Pass Psoを取得.
-				const auto&& pso = e->model_.shape_mtl_pso_set_[shape_i].GetPassPso(pass_name);
+				const auto&& pso = model->shape_mtl_pso_set_[shape_i].GetPassPso(pass_name);
 				command_list.SetPipelineState(pso);
 				
 				// Descriptor.
@@ -50,7 +63,7 @@ namespace gfx
 							pso->SetView(&desc_set, render_mesh_resouce.cbv_d_shadowview.slot_name.Get(), p_view);
 					}
 					
-					pso->SetView(&desc_set, "ngl_cb_instance", cbv_instance.Get());
+					pso->SetView(&desc_set, "ngl_cb_instance", &mesh_instance_cbh->cbv_);
 
 					pso->SetView(&desc_set, "samp_default", GlobalRenderResource::Instance().default_resource_.sampler_linear_wrap.Get());
 					// テクスチャ設定テスト. このあたりはDescriptorSetDepに事前にセットしておきたい.

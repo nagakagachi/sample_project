@@ -119,6 +119,7 @@
     <ClInclude Include="include\framework\gfx_scene.h" />
     <ClInclude Include="include\framework\gfx_scene.inl" />
     <ClInclude Include="include\framework\gfx_scene_entity.h" />
+    <ClInclude Include="include\framework\gfx_scene_mesh.h" />
     <ClInclude Include="include\framework\gfx_scene_skybox.h" />
     <ClInclude Include="include\gfx\command_helper.h" />
     <ClInclude Include="include\gfx\common_struct.h" />
@@ -126,7 +127,7 @@
     <ClInclude Include="include\gfx\material\material_shader_common.h" />
     <ClInclude Include="include\gfx\material\material_shader_generator.h" />
     <ClInclude Include="include\gfx\material\material_shader_manager.h" />
-    <ClInclude Include="include\gfx\mesh_component.h" />
+    <ClInclude Include="include\gfx\game_scene.h" />
     <ClInclude Include="include\gfx\mesh_loader_assimp.h" />
     <ClInclude Include="include\gfx\raytrace_scene.h" />
     <ClInclude Include="include\gfx\render\global_render_resource.h" />
@@ -138,6 +139,7 @@
     <ClInclude Include="include\gfx\rtg\graph_builder.h" />
     <ClInclude Include="include\gfx\rtg\rtg_command_list_pool.h" />
     <ClInclude Include="include\gfx\rtg\rtg_common.h" />
+    <ClInclude Include="include\gfx\scene\scene_mesh.h" />
     <ClInclude Include="include\gfx\scene\skybox.h" />
     <ClInclude Include="include\gfx\texture_loader_directxtex.h" />
     <ClInclude Include="include\imgui\imgui_interface.h" />
@@ -217,7 +219,6 @@
     <ClCompile Include="src\framework\gfx_framework.cpp" />
     <ClCompile Include="src\gfx\material\material_shader_generator.cpp" />
     <ClCompile Include="src\gfx\material\material_shader_manager.cpp" />
-    <ClCompile Include="src\gfx\mesh_component.cpp" />
     <ClCompile Include="src\gfx\mesh_loader_assimp.cpp" />
     <ClCompile Include="src\gfx\raytrace_scene.cpp" />
     <ClCompile Include="src\gfx\render\global_render_resource.cpp" />

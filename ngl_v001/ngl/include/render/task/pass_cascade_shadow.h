@@ -72,7 +72,9 @@ namespace ngl::render::task
 		struct SetupDesc
 		{
 			rhi::ConstantBufferPooledHandle scene_cbv{};
-			const std::vector<gfx::StaticMeshComponent*>* p_mesh_list{};
+			
+			fwk::GfxScene* gfx_scene{};
+			const std::vector<fwk::GfxSceneEntityId>* p_mesh_proxy_id_array_{};
 
 			math::Vec3 directional_light_dir{};
 
@@ -312,7 +314,8 @@ namespace ngl::render::task
 							render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", &desc_.scene_cbv->cbv_};
 							render_mesh_res.cbv_d_shadowview = {"ngl_cb_shadowview", &shadow_cb_h->cbv_};
 						}
-						ngl::gfx::RenderMeshWithMaterial(*thread_command_list, gfx::MaterialPassPsoCreator_d_shadow::k_name, *desc_.p_mesh_list, render_mesh_res);
+
+						ngl::gfx::RenderMeshWithMaterial(*thread_command_list, gfx::MaterialPassPsoCreator_d_shadow::k_name, desc_.gfx_scene, *desc_.p_mesh_proxy_id_array_, render_mesh_res);
 					};
 
 					if(desc_.dbg_per_cascade_multithread)

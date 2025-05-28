@@ -8,8 +8,8 @@
 #include "util/time/timer.h"
 
 // Pass.
-#include "gfx/mesh_component.h"
-#include "gfx/mesh_component.h"
+#include "gfx/game_scene.h"
+#include "gfx/game_scene.h"
 #include "render/task/pass_pre_z.h"
 #include "render/task/pass_gbuffer.h"
 #include "render/task/pass_cascade_shadow.h"
@@ -151,7 +151,9 @@ namespace ngl::test
 						setup_desc.h = screen_h;
 						
 						setup_desc.scene_cbv = scene_cb_h;
-						setup_desc.p_mesh_list = &p_scene->mesh_instance_array_;
+
+						setup_desc.gfx_scene = p_scene->gfx_scene_;
+						setup_desc.p_mesh_proxy_id_array_ = &p_scene->mesh_proxy_id_array_;
 					}
 					task_depth->Setup(rtg_builder, p_device, view_info, setup_desc);
 					// Renderをスキップテスト.
@@ -205,7 +207,9 @@ namespace ngl::test
 						setup_desc.h = screen_h;
 						
 						setup_desc.scene_cbv = scene_cb_h;
-						setup_desc.p_mesh_list = &p_scene->mesh_instance_array_;
+						
+						setup_desc.gfx_scene = p_scene->gfx_scene_;
+						setup_desc.p_mesh_proxy_id_array_ = &p_scene->mesh_proxy_id_array_;
 					}
 					task_gbuffer->Setup(rtg_builder, p_device, view_info, task_depth->h_depth_, async_compute_tex0, setup_desc);
 					// Renderをスキップテスト.
@@ -270,7 +274,9 @@ namespace ngl::test
 					ngl::render::task::TaskDirectionalShadowPass::SetupDesc setup_desc{};
 					{
 						setup_desc.scene_cbv = scene_cb_h;
-						setup_desc.p_mesh_list = &p_scene->mesh_instance_array_;
+						
+						setup_desc.gfx_scene = p_scene->gfx_scene_;
+						setup_desc.p_mesh_proxy_id_array_ = &p_scene->mesh_proxy_id_array_;
 						
 						// Directionalのライト方向テスト.
 						setup_desc.directional_light_dir = ngl::math::Vec3::Normalize(render_frame_desc.directional_light_dir);

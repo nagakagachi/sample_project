@@ -17,7 +17,7 @@
 
 
 #include "resource/resource_mesh.h"
-#include "mesh_component.h"
+#include "game_scene.h"
 
 #include "resource/resource_manager.h"
 #include "gfx/resource/resource_shader.h"

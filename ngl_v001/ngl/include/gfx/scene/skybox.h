@@ -35,13 +35,8 @@ namespace ngl::gfx::scene
         }
         void FinalizeGfx()
         {
-            // GfxSceneのSkyBox Proxyの解放.
+            // Proxyの解放.
             gfx_skybox_entity_.Finalize();
-        }
-        fwk::GfxSceneEntityId GetSkyBoxProxyId() const
-        {
-            // GfxScene上で識別可能なSkyBox ProxyのID.
-            return gfx_skybox_entity_.proxy_info_.proxy_id_;
         }
         void UpdateGfx()
         {
@@ -74,6 +69,11 @@ namespace ngl::gfx::scene
                 proxy->ibl_ggx_dfg_lut_ = this->conv_ggx_dfg_lut_;
                 proxy->ibl_ggx_dfg_lut_srv_ = this->conv_ggx_dfg_lut_srv_;
             });
+        }
+        fwk::GfxSceneEntityId GetSkyBoxProxyId() const
+        {
+            // ProxyのID.
+            return gfx_skybox_entity_.proxy_info_.proxy_id_;
         }
         
 

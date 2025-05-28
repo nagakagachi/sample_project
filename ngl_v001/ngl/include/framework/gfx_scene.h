@@ -8,6 +8,7 @@
 
 // implements.
 #include "gfx_scene_skybox.h"
+#include "gfx_scene_mesh.h"
 
 namespace ngl::fwk
 {
@@ -42,6 +43,12 @@ namespace ngl::fwk
         template<> GfxSceneProxyBuffer<GfxSkyBoxEntity>* GetEntityProxyBuffer()
         {
             return &buffer_skybox_;
+        }
+        
+        GfxSceneProxyBuffer<GfxMeshEntity> buffer_mesh_;
+        template<> GfxSceneProxyBuffer<GfxMeshEntity>* GetEntityProxyBuffer()
+        {
+            return &buffer_mesh_;
         }
         
         // TODO. other EntityTypes

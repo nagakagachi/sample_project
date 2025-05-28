@@ -26,7 +26,9 @@ namespace ngl::render::task
 			int h{};
 			
 			rhi::ConstantBufferPooledHandle scene_cbv{};
-			const std::vector<gfx::StaticMeshComponent*>* p_mesh_list{};
+			
+			fwk::GfxScene* gfx_scene{};
+			const std::vector<fwk::GfxSceneEntityId>* p_mesh_proxy_id_array_{};
 		};
 		SetupDesc desc_{};
 		bool is_render_skip_debug{};
@@ -122,7 +124,7 @@ namespace ngl::render::task
 					{
 						render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", &desc_.scene_cbv->cbv_};
 					}
-					ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_gbuffer::k_name, *desc_.p_mesh_list, render_mesh_res);
+                    ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_gbuffer::k_name, desc_.gfx_scene, *desc_.p_mesh_proxy_id_array_, render_mesh_res);
 				}
 			);
 		}

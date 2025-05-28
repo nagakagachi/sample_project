@@ -33,9 +33,10 @@
 
 // gfx
 #include "gfx/raytrace_scene.h"
-#include "gfx/mesh_component.h"
+#include "gfx/game_scene.h"
 
 #include "gfx/scene/skybox.h"
+#include "gfx/scene/scene_mesh.h"
 
 
 // マテリアルシェーダ関連.
@@ -139,10 +140,11 @@ private:
 	ngl::math::Mat33	camera_pose_ = ngl::math::Mat33::Identity();
 	float				camera_fov_y = ngl::math::Deg2Rad(60.0f);// not half fov.
 	PlayerController	player_controller{};
+	
+	// GfxSceneMesh版
+	std::vector<std::shared_ptr<ngl::gfx::scene::SceneMesh>>	mesh_entity_array_;
+	std::vector<ngl::gfx::scene::SceneMesh*>	test_move_mesh_entity_array_;
 
-	// Meshオブジェクト管理.
-	std::vector<std::shared_ptr<ngl::gfx::StaticMeshComponent>>	mesh_comp_array_;
-	std::vector<ngl::gfx::StaticMeshComponent*>	test_move_mesh_comp_array_;
 	
 	// RaytraceScene.
 	ngl::gfx::RtSceneManager					rt_scene_;
@@ -194,7 +196,7 @@ AppGame::~AppGame()
 	rt_scene_ = {};
 
 	// リソース参照クリア.
-	mesh_comp_array_.clear();
+	mesh_entity_array_.clear();
 
 	// Material Shader Manager.
 	ngl::gfx::MaterialShaderManager::Instance().Finalize();
@@ -294,6 +296,7 @@ bool AppGame::Initialize()
 	// GfxScene初期化.
 	{
 		gfx_scene_.buffer_skybox_.Initialize(128);
+		gfx_scene_.buffer_mesh_.Initialize(65536);
 	}
 
 	constexpr char path_sky_hdr_panorama_pisa[] = "../ngl/data/texture/vgl/pisa/pisa.hdr";
@@ -337,84 +340,86 @@ bool AppGame::Initialize()
 #endif
 		
 		auto& ResourceMan = ngl::res::ResourceManager::Instance();
-		// Mesh Component
+		// SceneMesh.
 		{
 			// 基本シーンモデル読み込み.
 			if(true)
 			{
-				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
-				mesh_comp_array_.push_back(mc);
+				auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
+				mesh_entity_array_.push_back(mc);
 
 				ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-				mc->Initialize(&device, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_target_scene, &loaddesc));
+				mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_target_scene, &loaddesc));
 				// スケール設定.
-				mc->transform_.SetDiagonal(ngl::math::Vec3(target_scene_base_scale));
+				ngl::math::Mat34 tr = ngl::math::Mat34::Identity();
+				tr.SetDiagonal(ngl::math::Vec3(target_scene_base_scale));
+				mc->SetTransform(tr);
 			}
 
 			// その他モデル.
 			if(true)
 			{
-				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
-				mesh_comp_array_.push_back(mc);
+				auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
+				mesh_entity_array_.push_back(mc);
 				ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-				mc->Initialize(&device, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc));
+				mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc));
 				
 				ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
 				tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 5.0f));
 				tr.SetColumn3(ngl::math::Vec4(30.0f, 12.0f, 0.0f, 1.0f));
 
-				mc->transform_ = ngl::math::Mat34(tr);
+				mc->SetTransform(ngl::math::Mat34(tr));
 			}
 
 			if(true)
 			{
-				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
-				mesh_comp_array_.push_back(mc);
+				auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
+				mesh_entity_array_.push_back(mc);
 				ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-				mc->Initialize(&device, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_stanford_bunny, &loaddesc));
+				mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_stanford_bunny, &loaddesc));
 				
 				ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
 				tr.SetDiagonal(ngl::math::Vec4(1.0f));
 				//tr = ngl::math::Mat44::RotAxisX(0.1f * ngl::math::k_pi_f * 2.0f) * tr;
 				tr.SetColumn3(ngl::math::Vec4(0.0f, 12.0f, 0.0f, 1.0f));
 
-				mc->transform_ = ngl::math::Mat34(tr);
+				mc->SetTransform(ngl::math::Mat34(tr));
 			}
 			if(true)
 			{
-				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
-				mesh_comp_array_.push_back(mc);
+				auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
+				mesh_entity_array_.push_back(mc);
 				ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-				mc->Initialize(&device, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_stanford_bunny, &loaddesc));
+				mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_stanford_bunny, &loaddesc));
 				
 				ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
 				tr.SetDiagonal(ngl::math::Vec4(1.0f, 0.3f, 1.0f, 1.0f));//被均一スケールテスト.
 				tr = ngl::math::Mat44::RotAxisX(0.1f * ngl::math::k_pi_f * 2.0f) * tr;
 				tr.SetColumn3(ngl::math::Vec4(2.5f, 12.0f, 0.0f, 1.0f));
 
-				mc->transform_ = ngl::math::Mat34(tr);
+				mc->SetTransform(ngl::math::Mat34(tr));
 			}
 			if(true)
 			{
-				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
-				mesh_comp_array_.push_back(mc);
+				auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
+				mesh_entity_array_.push_back(mc);
 				ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-				mc->Initialize(&device, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_stanford_bunny, &loaddesc));
+				mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_stanford_bunny, &loaddesc));
 				
 				ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
 				tr.SetDiagonal(ngl::math::Vec4(1.0f, 3.0f, 1.0f, 1.0f));//被均一スケールテスト.
 				tr = ngl::math::Mat44::RotAxisX(0.1f * ngl::math::k_pi_f * 2.0f) * tr;
 				tr.SetColumn3(ngl::math::Vec4(3.0f, 12.0f, 0.0f, 1.0f));
 
-				mc->transform_ = ngl::math::Mat34(tr);
+				mc->SetTransform(ngl::math::Mat34(tr));
 			}
 #if 1
 			for(int i = 0; i < 100; ++i)
 			{
-				auto mc = std::make_shared<ngl::gfx::StaticMeshComponent>();
-				mesh_comp_array_.push_back(mc);
+				auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
+				mesh_entity_array_.push_back(mc);
 				ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-				mc->Initialize(&device, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc));
+				mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc));
 
 				constexpr int k_rand_f_div = 10000;
 				const float randx = (std::rand() % k_rand_f_div) / (float)k_rand_f_div;
@@ -429,10 +434,10 @@ bool AppGame::Initialize()
 				tr = ngl::math::Mat44::RotAxisY(randroty * ngl::math::k_pi_f * 2.0f) * tr;
 				tr.SetColumn3(ngl::math::Vec4(placement_range* (randx * 2.0f - 1.0f), 20.0f * randy, placement_range* (randz * 2.0f - 1.0f), 1.0f));
 
-				mc->transform_ = ngl::math::Mat34(tr);
+				mc->SetTransform(ngl::math::Mat34(tr));
 
 				// 移動テスト用.
-				test_move_mesh_comp_array_.push_back(mc.get());
+				test_move_mesh_entity_array_.push_back(mc.get());
 			}
 #endif
 		}
@@ -661,32 +666,33 @@ bool AppGame::ExecuteApp()
 	}
 	const auto dlit_dir = ngl::math::Vec3::Normalize( ngl::math::Mat33::RotAxisY(dbgw_dlit_angle_h) * ngl::math::Mat33::RotAxisX(dbgw_dlit_angle_v) * (-ngl::math::Vec3::UnitY()));
 	
-	
 	// オブジェクト移動.
 	if(true)
 	{
-		for (int i = 0; i < test_move_mesh_comp_array_.size(); ++i)
+		for (int i = 0; i < test_move_mesh_entity_array_.size(); ++i)
 		{
-			auto* e = test_move_mesh_comp_array_[i];
+			auto* e = test_move_mesh_entity_array_[i];
 			float move_range = (i % 10) / 10.0f;
 			const float sin_curve = sinf((float)app_sec_ * 2.0f * ngl::math::k_pi_f * 0.1f * (move_range + 1.0f));
 
-			auto trans = e->transform_.GetColumn3();
+			auto tr = e->GetTransform();
+			auto trans = tr.GetColumn3();
 			trans.z += sin_curve * delta_sec * 3.0f;
-			e->transform_.SetColumn3(trans);
+			tr.SetColumn3(trans);
+			e->SetTransform(tr);
 		}
 	}
 
 	// 描画用シーン情報.
 	ngl::gfx::SceneRepresentation frame_scene;
 	{
-		for (auto& e : mesh_comp_array_)
+		for (auto& e : mesh_entity_array_)
 		{
 			// Render更新.
-			e->UpdateRenderData();
+			e->UpdateGfx();
 
 			// 登録.
-			frame_scene.mesh_instance_array_.push_back(e.get());
+			frame_scene.mesh_proxy_id_array_.push_back(e->GetMeshProxyId());
 		}
 
 		// GfxScene.

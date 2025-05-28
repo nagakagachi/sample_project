@@ -1,16 +1,14 @@
 ﻿#pragma once
 
+#include "gfx_scene_entity.h"
+
 #include "rhi/d3d12/resource_view.d3d12.h"
 #include "resource/resource_manager.h"
 
-#include "gfx_scene_entity.h"
 
 
 namespace ngl::fwk
 {
-    class GfxScene;
-
-    
     //
     // GfxSkyBoxEntity の Proxy.
     //  Entityに対応してGfxSceneに確保され, アクセス用のインデックスで操作する.

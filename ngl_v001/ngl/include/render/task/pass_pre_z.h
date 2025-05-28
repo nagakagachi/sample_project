@@ -8,6 +8,8 @@
 #include "gfx/material/material_shader_manager.h"
 #include "gfx/render/mesh_renderer.h"
 
+#include "framework/gfx_scene.h"
+
 namespace ngl::render::task
 {
     // PreZパス.
@@ -21,7 +23,9 @@ namespace ngl::render::task
             int h{};
 				
             rhi::ConstantBufferPooledHandle scene_cbv{};
-            const std::vector<gfx::StaticMeshComponent*>* p_mesh_list{};
+
+            fwk::GfxScene* gfx_scene{};
+            const std::vector<fwk::GfxSceneEntityId>* p_mesh_proxy_id_array_{};
         };
         SetupDesc desc_{};
         bool is_render_skip_debug{};
@@ -58,7 +62,8 @@ namespace ngl::render::task
                     {
                         render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", &desc_.scene_cbv->cbv_};
                     }
-                    ngl::gfx::RenderMeshWithMaterial(*commandlist, gfx::MaterialPassPsoCreator_depth::k_name, *desc_.p_mesh_list, render_mesh_res);
+                    
+                    ngl::gfx::RenderMeshWithMaterial(*commandlist, gfx::MaterialPassPsoCreator_depth::k_name, desc_.gfx_scene, *desc_.p_mesh_proxy_id_array_, render_mesh_res);
                 });
         }
     };

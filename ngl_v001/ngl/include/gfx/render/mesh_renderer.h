@@ -2,7 +2,8 @@
 
 
 #include "math/math.h"
-#include "gfx/mesh_component.h"
+
+#include "framework/gfx_scene.h"
 
 namespace ngl
 {
@@ -33,6 +34,6 @@ namespace gfx
     
     void RenderMeshWithMaterial(
         rhi::GraphicsCommandListDep& command_list, const char* pass_name,
-        const std::vector<gfx::StaticMeshComponent*>& mesh_instance_array, const RenderMeshResource& render_mesh_resouce);
+        fwk::GfxScene* gfx_scene, const std::vector<fwk::GfxSceneEntityId>& mesh_proxy_id_array, const RenderMeshResource& render_mesh_resouce);
 }
 }

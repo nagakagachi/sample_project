@@ -1771,9 +1771,11 @@ namespace ngl
 			std::unordered_map<const ResMeshData*, int> scene_mesh_to_id;
 			std::vector<const ResMeshData*> scene_mesh_array;
 			std::vector<int> scene_inst_mesh_id_array;
-			for (auto& e : scene.mesh_instance_array_)
+			auto* proxy_buffer = scene.gfx_scene_->GetEntityProxyBuffer<fwk::GfxMeshEntity>();
+			for (auto& e : scene.mesh_proxy_id_array_)
 			{
-				auto* p_mesh = e->GetMeshData();
+				auto* p_mesh = proxy_buffer->proxy_buffer_[e.GetIndex()]->model_->res_mesh_.Get();
+				//auto* p_mesh = e->GetMeshData();
 				if (scene_mesh_to_id.end() == scene_mesh_to_id.find(p_mesh))
 				{
 					scene_mesh_to_id[p_mesh] = (int)scene_mesh_array.size();
@@ -1845,11 +1847,11 @@ namespace ngl
 			{
 				scene_blas_array.push_back(dynamic_scene_blas_array_[e].get());
 			}
-			for (auto i = 0; i < scene.mesh_instance_array_.size(); ++i)
+			for (auto i = 0; i < scene.mesh_proxy_id_array_.size(); ++i)
 			{
-				auto& e = scene.mesh_instance_array_[i];
-
-				scene_inst_transform_array.push_back(e->transform_);
+				auto* proxy = proxy_buffer->proxy_buffer_[scene.mesh_proxy_id_array_[i].GetIndex()];
+				scene_inst_transform_array.push_back(proxy->transform_);
+				
 				scene_inst_blas_id_array.push_back(scene_inst_mesh_id_array[i]);
 			}
 
