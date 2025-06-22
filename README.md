@@ -188,4 +188,12 @@ https://github.com/nagakagachi/sample_projct/blob/2517e77d16df00e03a779febc52884
   - https://www.nuget.org/packages/Microsoft.Direct3D.D3D12
 
 
+# References
+- https://learnopengl.com/
+- https://www.pbrt.org/
+- https://google.github.io/filament/Filament.html
+- https://github.com/EpicGames/UnrealEngine
+- https://sites.google.com/site/monshonosuana/directx%E3%81%AE%E8%A9%B1
+  
+
 
