@@ -20,7 +20,7 @@ namespace gfx
     	auto default_black_tex_srv = GlobalRenderResource::Instance().default_resource_.tex_black->ref_view_;
     	auto default_normal_tex_srv = GlobalRenderResource::Instance().default_resource_.tex_default_normal->ref_view_;
 
-		auto* mesh_proxy_buffer = gfx_scene->GetEntityProxyBuffer<fwk::GfxMeshEntity>();
+		auto* mesh_proxy_buffer = gfx_scene->GetEntityProxyBuffer<fwk::GfxSceneEntityMesh>();
 		for (int mesh_comp_i = 0; mesh_comp_i < mesh_proxy_id_array.size(); ++mesh_comp_i)
 		{
 			const auto proxy_id = mesh_proxy_id_array[mesh_comp_i];

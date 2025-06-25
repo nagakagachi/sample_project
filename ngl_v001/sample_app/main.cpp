@@ -35,8 +35,8 @@
 #include "gfx/raytrace_scene.h"
 #include "gfx/game_scene.h"
 
-#include "gfx/scene/skybox.h"
-#include "gfx/scene/scene_mesh.h"
+#include "render/scene/scene_skybox.h"
+#include "render/scene/scene_mesh.h"
 
 
 // マテリアルシェーダ関連.
@@ -151,7 +151,7 @@ private:
 
 	
 	ngl::fwk::GfxScene							gfx_scene_{};
-	ngl::gfx::scene::SkyBox						skybox_{};
+	ngl::gfx::scene::SceneSkyBox						skybox_{};
 
 	
 	ngl::rhi::RefTextureDep						tex_rw_;
@@ -311,7 +311,7 @@ bool AppGame::Initialize()
 	skybox_.InitializeGfx(&gfx_scene_);
 	if (!skybox_.SetupAsPanorama(&device, path_sky_panorama))
 	{
-		std::cout << "[ERROR] Initialize SkyBox" << std::endl;
+		std::cout << "[ERROR] Initialize SceneSkyBox" << std::endl;
 	}
 
 	

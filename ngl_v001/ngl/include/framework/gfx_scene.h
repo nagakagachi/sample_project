@@ -7,8 +7,8 @@
 #include "gfx_scene_entity.h"
 
 // implements.
-#include "gfx_scene_skybox.h"
-#include "gfx_scene_mesh.h"
+#include "gfx_scene_entity_skybox.h"
+#include "gfx_scene_entity_mesh.h"
 
 namespace ngl::fwk
 {
@@ -20,8 +20,8 @@ namespace ngl::fwk
         /*
             EntityType毎に特殊化するためのベース宣言. GfxSceneProxyBuffer<T> 毎にメンバ変数宣言とそれを返す特殊化を定義することで, EntityType毎に別のメンバGfxSceneProxyBuffer上に実体確保できるようになる.
         example:
-            GfxSceneProxyBuffer<GfxSkyBoxEntity> buffer_skybox_;
-            template<> GfxSceneProxyBuffer<GfxSkyBoxEntity>* GetEntityProxyBuffer()
+            GfxSceneProxyBuffer<GfxSceneEntitySkyBox> buffer_skybox_;
+            template<> GfxSceneProxyBuffer<GfxSceneEntitySkyBox>* GetEntityProxyBuffer()
             {
                 return &buffer_skybox_;
             }
@@ -37,16 +37,16 @@ namespace ngl::fwk
         // ------------------------------------------------------------------------------------------
         // Implement EntityType.
 
-        // GfxSkyBoxEntity 用のバッファとメソッド特殊化定義.
+        // GfxSceneEntitySkyBox 用のバッファとメソッド特殊化定義.
         //  クラススコープでの完全特殊化はC++17以前ではコンパイルできない場合があるため別の記述方法を検討.
-        GfxSceneProxyBuffer<GfxSkyBoxEntity> buffer_skybox_;
-        template<> GfxSceneProxyBuffer<GfxSkyBoxEntity>* GetEntityProxyBuffer()
+        GfxSceneProxyBuffer<GfxSceneEntitySkyBox> buffer_skybox_;
+        template<> GfxSceneProxyBuffer<GfxSceneEntitySkyBox>* GetEntityProxyBuffer()
         {
             return &buffer_skybox_;
         }
         
-        GfxSceneProxyBuffer<GfxMeshEntity> buffer_mesh_;
-        template<> GfxSceneProxyBuffer<GfxMeshEntity>* GetEntityProxyBuffer()
+        GfxSceneProxyBuffer<GfxSceneEntityMesh> buffer_mesh_;
+        template<> GfxSceneProxyBuffer<GfxSceneEntityMesh>* GetEntityProxyBuffer()
         {
             return &buffer_mesh_;
         }

@@ -1,6 +1,6 @@
 ﻿#pragma once
 
-#include "framework/gfx_scene_mesh.h"
+#include "framework/gfx_scene_entity_mesh.h"
 
 #include "rhi/d3d12/command_list.d3d12.h"
 
@@ -71,7 +71,7 @@ namespace  ngl::gfx::scene
         }
 
     private:
-        fwk::GfxMeshEntity gfx_mesh_entity_;
+        fwk::GfxSceneEntityMesh gfx_mesh_entity_;
     private:
         StandardRenderModel	model_ = {};
 		math::Mat34	transform_ = math::Mat34::Identity();

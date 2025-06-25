@@ -128,7 +128,7 @@ namespace ngl::render::task
 
 
                     // SkyboxProxyから情報取り出し.
-                    auto* skybox_proxy = setup_desc_.scene->GetEntityProxyBuffer<fwk::GfxSkyBoxEntity>()->proxy_buffer_[setup_desc_.skybox_proxy_id.GetIndex()];
+                    auto* skybox_proxy = setup_desc_.scene->GetEntityProxyBuffer<fwk::GfxSceneEntitySkyBox>()->proxy_buffer_[setup_desc_.skybox_proxy_id.GetIndex()];
                     
                     rhi::ShaderResourceViewDep* cube_srv = skybox_proxy->src_cubemap_plane_array_srv_.Get();
                     bool is_panorama_mode = true;

@@ -2,31 +2,33 @@
 
 #include "util/bit_operation.h"
 
+#include "framework/gfx_scene_entity_skybox.h"
+#include "framework/gfx_render_command_manager.h"
+#include "framework/gfx_scene.h"
+
 #include "gfx/rtg/rtg_common.h"
 #include "gfx/render/global_render_resource.h"
+#include "gfx/command_helper.h"
+
 #include "render/task/pass_common.h"
 #include "resource/resource_manager.h"
 
-#include "framework/gfx_render_command_manager.h"
 
-#include "gfx/command_helper.h"
-
-#include "framework/gfx_scene.h"
 
 namespace ngl::gfx::scene
 {
     
     /**
-     * @class SkyBox
+     * @class SceneSkyBox
      *
-     * SkyBoxクラスはスカイボックスの生成と初期化を担当し、主にパノラマテクスチャから生成します。
+     * SceneSkyBoxクラスはスカイボックスの生成と初期化を担当し、主にパノラマテクスチャから生成します。
      * パノラマからキューブマップを生成し、拡散畳み込みを行い、関連する描画やリソースタスクを
      * 管理する機能を提供します。
      */
-    class SkyBox
+    class SceneSkyBox
     {   
     public:
-        ~SkyBox() = default;
+        ~SceneSkyBox() = default;
         
         bool InitializeGfx(fwk::GfxScene* scene)
         {
@@ -508,7 +510,7 @@ namespace ngl::gfx::scene
 
     private:
         // Gfx用.
-        fwk::GfxSkyBoxEntity gfx_skybox_entity_;
+        fwk::GfxSceneEntitySkyBox gfx_skybox_entity_;
         
     private:
         // HDR Sky Panorama Texture.

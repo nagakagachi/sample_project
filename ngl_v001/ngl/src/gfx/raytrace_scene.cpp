@@ -1771,7 +1771,7 @@ namespace ngl
 			std::unordered_map<const ResMeshData*, int> scene_mesh_to_id;
 			std::vector<const ResMeshData*> scene_mesh_array;
 			std::vector<int> scene_inst_mesh_id_array;
-			auto* proxy_buffer = scene.gfx_scene_->GetEntityProxyBuffer<fwk::GfxMeshEntity>();
+			auto* proxy_buffer = scene.gfx_scene_->GetEntityProxyBuffer<fwk::GfxSceneEntityMesh>();
 			for (auto& e : scene.mesh_proxy_id_array_)
 			{
 				auto* p_mesh = proxy_buffer->proxy_buffer_[e.GetIndex()]->model_->res_mesh_.Get();

@@ -23,11 +23,10 @@ namespace gfx
 
 		// GfxScene
 		fwk::GfxScene*							gfx_scene_{};
-		// GfxSceneMeshEntity-Proxy ID array.
+		// GfxSceneEntityMesh-Proxy ID array.
 		std::vector<fwk::GfxSceneEntityId>		mesh_proxy_id_array_ = {};
 		
-
-		// Gfx SkyBox.
+		// Gfx SceneSkyBox.
 		fwk::GfxSceneEntityId					skybox_proxy_id_{};
 		
 		enum class EDebugMode

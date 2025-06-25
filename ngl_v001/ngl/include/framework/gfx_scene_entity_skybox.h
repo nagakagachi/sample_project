@@ -10,10 +10,10 @@
 namespace ngl::fwk
 {
     //
-    // GfxSkyBoxEntity の Proxy.
+    // GfxSceneEntitySkyBox の Proxy.
     //  Entityに対応してGfxSceneに確保され, アクセス用のインデックスで操作する.
     //  RenderCommandを利用してRenderThread上で操作され, RenderPassが参照する情報.
-    class GfxSkyBoxProxy
+    class GfxSceneEntitySkyBoxProxy
     {
     public:
         // HDR Sky Panorama Texture.
@@ -39,7 +39,7 @@ namespace ngl::fwk
 
     //
     // SkyBoxのEntity.
-    class GfxSkyBoxEntity : public GfxSceneEntityBase<GfxSkyBoxEntity, GfxSkyBoxProxy>
+    class GfxSceneEntitySkyBox : public GfxSceneEntityBase<GfxSceneEntitySkyBox, GfxSceneEntitySkyBoxProxy>
     {
     public:
     };

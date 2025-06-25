@@ -10,14 +10,14 @@
 namespace ngl::fwk
 {
 
-    class GfxMeshProxy
+    class GfxSceneEntityMeshProxy
     {
     public:
         math::Mat34                 transform_ = math::Mat34::Identity();
         gfx::StandardRenderModel*	model_ = {};
     };
 
-    class GfxMeshEntity : public GfxSceneEntityBase<GfxMeshEntity, GfxMeshProxy>
+    class GfxSceneEntityMesh : public GfxSceneEntityBase<GfxSceneEntityMesh, GfxSceneEntityMeshProxy>
     {
     public:
     };
