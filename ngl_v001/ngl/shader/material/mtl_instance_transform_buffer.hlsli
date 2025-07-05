@@ -1,6 +1,12 @@
 #ifndef NGL_SHADER_MESH_TRANSFORM_BUFFER_H
 #define NGL_SHADER_MESH_TRANSFORM_BUFFER_H
 
+/*
+    mtl_instance_transform_buffer.hlsli
+
+*/
+
+
 // nglのmatrix系ははrow-majorメモリレイアウトであるための指定.
 #pragma pack_matrix( row_major )
 

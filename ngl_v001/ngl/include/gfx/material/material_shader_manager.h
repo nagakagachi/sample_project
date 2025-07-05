@@ -14,9 +14,10 @@
         </material_config>
         #endif
 
-        #include "../mtl_header.hlsli"
+        // 適切なコード生成のためにここでこのヘッダ自身をインクルードする.
+        #include "../mtl_pass_base_declare.hlsli"
 
-        // Material VertexShader関数.
+        // Material側の VertexShader関数.
         MtlVsOutput MtlVsEntryPoint(MtlVsInput input)
         {
             MtlVsOutput output = (MtlVsOutput)0;
@@ -24,7 +25,7 @@
             return output;
         }
 
-        // Material PixelShader関数.
+        // Material側の PixelShader関数.
         MtlPsOutput MtlPsEntryPoint(MtlPsInput input)
         {
             MtlPsOutput output = (MtlPsOutput)0;
