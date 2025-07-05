@@ -1,0 +1,24 @@
+
+BasedOnStyle: Google
+
+ColumnLimit: 0
+
+BreakBeforeBraces: Allman
+
+# --------------------------------
+UseTab: Never
+#tabwidth: 4
+IndentWidth: 4
+AccessModifierOffset: -4
+# --------------------------------
+
+NamespaceIndentation: All
+
+
+# 
+# 連続する行の位置を揃える
+AlignConsecutiveAssignments: true   # "="
+#AlignConsecutiveDeclarations: true  # 宣言
+#AlignConsecutiveMacros: true        # マクロ
+AlignTrailingComments: true         # コメント
+
