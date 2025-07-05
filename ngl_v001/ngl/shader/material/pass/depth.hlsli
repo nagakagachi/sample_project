@@ -8,7 +8,6 @@
 // 生成されたコード側でPassを識別するために任意マクロ定義.
 #define NGL_SHADER_MTL_PASS_DEPTH
 
-#include "../mtl_pass_base_declare.hlsli"
 #include "../mtl_instance_transform_buffer.hlsli"
 
 
