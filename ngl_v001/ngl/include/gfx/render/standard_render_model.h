@@ -5,6 +5,7 @@
 #include "gfx/resource/resource_mesh.h"
 #include "gfx/resource/resource_texture.h"
 #include "math/math.h"
+#include "text/hash_text.h"
 #include "resource/resource.h"
 
 namespace ngl
@@ -24,13 +25,17 @@ namespace gfx
     class StandardRenderModel
     {
     public:
-        bool Initialize(rhi::DeviceDep* p_device, res::ResourceHandle<ResMeshData> res_mesh);
+        StandardRenderModel() = default;
+        virtual ~StandardRenderModel() = default;
+
+        virtual bool Initialize(rhi::DeviceDep* p_device, res::ResourceHandle<ResMeshData> res_mesh, const char* material_name);
         
+        virtual void DrawShape(rhi::GraphicsCommandListDep* p_command_list, int shape_index);
+
     public:
         res::ResourceHandle<ResMeshData> res_mesh_ = {};
-        std::vector<StandardRenderMaterial> material_array_ = {};
         std::vector<MaterialPsoSet> shape_mtl_pso_set_ = {};
+        std::vector<StandardRenderMaterial> material_array_ = {};
     };
-    
 }
 }

@@ -434,6 +434,10 @@ namespace gfx
                 ret.pass_name_list.push_back(registered_pass_name_list_[pass_i]);
                 ret.p_pso_list.push_back(p_pso);
             }
+            else{
+                // PSO生成失敗.
+                assert(false && "MaterialShaderManager::GetMaterialPsoSet() : CreateMaterialPipeline failed.");
+            }
         }
         return ret;
     }

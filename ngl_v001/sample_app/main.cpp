@@ -288,9 +288,9 @@ bool AppGame::Initialize()
     constexpr char path_sky_hdr_panorama_grace_new[]    = "../ngl/data/texture/vgl/grace-new/grace-new.hdr";
     constexpr char path_sky_hdr_panorama_uffizi_large[] = "../ngl/data/texture/vgl/uffizi-large/uffizi-large.hdr";
 
-    // const auto* path_sky_panorama = path_sky_hdr_panorama_pisa;
+    const auto* path_sky_panorama = path_sky_hdr_panorama_pisa;
     // const auto* path_sky_panorama = path_sky_hdr_panorama_ennis;
-    const auto* path_sky_panorama = path_sky_hdr_panorama_grace_new;  // 高周波.
+    //const auto* path_sky_panorama = path_sky_hdr_panorama_grace_new;  // 高周波.
     // const auto* path_sky_panorama = path_sky_hdr_panorama_uffizi_large;
     skybox_.InitializeGfx(&gfx_scene_);
     if (!skybox_.SetupAsPanorama(&device, path_sky_panorama))
@@ -395,7 +395,9 @@ bool AppGame::Initialize()
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
+
 #if 1
+            // 適当にたくさんモデル生成.
             for (int i = 0; i < 100; ++i)
             {
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
@@ -422,6 +424,22 @@ bool AppGame::Initialize()
                 test_move_mesh_entity_array_.push_back(mc.get());
             }
 #endif
+            // Attribute無しのマテリアルシェーダテスト.
+            if (true)
+            {
+                auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
+                mesh_entity_array_.push_back(mc);
+
+                ngl::gfx::ResMeshData::LoadDesc loaddesc{};
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), "opaque_attrless");
+                // スケール設定.
+                ngl::math::Mat34 tr = ngl::math::Mat34::Identity();
+                tr.SetColumn3(ngl::math::Vec3(-10.0f, 18.0f, 0.0f));
+                //tr.SetColumn3(ngl::math::Vec3(0.0f, 10.0f, 0.0f));
+                mc->SetTransform(tr);
+            }
+
+
         }
     }
 
@@ -435,7 +453,7 @@ bool AppGame::Initialize()
 
     // Texture Rexource読み込みのテスト.
     ngl::gfx::ResTexture::LoadDesc tex_load_desc{};
-    // const char test_load_texture_file_name[] = "../ngl/data/model/sponza_gltf/glTF/6772804448157695701.jpg";
+    //const char test_load_texture_file_name[] = "../ngl/data/model/sponza_gltf/glTF/6772804448157695701.jpg";
     const char test_load_texture_file_name[] = "../ngl/data/texture/sample_dds/test-dxt1.dds";
     // const char test_load_texture_file_name[] = "../ngl/data/texture/vgl/pisa/pisa.hdr";
     res_texture_ = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResTexture>(&device, test_load_texture_file_name, &tex_load_desc);

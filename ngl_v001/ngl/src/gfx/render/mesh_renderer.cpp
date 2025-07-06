@@ -42,8 +42,6 @@ namespace gfx
 
 			for (int shape_i = 0; shape_i < model->res_mesh_->data_.shape_array_.size(); ++shape_i)
 			{
-				// Geometry.
-				auto& shape = model->res_mesh_->data_.shape_array_[shape_i];
 				const auto& shape_mat_index = model->res_mesh_->shape_material_index_array_[shape_i];
 				const auto& mat_data = model->material_array_[shape_mat_index];
 
@@ -94,24 +92,8 @@ namespace gfx
 					command_list.SetDescriptorSet(pso, &desc_set);
 				}
 
-
-
-				// 一括設定. Mesh描画はセマンティクスとスロットを固定化しているため, Meshデータロード時にマッピングを構築してそのまま利用する.
-				// PSO側のInputLayoutが要求するセマンティクスとのValidationチェックも可能なはず.
-				D3D12_VERTEX_BUFFER_VIEW vtx_views[gfx::MeshVertexSemantic::SemanticSlotMaxCount()] = {};
-				for (auto vi = 0; vi < gfx::MeshVertexSemantic::SemanticSlotMaxCount(); ++vi)
-				{
-					if (shape.vtx_attr_mask_.mask & (1 << vi))
-						vtx_views[vi] = shape.p_vtx_attr_mapping_[vi]->rhi_vbv_.GetView();
-				}
-				command_list.SetVertexBuffers(0, (u32)std::size(vtx_views), vtx_views);
-
-				// Set Index and topology.
-				command_list.SetIndexBuffer(&shape.index_.rhi_vbv_.GetView());
-				command_list.SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
-
-				// Draw.
-				command_list.DrawIndexedInstanced(shape.num_primitive_ * 3, 1, 0, 0, 0);
+				// Geometry.
+                model->DrawShape(&command_list, shape_i);
 			}
 		}
 	}

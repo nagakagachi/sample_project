@@ -96,7 +96,10 @@ namespace gfx
         virtual rhi::GraphicsPipelineStateDep* Create(rhi::DeviceDep* p_device, const MaterialPassPsoDesc& pass_pso_desc);
     };
 
+
     
+    // -----------------------------------------------------------------------------------------------------------------------------------------------------
+
     // Depth Pass Pso Creator.
     class MaterialPassPsoCreator_depth : public IMaterialPassPsoCreator
     {
@@ -147,6 +150,11 @@ namespace gfx
         
     private:
     };
+
+    
+    // -----------------------------------------------------------------------------------------------------------------------------------------------------
+
+
 
     
     // Material Instance毎のPsoをまとめて取得するためのオブジェクト.

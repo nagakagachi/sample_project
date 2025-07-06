@@ -1,9 +1,10 @@
 /*
     opaque_standard.hlsli
-
     マテリアル個別コード. 
-    
+    通常不透明.
+*
 
+/*
     定義テキストを記述するための #if#endif ブロック.
         記述の制限
         <material_config> と </material_config> は行頭に記述され, 余分な改行やスペース等が入っていることは許可されない(Parseの簡易化のため).
