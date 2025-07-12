@@ -443,6 +443,7 @@ bool AppGame::Initialize()
                 ngl::math::Mat34 tr = ngl::math::Mat34::Identity();
                 tr.SetColumn3(ngl::math::Vec3(-10.0f, 15.0f, 0.0f));
                 // tr.SetColumn3(ngl::math::Vec3(0.0f, 10.0f, 0.0f));
+                tr.SetDiagonal(ngl::math::Vec3(spider_base_scale));
                 mc->SetTransform(tr);
             }
         }

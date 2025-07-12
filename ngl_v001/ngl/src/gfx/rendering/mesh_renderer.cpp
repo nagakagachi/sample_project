@@ -44,12 +44,8 @@ namespace gfx
 
 			for (int shape_i = 0; shape_i < model->res_mesh_->data_.shape_array_.size(); ++shape_i)
 			{
-				const auto& shape_mat_index = model->res_mesh_->shape_material_index_array_[shape_i];
-				const auto& mat_data = model->material_array_[shape_mat_index];
-
 				// Shapeに対応したMaterial Pass Psoを取得.
 				const auto&& pso = model->shape_mtl_pso_set_[shape_i].GetPassPso(pass_name);
-				command_list.SetPipelineState(pso);
 				
 				// Descriptor.
 				{
@@ -65,31 +61,10 @@ namespace gfx
 					
 					pso->SetView(&desc_set, "ngl_cb_instance", &mesh_instance_cbh->cbv_);
 
-					pso->SetView(&desc_set, "samp_default", GlobalRenderResource::Instance().default_resource_.sampler_linear_wrap.Get());
-					// テクスチャ設定テスト. このあたりはDescriptorSetDepに事前にセットしておきたい.
-					{
-						auto tex_basecolor = (mat_data.tex_basecolor.IsValid())? mat_data.tex_basecolor->ref_view_ : default_white_tex_srv;
-						auto tex_normal = (mat_data.tex_normal.IsValid())? mat_data.tex_normal->ref_view_ : default_normal_tex_srv;
-						auto tex_occlusion = (mat_data.tex_occlusion.IsValid())? mat_data.tex_occlusion->ref_view_ : default_white_tex_srv;
-						auto tex_roughness = (mat_data.tex_roughness.IsValid())? mat_data.tex_roughness->ref_view_ : default_white_tex_srv;
-						auto tex_metalness = (mat_data.tex_metalness.IsValid())? mat_data.tex_metalness->ref_view_ : default_black_tex_srv;
+                    // モデルのマテリアル/モデル固有リソースのDescriptorSetの設定
+                    model->BindModelResourceCallback(pso, &desc_set, shape_i);
 
-						#if 1
-							pso->SetView(&desc_set, "tex_basecolor", tex_basecolor.Get());
-							pso->SetView(&desc_set, "tex_occlusion", tex_occlusion.Get());
-							pso->SetView(&desc_set, "tex_normal", tex_normal.Get());
-							pso->SetView(&desc_set, "tex_roughness", tex_roughness.Get());
-							pso->SetView(&desc_set, "tex_metalness", tex_metalness.Get());
-						#else
-							// DescriptorSetへの設定時に歯抜けをデフォルトDescriptorで埋めておく最適化の確認用に逆順になりやすい順序で設定する. やっていることは↑と同じ.
-							pso->SetView(&desc_set, "tex_metalness", tex_metalness.Get());
-							pso->SetView(&desc_set, "tex_roughness", tex_roughness.Get());
-							pso->SetView(&desc_set, "tex_occlusion", tex_occlusion.Get());
-							pso->SetView(&desc_set, "tex_normal", tex_normal.Get());
-							pso->SetView(&desc_set, "tex_basecolor", tex_basecolor.Get());
-						#endif
-					}
-
+				    command_list.SetPipelineState(pso);
 					// DescriptorSetでViewを設定.
 					command_list.SetDescriptorSet(pso, &desc_set);
 				}

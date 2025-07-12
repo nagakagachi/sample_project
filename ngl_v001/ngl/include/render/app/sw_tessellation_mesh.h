@@ -47,7 +47,10 @@ namespace ngl::render::app
             const ngl::res::ResourceHandle<ngl::gfx::ResMeshData>& res_mesh);
 
     private:
-        std::vector<HalfEdgeMesh> half_edge_mesh_;
+        std::vector<HalfEdgeMesh> half_edge_mesh_array_;
+
+        std::vector<rhi::RefBufferDep> half_edge_buffer_array_;
+        std::vector<rhi::RefSrvDep> half_edge_srv_array_;
     };
 
 }  // namespace ngl::render::app

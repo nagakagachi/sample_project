@@ -77,10 +77,27 @@ namespace ngl::gfx::scene
         {
             return &model_;
         }
+        
+        // Modelの追加リソースバインドコールバック関数を設定.
+        void SetBindModelResourceOptionCallback(const std::function<void(rhi::GraphicsPipelineStateDep* pso, rhi::DescriptorSetDep* desc_set, int shape_index)>& func)
+        {
+            model_.bind_model_resource_option_callback_ = func;
+            
+            /*
+                // 例.
+                scene_mesh->SetModelResourceOptionCallback(
+                    [this](rhi::GraphicsPipelineStateDep* pso, rhi::DescriptorSetDep* desc_set, int shape_index)
+                    { 
+                        pso->SetView(desc_set, "optional_resource", model_optional_resource);
+                    });
+            */
+        }
+
+        
         // DrawShapeを独自の実装で置き換える.
         void SetProceduralDrawShapeFunc(const std::function<void(rhi::GraphicsCommandListDep*, int)>& func)
         {
-            model_.procedural_draw_shape_func_ = func;
+            model_.draw_shape_override_ = func;
             
             /*
                 // 例.
@@ -93,7 +110,6 @@ namespace ngl::gfx::scene
                     });
             */
         }
-
     private:
         fwk::GfxSceneEntityMesh gfx_mesh_entity_;
 

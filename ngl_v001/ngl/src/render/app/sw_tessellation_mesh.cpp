@@ -60,9 +60,6 @@ namespace ngl::render::app
         }
     }
 
-
-
-
     SwTessellationMesh::~SwTessellationMesh()
     {
         Finalize();
@@ -84,12 +81,57 @@ namespace ngl::render::app
         }
 
         // HalfEdge生成.
-        half_edge_mesh_.resize(res_mesh->data_.shape_array_.size());
-        for(int i = 0; i < res_mesh->data_.shape_array_.size(); ++i)
+        half_edge_mesh_array_.resize(res_mesh->data_.shape_array_.size());
+
+        for (int i = 0; i < res_mesh->data_.shape_array_.size(); ++i)
         {
             const gfx::MeshShapePart& shape = res_mesh->data_.shape_array_[i];
-            half_edge_mesh_[i].Initialize(shape.index_.GetTypedRawDataPtr(), shape.num_primitive_ * 3);
+            half_edge_mesh_array_[i].Initialize(shape.index_.GetTypedRawDataPtr(), shape.num_primitive_ * 3);
         }
+
+
+        // HalfEdgeのShaderResource作成.
+        half_edge_buffer_array_.resize(half_edge_mesh_array_.size());
+        half_edge_srv_array_.resize(half_edge_mesh_array_.size());
+        for(int i = 0; i < half_edge_mesh_array_.size(); ++i)
+        {
+            half_edge_buffer_array_[i] = new rhi::BufferDep();
+            {
+                rhi::BufferDep::Desc desc = {};
+                desc.heap_type            = rhi::EResourceHeapType::Upload;
+                desc.bind_flag            = rhi::ResourceBindFlag::ShaderResource;
+                desc.element_byte_size    = sizeof(HalfEdge);
+                desc.element_count        = static_cast<u32>(half_edge_mesh_array_[i].half_edge_.size());
+                half_edge_buffer_array_[i]->Initialize(p_device, desc);
+            }
+            {
+                if(auto* mapped_ptr = half_edge_buffer_array_[i]->MapAs<HalfEdge>())
+                {
+                    memcpy(mapped_ptr, half_edge_mesh_array_[i].half_edge_.data(), sizeof(HalfEdge) * half_edge_mesh_array_[i].half_edge_.size());
+
+                    half_edge_buffer_array_[i]->Unmap();
+                }
+            }
+            half_edge_srv_array_[i] = new rhi::ShaderResourceViewDep();
+            {
+                if (!half_edge_srv_array_[i]->InitializeAsStructured(p_device, half_edge_buffer_array_[i].Get(), sizeof(HalfEdge), 0, static_cast<u32>(half_edge_mesh_array_[i].half_edge_.size())))
+                {
+                    assert(false);
+                    return false;
+                }
+            }
+        }
+
+        
+        // AttrLess用のBindResourceコールバック.
+        SetBindModelResourceOptionCallback(
+            [this](ngl::rhi::GraphicsPipelineStateDep* pso, ngl::rhi::DescriptorSetDep* desc_set, int shape_index)
+            {
+                auto* shape = &(GetModel()->res_mesh_->data_.shape_array_[shape_index]);
+
+                pso->SetView(desc_set, "half_edge_buffer", half_edge_srv_array_[shape_index].Get());
+                pso->SetView(desc_set, "vertex_position_buffer", &(shape->position_.rhi_srv));
+            });
 
         // AttrLess用のDrawShape関数オーバーライド.
         SetProceduralDrawShapeFunc(
@@ -97,8 +139,12 @@ namespace ngl::render::app
             {
                 //
                 p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
-                p_command_list->DrawInstanced(6, 1, 0, 0);
+                
+                
+                p_command_list->DrawInstanced(half_edge_mesh_array_[shape_index].half_edge_.size(), 1, 0, 0);
             });
+
+
         return true;
     }
 

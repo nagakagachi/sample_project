@@ -30,14 +30,17 @@ Texture2D tex_basecolor;
 SamplerState samp_default;
 
 
-// 頂点アトリビュートをBUfferを受けるMeshShaderに類似スタイル.
-struct AttrLessGeometryVertex
+
+struct HalfEdge
 {
-    float3 pos;
-    float3 normal;
+    int twin   ;
+    int next   ;
+    int prev   ;
+    int vertex ;
 };
-StructuredBuffer<AttrLessGeometryVertex> attrless_geometry_vertex_buffer;
-Buffer<uint> attrless_geometry_index_buffer;
+StructuredBuffer<HalfEdge> half_edge_buffer;
+
+Buffer<float3>  vertex_position_buffer;
 
 
 
@@ -56,38 +59,34 @@ Buffer<uint> attrless_geometry_index_buffer;
         
         const uint vertex_id = input.vertex_id;
 
+    
+            const float2 test_tri_uv[3] = {
+                float2(0.0, 0.0),
+                float2(1.0, 0.0),
+                float2(0.5, 1.0)
+            };
 
-        const uint tri_index = vertex_id / 3;
-        const uint tri_vertex_index = vertex_id % 3;
-        
-        const uint limited_quad_tri_index = tri_index % 2; // 0 or 1.
+    
+    
+            const uint tri_index = vertex_id / 3;
+            const uint local_index = vertex_id % 3;
 
-        // トライアングルの頂点インデックスから3DのXZ平面の10x10サイズ矩形頂点座標を自動計算.
-        const float3 quad_pos[4] = {
-            float3(-5.0, 0.0, -5.0), // 右下
-            float3( -5.0, 0.0, 5.0), // 右上
-            float3( 5.0, 0.0,  5.0), // 左上
-            float3(5.0, 0.0,  -5.0)  // 左下
-        };
-        const float2 quad_uv[4] = {
-            float2(0.0, 0.0), // 左下
-            float2(0.0, 1.0), // 右下
-            float2(1.0, 1.0), // 右上
-            float2(1.0, 0.0)  // 左上
-        };
-        const uint quad_index[6] = {
-            0, 1, 2, // 左下, 右下, 右上
-            0, 2, 3  // 左下, 右上, 左上
-        };
-        // 3DのXZ平面の10x10サイズ矩形頂点座標を自動計算.
-        output.pos = quad_pos[quad_index[tri_vertex_index + limited_quad_tri_index * 3]];
+            // HalfEdgeからTriangleVertexIndex取得.
+            HalfEdge base_half_edge = half_edge_buffer[tri_index*3];
+            uint3 tri_vertex_index;    
+            tri_vertex_index.x = base_half_edge.vertex;
+            tri_vertex_index.y = half_edge_buffer[base_half_edge.next].vertex;
+            tri_vertex_index.z = half_edge_buffer[base_half_edge.prev].vertex;
+    
+            // ShaderResourceから頂点情報取得.
+	        output.pos = vertex_position_buffer[tri_vertex_index[local_index]];
+            output.normal = float3(0.0, 1.0, 0.0); // 上向きの法線.
+            output.tangent = float3(1.0, 0.0, 0.0); // X軸方向の接線.
+            output.binormal = float3(0.0, 0.0, 1.0); // Z軸方向の副接線.
+            output.color0 = float4(1.0, 1.0, 1.0, 1.0); // 白色.
+            output.uv0 = test_tri_uv[local_index]; // UV座標は矩形の頂点に対応.
+    
 
-        output.normal = float3(0.0, 1.0, 0.0); // 上向きの法線.
-        output.tangent = float3(1.0, 0.0, 0.0); // X軸方向の接線.
-        output.binormal = float3(0.0, 0.0, 1.0); // Z軸方向の副接線.
-        output.color0 = float4(1.0, 1.0, 1.0, 1.0); // 白色.
-        output.uv0 = quad_uv[quad_index[tri_vertex_index + limited_quad_tri_index * 3]]; // UV座標は矩形の頂点に対応.
-        
         return output;
     }
 
