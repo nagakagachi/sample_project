@@ -141,7 +141,7 @@ namespace ngl::render::app
                 p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
                 
                 
-                p_command_list->DrawInstanced(half_edge_mesh_array_[shape_index].half_edge_.size(), 1, 0, 0);
+                p_command_list->DrawInstanced(static_cast<u32>(half_edge_mesh_array_[shape_index].half_edge_.size()), 1, 0, 0);
             });
 
 
