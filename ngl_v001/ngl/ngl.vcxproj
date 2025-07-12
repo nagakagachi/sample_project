@@ -235,6 +235,7 @@
     <ClCompile Include="src\memory\tlsf_allocator_core.cpp" />
     <ClCompile Include="src\memory\tlsf_memory_pool.cpp" />
     <ClCompile Include="src\platform\win\window.win.cpp" />
+    <ClCompile Include="src\render\app\sw_tessellation_mesh.cpp" />
     <ClCompile Include="src\render\test_render_path.cpp" />
     <ClCompile Include="src\resource\resource.cpp" />
     <ClCompile Include="src\resource\resource_manager.cpp" />
@@ -256,7 +257,6 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="include\gfx\util\" />
-    <Folder Include="src\gfx\util\" />
     <Folder Include="src\math\detail\" />
   </ItemGroup>
   <ItemGroup>
