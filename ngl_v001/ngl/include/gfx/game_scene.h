@@ -5,7 +5,7 @@
 #include "framework/gfx_scene.h"
 #include "util/noncopyable.h"
 #include "math/math.h"
-#include "render/standard_render_model.h"
+#include "rendering/standard_render_model.h"
 
 #include "resource/resource_mesh.h"
 

@@ -1,5 +1,7 @@
-﻿
-#include "gfx/render/global_render_resource.h"
+﻿/*
+    global_render_resource.cpp
+*/
+#include "gfx/rendering/global_render_resource.h"
 
 #include "resource/resource_manager.h"
 

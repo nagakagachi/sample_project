@@ -51,13 +51,13 @@
     <ClInclude Include="include\gfx\raytrace_scene.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="include\gfx\render\global_render_resource.h">
+    <ClInclude Include="include\gfx\rendering\global_render_resource.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="include\gfx\render\mesh_renderer.h">
+    <ClInclude Include="include\gfx\rendering\mesh_renderer.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="include\gfx\render\standard_render_model.h">
+    <ClInclude Include="include\gfx\rendering\standard_render_model.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="include\gfx\resource\resource_mesh.h">
@@ -297,6 +297,9 @@
     <ClInclude Include="include\render\scene\scene_mesh.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
+    <ClInclude Include="include\render\app\sw_tessellation_mesh.h">
+      <Filter>ヘッダー ファイル</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="ngl.cpp">
@@ -326,13 +329,13 @@
     <ClCompile Include="src\gfx\raytrace_scene.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="src\gfx\render\global_render_resource.cpp">
+    <ClCompile Include="src\gfx\rendering\global_render_resource.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="src\gfx\render\mesh_renderer.cpp">
+    <ClCompile Include="src\gfx\rendering\mesh_renderer.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="src\gfx\render\standard_render_model.cpp">
+    <ClCompile Include="src\gfx\rendering\standard_render_model.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
     <ClCompile Include="src\gfx\resource\resource_mesh.cpp">

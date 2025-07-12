@@ -1,5 +1,7 @@
-﻿#pragma once
-
+﻿/*
+    mesh_renderer.h
+*/
+#pragma once
 
 #include "math/math.h"
 

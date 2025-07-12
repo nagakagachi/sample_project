@@ -12,9 +12,11 @@ namespace ngl::gfx::scene
         SceneMesh()
         {
         }
-        ~SceneMesh()
+        virtual ~SceneMesh()
         {
+            Finalize();
         }
+
 
         bool Initialize(rhi::DeviceDep* p_device, fwk::GfxScene* gfx_scene, const res::ResourceHandle<ResMeshData>& res_mesh, const char* material_name = "opaque_standard")
         {

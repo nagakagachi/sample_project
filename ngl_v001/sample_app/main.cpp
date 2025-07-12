@@ -39,6 +39,11 @@
 // Render Path
 #include "render/test_render_path.h"
 
+
+// tessellation test.
+#include "render/app/sw_tessellation_mesh.h"
+
+
 // imguiのシステム処理Wrapper.
 #include "imgui/imgui_interface.h"
 // ImGui.
@@ -424,25 +429,15 @@ bool AppGame::Initialize()
                 test_move_mesh_entity_array_.push_back(mc.get());
             }
 #endif
-            // Attribute無しのマテリアルシェーダテスト.
             if (true)
             {
-                auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
+                // SwTessellationのテスト.
+                auto mc = std::make_shared<ngl::render::app::SwTessellationMesh>();
                 mesh_entity_array_.push_back(mc);
 
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
                 // AttrLessなマテリアルを設定.
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), "opaque_attrless");
-                // AttrLess用のDrawShape関数オーバーライド.
-                mc->SetProceduralDrawShapeFunc(
-                    [this](ngl::rhi::GraphicsCommandListDep* p_command_list, int shape_index)
-                    { 
-                        //
-                        p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
-                        p_command_list->DrawInstanced(6, 1, 0, 0); 
-                                            
-                    });
-
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc));
 
                 // スケール設定.
                 ngl::math::Mat34 tr = ngl::math::Mat34::Identity();

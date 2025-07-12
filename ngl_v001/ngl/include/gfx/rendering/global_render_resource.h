@@ -1,4 +1,8 @@
-﻿#pragma once
+﻿/*
+    global_render_resource.h
+*/
+#pragma once
+
 
 #include "rhi/d3d12/resource_view.d3d12.h"
 #include "util/singleton.h"

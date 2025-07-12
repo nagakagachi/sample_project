@@ -8,7 +8,7 @@
 #include "gfx/command_helper.h"
 
 #include "gfx/material/material_shader_manager.h"
-#include "gfx/render/mesh_renderer.h"
+#include "gfx/rendering/mesh_renderer.h"
 
 namespace ngl::render::task
 {

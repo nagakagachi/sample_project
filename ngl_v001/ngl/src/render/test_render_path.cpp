@@ -3,7 +3,7 @@
 
 #include "imgui/imgui_interface.h"
 
-#include "gfx/render/global_render_resource.h"
+#include "gfx/rendering/global_render_resource.h"
 #include "gfx/material/material_shader_manager.h"
 #include "util/time/timer.h"
 

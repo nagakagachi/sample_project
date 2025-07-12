@@ -1,5 +1,7 @@
-﻿
-#include "gfx/render/standard_render_model.h"
+﻿/*
+    standard_render_model.cpp
+*/
+#include "gfx/rendering/standard_render_model.h"
 
 #include "gfx/material/material_shader_manager.h"
 #include "resource/resource_manager.h"

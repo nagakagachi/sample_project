@@ -4,7 +4,7 @@
 
 #include "gfx/rtg/graph_builder.h"
 #include "gfx/command_helper.h"
-#include "gfx/render/global_render_resource.h"
+#include "gfx/rendering/global_render_resource.h"
 
 namespace ngl::render::task
 {

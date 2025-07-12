@@ -1,5 +1,7 @@
-﻿#pragma once
-
+﻿/*
+    standard_render_model.h
+*/
+#pragma once
 
 #include "gfx/material/material_shader_manager.h"
 #include "gfx/resource/resource_mesh.h"
@@ -26,11 +28,11 @@ namespace gfx
     {
     public:
         StandardRenderModel() = default;
-        virtual ~StandardRenderModel() = default;
+        ~StandardRenderModel() = default;
 
-        virtual bool Initialize(rhi::DeviceDep* p_device, res::ResourceHandle<ResMeshData> res_mesh, const char* material_name);
+        bool Initialize(rhi::DeviceDep* p_device, res::ResourceHandle<ResMeshData> res_mesh, const char* material_name);
         
-        virtual void DrawShape(rhi::GraphicsCommandListDep* p_command_list, int shape_index);
+        void DrawShape(rhi::GraphicsCommandListDep* p_command_list, int shape_index);
 
     public:
         res::ResourceHandle<ResMeshData> res_mesh_ = {};

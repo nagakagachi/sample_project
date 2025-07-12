@@ -12,7 +12,7 @@
 #include "framework/gfx_render_command_manager.h"
 
 // gfx 共通リソース.
-#include "gfx/render/global_render_resource.h"
+#include "gfx/rendering/global_render_resource.h"
 
 #include "platform/window.h"
 

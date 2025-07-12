@@ -1,4 +1,6 @@
-﻿
+﻿/*
+    gfx_render_command_manager.cpp
+*/
 #include "framework/gfx_render_command_manager.h"
 
 

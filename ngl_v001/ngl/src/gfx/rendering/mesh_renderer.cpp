@@ -1,8 +1,10 @@
-﻿#pragma once
+﻿/*
+    mesh_renderer.cpp
+*/
 
-#include "gfx/render/mesh_renderer.h"
+#include "gfx/rendering/mesh_renderer.h"
 
-#include "gfx/render/global_render_resource.h"
+#include "gfx/rendering/global_render_resource.h"
 #include "rhi/d3d12/command_list.d3d12.h"
 #include "rhi/d3d12/shader.d3d12.h"
 

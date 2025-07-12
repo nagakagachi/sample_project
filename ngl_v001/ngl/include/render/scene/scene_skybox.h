@@ -7,7 +7,7 @@
 #include "framework/gfx_scene.h"
 
 #include "gfx/rtg/rtg_common.h"
-#include "gfx/render/global_render_resource.h"
+#include "gfx/rendering/global_render_resource.h"
 #include "gfx/command_helper.h"
 
 #include "render/task/pass_common.h"
