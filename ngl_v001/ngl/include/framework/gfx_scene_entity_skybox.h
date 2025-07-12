@@ -38,7 +38,7 @@ namespace ngl::fwk
     };
 
     //
-    // SkyBoxのEntity.
+    // SkyBox描画情報をGfxへ通知するためのクラス. Proxyと対になる.
     class GfxSceneEntitySkyBox : public GfxSceneEntityBase<GfxSceneEntitySkyBox, GfxSceneEntitySkyBoxProxy>
     {
     public:

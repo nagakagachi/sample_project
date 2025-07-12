@@ -128,7 +128,7 @@ private:
     ngl::fwk::GraphicsFramework gfxfw_{};
     std::vector<ngl::rhi::EResourceState> swapchain_resource_state_;
 
-    ngl::math::Vec3 camera_pos_   = {0.0f, 2.0f, -1.0f};
+    ngl::math::Vec3 camera_pos_   = {4.0f, 20.0f, -10.0f};
     ngl::math::Mat33 camera_pose_ = ngl::math::Mat33::Identity();
     float camera_fov_y            = ngl::math::Deg2Rad(60.0f);  // not half fov.
     PlayerController player_controller{};
@@ -290,7 +290,7 @@ bool AppGame::Initialize()
 
     const auto* path_sky_panorama = path_sky_hdr_panorama_pisa;
     // const auto* path_sky_panorama = path_sky_hdr_panorama_ennis;
-    //const auto* path_sky_panorama = path_sky_hdr_panorama_grace_new;  // 高周波.
+    // const auto* path_sky_panorama = path_sky_hdr_panorama_grace_new;  // 高周波.
     // const auto* path_sky_panorama = path_sky_hdr_panorama_uffizi_large;
     skybox_.InitializeGfx(&gfx_scene_);
     if (!skybox_.SetupAsPanorama(&device, path_sky_panorama))
@@ -431,15 +431,25 @@ bool AppGame::Initialize()
                 mesh_entity_array_.push_back(mc);
 
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
+                // AttrLessなマテリアルを設定.
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), "opaque_attrless");
+                // AttrLess用のDrawShape関数オーバーライド.
+                mc->SetProceduralDrawShapeFunc(
+                    [this](ngl::rhi::GraphicsCommandListDep* p_command_list, int shape_index)
+                    { 
+                        //
+                        p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
+                        p_command_list->DrawInstanced(6, 1, 0, 0); 
+                                            
+                    });
+
+
                 // スケール設定.
                 ngl::math::Mat34 tr = ngl::math::Mat34::Identity();
-                tr.SetColumn3(ngl::math::Vec3(-10.0f, 18.0f, 0.0f));
-                //tr.SetColumn3(ngl::math::Vec3(0.0f, 10.0f, 0.0f));
+                tr.SetColumn3(ngl::math::Vec3(-10.0f, 15.0f, 0.0f));
+                // tr.SetColumn3(ngl::math::Vec3(0.0f, 10.0f, 0.0f));
                 mc->SetTransform(tr);
             }
-
-
         }
     }
 
@@ -453,7 +463,7 @@ bool AppGame::Initialize()
 
     // Texture Rexource読み込みのテスト.
     ngl::gfx::ResTexture::LoadDesc tex_load_desc{};
-    //const char test_load_texture_file_name[] = "../ngl/data/model/sponza_gltf/glTF/6772804448157695701.jpg";
+    // const char test_load_texture_file_name[] = "../ngl/data/model/sponza_gltf/glTF/6772804448157695701.jpg";
     const char test_load_texture_file_name[] = "../ngl/data/texture/sample_dds/test-dxt1.dds";
     // const char test_load_texture_file_name[] = "../ngl/data/texture/vgl/pisa/pisa.hdr";
     res_texture_ = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResTexture>(&device, test_load_texture_file_name, &tex_load_desc);
@@ -571,6 +581,7 @@ bool AppGame::ExecuteApp()
         if (ImGui::CollapsingHeader("View Info"))
         {
             ImGui::Text("Camera Dir:			%.3f, %.3f, %.3f", camera_pose_.GetColumn2().x, camera_pose_.GetColumn2().y, camera_pose_.GetColumn2().z);
+            ImGui::Text("Camera Pos:			%.3f, %.3f, %.3f", camera_pos_.x, camera_pos_.y, camera_pos_.z );
         }
 
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);

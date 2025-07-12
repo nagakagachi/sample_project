@@ -17,6 +17,7 @@ namespace ngl::fwk
         gfx::StandardRenderModel*	model_ = {};
     };
 
+    // Mesh描画情報をGfxへ通知するためのクラス. Proxyと対になる.
     class GfxSceneEntityMesh : public GfxSceneEntityBase<GfxSceneEntityMesh, GfxSceneEntityMeshProxy>
     {
     public:

@@ -1,7 +1,7 @@
 /*
     opaque_attrless.hlsli
     マテリアル個別コード. 
-    頂点AttributeLessの描画テスト.
+    頂点Attribute不使用でShaderResourceによる頂点情報取り込み描画.
 *
 
 /*
@@ -64,16 +64,16 @@ Buffer<uint> attrless_geometry_index_buffer;
 
         // トライアングルの頂点インデックスから3DのXZ平面の10x10サイズ矩形頂点座標を自動計算.
         const float3 quad_pos[4] = {
-            float3(-5.0, 0.0, -5.0), // 左下
-            float3( 5.0, 0.0, -5.0), // 右下
-            float3( 5.0, 0.0,  5.0), // 右上
-            float3(-5.0, 0.0,  5.0)  // 左上
+            float3(-5.0, 0.0, -5.0), // 右下
+            float3( -5.0, 0.0, 5.0), // 右上
+            float3( 5.0, 0.0,  5.0), // 左上
+            float3(5.0, 0.0,  -5.0)  // 左下
         };
         const float2 quad_uv[4] = {
             float2(0.0, 0.0), // 左下
-            float2(1.0, 0.0), // 右下
+            float2(0.0, 1.0), // 右下
             float2(1.0, 1.0), // 右上
-            float2(0.0, 1.0)  // 左上
+            float2(1.0, 0.0)  // 左上
         };
         const uint quad_index[6] = {
             0, 1, 2, // 左下, 右下, 右上

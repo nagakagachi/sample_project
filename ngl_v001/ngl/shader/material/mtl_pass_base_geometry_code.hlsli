@@ -4,7 +4,7 @@
 /*
     mtl_pass_base_geometry_code.hlsli
 
-    マテリアルシェーダの共通頂点シェーダコード.
+    マテリアルシェーダの共通頂点シェーダ用コード.
     
     頂点入力 VS_INPUT はマテリアルコード側で定義する.
     同様に VS_INPUT を読み取って共通頂点データ構造MaterialVertexAttributeDataに変換する関数MaterialCallback_GetVertexAttributeDataをマテリアルコード側で定義する.
@@ -79,6 +79,9 @@
 // VS.  Pass共通コード. マテリアル固有コードやコールバックなどをでカスタマイズされる.
     VS_OUTPUT main_vs(VS_INPUT input)
     {
+        // Material Customize Point.
+        //  VS_INPUTとそこから共通頂点データ取得をする関数MaterialCallback_GetVertexAttributeDataをマテリアル側で定義することで
+        //  マテリアル毎に自由な頂点入力ができるようになっている.
         MaterialVertexAttributeData input_wrap = MaterialCallback_GetVertexAttributeData(input);
         
         const float3x4 instance_mtx = NglGetInstanceTransform(0);
@@ -104,7 +107,8 @@
             mtl_input.position_ws = pos_ws;
             mtl_input.normal_ws = normal_ws;
         }
-        // マテリアル処理呼び出し.
+        // Material Customize Point.
+        // マテリアル側の頂点オフセット操作.
         MtlVsOutput mtl_output = MtlVsEntryPoint(mtl_input);
 
 

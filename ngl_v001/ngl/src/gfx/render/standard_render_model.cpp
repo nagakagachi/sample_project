@@ -49,6 +49,13 @@ namespace ngl::gfx
 
     void StandardRenderModel::DrawShape(rhi::GraphicsCommandListDep* p_command_list, int shape_index)
     {
+        if(procedural_draw_shape_func_)
+        {
+            // プロシージャル描画関数が設定されている場合はそちらを呼び出す.
+            procedural_draw_shape_func_(p_command_list, shape_index);
+            return;
+        }
+
         // 規程のShape描画.
         auto& shape = res_mesh_->data_.shape_array_[shape_index];
 

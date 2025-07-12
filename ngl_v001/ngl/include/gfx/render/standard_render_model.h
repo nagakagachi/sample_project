@@ -36,6 +36,8 @@ namespace gfx
         res::ResourceHandle<ResMeshData> res_mesh_ = {};
         std::vector<MaterialPsoSet> shape_mtl_pso_set_ = {};
         std::vector<StandardRenderMaterial> material_array_ = {};
+
+        std::function<void(rhi::GraphicsCommandListDep*, int)> procedural_draw_shape_func_{};
     };
 }
 }
