@@ -164,6 +164,9 @@ static void TestEntry()
     ngl::thread::TestLockFreeStackIntrusive();
     ngl::thread::TestFixedSizeLockFreeStack();
     ngl::thread::TestStaticSizeLockFreeStack();
+
+
+    ngl::render::app::ConcurrentBinaryTreeU32::Test();
 }
 
 AppGame::AppGame()
