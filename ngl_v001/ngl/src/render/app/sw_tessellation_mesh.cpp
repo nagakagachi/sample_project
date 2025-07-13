@@ -1,4 +1,8 @@
-﻿#include "render/app/sw_tessellation_mesh.h"
+﻿/*
+    sw_tessellation_mesh.cpp
+*/
+
+#include "render/app/sw_tessellation_mesh.h"
 
 
 namespace ngl::render::app
@@ -143,16 +147,90 @@ namespace ngl::render::app
             }
         }
     }
-    // 下位から i番目 の 1 の位置を検索. SumReduction後に使用可能.
-    int ConcurrentBinaryTreeU32::Find_ith_Bit1(u32 i)
+
+    // u32の値とインデックス値を引数に取り, u32の下位からインデックス番目に現れる 1 のビットの位置を返す関数
+    int Find_ith_Bit1_in_u32(uint32_t value, int index)
     {
-        assert(false && u8"未実装");
+        // value: 検索対象のu32値
+        // index: 下位からi番目の1（0-based）
+        // 戻り値: ビット位置（0-based, 存在しなければ-1）
+        int count = 0;
+        for (int bit = 0; bit < 32; ++bit)
+        {
+            if ((value >> bit) & 0x1)
+            {
+                if (count == index)
+                    return bit;
+                ++count;
+            }
+        }
         return -1;
     }
-    // 下位から i番目 の 0 の位置を検索. SumReduction後に使用可能.
-    int ConcurrentBinaryTreeU32::Find_ith_Bit0(u32 i)
+
+
+    // 下位から i番目 の 1 の位置を検索. SumReduction後に使用可能.
+    int ConcurrentBinaryTreeU32::Find_ith_Bit1(u32 index)
     {
-        assert(false && u8"未実装");
+        if(0 == GetSum())
+        return -1;
+
+        // CBT: 完全二分木のノード配列（cbt_node_）
+        // index: i番目の1（0-based）
+        // 戻り値: ビット位置（0-based, 存在しなければ-1）
+        const u32 D = ngl::MostSignificantBit32(packed_leaf_count_); // 木の深さ
+        u32 bitID = 1; // 1ベース
+        while (bitID < (1u << D))
+        {
+            bitID = bitID << 1;
+            if (index >= cbt_node_[bitID])
+            {
+                index -= cbt_node_[bitID];
+                bitID += 1;
+            }
+        }
+        const int leaf_pos = static_cast<int>(bitID - (1u << D));
+        const LeafType bit_field = (cbt_node_[packed_leaf_offset_ + leaf_pos]);
+        if(0 <= leaf_pos && 0 != bit_field)
+        {
+            const int local_bit_pos = Find_ith_Bit1_in_u32(bit_field, index);
+            assert(0 <= local_bit_pos);
+            return local_bit_pos + (leaf_pos * LeafTypeBitWidth);
+        }
+
+        return -1;
+    }
+
+    // 下位から i番目 の 0 の位置を検索. SumReduction後に使用可能.
+    int ConcurrentBinaryTreeU32::Find_ith_Bit0(u32 index)
+    {
+        if(NumLeaf() == GetSum())
+            return -1;
+        
+        // CBT: 完全二分木のノード配列（cbt_node_）
+        // index: i番目の0（0-based）
+        // 戻り値: ビット位置（0-based, 存在しなければ-1）
+        const u32 D = ngl::MostSignificantBit32(packed_leaf_count_); // 木の深さ
+        u32 bitID = 1; // 1ベース
+        u32 c = NumLeaf() >> 1;//1u << (D - 1);
+        while (bitID < (1u << D))
+        {
+            bitID = bitID << 1;
+            if (index >= (c - cbt_node_[bitID]))
+            {
+                index -= (c - cbt_node_[bitID]);
+                bitID += 1;
+            }
+            c = c >> 1;
+        }
+        const int leaf_pos = static_cast<int>(bitID - (1u << D));
+        // 反転ビットで1を探す.
+        const LeafType bit_field = ~(cbt_node_[packed_leaf_offset_ + leaf_pos]);
+        if(0 <= leaf_pos && 0 != bit_field)
+        {
+            const int local_bit_pos = Find_ith_Bit1_in_u32(bit_field, index);
+            assert(0 <= local_bit_pos);
+            return local_bit_pos + (leaf_pos * LeafTypeBitWidth);
+        }
         return -1;
     }
 
@@ -180,7 +258,7 @@ namespace ngl::render::app
         cbt.SumReduction();
         assert(4 == cbt.GetSum());
 
-        /*
+        
         // i番目の1の位置.
         const auto bit1_location_0 = cbt.Find_ith_Bit1(0);
         const auto bit1_location_1 = cbt.Find_ith_Bit1(1);
@@ -199,12 +277,14 @@ namespace ngl::render::app
         const auto bit0_location_2 = cbt.Find_ith_Bit0(2);
         const auto bit0_location_3 = cbt.Find_ith_Bit0(3);
         const auto bit0_location_4 = cbt.Find_ith_Bit0(4);
+        const auto bit0_location_5 = cbt.Find_ith_Bit0(512);
         assert(2 == bit0_location_0);
         assert(4 == bit0_location_1);
         assert(5 == bit0_location_2);
         assert(6 == bit0_location_3);
         assert(7 == bit0_location_4);
-        */
+        assert(516 == bit0_location_5);
+        
 
 
         cbt.Clear();
