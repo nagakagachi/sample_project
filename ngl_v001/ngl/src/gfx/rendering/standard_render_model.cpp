@@ -2,9 +2,9 @@
     standard_render_model.cpp
 */
 #include "gfx/rendering/standard_render_model.h"
-#include "gfx/rendering/global_render_resource.h"
 
 #include "gfx/material/material_shader_manager.h"
+#include "gfx/rendering/global_render_resource.h"
 #include "resource/resource_manager.h"
 
 namespace ngl::gfx
@@ -50,43 +50,48 @@ namespace ngl::gfx
         return true;
     }
 
-    void StandardRenderModel::BindModelResourceCallback(rhi::GraphicsPipelineStateDep* pso, rhi::DescriptorSetDep* desc_set, int shape_index)
+    void StandardRenderModel::BindModelResourceCallback(BindModelResourceOptionCallbackArg arg)
     {
-    	auto default_white_tex_srv = GlobalRenderResource::Instance().default_resource_.tex_white->ref_view_;
-    	auto default_black_tex_srv = GlobalRenderResource::Instance().default_resource_.tex_black->ref_view_;
-    	auto default_normal_tex_srv = GlobalRenderResource::Instance().default_resource_.tex_default_normal->ref_view_;
-        
-        const auto& shape_mat_index = res_mesh_->shape_material_index_array_[shape_index];
-        const auto& mat_data = material_array_[shape_mat_index];
-        
-        pso->SetView(desc_set, "samp_default", GlobalRenderResource::Instance().default_resource_.sampler_linear_wrap.Get());
+        auto default_white_tex_srv  = GlobalRenderResource::Instance().default_resource_.tex_white->ref_view_;
+        auto default_black_tex_srv  = GlobalRenderResource::Instance().default_resource_.tex_black->ref_view_;
+        auto default_normal_tex_srv = GlobalRenderResource::Instance().default_resource_.tex_default_normal->ref_view_;
+
+        const auto& shape_mat_index = res_mesh_->shape_material_index_array_[arg.shape_index];
+        const auto& mat_data        = material_array_[shape_mat_index];
+
+        arg.pso->SetView(arg.desc_set, "samp_default", GlobalRenderResource::Instance().default_resource_.sampler_linear_wrap.Get());
         // テクスチャ設定テスト. このあたりはDescriptorSetDepに事前にセットしておきたい.
         {
-            auto tex_basecolor = (mat_data.tex_basecolor.IsValid())? mat_data.tex_basecolor->ref_view_ : default_white_tex_srv;
-            auto tex_normal = (mat_data.tex_normal.IsValid())? mat_data.tex_normal->ref_view_ : default_normal_tex_srv;
-            auto tex_occlusion = (mat_data.tex_occlusion.IsValid())? mat_data.tex_occlusion->ref_view_ : default_white_tex_srv;
-            auto tex_roughness = (mat_data.tex_roughness.IsValid())? mat_data.tex_roughness->ref_view_ : default_white_tex_srv;
-            auto tex_metalness = (mat_data.tex_metalness.IsValid())? mat_data.tex_metalness->ref_view_ : default_black_tex_srv;
-        
-            pso->SetView(desc_set, "tex_basecolor", tex_basecolor.Get());
-            pso->SetView(desc_set, "tex_occlusion", tex_occlusion.Get());
-            pso->SetView(desc_set, "tex_normal", tex_normal.Get());
-            pso->SetView(desc_set, "tex_roughness", tex_roughness.Get());
-            pso->SetView(desc_set, "tex_metalness", tex_metalness.Get());
+            auto tex_basecolor = (mat_data.tex_basecolor.IsValid()) ? mat_data.tex_basecolor->ref_view_ : default_white_tex_srv;
+            auto tex_normal    = (mat_data.tex_normal.IsValid()) ? mat_data.tex_normal->ref_view_ : default_normal_tex_srv;
+            auto tex_occlusion = (mat_data.tex_occlusion.IsValid()) ? mat_data.tex_occlusion->ref_view_ : default_white_tex_srv;
+            auto tex_roughness = (mat_data.tex_roughness.IsValid()) ? mat_data.tex_roughness->ref_view_ : default_white_tex_srv;
+            auto tex_metalness = (mat_data.tex_metalness.IsValid()) ? mat_data.tex_metalness->ref_view_ : default_black_tex_srv;
+
+            arg.pso->SetView(arg.desc_set, "tex_basecolor", tex_basecolor.Get());
+            arg.pso->SetView(arg.desc_set, "tex_occlusion", tex_occlusion.Get());
+            arg.pso->SetView(arg.desc_set, "tex_normal", tex_normal.Get());
+            arg.pso->SetView(arg.desc_set, "tex_roughness", tex_roughness.Get());
+            arg.pso->SetView(arg.desc_set, "tex_metalness", tex_metalness.Get());
         }
 
-        if(bind_model_resource_option_callback_)
+        if (bind_model_resource_option_callback_)
         {
             // モデル固有のリソース設定コールバックが設定されている場合はそちらを呼び出す.
-            bind_model_resource_option_callback_(pso, desc_set, shape_index);
+            bind_model_resource_option_callback_(arg);
         }
     }
     void StandardRenderModel::DrawShape(rhi::GraphicsCommandListDep* p_command_list, int shape_index)
     {
-        if(draw_shape_override_)
+        if (draw_shape_override_)
         {
             // プロシージャル描画関数が設定されている場合はそちらを呼び出す.
-            draw_shape_override_(p_command_list, shape_index);
+            _DrawShapeOverrideFuncionArg draw_shape_override_arg;
+            {
+                draw_shape_override_arg.command_list = p_command_list;
+                draw_shape_override_arg.shape_index  = shape_index;
+            };
+            draw_shape_override_(draw_shape_override_arg);
             return;
         }
 

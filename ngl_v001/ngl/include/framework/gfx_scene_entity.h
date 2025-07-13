@@ -1,8 +1,12 @@
-﻿#pragma once
+﻿/*
+    gfx_scene_entity.h
+*/
+#pragma once
+
+#include <assert.h>
 
 #include <mutex>
 #include <vector>
-#include <assert.h>
 
 #include "util/types.h"
 
@@ -45,7 +49,7 @@ namespace ngl::fwk
             DecodeData(this->data, index);
             return index;
         }
-        
+
         static bool IsValid(const GfxSceneEntityId& v)
         {
             // 0 は無効値. 初期化の簡易化のため.
@@ -53,19 +57,17 @@ namespace ngl::fwk
         }
     };
 
-
     struct GfxProxyInfo
     {
-        GfxScene*           scene_{};       // 登録先Scene.
-        GfxSceneEntityId    proxy_id_ = {}; // Proxyへの参照用.
+        GfxScene* scene_{};               // 登録先Scene.
+        GfxSceneEntityId proxy_id_ = {};  // Proxyへの参照用.
     };
-
 
     // ENTITY_TYPE : Proxyを持つEntityクラスタイプ.
     //  EntityのProxyの確保登録と解放を担当. GfxSceneがメンバとして各タイプバージョンをもつ.
     //  内部バッファにスレッドセーフに登録/解除.
     //  実装は gfx_scene.inl
-    template<typename ENTITY_TYPE>
+    template <typename ENTITY_TYPE>
     class GfxSceneProxyBuffer
     {
     public:
@@ -78,16 +80,15 @@ namespace ngl::fwk
         std::vector<typename ENTITY_TYPE::ProxyType*> proxy_buffer_{};
     };
 
-    
     // GfxSceneEntityの基本設定と機能を提供する基底クラス.
     //  派生クラスではoverride不要で, この基底クラスの Initialize, Finalize, GetProxy でGfxScene上のProxyインスタンスを操作できる.
     //  実装は gfx_scene.inl
-    template<typename ENTITY_CLASS_TYPE, typename PROXY_CLASS_TYPE>
+    template <typename ENTITY_CLASS_TYPE, typename PROXY_CLASS_TYPE>
     class GfxSceneEntityBase
     {
     public:
         using EntityType = ENTITY_CLASS_TYPE;
-        using ProxyType = PROXY_CLASS_TYPE;
+        using ProxyType  = PROXY_CLASS_TYPE;
 
         GfxSceneEntityBase() = default;
         virtual ~GfxSceneEntityBase();
@@ -97,12 +98,11 @@ namespace ngl::fwk
 
         // GfxSceneEntityの解放. GfxScene上に確保したProxyの破棄.
         void Finalize();
-        
+
         // 確保しているProxyを取得.
         PROXY_CLASS_TYPE* GetProxy();
 
-
-        GfxProxyInfo    proxy_info_{};
+        GfxProxyInfo proxy_info_{};
     };
 
-}
+}  // namespace ngl::fwk

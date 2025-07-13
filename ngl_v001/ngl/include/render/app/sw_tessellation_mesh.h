@@ -32,6 +32,22 @@ namespace ngl::render::app
         std::vector<HalfEdge> half_edge_;
     };
 
+
+    struct Bisector
+    {
+        u32 bs_depth;
+        u32 bs_index;
+
+        int next;
+        int prev;
+        int twin;
+
+        u32 command;
+        u32 alloc_ptr[4];
+    };
+    static constexpr auto sizeof_Bisector = sizeof(Bisector);
+
+
     class SwTessellationMesh : public ngl::gfx::scene::SceneMesh
     {
         using Super = ngl::gfx::scene::SceneMesh;
@@ -45,6 +61,12 @@ namespace ngl::render::app
             ngl::rhi::DeviceDep* p_device,
             ngl::fwk::GfxScene* gfx_scene,
             const ngl::res::ResourceHandle<ngl::gfx::ResMeshData>& res_mesh);
+
+    private:
+        // Game更新.
+        void UpdateOnGame(gfx::scene::SceneMeshGameUpdateCallbackArg arg);
+        // Render更新.
+        void UpdateOnRender(gfx::scene::SceneMeshRenderUpdateCallbackArg arg);
 
     private:
         std::vector<HalfEdgeMesh> half_edge_mesh_array_;

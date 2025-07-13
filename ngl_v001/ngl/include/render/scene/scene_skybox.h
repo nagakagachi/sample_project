@@ -40,7 +40,7 @@ namespace ngl::gfx::scene
             // Proxyの解放.
             gfx_skybox_entity_.Finalize();
         }
-        void UpdateGfx()
+        void UpdateForRender()
         {
             assert(fwk::GfxSceneEntityId::IsValid(gfx_skybox_entity_.proxy_info_.proxy_id_));
             assert(gfx_skybox_entity_.proxy_info_.scene_);

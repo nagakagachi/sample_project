@@ -133,7 +133,7 @@ private:
     ngl::fwk::GraphicsFramework gfxfw_{};
     std::vector<ngl::rhi::EResourceState> swapchain_resource_state_;
 
-    ngl::math::Vec3 camera_pos_   = {4.0f, 20.0f, -10.0f};
+    ngl::math::Vec3 camera_pos_   = {-5.0f, 15.0f, -10.0f};
     ngl::math::Mat33 camera_pose_ = ngl::math::Mat33::Identity();
     float camera_fov_y            = ngl::math::Deg2Rad(60.0f);  // not half fov.
     PlayerController player_controller{};
@@ -687,7 +687,7 @@ bool AppGame::ExecuteApp()
         for (auto& e : mesh_entity_array_)
         {
             // Render更新.
-            e->UpdateGfx();
+            e->UpdateForRender();
 
             // 登録.
             frame_scene.mesh_proxy_id_array_.push_back(e->GetMeshProxyId());
@@ -699,7 +699,7 @@ bool AppGame::ExecuteApp()
         // sky.
         {
             // GfxSceneComponentの仕組みでSkyBox情報を取り扱うテスト
-            skybox_.UpdateGfx();
+            skybox_.UpdateForRender();
             frame_scene.skybox_proxy_id_ = skybox_.GetSkyBoxProxyId();
 
             frame_scene.sky_debug_mode_     = static_cast<ngl::gfx::SceneRepresentation::EDebugMode>(dbgw_sky_debug_mode);
