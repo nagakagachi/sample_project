@@ -23,7 +23,7 @@
 </material_config>
 #endif
 
-// 適切なコード生成のためにここでこのヘッダ自身をインクルードする.
+// 適切なコード生成のためにインクルード.
 #include "../mtl_pass_base_declare.hlsli"
 
 

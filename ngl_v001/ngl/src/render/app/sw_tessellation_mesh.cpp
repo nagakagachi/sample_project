@@ -414,10 +414,12 @@ namespace ngl::render::app
     void SwTessellationMesh::UpdateOnGame(gfx::scene::SceneMeshGameUpdateCallbackArg arg)
     {
         // TODO.
+        arg.dummy;
     }
     void SwTessellationMesh::UpdateOnRender(gfx::scene::SceneMeshRenderUpdateCallbackArg arg)
     {
         // TODO.
+        arg.command_list;
     }
 
 }  // namespace ngl::render::app

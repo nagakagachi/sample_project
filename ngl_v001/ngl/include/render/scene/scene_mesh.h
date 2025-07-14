@@ -8,6 +8,7 @@ namespace ngl::gfx::scene
 
     struct _SceneMeshGameUpdateCallbackArg
     {
+        int dummy;
     };
     using SceneMeshGameUpdateCallbackArg = const _SceneMeshGameUpdateCallbackArg&;
     using SceneMeshGameUpdateCallback = std::function<void(SceneMeshGameUpdateCallbackArg)>;

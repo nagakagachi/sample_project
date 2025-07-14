@@ -20,9 +20,11 @@
 </material_config>
 #endif
 
-// 適切なコード生成のためにここでこのヘッダ自身をインクルードする.
+// 適切なコード生成のためにインクルード.
 #include "../mtl_pass_base_declare.hlsli"
 
+
+#include "../../sw_tess/bisector.hlsli"
 
 
 Texture2D tex_basecolor;
@@ -31,15 +33,7 @@ SamplerState samp_default;
 
 
 
-struct HalfEdge
-{
-    int twin   ;
-    int next   ;
-    int prev   ;
-    int vertex ;
-};
 StructuredBuffer<HalfEdge> half_edge_buffer;
-
 Buffer<float3>  vertex_position_buffer;
 
 
