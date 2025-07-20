@@ -1,0 +1,241 @@
+// cbt_tess_common.hlsli
+/*
+    CBT (Concurrent Binary Tree) ベースソフトウェアテッセレーション システム
+    
+    【CBT仕様概要】
+    - 完全二分木でBisectorプールの使用状況を管理
+    - リーフノードは32bit uintビットフィールドで32要素分の使用状況を1ワードで管理
+    - インデックス0は未使用、インデックス1がルートノード
+    - 左の子: parent_index << 1, 右の子: (parent_index << 1) + 1
+    - ノード総数: 1 << (cbt_tree_depth + 1)
+    - リーフ数: 1 << cbt_tree_depth
+    - リーフオフセット: 1 << cbt_tree_depth (ルートから見たリーフ開始位置)
+    
+    【CBT操作アルゴリズム】
+    - Sum Reduction: 各ノードは子ノードの合計値を保持（ボトムアップ集計）
+    - 二分探索: i番目の使用中/未使用ビット位置を高速検索（O(log n)）
+    - アトミック操作: SetCBTBit での排他制御（InterlockedOr/And使用）
+    - ビット位置計算: bit_position = leaf_offset + (index / 32), bit_mask = 1 << (index % 32)
+    
+    【メモリレイアウト】
+    cbt_buffer構造例（depth=3, 32bit uint リーフの場合）:
+    [0=unused] [1=root] [2,3=level1] [4,5,6,7=level2] [8,9,10,11,12,13,14,15=leaves(32bit each)]
+    各リーフは32ビットフィールドでBisector使用状況を管理（1リーフ = 32 Bisector分）
+    
+    【バッファ設計方針】
+    - Buffer/RWBuffer: プリミティブ型(uint, int2等)用、レジスタ指定不要
+    - StructuredBuffer/RWStructuredBuffer: 複合型(Bisector等)用
+    - 定数バッファ最適化: 計算可能なパラメータは動的算出（メモリ帯域節約）
+    - _rw サフィックス: UAV（書き込み可能）バッファの命名規則
+    
+    【パフォーマンス考慮事項】
+    - Wave intrinsics対応: WaveActiveSum等でSIMD最適化可能
+    - Cache locality: リーフレベルでの連続アクセスパターン
+    - Divergence回避: ビット操作での分岐最小化
+    
+    【デバッグ支援】
+    - frame_index: フレーム番号でデバッグ時の状態追跡
+    - アサーション: bit_position < bisector_pool_max_size
+    - 境界チェック: リーフインデックス範囲検証
+    
+    【リソース詳細とライフサイクル】
+
+    cbt_buffer / cbt_buffer_rw : CBT完全二分木のノード配列（uint型）
+                ライフサイクル: CPU初期化 → GPU SumReduction更新 → GPU二分探索読み取り
+                リーフがbitfieldであるような完全二分木のノードとリーフを含むuintバッファ
+                後述するBisectorPoolの各要素の使用中/未使用の管理を1ビットで行う
+                SumReductionと二分探索によってi番目の使用中ビットの位置や, i番目の未使用ビットの位置を高速に検索します
+                CPU側で初期化時に割り当てた最大サイズのプールを管理する分の木のノードとリーフがフラットに並んだバッファ
+                リーフをuintビットフィールドにすることで省メモリと高速化を目的とする.
+                書き込み用途の場合のUAVは末尾に rw をつけた名前にする.
+    
+    bisector_pool / bisector_pool_rw : テッセレーションBisector構造体配列
+                ライフサイクル: CPU事前確保 → GPU動的割り当て/解放 → GPU細分化処理
+                テッセレーションで細分化された三角形を表現するBisectorプールバッファ
+                CPU側で初期化時に割り当てた最大サイズで運用される
+
+    index_cache / index_cache_rw : インデックス解決キャッシュ（int2型）
+                ライフサイクル: 毎フレーム cache_index.hlsl で更新 → 各段階で高速アクセス
+                int2で xにはi番目の使用中Bisectorインデックス, yにはi番目の未使用Bisectorインデックスをキャッシュする
+                割り当て済みのBisectorに対する処理や, 未使用Bisectorに対する処理の際のインデックス解決を高速にするため, cbt_bufferを使って毎フレーム更新される
+
+    alloc_counter / alloc_counter_rw : 新規割り当てカウンタ（uint型）
+                ライフサイクル: フレーム開始時リセット → 割り当て時アトミック増分
+                Tessellation処理中に新規Bisector割り当てをする際のカウンタ管理 uintひとつだけでatomic操作される
+
+    indirect_dispatch_arg_for_bisector : Bisector処理用Dispatch引数バッファ（uint3型）
+                ライフサイクル: begin_update.hlsl で更新 → 後続DispatchIndirect呼び出し
+                割り当て済みBisectorの数だけDispatchするためのIndirect命令引数バッファ.
+                begin_updateでcbt_bufferに格納されている有効Bisector総数を使って更新される
+                
+    indirect_dispatch_arg_for_index_cache : インデックスキャッシュ更新用Dispatch引数バッファ（uint3型）
+                ライフサイクル: begin_update.hlsl で更新 → cache_index.hlsl のDispatchIndirect
+                index_cacheの更新をするために必要なThreadwoDIspatchするためのIndirect命令引数バッファ.
+                begin_updateでcbt_bufferに格納されている有効Bisector総数と, プール最大サイズ-有効Bisector総数 のうち大きい方を使って更新される
+                
+    【実装ガイドライン】
+    1. CBT操作時は必ずGetCBT*()ヘルパー関数を使用
+    2. ビット操作前にbit_position < bisector_pool_max_sizeをチェック
+    3. アトミック操作はSetCBTBit()経由で統一
+    4. FindIthBit*InCBT()は戻り値-1で「見つからない」を示す
+    5. Sum Reduction更新後は必ずGroupMemoryBarrierWithGroupSync()
+    　　　　　　　　 
+*/
+
+#include "bisector.hlsli"
+
+// CBT操作定数（32bit uint リーフ特化）
+#define CBT_UINT32_BIT_WIDTH 32
+#define CBT_UINT32_BIT_MASK 31
+
+// 共通定数バッファ
+cbuffer CBTTessellationConstants
+{
+    uint cbt_tree_depth;                // CBTの木の深さ (log2(leaf_count))
+    uint cbt_mesh_minimum_tree_depth;   // オリジナルメッシュ表現の最小深度（Bisectorのdepthオフセット）
+    uint bisector_pool_max_size;        // Bisectorプールの最大サイズ
+    uint frame_index;                   // フレーム番号 (デバッグ用)
+};
+
+// CBT計算ヘルパー関数
+uint GetCBTLeafCount()
+{
+    return 1u << cbt_tree_depth;
+}
+
+uint GetCBTLeafOffset()
+{
+    return 1u << cbt_tree_depth;
+}
+
+uint GetCBTTotalNodeCount()
+{
+    return 1u << (cbt_tree_depth + 1);
+}
+
+// CBTルートノード値取得（インデックス1ベースを強調）
+uint GetCBTRootValue(Buffer<uint> cbt)
+{
+    return cbt[1]; // CBTルートは常にインデックス1
+}
+
+uint GetCBTRootValue_RW(RWBuffer<uint> cbt)
+{
+    return cbt[1]; // CBTルートは常にインデックス1
+}
+
+// リソースバインディング
+Buffer<uint> cbt_buffer;
+RWBuffer<uint> cbt_buffer_rw;
+
+StructuredBuffer<Bisector> bisector_pool;
+RWStructuredBuffer<Bisector> bisector_pool_rw;
+
+Buffer<int2> index_cache;
+RWBuffer<int2> index_cache_rw;
+
+Buffer<uint> alloc_counter;
+RWBuffer<uint> alloc_counter_rw;
+
+RWBuffer<uint3> indirect_dispatch_arg_for_bisector;
+RWBuffer<uint3> indirect_dispatch_arg_for_index_cache;
+
+// CBT基本操作関数（32bit uint リーフ特化）
+uint GetCBTLeafIndex(uint bit_position)
+{
+    return bit_position >> 5; // bit_position / 32 をビットシフトで高速化
+}
+
+uint GetCBTBitMask(uint bit_position)
+{
+    return 1u << (bit_position & CBT_UINT32_BIT_MASK);
+}
+
+void SetCBTBit(RWBuffer<uint> cbt, uint bit_position, uint value)
+{
+    uint leaf_index = GetCBTLeafOffset() + GetCBTLeafIndex(bit_position);
+    uint bit_mask = GetCBTBitMask(bit_position);
+    
+    if (value != 0)
+    {
+        InterlockedOr(cbt[leaf_index], bit_mask);
+    }
+    else
+    {
+        InterlockedAnd(cbt[leaf_index], ~bit_mask);
+    }
+}
+
+uint GetCBTBit(Buffer<uint> cbt, uint bit_position)
+{
+    uint leaf_index = GetCBTLeafOffset() + GetCBTLeafIndex(bit_position);
+    uint bit_mask = GetCBTBitMask(bit_position);
+    return (cbt[leaf_index] & bit_mask) ? 1 : 0;
+}
+
+// ビットカウント関数
+uint CountBits32(uint value)
+{
+    // ハミング重み計算
+    value = value - ((value >> 1) & 0x55555555);
+    value = (value & 0x33333333) + ((value >> 2) & 0x33333333);
+    return (((value + (value >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
+}
+
+// CBT検索関数 - i番目の1ビットの位置を検索（完全二分木ビットシフト最適化版）
+int FindIthBit1InCBT(Buffer<uint> cbt, uint target_index)
+{
+    uint bit_id = 1; // ルートから開始
+    uint index = target_index;
+    
+    // 木を下に辿る（ビットシフトで高速化）
+    for (uint d = 0; d < cbt_tree_depth; d++)
+    {
+        uint left_child = bit_id << 1;     // bit_id * 2 をビットシフトで高速化
+        uint right_child = left_child + 1;
+        
+        if (index >= cbt[left_child])
+        {
+            index -= cbt[left_child];
+            bit_id = right_child;
+        }
+        else
+        {
+            bit_id = left_child;
+        }
+    }
+    
+    // リーフレベルでの位置計算
+    return (int)(bit_id - GetCBTLeafOffset());
+}
+
+// CBT検索関数 - i番目の0ビットの位置を検索（完全二分木ビットシフト最適化版）
+int FindIthBit0InCBT(Buffer<uint> cbt, uint target_index)
+{
+    uint bit_id = 1; // ルートから開始
+    uint index = target_index;
+    uint capacity = bisector_pool_max_size;
+    
+    // 木を下に辿る（ビットシフトで高速化）
+    for (uint d = 0; d < cbt_tree_depth; d++)
+    {
+        uint left_child = bit_id << 1;     // bit_id * 2 をビットシフトで高速化
+        uint right_child = left_child + 1;
+        
+        capacity = capacity >> 1;          // capacity / 2 をビットシフトで高速化
+        uint left_zeros = capacity - cbt[left_child];
+        
+        if (index >= left_zeros)
+        {
+            index -= left_zeros;
+            bit_id = right_child;
+        }
+        else
+        {
+            bit_id = left_child;
+        }
+    }
+    
+    // リーフレベルでの位置計算
+    return (int)(bit_id - GetCBTLeafOffset());
+}
