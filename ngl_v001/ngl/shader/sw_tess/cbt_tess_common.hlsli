@@ -27,7 +27,8 @@
     - StructuredBuffer/RWStructuredBuffer: 複合型(Bisector等)用
     - 定数バッファ最適化: 計算可能なパラメータは動的算出（メモリ帯域節約）
     - _rw サフィックス: UAV（書き込み可能）バッファの命名規則
-    
+
+
     【パフォーマンス考慮事項】
     - Wave intrinsics対応: WaveActiveSum等でSIMD最適化可能
     - Cache locality: リーフレベルでの連続アクセスパターン
@@ -82,6 +83,10 @@
     　　　　　　　　 
 */
 
+// CBTテッセレーション共通定数定義
+#define CBT_THREAD_GROUP_SIZE 128   // 標準スレッドグループサイズ（1スレッド実行する特殊なもの以外で使用）
+    
+
 #include "bisector.hlsli"
 
 // CBT操作定数（32bit uint リーフ特化）
@@ -95,6 +100,7 @@ cbuffer CBTTessellationConstants
     uint cbt_mesh_minimum_tree_depth;   // オリジナルメッシュ表現の最小深度（Bisectorのdepthオフセット）
     uint bisector_pool_max_size;        // Bisectorプールの最大サイズ
     uint frame_index;                   // フレーム番号 (デバッグ用)
+    uint total_half_edges;              // 初期化すべきHalfEdge総数
 };
 
 // CBT計算ヘルパー関数

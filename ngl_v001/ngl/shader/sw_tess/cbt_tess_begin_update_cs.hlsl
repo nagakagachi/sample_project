@@ -14,7 +14,7 @@
 
 // CBT適応的テッセレーション開始処理（初期実装）
 [numthreads(1, 1, 1)]
-void main(
+void main_cs(
     uint3 DTid : SV_DispatchThreadID,
     uint3 GTid : SV_GroupThreadID,
     uint3 Gid : SV_GroupID)

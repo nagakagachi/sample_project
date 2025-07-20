@@ -1,11 +1,9 @@
 // cbt_tess_cache_index.hlsl
 #include "cbt_tess_common.hlsli"
 
-#define THREAD_GROUP_SIZE 128
-
 // バイセクタのインデックスをキャッシュに格納するパス
-[numthreads(THREAD_GROUP_SIZE, 1, 1)]
-void main(
+[numthreads(CBT_THREAD_GROUP_SIZE, 1, 1)]
+void main_cs(
     uint3 DTid : SV_DispatchThreadID,
     uint3 GTid : SV_GroupThreadID,
     uint3 Gid : SV_GroupID)
