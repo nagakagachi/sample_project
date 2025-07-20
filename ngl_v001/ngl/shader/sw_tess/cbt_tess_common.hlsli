@@ -106,17 +106,22 @@ cbuffer CBTTessellationConstants
 // CBT計算ヘルパー関数
 uint GetCBTLeafCount()
 {
-    return 1u << cbt_tree_depth;
+    // リーフのビットフィールド数 = bisector_pool_max_sizeを32bitフィールドで表現するのに必要な数
+    //return (bisector_pool_max_size + 31) / 32;  // ceil(bisector_pool_max_size / 32)
+    return 1 << cbt_tree_depth;
 }
 
 uint GetCBTLeafOffset()
 {
-    return 1u << cbt_tree_depth;
+    return 1u << cbt_tree_depth;  // リーフ開始位置（内部ノード数 + 1）
 }
 
 uint GetCBTTotalNodeCount()
 {
-    return 1u << (cbt_tree_depth + 1);
+    // 内部ノード数（インデックス1から2^cbt_tree_depth - 1） + リーフビットフィールド数
+    uint internal_node_count = (1u << cbt_tree_depth) - 1;  // 2^cbt_tree_depth - 1
+    uint leaf_bitfield_count = GetCBTLeafCount();
+    return internal_node_count + leaf_bitfield_count + 1;  // +1 for index 0 (unused)
 }
 
 // CBTルートノード値取得（インデックス1ベースを強調）
@@ -125,7 +130,7 @@ uint GetCBTRootValue(Buffer<uint> cbt)
     return cbt[1]; // CBTルートは常にインデックス1
 }
 
-uint GetCBTRootValue_RW(RWBuffer<uint> cbt)
+uint GetCBTRootValue(RWBuffer<uint> cbt)
 {
     return cbt[1]; // CBTルートは常にインデックス1
 }
@@ -176,7 +181,13 @@ uint GetCBTBit(Buffer<uint> cbt, uint bit_position)
 {
     uint leaf_index = GetCBTLeafOffset() + GetCBTLeafIndex(bit_position);
     uint bit_mask = GetCBTBitMask(bit_position);
-    return (cbt[leaf_index] & bit_mask) ? 1 : 0;
+    return (cbt[leaf_index] & bit_mask) != 0 ? 1 : 0;
+}
+uint GetCBTBit(RWBuffer<uint> cbt, uint bit_position)
+{
+    uint leaf_index = GetCBTLeafOffset() + GetCBTLeafIndex(bit_position);
+    uint bit_mask = GetCBTBitMask(bit_position);
+    return (cbt[leaf_index] & bit_mask) != 0 ? 1 : 0;
 }
 
 // ビットカウント関数
@@ -192,56 +203,50 @@ uint CountBits32(uint value)
 int FindIthBit1InCBT(Buffer<uint> cbt, uint target_index)
 {
     uint bit_id = 1; // ルートから開始
-    uint index = target_index;
-    
-    // 木を下に辿る（ビットシフトで高速化）
-    for (uint d = 0; d < cbt_tree_depth; d++)
+
+    if(GetCBTRootValue(cbt) <= target_index)
     {
-        uint left_child = bit_id << 1;     // bit_id * 2 をビットシフトで高速化
-        uint right_child = left_child + 1;
-        
-        if (index >= cbt[left_child])
+        return -1; // 総数より大きい時点で無効.
+    }
+
+    // リーフノードは実際にはパッキングされているため, リーフの一つ上までを探索.
+    while(bit_id < (1 << (cbt_tree_depth - 1)))
+    {
+        bit_id = bit_id << 1; // bit_id * 2 をビットシフトで高速化
+        if(target_index >= cbt[bit_id])
         {
-            index -= cbt[left_child];
-            bit_id = right_child;
-        }
-        else
-        {
-            bit_id = left_child;
+            target_index = target_index - cbt[bit_id];
+            bit_id = bit_id + 1; // 右の子に移動
         }
     }
-    
-    // リーフレベルでの位置計算
-    return (int)(bit_id - GetCBTLeafOffset());
+    // 最後の2bitから探索.
+    int even_bit_index = (bit_id << 1) - GetCBTLeafCount();
+    return (GetCBTBit(cbt, even_bit_index) == 0)? even_bit_index + 1 : even_bit_index + target_index;
 }
 
 // CBT検索関数 - i番目の0ビットの位置を検索（完全二分木ビットシフト最適化版）
 int FindIthBit0InCBT(Buffer<uint> cbt, uint target_index)
 {
     uint bit_id = 1; // ルートから開始
-    uint index = target_index;
-    uint capacity = bisector_pool_max_size;
-    
-    // 木を下に辿る（ビットシフトで高速化）
-    for (uint d = 0; d < cbt_tree_depth; d++)
+    uint c = 1 << (cbt_tree_depth - 1);
+
+    if((1 << cbt_tree_depth) - GetCBTRootValue(cbt) <= target_index)
     {
-        uint left_child = bit_id << 1;     // bit_id * 2 をビットシフトで高速化
-        uint right_child = left_child + 1;
-        
-        capacity = capacity >> 1;          // capacity / 2 をビットシフトで高速化
-        uint left_zeros = capacity - cbt[left_child];
-        
-        if (index >= left_zeros)
-        {
-            index -= left_zeros;
-            bit_id = right_child;
-        }
-        else
-        {
-            bit_id = left_child;
-        }
+        return -1; // 総数より大きい時点で無効.
     }
     
-    // リーフレベルでの位置計算
-    return (int)(bit_id - GetCBTLeafOffset());
+    // リーフノードは実際にはパッキングされているため, リーフの一つ上までを探索.
+    while(bit_id < (1 << (cbt_tree_depth - 1)))
+    {
+        bit_id = bit_id << 1; // bit_id * 2 をビットシフトで高速化
+        if(target_index >= (c - cbt[bit_id]))
+        {
+            target_index = target_index - (c - cbt[bit_id]);
+            bit_id = bit_id + 1;
+        }
+        c = c >> 1;
+    }
+    // 最後の2bitから探索.
+    int even_bit_index = (bit_id << 1) - GetCBTLeafCount();
+    return (GetCBTBit(cbt, even_bit_index) == 0)? even_bit_index + target_index : even_bit_index + 1;
 }

@@ -22,7 +22,12 @@ namespace ngl::render::app
         
         const uint32_t max_bisectors = 1u << cbt_tree_depth;  // 2^cbt_tree_depth
         this->max_bisectors = max_bisectors;  // メンバー変数に保存
-        const uint32_t cbt_total_nodes = 1u << (cbt_tree_depth + 1);  // ノード総数
+        
+        // CBTバッファサイズ計算（新構造）
+        // 内部ノード数（インデックス1から2^cbt_tree_depth - 1） + リーフビットフィールド数
+        const uint32_t internal_node_count = (1u << cbt_tree_depth) - 1;  // 2^cbt_tree_depth - 1
+        const uint32_t leaf_bitfield_count = (max_bisectors + 31) / 32;    // ceil(max_bisectors / 32)
+        const uint32_t cbt_total_nodes = internal_node_count + leaf_bitfield_count + 1;  // +1 for index 0 (unused)
         
         // CBT Buffer (uint型の完全二分木) - パフォーマンスのためDefaultヒープを使用
         cbt_buffer = new rhi::BufferDep();

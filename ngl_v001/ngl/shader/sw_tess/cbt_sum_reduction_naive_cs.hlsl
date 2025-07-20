@@ -48,12 +48,8 @@ void main_cs(
             
             if (level == tree_depth)
             {
-                // リーフレベル：32bit uintビットフィールドのビットカウント
-                // リーフの値は変更せず、カウントのみ計算
-                if (left_child < leaf_offset + leaf_count)
-                    sum += CountBits32(cbt_buffer[left_child]);
-                if (right_child < leaf_offset + leaf_count)
-                    sum += CountBits32(cbt_buffer[right_child]);
+                // リーフレベル：ビットフィールドから個別のビット値（0または1）を取得
+                sum += GetCBTBit(cbt_buffer_rw, (i << 1)) + GetCBTBit(cbt_buffer_rw, (i << 1)+1);
             }
             else
             {
