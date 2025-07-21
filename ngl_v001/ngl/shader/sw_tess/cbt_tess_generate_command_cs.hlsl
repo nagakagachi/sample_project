@@ -27,8 +27,8 @@ void main_cs(
     // 処理対象のBisectorを取得
     Bisector bisector = bisector_pool[bisector_index];
     
-    // BisectorからオリジナルHalfEdgeインデックスを計算
-    uint original_half_edge_index = GetHalfEdgeIndexFromBisector(bisector.bs_index, bisector.bs_depth);
+    // BisectorからオリジナルRootBisectorインデックスを計算
+    uint original_half_edge_index = GetRootBisectorIndex(bisector.bs_id, bisector.bs_depth);
     
     // 対応するHalfEdgeを取得
     HalfEdge half_edge = half_edge_buffer[original_half_edge_index];

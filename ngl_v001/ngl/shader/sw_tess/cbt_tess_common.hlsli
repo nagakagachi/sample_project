@@ -275,12 +275,12 @@ int FindIthBit0InCBT(Buffer<uint> cbt, uint target_index)
     return (GetCBTBit(cbt, even_bit_index) == 0)? even_bit_index + target_index : even_bit_index + 1;
 }
 
-// Bisectorから元のHalfEdgeインデックスを取得する関数
-// bs_index >> (bs_depth - minimum_tree_depth) でHalfEdgeインデックスを算出
-uint GetHalfEdgeIndexFromBisector(uint bisector_index, uint bisector_depth)
+// Bisectorから元のRootBisectorインデックスを取得する関数
+// bs_id >> (bs_depth - minimum_tree_depth) でRootBisectorインデックスを算出
+uint GetRootBisectorIndex(uint bisector_id, uint bisector_depth)
 {
-    // Bisectorインデックスから元のHalfEdgeインデックスを計算
+    // BisectorIDから元のRootBisectorインデックスを計算
     // 深度差分だけ右シフトすることで、細分化前の元インデックスを取得
     uint depth_shift = bisector_depth - cbt_mesh_minimum_tree_depth;
-    return bisector_index >> depth_shift;
+    return bisector_id >> depth_shift;
 }

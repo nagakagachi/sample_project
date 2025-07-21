@@ -38,7 +38,7 @@ namespace ngl::render::app
     struct Bisector
     {
         uint32_t bs_depth;      // 4 bytes
-        uint32_t bs_index;      // 4 bytes
+        uint32_t bs_id;         // 4 bytes
         uint32_t command;       // 4 bytes
         int      next;          // 4 bytes  (16 bytes total)
         

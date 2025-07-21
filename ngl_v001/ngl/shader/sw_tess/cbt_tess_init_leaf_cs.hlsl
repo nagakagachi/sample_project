@@ -24,7 +24,7 @@ void main_cs(uint3 id : SV_DispatchThreadID)
     
     // Bisectorの初期値設定
     bisector_pool_rw[thread_id].bs_depth = cbt_mesh_minimum_tree_depth;  // メッシュの最小深度
-    bisector_pool_rw[thread_id].bs_index = thread_id;                    // HalfEdgeインデックスをそのまま使用
+    bisector_pool_rw[thread_id].bs_id = thread_id;                       // HalfEdgeインデックスをIDとして使用
     
     // HalfEdgeのリンク情報をコピー
     bisector_pool_rw[thread_id].next = half_edge.next;

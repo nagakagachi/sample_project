@@ -16,7 +16,7 @@ struct HalfEdge
 struct Bisector
 {
     uint bs_depth;    // Bisectorの所属深さ, BIsectorの子の深さは bs_depth+1 である.
-    uint bs_index;    // Bisectorのインデックス. Bisectorの子のインデックスは  bs_index*2, 及び bs_index*2+1 である.
+    uint bs_id;       // BisectorのID. Bisectorの子のIDは  bs_id*2, 及び bs_id*2+1 である.
     uint command;     // generate_command.hlsl で生成される, このBisectorに対する分割/統合を指示するコマンドビットフィールド.
     int  next;        // HalfEdgeと同様に自身からみてNextの関係にある隣接Bisectorのインデックス (16 bytes total)
 
