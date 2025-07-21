@@ -350,6 +350,8 @@ namespace ngl::render::app
         auto* command_list = arg.command_list;
 
         // CBT Tessellation Pipeline (シェイプ単位で実行)
+        // TODO: 現在はBisectorPool総数に対してDispatchやDrawしているシェーダがあるが、
+        //       将来的にはBeginUpdateでIndirectArgを生成して最小限のIndirect命令発行に変更する
         {
             const auto shape_count = half_edge_mesh_array_.size();
 

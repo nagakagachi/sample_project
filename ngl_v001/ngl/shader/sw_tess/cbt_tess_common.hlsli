@@ -80,6 +80,7 @@
     3. アトミック操作はSetCBTBit()経由で統一
     4. FindIthBit*InCBT()は戻り値-1で「見つからない」を示す
     5. Sum Reduction更新後は必ずGroupMemoryBarrierWithGroupSync()
+    6. 範囲チェックによるスキップは可能な限り早期リターン（return）の形にする
     　　　　　　　　 
 */
 

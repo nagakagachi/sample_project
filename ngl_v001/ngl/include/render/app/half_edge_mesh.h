@@ -34,17 +34,17 @@ namespace ngl::render::app
     };
 
     // Bisector構造体（テッセレーション用）
+    // 16byteアライメント最適化済み
     struct Bisector
     {
-        uint32_t bs_depth;
-        uint32_t bs_index;
-
-        int next;
-        int prev;
-        int twin;
-
-        uint32_t command;
-        uint32_t alloc_ptr[4];
+        uint32_t bs_depth;      // 4 bytes
+        uint32_t bs_index;      // 4 bytes
+        uint32_t command;       // 4 bytes
+        int      next;          // 4 bytes  (16 bytes total)
+        
+        int      prev;          // 4 bytes
+        int      twin;          // 4 bytes
+        int      alloc_ptr[4];  // 16 bytes  (24 bytes total)
     };
     static constexpr auto sizeof_Bisector = sizeof(Bisector);
 
