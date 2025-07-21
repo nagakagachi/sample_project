@@ -86,6 +86,18 @@
 
 // CBTテッセレーション共通定数定義
 #define CBT_THREAD_GROUP_SIZE 128   // 標準スレッドグループサイズ（1スレッド実行する特殊なもの以外で使用）
+
+// Bisector Command ビットマスク定数
+// 分割コマンド (3ビット)
+#define BISECTOR_CMD_TWIN_SPLIT     0x01    // Twin分割
+#define BISECTOR_CMD_PREV_SPLIT     0x02    // Prev分割
+#define BISECTOR_CMD_NEXT_SPLIT     0x04    // Next分割
+
+// 統合コマンド (4ビット, bit3-6)
+#define BISECTOR_CMD_BOUNDARY_MERGE     0x08    // 境界統合
+#define BISECTOR_CMD_INTERIOR_MERGE     0x10    // 非境界統合
+#define BISECTOR_CMD_MERGE_REPRESENTATIVE   0x20    // 統合代表ビット
+#define BISECTOR_CMD_MERGE_AGREEMENT    0x40    // 統合同意ビット
     
 
 #include "bisector.hlsli"
@@ -102,6 +114,14 @@ cbuffer CBTTessellationConstants
     uint bisector_pool_max_size;        // Bisectorプールの最大サイズ
     uint frame_index;                   // フレーム番号 (デバッグ用)
     uint total_half_edges;              // 初期化すべきHalfEdge総数
+    uint padding1;                       // 16byte alignment（C++側CBTConstantsと対応）
+    uint padding2;                       // 16byte alignment（C++側CBTConstantsと対応）
+    uint padding3;                       // 16byte alignment（C++側CBTConstantsと対応）
+
+    float3x4 object_to_world;           // オブジェクト空間からワールド空間への変換行列
+    float3x4 world_to_object;           // ワールド空間からオブジェクト空間への変換行列
+    float3 important_point;             // テッセレーション評価で重視する座標（ワールド空間）
+    float padding4;                     // 16byte alignment（C++側CBTConstantsと対応）
 };
 
 // CBT計算ヘルパー関数
@@ -144,6 +164,7 @@ StructuredBuffer<Bisector> bisector_pool;
 RWStructuredBuffer<Bisector> bisector_pool_rw;
 
 StructuredBuffer<HalfEdge> half_edge_buffer;
+StructuredBuffer<float3> vertex_position_buffer;  // 頂点座標バッファ
 
 Buffer<int2> index_cache;
 RWBuffer<int2> index_cache_rw;
@@ -252,4 +273,14 @@ int FindIthBit0InCBT(Buffer<uint> cbt, uint target_index)
     // 最後の2bitから探索.
     int even_bit_index = (bit_id << 1) - GetCBTLeafCount();
     return (GetCBTBit(cbt, even_bit_index) == 0)? even_bit_index + target_index : even_bit_index + 1;
+}
+
+// Bisectorから元のHalfEdgeインデックスを取得する関数
+// bs_index >> (bs_depth - minimum_tree_depth) でHalfEdgeインデックスを算出
+uint GetHalfEdgeIndexFromBisector(uint bisector_index, uint bisector_depth)
+{
+    // Bisectorインデックスから元のHalfEdgeインデックスを計算
+    // 深度差分だけ右シフトすることで、細分化前の元インデックスを取得
+    uint depth_shift = bisector_depth - cbt_mesh_minimum_tree_depth;
+    return bisector_index >> depth_shift;
 }

@@ -7,6 +7,7 @@
 #include "render/app/half_edge_mesh.h"
 #include "render/app/concurrent_binary_tree.h"
 #include "render/scene/scene_mesh.h"
+#include "rhi/constant_buffer_pool.h"
 
 namespace ngl::render::app
 {
@@ -49,10 +50,16 @@ namespace ngl::render::app
             uint32_t bisector_pool_max_size;
             uint32_t frame_index;
             uint32_t total_half_edges;  // 初期化用
-            uint32_t padding[3];       // 16byte alignment
+            
+            uint32_t padding1;       // 16byte alignment
+            uint32_t padding2;       // 16byte alignment
+            uint32_t padding3;       // 16byte alignment
+
+            ngl::math::Mat34 object_to_world;      // オブジェクト→ワールド変換行列
+            ngl::math::Mat34 world_to_object;      // ワールド→オブジェクト変換行列
+            ngl::math::Vec3 important_point;       // テッセレーション評価で重視する座標（ワールド空間）
+            uint32_t padding4;                        // 16byte alignment
         };
-        rhi::RefBufferDep cbt_constants_buffer;
-        rhi::RefCbvDep cbt_constants_cbv;
         
         // CBT initialization data
         uint32_t total_half_edges;
@@ -63,8 +70,11 @@ namespace ngl::render::app
         // 初期化メソッド
         bool Initialize(ngl::rhi::DeviceDep* p_device, uint32_t shape_half_edges, uint32_t average_subdivision_level);
         
+        // 定数バッファ更新メソッド（ConstantBufferPoolから確保）
+        ngl::rhi::ConstantBufferPooledHandle UpdateConstants(ngl::rhi::DeviceDep* p_device, const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, uint32_t frame_index);
+        
         // リソースバインド用ヘルパー
-        void BindResources(ngl::rhi::ComputePipelineStateDep* pso, ngl::rhi::DescriptorSetDep* desc_set) const;
+        void BindResources(ngl::rhi::ComputePipelineStateDep* pso, ngl::rhi::DescriptorSetDep* desc_set, ngl::rhi::ConstantBufferPooledHandle cb_handle) const;
     };
 
     class SwTessellationMesh : public ngl::gfx::scene::SceneMesh
@@ -81,6 +91,18 @@ namespace ngl::render::app
             ngl::fwk::GfxScene* gfx_scene,
             const ngl::res::ResourceHandle<ngl::gfx::ResMeshData>& res_mesh,
             uint32_t average_subdivision_level = 3);  // 平均分割レベル
+
+        // テッセレーション評価で重視する座標を設定
+        void SetImportantPoint(const ngl::math::Vec3& point_world)
+        {
+            important_point_world_ = point_world;
+        }
+
+        // 現在の重視座標を取得
+        const ngl::math::Vec3& GetImportantPoint() const
+        {
+            return important_point_world_;
+        }
 
     private:
         // Game更新.
@@ -113,6 +135,9 @@ namespace ngl::render::app
         // CBT共通パラメータ
         uint32_t average_subdivision_level_;
         bool cbt_initialized_ = false;
+        
+        // テッセレーション評価で重視する座標
+        ngl::math::Vec3 important_point_world_ = ngl::math::Vec3::Zero();
     };
 
 }  // namespace ngl::render::app

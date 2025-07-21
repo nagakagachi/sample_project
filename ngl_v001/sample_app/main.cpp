@@ -141,6 +141,9 @@ private:
     // GfxSceneMesh版
     std::vector<std::shared_ptr<ngl::gfx::scene::SceneMesh>> mesh_entity_array_;
     std::vector<ngl::gfx::scene::SceneMesh*> test_move_mesh_entity_array_;
+    
+    // SwTessellationMesh管理用
+    std::vector<ngl::render::app::SwTessellationMesh*> sw_tessellation_mesh_array_;
 
     // RaytraceScene.
     ngl::gfx::RtSceneManager rt_scene_;
@@ -190,6 +193,7 @@ AppGame::~AppGame()
 
     // リソース参照クリア.
     mesh_entity_array_.clear();
+    sw_tessellation_mesh_array_.clear();
 
     // Material Shader Manager.
     ngl::gfx::MaterialShaderManager::Instance().Finalize();
@@ -437,6 +441,9 @@ bool AppGame::Initialize()
                 // SwTessellationのテスト.
                 auto mc = std::make_shared<ngl::render::app::SwTessellationMesh>();
                 mesh_entity_array_.push_back(mc);
+                
+                // SwTessellationMesh管理用vectorにも追加
+                sw_tessellation_mesh_array_.push_back(mc.get());
 
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
                 // AttrLessなマテリアルを設定.
@@ -682,6 +689,12 @@ bool AppGame::ExecuteApp()
             tr.SetColumn3(trans);
             e->SetTransform(tr);
         }
+    }
+
+    // CBTテッセレーションメッシュにカメラ位置を設定.
+    for (auto* sw_tess_mesh : sw_tessellation_mesh_array_)
+    {
+        sw_tess_mesh->SetImportantPoint(camera_pos_);
     }
 
     // 描画用シーン情報.
