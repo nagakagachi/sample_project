@@ -89,15 +89,15 @@
 
 // Bisector Command ビットマスク定数
 // 分割コマンド (3ビット)
-#define BISECTOR_CMD_TWIN_SPLIT     0x01    // Twin分割
-#define BISECTOR_CMD_PREV_SPLIT     0x02    // Prev分割
-#define BISECTOR_CMD_NEXT_SPLIT     0x04    // Next分割
+#define BISECTOR_CMD_TWIN_SPLIT     (1 << 0)    // Twin分割
+#define BISECTOR_CMD_PREV_SPLIT     (1 << 1)    // Prev分割
+#define BISECTOR_CMD_NEXT_SPLIT     (1 << 2)    // Next分割
 
 // 統合コマンド (4ビット, bit3-6)
-#define BISECTOR_CMD_BOUNDARY_MERGE     0x08    // 境界統合
-#define BISECTOR_CMD_INTERIOR_MERGE     0x10    // 非境界統合
-#define BISECTOR_CMD_MERGE_REPRESENTATIVE   0x20    // 統合代表ビット
-#define BISECTOR_CMD_MERGE_AGREEMENT    0x40    // 統合同意ビット
+#define BISECTOR_CMD_BOUNDARY_MERGE     (1 << 3)    // 境界統合
+#define BISECTOR_CMD_INTERIOR_MERGE     (1 << 4)    // 非境界統合
+#define BISECTOR_CMD_MERGE_REPRESENTATIVE   (1 << 5)    // 統合代表ビット
+#define BISECTOR_CMD_MERGE_AGREEMENT    (1 << 6)    // 統合同意ビット
     
 
 #include "bisector.hlsli"
@@ -121,7 +121,11 @@ cbuffer CBTTessellationConstants
     float3x4 object_to_world;           // オブジェクト空間からワールド空間への変換行列
     float3x4 world_to_object;           // ワールド空間からオブジェクト空間への変換行列
     float3 important_point;             // テッセレーション評価で重視する座標（ワールド空間）
-    float padding4;                     // 16byte alignment（C++側CBTConstantsと対応）
+    float tessellation_split_threshold; // テッセレーション分割閾値
+    float tessellation_merge_factor;    // テッセレーション統合係数 (0.0~1.0, 分割閾値に対する比率)
+    float padding5;                     // 16byte alignment（C++側CBTConstantsと対応）
+    float padding6;                     // 16byte alignment（C++側CBTConstantsと対応）
+    float padding7;                     // 16byte alignment（C++側CBTConstantsと対応）
 };
 
 // CBT計算ヘルパー関数
@@ -283,4 +287,87 @@ uint GetRootBisectorIndex(uint bisector_id, uint bisector_depth)
     // 深度差分だけ右シフトすることで、細分化前の元インデックスを取得
     uint depth_shift = bisector_depth - cbt_mesh_minimum_tree_depth;
     return bisector_id >> depth_shift;
+}
+
+// Bisector階層構造操作関数
+
+// 分割時の最初の子Bisector情報を計算
+// 二つ目の子のIDは returned_id + 1 で取得可能
+uint2 CalcFirstChildBisectorInfo(uint parent_id, uint parent_depth)
+{
+    uint child_depth = parent_depth + 1;
+    uint child_id = parent_id << 1;  // parent_id * 2 をビットシフトで高速化
+    return uint2(child_id, child_depth);
+}
+
+// 統合時の親Bisector情報を計算
+uint2 CalcParentBisectorInfo(uint child_id, uint child_depth)
+{
+    uint parent_depth = child_depth - 1;
+    uint parent_id = child_id >> 1;  // child_id / 2 をビットシフトで高速化
+    return uint2(parent_id, parent_depth);
+}
+
+// RootBisectorの基本頂点情報を取得
+int3 CalcRootBisectorBaseVertex(uint bisector_id, uint bisector_depth)
+{
+    // RootBisectorインデックスを取得
+    uint root_index = GetRootBisectorIndex(bisector_id, bisector_depth);
+    
+    // 対応するHalfEdgeを取得
+    HalfEdge half_edge = half_edge_buffer[root_index];
+    HalfEdge next_edge = half_edge_buffer[half_edge.next];
+    HalfEdge prev_edge = half_edge_buffer[half_edge.prev];
+    
+    // curr、next、prevの順番で頂点番号を返す
+    return int3(half_edge.vertex, next_edge.vertex, prev_edge.vertex);
+}
+
+// Bisectorの頂点属性補間マトリックスを計算
+// 行に頂点の属性を配置した行列に対して左から乗算することで
+// Bisectorの頂点属性を得るための行列
+float3x3 CalcBisectorAttributeMatrix(uint bisector_id, uint bisector_depth)
+{
+    // 初期マトリックス（単位行列 + 重心座標）
+    float3x3 m = float3x3(
+        1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0,
+        0.5, 0.5, 0.5
+    );
+    
+    // minimum_tree_depthより深い階層を遡って処理
+    while (bisector_depth > cbt_mesh_minimum_tree_depth)
+    {
+        // 最下位ビットに基づいて変換マトリックスを選択
+        if (bisector_id & 1) // 最下位ビットが1の場合（右の子）
+        {
+            // 右の子用の変換マトリックス
+            // 行に頂点の属性を配置した行列に対して左から乗算することで
+            // Bisectorの頂点属性を得るための行列
+            float3x3 right_transform = float3x3(
+                1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0,
+                0.5, 0.5, 0.0
+            );
+            m = mul(m, right_transform);
+        }
+        else // 最下位ビットが0の場合（左の子）
+        {
+            // 左の子用の変換マトリックス
+            // 行に頂点の属性を配置した行列に対して左から乗算することで
+            // Bisectorの頂点属性を得るための行列
+            float3x3 left_transform = float3x3(
+                0.0, 0.0, 1.0,
+                0.0, 1.0, 0.0,
+                0.5, 0.5, 0.0
+            );
+            m = mul(m, left_transform);
+        }
+        
+        // 次の階層へ
+        bisector_id = bisector_id >> 1;
+        bisector_depth = bisector_depth - 1;
+    }
+    
+    return m;
 }

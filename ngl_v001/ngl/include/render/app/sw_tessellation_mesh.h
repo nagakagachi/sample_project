@@ -58,7 +58,11 @@ namespace ngl::render::app
             ngl::math::Mat34 object_to_world;      // オブジェクト→ワールド変換行列
             ngl::math::Mat34 world_to_object;      // ワールド→オブジェクト変換行列
             ngl::math::Vec3 important_point;       // テッセレーション評価で重視する座標（ワールド空間）
-            uint32_t padding4;                        // 16byte alignment
+            float tessellation_split_threshold;    // テッセレーション分割閾値
+            float tessellation_merge_factor;       // テッセレーション統合係数 (0.0~1.0, 分割閾値に対する比率)
+            float padding5;                        // 16byte alignment
+            float padding6;                        // 16byte alignment
+            float padding7;                        // 16byte alignment
         };
         
         // CBT initialization data

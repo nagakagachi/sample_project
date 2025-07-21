@@ -33,11 +33,13 @@ void main_cs(
         int new_bisector_index = bisector_pool[bisector_index].alloc_ptr[i];
         if (new_bisector_index >= 0)  // 負数は無効なインデックス
         {
-            SetCBTBit(cbt_buffer_rw, new_bisector_index, 1);
+            // TODO: 実装中の誤作動回避のため一時的にコメントアウト
+            // SetCBTBit(cbt_buffer_rw, new_bisector_index, 1);
         }
     }
     
     // 2. 自身のインデックスのビットを0にする（無効化）
-    SetCBTBit(cbt_buffer_rw, bisector_index, 0);
+    // TODO: 実装中の誤作動回避のため一時的にコメントアウト
+    // SetCBTBit(cbt_buffer_rw, bisector_index, 0);
 }
 

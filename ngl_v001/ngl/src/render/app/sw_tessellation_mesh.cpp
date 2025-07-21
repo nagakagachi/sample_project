@@ -141,6 +141,10 @@ namespace ngl::render::app
             // 重要座標を更新
             mapped_ptr->important_point = important_point_world;
             
+            // テッセレーション閾値を設定
+            mapped_ptr->tessellation_split_threshold = 0.1f;   // 分割閾値
+            mapped_ptr->tessellation_merge_factor = 0.5f;      // 統合係数（分割閾値に対する比率, 0.5 = 50%）
+            
             cbh->buffer_.Unmap();
         }
         
