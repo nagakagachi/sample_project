@@ -21,6 +21,6 @@ void main_cs(
     int bisector_index = index_cache[thread_id].x;  // x = i番目の1ビット（使用中Bisector）
     
     // Bisectorのcommandフィールドをゼロリセット
-    bisector_pool_rw[bisector_index].command = 111;
+    bisector_pool_rw[bisector_index].command = 0;
 }
 

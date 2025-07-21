@@ -143,6 +143,8 @@ RWBuffer<uint> cbt_buffer_rw;
 StructuredBuffer<Bisector> bisector_pool;
 RWStructuredBuffer<Bisector> bisector_pool_rw;
 
+StructuredBuffer<HalfEdge> half_edge_buffer;
+
 Buffer<int2> index_cache;
 RWBuffer<int2> index_cache_rw;
 

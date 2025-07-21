@@ -368,11 +368,15 @@ namespace ngl::render::app
                         
                         ngl::rhi::DescriptorSetDep desc_set = {};
                         cbt_gpu_resources_array_[shape_idx].BindResources(cbt_init_leaf_pso_.Get(), &desc_set);
+                        
+                        // HalfEdgeバッファを追加でバインド
+                        cbt_init_leaf_pso_->SetView(&desc_set, "half_edge_buffer", half_edge_srv_array_[shape_idx].Get());
+                        
                         command_list->SetDescriptorSet(cbt_init_leaf_pso_.Get(), &desc_set);
                         
-                        // Bisector総数をワークサイズとしてDispatchHelper使用
-                        uint32_t bisector_work_size = cbt_gpu_resources_array_[shape_idx].max_bisectors;
-                        cbt_init_leaf_pso_->DispatchHelper(command_list, bisector_work_size, 1, 1);
+                        // HalfEdge数をワークサイズとしてDispatchHelper使用
+                        uint32_t half_edge_work_size = static_cast<uint32_t>(half_edge_mesh_array_[shape_idx].half_edge_.size());
+                        cbt_init_leaf_pso_->DispatchHelper(command_list, half_edge_work_size, 1, 1);
                     }
 
                     // 2. Sum Reduction実行
