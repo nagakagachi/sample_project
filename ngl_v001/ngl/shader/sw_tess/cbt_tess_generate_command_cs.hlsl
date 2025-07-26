@@ -319,5 +319,12 @@ void main_cs(
         // 統合処理：統合コマンドを設定
         SetMergeCommands(bisector_index);
     }
+
+
+    // デバッグ用: 分割評価値をBisectorに保存
+    bisector_pool_rw[bisector_index].debug_subdivision_value = subdivision_value;
+    
+
+
     // else: 閾値範囲内の場合は何もしない（既存のcommandを保持）
 }

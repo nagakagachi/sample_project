@@ -1,6 +1,10 @@
 // cbt_tess_reserve_block.hlsl
 #include "cbt_tess_common.hlsli"
 
+
+
+
+
 // メモリブロックを予約するパス
 // generate_commandで生成されたコマンドに基づいて新規Bisectorを予約
 [numthreads(CBT_THREAD_GROUP_SIZE, 1, 1)]
@@ -26,26 +30,44 @@ void main_cs(
     // 分割コマンドのチェックと子Bisector情報の計算
     if (command & (BISECTOR_CMD_TWIN_SPLIT | BISECTOR_CMD_PREV_SPLIT | BISECTOR_CMD_NEXT_SPLIT))
     {
-        // 最初の子Bisectorの情報を計算
-        uint2 first_child_info = CalcFirstChildBisectorInfo(bisector.bs_id, bisector.bs_depth);
-        uint first_child_id = first_child_info.x;
-        uint child_depth = first_child_info.y;
-        uint second_child_id = first_child_id + 1;  // 二番目の子は +1
-        
-        // TODO: 実際のBisector割り当て処理
-        // 1. alloc_counterをアトミック増分して新規インデックス取得
-        // 2. 子Bisectorを新規インデックスに作成
-        // 3. alloc_ptrに割り当て先インデックスを保存
-        
-        // 例：分割ロジック（実装予定）
-        // uint new_bisector_index1, new_bisector_index2;
-        // if (ReserveBisectorSlots(2, new_bisector_index1, new_bisector_index2))
-        // {
-        //     InitializeChildBisector(new_bisector_index1, first_child_id, child_depth, bisector);
-        //     InitializeChildBisector(new_bisector_index2, second_child_id, child_depth, bisector);
-        //     bisector_pool_rw[bisector_index].alloc_ptr[0] = new_bisector_index1;
-        //     bisector_pool_rw[bisector_index].alloc_ptr[1] = new_bisector_index2;
-        // }
+        // 簡単のため、Twin分割のみ処理し、隣接コマンドがない場合のみ実行
+        if ((command & BISECTOR_CMD_TWIN_SPLIT) && 
+            !(command & (BISECTOR_CMD_PREV_SPLIT | BISECTOR_CMD_NEXT_SPLIT)))
+        {
+            // 最初の子Bisectorの情報を計算
+            uint2 first_child_info = CalcFirstChildBisectorInfo(bisector.bs_id, bisector.bs_depth);
+            uint first_child_id = first_child_info.x;
+            uint child_depth = first_child_info.y;
+            uint second_child_id = first_child_id + 1;  // 二番目の子は +1
+            
+            // 新規アロケーション: 2つのBisectorを確保
+            const uint nAlloc = 2;
+            uint counter;
+            InterlockedAdd(alloc_counter_rw[0], -(int)nAlloc, counter);
+            
+            // counter から counter + nAlloc - 1 の未使用BisectorIndexを使用
+            // index_cacheのy成分（未使用インデックス）から実際のBisectorIndexを取得
+            int first_unused_index = FindIthBit0InCBT(cbt_buffer, counter);
+            int second_unused_index = FindIthBit0InCBT(cbt_buffer, counter + 1);
+            
+            // 両方のインデックスが有効な場合のみ処理続行
+            if (first_unused_index >= 0 && second_unused_index >= 0)
+            {
+                // 割り当て先インデックスをalloc_ptrに保存
+                bisector_pool_rw[bisector_index].alloc_ptr[0] = (uint)first_unused_index;
+                bisector_pool_rw[bisector_index].alloc_ptr[1] = (uint)second_unused_index;
+                
+                // TODO: 実際の子Bisector初期化は次のパスで実行
+                // - 新規Bisectorの基本情報設定 (bs_id, bs_depth)
+                // - Twin, Prev, Next リンクの設定
+                // - 親Bisectorからのリンク更新
+            }
+            else
+            {
+                // アロケーション失敗：カウンタを元に戻す
+                InterlockedAdd(alloc_counter_rw[0], (int)nAlloc);
+            }
+        }
     }
     // 分割コマンドが無い場合のみ統合処理を実行
     else if (command & (BISECTOR_CMD_BOUNDARY_MERGE | BISECTOR_CMD_INTERIOR_MERGE))

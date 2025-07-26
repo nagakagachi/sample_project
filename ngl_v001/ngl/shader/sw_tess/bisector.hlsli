@@ -23,6 +23,9 @@ struct Bisector
     int prev;         // HalfEdgeと同様に自身からみてPrevの関係にある隣接Bisectorのインデックス
     int twin;         // HalfEdgeと同様に自身からみてTWINの関係にある隣接Bisectorのインデックス
     int alloc_ptr[4]; // generate_command.hlsl で生成されたコマンドをreserve_blockで評価して実際に割り当てた新規Bisectorへのインデックスを保持する (16 bytes total)
+    
+    float debug_subdivision_value; // デバッグ用: GenerateCommandで計算された分割評価値
+    uint  padding1, padding2, padding3; // 16byteアライメント調整用
 };
 
 

@@ -94,26 +94,39 @@ namespace ngl::render::app
         {
             rhi::BufferDep::Desc desc = {};
             desc.heap_type = rhi::EResourceHeapType::Default;
-            desc.bind_flag = rhi::ResourceBindFlag::UnorderedAccess;
-            desc.element_byte_size = sizeof(uint32_t) * 3;  // uint3
+            desc.bind_flag = rhi::ResourceBindFlag::UnorderedAccess | rhi::ResourceBindFlag::IndirectArg;
+            desc.element_byte_size = sizeof(uint32_t) * 3;
             desc.element_count = 1;
             if (!indirect_dispatch_arg_for_bisector_buffer->Initialize(p_device, desc)) return false;
         }
         indirect_dispatch_arg_for_bisector_uav = new rhi::UnorderedAccessViewDep();
-        if (!indirect_dispatch_arg_for_bisector_uav->InitializeAsStructured(p_device, indirect_dispatch_arg_for_bisector_buffer.Get(), sizeof(uint32_t) * 3, 0, 1)) return false;
+        if (!indirect_dispatch_arg_for_bisector_uav->InitializeAsTyped(p_device, indirect_dispatch_arg_for_bisector_buffer.Get(), rhi::EResourceFormat::Format_R32_UINT, 0, 3)) return false;
 
         indirect_dispatch_arg_for_index_cache_buffer = new rhi::BufferDep();
         {
             rhi::BufferDep::Desc desc = {};
             desc.heap_type = rhi::EResourceHeapType::Default;
-            desc.bind_flag = rhi::ResourceBindFlag::UnorderedAccess;
-            desc.element_byte_size = sizeof(uint32_t) * 3;  // uint3
+            desc.bind_flag = rhi::ResourceBindFlag::UnorderedAccess | rhi::ResourceBindFlag::IndirectArg;
+            desc.element_byte_size = sizeof(uint32_t) * 3;
             desc.element_count = 1;
             if (!indirect_dispatch_arg_for_index_cache_buffer->Initialize(p_device, desc)) return false;
         }
         indirect_dispatch_arg_for_index_cache_uav = new rhi::UnorderedAccessViewDep();
-        if (!indirect_dispatch_arg_for_index_cache_uav->InitializeAsStructured(p_device, indirect_dispatch_arg_for_index_cache_buffer.Get(), sizeof(uint32_t) * 3, 0, 1)) return false;
+        if (!indirect_dispatch_arg_for_index_cache_uav->InitializeAsTyped(p_device, indirect_dispatch_arg_for_index_cache_buffer.Get(), rhi::EResourceFormat::Format_R32_UINT, 0, 3)) return false;
         
+        // Draw Indirect Args Buffer (uint4型: VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation)
+        draw_indirect_arg_buffer = new rhi::BufferDep();
+        {
+            rhi::BufferDep::Desc desc = {};
+            desc.heap_type = rhi::EResourceHeapType::Default;
+            desc.bind_flag = rhi::ResourceBindFlag::UnorderedAccess | rhi::ResourceBindFlag::IndirectArg;
+            desc.element_byte_size = sizeof(uint32_t) * 4;  // DrawInstancedIndirect用の4要素構造体
+            desc.element_count = 1;
+            if (!draw_indirect_arg_buffer->Initialize(p_device, desc)) return false;
+        }
+        draw_indirect_arg_uav = new rhi::UnorderedAccessViewDep();
+        if (!draw_indirect_arg_uav->InitializeAsTyped(p_device, draw_indirect_arg_buffer.Get(), rhi::EResourceFormat::Format_R32_UINT, 0, 4)) return false;
+
         return true;
     }
 
@@ -175,6 +188,9 @@ namespace ngl::render::app
         // Indirect Dispatch Args
         pso->SetView(desc_set, "indirect_dispatch_arg_for_bisector", indirect_dispatch_arg_for_bisector_uav.Get());
         pso->SetView(desc_set, "indirect_dispatch_arg_for_index_cache", indirect_dispatch_arg_for_index_cache_uav.Get());
+        
+        // Draw Indirect Args
+        pso->SetView(desc_set, "draw_indirect_arg", draw_indirect_arg_uav.Get());
     }
 
     SwTessellationMesh::~SwTessellationMesh()
@@ -337,9 +353,11 @@ namespace ngl::render::app
                 auto* p_command_list = arg.command_list;
                 int shape_index      = arg.shape_index;
 
-                // AttributeLess描画のため頂点入力を使わずにDraw発行.
+                // CBTテッセレーション結果をIndirect描画で実行
                 p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
-                p_command_list->DrawInstanced(static_cast<u32>(half_edge_mesh_array_[shape_index].half_edge_.size()), 1, 0, 0);
+                
+                // 該当するシェイプのdraw_indirect_arg_bufferを使用してIndirect描画
+                p_command_list->DrawIndirect(cbt_gpu_resources_array_[shape_index].draw_indirect_arg_buffer.Get());
             });
 
         return true;
@@ -451,9 +469,8 @@ namespace ngl::render::app
                     cbt_gpu_resources_array_[shape_idx].BindResources(cbt_cache_index_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
                     command_list->SetDescriptorSet(cbt_cache_index_pso_.Get(), &desc_set);
                     
-                    // Bisector総数をワークサイズとしてDispatchHelper使用
-                    uint32_t bisector_work_size = cbt_gpu_resources_array_[shape_idx].max_bisectors;
-                    cbt_cache_index_pso_->DispatchHelper(command_list, bisector_work_size, 1, 1);
+                    // 有効なBisectorに対するDispatchIndirect実行
+                    command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_index_cache_buffer.Get());
                 }
 
                 // 3. Reset Command Pass
@@ -466,9 +483,8 @@ namespace ngl::render::app
                     cbt_gpu_resources_array_[shape_idx].BindResources(cbt_reset_command_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
                     command_list->SetDescriptorSet(cbt_reset_command_pso_.Get(), &desc_set);
                     
-                    // Bisector総数をワークサイズとしてDispatchHelper使用
-                    uint32_t bisector_work_size = cbt_gpu_resources_array_[shape_idx].max_bisectors;
-                    cbt_reset_command_pso_->DispatchHelper(command_list, bisector_work_size, 1, 1);
+                    // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
+                    command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.Get());
                 }
 
                 // 4. Generate Command Pass
@@ -487,9 +503,8 @@ namespace ngl::render::app
                     
                     command_list->SetDescriptorSet(cbt_generate_command_pso_.Get(), &desc_set);
                     
-                    // Bisector総数をワークサイズとしてDispatchHelper使用
-                    uint32_t bisector_work_size = cbt_gpu_resources_array_[shape_idx].max_bisectors;
-                    cbt_generate_command_pso_->DispatchHelper(command_list, bisector_work_size, 1, 1);
+                    // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
+                    command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.Get());
                 }
 
                 // 5. Reserve Block Pass
@@ -502,9 +517,8 @@ namespace ngl::render::app
                     cbt_gpu_resources_array_[shape_idx].BindResources(cbt_reserve_block_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
                     command_list->SetDescriptorSet(cbt_reserve_block_pso_.Get(), &desc_set);
                     
-                    // Bisector総数をワークサイズとしてDispatchHelper使用
-                    uint32_t bisector_work_size = cbt_gpu_resources_array_[shape_idx].max_bisectors;
-                    cbt_reserve_block_pso_->DispatchHelper(command_list, bisector_work_size, 1, 1);
+                    // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
+                    command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.Get());
                 }
 
                 // 6. Fill New Block Pass
@@ -517,9 +531,8 @@ namespace ngl::render::app
                     cbt_gpu_resources_array_[shape_idx].BindResources(cbt_fill_new_block_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
                     command_list->SetDescriptorSet(cbt_fill_new_block_pso_.Get(), &desc_set);
                     
-                    // Bisector総数をワークサイズとしてDispatchHelper使用
-                    uint32_t bisector_work_size = cbt_gpu_resources_array_[shape_idx].max_bisectors;
-                    cbt_fill_new_block_pso_->DispatchHelper(command_list, bisector_work_size, 1, 1);
+                    // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
+                    command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.Get());
                 }
 
                 // 7. Update Neighbor Pass
@@ -532,9 +545,8 @@ namespace ngl::render::app
                     cbt_gpu_resources_array_[shape_idx].BindResources(cbt_update_neighbor_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
                     command_list->SetDescriptorSet(cbt_update_neighbor_pso_.Get(), &desc_set);
                     
-                    // Bisector総数をワークサイズとしてDispatchHelper使用
-                    uint32_t bisector_work_size = cbt_gpu_resources_array_[shape_idx].max_bisectors;
-                    cbt_update_neighbor_pso_->DispatchHelper(command_list, bisector_work_size, 1, 1);
+                    // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
+                    command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.Get());
                 }
 
                 // 8. Update CBT Bitfield Pass
@@ -547,9 +559,8 @@ namespace ngl::render::app
                     cbt_gpu_resources_array_[shape_idx].BindResources(cbt_update_cbt_bitfield_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
                     command_list->SetDescriptorSet(cbt_update_cbt_bitfield_pso_.Get(), &desc_set);
                     
-                    // Bisector総数をワークサイズとしてDispatchHelper使用
-                    uint32_t bisector_work_size = cbt_gpu_resources_array_[shape_idx].max_bisectors;
-                    cbt_update_cbt_bitfield_pso_->DispatchHelper(command_list, bisector_work_size, 1, 1);
+                    // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
+                    command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.Get());
                 }
 
                 // 9. Sum Reduction Pass
@@ -575,9 +586,8 @@ namespace ngl::render::app
                     cbt_gpu_resources_array_[shape_idx].BindResources(cbt_end_update_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
                     command_list->SetDescriptorSet(cbt_end_update_pso_.Get(), &desc_set);
                     
-                    // Bisector総数をワークサイズとしてDispatchHelper使用
-                    uint32_t bisector_work_size = cbt_gpu_resources_array_[shape_idx].max_bisectors;
-                    cbt_end_update_pso_->DispatchHelper(command_list, bisector_work_size, 1, 1);
+                    // 固定処理のため1グループDispatch
+                    cbt_end_update_pso_->DispatchHelper(command_list, 1, 1, 1);
                 }
             }
         }

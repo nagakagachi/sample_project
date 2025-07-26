@@ -41,28 +41,32 @@ namespace ngl::render::app
         
         rhi::RefBufferDep indirect_dispatch_arg_for_index_cache_buffer;
         rhi::RefUavDep indirect_dispatch_arg_for_index_cache_uav;
+        
+        // Draw Indirect Args Buffer
+        rhi::RefBufferDep draw_indirect_arg_buffer;
+        rhi::RefUavDep draw_indirect_arg_uav;
 
         // CBT Constants
         struct CBTConstants
         {
-            uint32_t cbt_tree_depth;
-            uint32_t cbt_mesh_minimum_tree_depth;
-            uint32_t bisector_pool_max_size;
-            uint32_t frame_index;
-            uint32_t total_half_edges;  // 初期化用
-            
-            uint32_t padding1;       // 16byte alignment
-            uint32_t padding2;       // 16byte alignment
-            uint32_t padding3;       // 16byte alignment
+            uint32_t cbt_tree_depth{};
+            uint32_t cbt_mesh_minimum_tree_depth{};
+            uint32_t bisector_pool_max_size{};
+            uint32_t frame_index{};
+            uint32_t total_half_edges{};  // 初期化用
 
-            ngl::math::Mat34 object_to_world;      // オブジェクト→ワールド変換行列
-            ngl::math::Mat34 world_to_object;      // ワールド→オブジェクト変換行列
-            ngl::math::Vec3 important_point;       // テッセレーション評価で重視する座標（ワールド空間）
-            float tessellation_split_threshold;    // テッセレーション分割閾値
-            float tessellation_merge_factor;       // テッセレーション統合係数 (0.0~1.0, 分割閾値に対する比率)
-            float padding5;                        // 16byte alignment
-            float padding6;                        // 16byte alignment
-            float padding7;                        // 16byte alignment
+            uint32_t padding1{};       // 16byte alignment
+            uint32_t padding2{};       // 16byte alignment
+            uint32_t padding3{};       // 16byte alignment
+
+            ngl::math::Mat34 object_to_world{};      // オブジェクト→ワールド変換行列
+            ngl::math::Mat34 world_to_object{};      // ワールド→オブジェクト変換行列
+            ngl::math::Vec3 important_point{};       // テッセレーション評価で重視する座標（ワールド空間）
+            float tessellation_split_threshold = 0.1f;    // テッセレーション分割閾値
+            float tessellation_merge_factor = 0.5f;       // テッセレーション統合係数 (0.0~1.0, 分割閾値に対する比率)
+            float padding5{};                        // 16byte alignment
+            float padding6{};                        // 16byte alignment
+            float padding7{};                        // 16byte alignment
         };
         
         // CBT initialization data

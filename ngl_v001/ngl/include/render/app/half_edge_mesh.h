@@ -45,6 +45,9 @@ namespace ngl::render::app
         int      prev;          // 4 bytes
         int      twin;          // 4 bytes
         int      alloc_ptr[4];  // 16 bytes  (24 bytes total)
+        
+        float    debug_subdivision_value; // 4 bytes - デバッグ用: GenerateCommandで計算された分割評価値
+        uint32_t padding1, padding2, padding3; // 12 bytes - 16byteアライメント調整用 (16 bytes total)
     };
     static constexpr auto sizeof_Bisector = sizeof(Bisector);
 

@@ -176,8 +176,10 @@ RWBuffer<int2> index_cache_rw;
 Buffer<uint> alloc_counter;
 RWBuffer<uint> alloc_counter_rw;
 
-RWBuffer<uint3> indirect_dispatch_arg_for_bisector;
-RWBuffer<uint3> indirect_dispatch_arg_for_index_cache;
+RWBuffer<uint> indirect_dispatch_arg_for_bisector;
+RWBuffer<uint> indirect_dispatch_arg_for_index_cache;
+
+RWBuffer<uint> draw_indirect_arg;
 
 // CBT基本操作関数（32bit uint リーフ特化）
 uint GetCBTLeafIndex(uint bit_position)

@@ -55,6 +55,7 @@ namespace ngl
 			void SetDescriptorSet(const ComputePipelineStateDep* p_pso, const DescriptorSetDep* p_desc_set);
 			
 			void Dispatch(u32 x, u32 y, u32 z);
+			void DispatchIndirect(BufferDep* p_arg_buffer);
 			
 			// UAV同期Barrier.
 			void ResourceUavBarrier(TextureDep* p_texture);
@@ -101,6 +102,9 @@ namespace ngl
 			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList>	p_command_list_;
 			// For Dxr Interface.
 			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4>	p_command_list4_;
+			
+			// CommandSignature for DispatchIndirect
+			Microsoft::WRL::ComPtr<ID3D12CommandSignature> p_dispatch_indirect_command_signature_;
 		};
 
 		
@@ -147,6 +151,7 @@ namespace ngl
 
 			void DrawInstanced(u32 num_vtx, u32 num_instance, u32 offset_vtx, u32 offset_instance);
 			void DrawIndexedInstanced(u32 index_count_per_instance, u32 instance_count, u32 start_index_location, s32  base_vertex_location, u32 start_instance_location);
+			void DrawIndirect(BufferDep* p_arg_buffer);
 
 
 			void ClearRenderTarget(const RenderTargetViewDep* p_rtv, const float(color)[4]);
@@ -156,6 +161,10 @@ namespace ngl
 			void ResourceBarrier(SwapChainDep* p_swapchain, unsigned int buffer_index, EResourceState prev, EResourceState next);
 			void ResourceBarrier(TextureDep* p_texture, EResourceState prev, EResourceState next);
 			void ResourceBarrier(BufferDep* p_buffer, EResourceState prev, EResourceState next);
+
+		private:
+			// CommandSignature for DrawIndirect
+			Microsoft::WRL::ComPtr<ID3D12CommandSignature> p_draw_indirect_command_signature_;
 		};
 
 		// Gpu Event Marker用.
