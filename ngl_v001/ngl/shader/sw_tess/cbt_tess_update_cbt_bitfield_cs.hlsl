@@ -25,21 +25,57 @@ void main_cs(
     // commandが0の場合は何もしない（自身のビットは1のまま維持）
     if (command == 0) return;
     
-    // 分割や統合が行われたBisector
-    
-    // 1. alloc_ptrに格納された新規Bisectorインデックスのビットを1にする
-    for (uint i = 0; i < 4; ++i)
+    // 分割コマンドの処理
+    if (command & BISECTOR_CMD_ANY_SPLIT)
     {
-        int new_bisector_index = bisector_pool[bisector_index].alloc_ptr[i];
-        if (new_bisector_index >= 0)  // 負数は無効なインデックス
+        // 1. alloc_ptrに格納された新規Bisectorインデックスのビットを1にする
+        for (uint i = 0; i < 4; ++i)
         {
-            // TODO: 実装中の誤作動回避のため一時的にコメントアウト
-            // SetCBTBit(cbt_buffer_rw, new_bisector_index, 1);
+            int new_bisector_index = bisector_pool[bisector_index].alloc_ptr[i];
+            if (new_bisector_index >= 0)  // 負数は無効なインデックス
+            {
+                SetCBTBit(cbt_buffer_rw, new_bisector_index, 1);
+            }
+        }
+        
+        // 2. 自身のインデックスのビットを0にする（無効化）
+        SetCBTBit(cbt_buffer_rw, bisector_index, 0);
+    }
+    // 統合コマンドの処理（代表かつ同意ビットが立っている場合のみ）
+    else if ((command & (BISECTOR_CMD_BOUNDARY_MERGE | BISECTOR_CMD_INTERIOR_MERGE)) &&
+             (command & BISECTOR_CMD_MERGE_REPRESENTATIVE) &&
+             (command & BISECTOR_CMD_MERGE_CONSENT))
+    {
+        // 1. alloc_ptrに格納された新規Bisectorインデックスのビットを1にする
+        for (uint i = 0; i < 4; ++i)
+        {
+            int new_bisector_index = bisector_pool[bisector_index].alloc_ptr[i];
+            if (new_bisector_index >= 0)  // 負数は無効なインデックス
+            {
+                SetCBTBit(cbt_buffer_rw, new_bisector_index, 1);
+            }
+        }
+        
+        // 2. 統合対象のBisectorインデックスのビットを0にする
+        if (command & BISECTOR_CMD_BOUNDARY_MERGE)
+        {
+            // 境界統合：自身と統合相手のビットを0にする
+            int merge_partner_index = bisector_pool[bisector_index].next;
+            SetCBTBit(cbt_buffer_rw, bisector_index, 0);
+            SetCBTBit(cbt_buffer_rw, merge_partner_index, 0);
+        }
+        else if (command & BISECTOR_CMD_INTERIOR_MERGE)
+        {
+            // 内部統合：4つのBisectorのビットを0にする
+            Bisector bj1 = bisector_pool[bisector_index];
+            Bisector bj2 = bisector_pool[bj1.next];
+            Bisector bj3 = bisector_pool[bj2.next];
+            
+            SetCBTBit(cbt_buffer_rw, bisector_index, 0);        // bj1
+            SetCBTBit(cbt_buffer_rw, bj1.next, 0);             // bj2
+            SetCBTBit(cbt_buffer_rw, bj2.next, 0);             // bj3
+            SetCBTBit(cbt_buffer_rw, bj3.next, 0);             // bj4
         }
     }
-    
-    // 2. 自身のインデックスのビットを0にする（無効化）
-    // TODO: 実装中の誤作動回避のため一時的にコメントアウト
-    // SetCBTBit(cbt_buffer_rw, bisector_index, 0);
 }
 

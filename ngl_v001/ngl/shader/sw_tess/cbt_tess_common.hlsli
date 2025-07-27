@@ -93,11 +93,14 @@
 #define BISECTOR_CMD_PREV_SPLIT     (1 << 1)    // Prev分割
 #define BISECTOR_CMD_NEXT_SPLIT     (1 << 2)    // Next分割
 
+// 分割コマンド統合マスク（3つの分割コマンドのOR）
+#define BISECTOR_CMD_ANY_SPLIT      (BISECTOR_CMD_TWIN_SPLIT | BISECTOR_CMD_PREV_SPLIT | BISECTOR_CMD_NEXT_SPLIT)
+
 // 統合コマンド (4ビット, bit3-6)
 #define BISECTOR_CMD_BOUNDARY_MERGE     (1 << 3)    // 境界統合
 #define BISECTOR_CMD_INTERIOR_MERGE     (1 << 4)    // 非境界統合
 #define BISECTOR_CMD_MERGE_REPRESENTATIVE   (1 << 5)    // 統合代表ビット
-#define BISECTOR_CMD_MERGE_AGREEMENT    (1 << 6)    // 統合同意ビット
+#define BISECTOR_CMD_MERGE_CONSENT      (1 << 6)    // 統合同意ビット
     
 
 #include "bisector.hlsli"
@@ -114,7 +117,7 @@ cbuffer CBTTessellationConstants
     uint bisector_pool_max_size;        // Bisectorプールの最大サイズ
     uint frame_index;                   // フレーム番号 (デバッグ用)
     uint total_half_edges;              // 初期化すべきHalfEdge総数
-    uint padding1;                       // 16byte alignment（C++側CBTConstantsと対応）
+    int fixed_subdivision_level;       // 固定分割レベル（-1で無効、0以上で固定分割）
     uint padding2;                       // 16byte alignment（C++側CBTConstantsと対応）
     uint padding3;                       // 16byte alignment（C++側CBTConstantsと対応）
 

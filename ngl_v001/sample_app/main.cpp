@@ -68,6 +68,8 @@ static float dbgw_stat_primary_rtg_execute   = {};
 static int dbgw_sky_debug_mode       = {};
 static float dbgw_sky_debug_mip_bias = 0.0f;
 
+static int sw_tess_fixed_subdivision_level = 0; // -1で無効、0以上で固定分割レベルを指定
+
 class PlayerController
 {
 private:
@@ -358,9 +360,10 @@ bool AppGame::Initialize()
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc));
 
-                ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
-                tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 5.0f));
-                tr.SetColumn3(ngl::math::Vec4(30.0f, 12.0f, 0.0f, 1.0f));
+                ngl::math::Mat34 tr = ngl::math::Mat34::Identity();
+                tr.SetDiagonal(ngl::math::Vec3(spider_base_scale * 1.0f));
+                //tr.SetColumn3(ngl::math::Vec4(30.0f, 12.0f, 0.0f, 1.0f));
+                tr.SetColumn3(ngl::math::Vec3(-10.0f, 15.0f, 2.0f));
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
@@ -670,6 +673,12 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("Enable SubView Render", &dbgw_enable_sub_view_path);
         }
 
+        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
+        if (ImGui::CollapsingHeader("SwTessellation Mesh"))
+        {
+            ImGui::SliderInt("fixed subdivision level", &sw_tess_fixed_subdivision_level, -1, 10);
+        }
+
         ImGui::End();
     }
     const auto dlit_dir = ngl::math::Vec3::Normalize(ngl::math::Mat33::RotAxisY(dbgw_dlit_angle_h) * ngl::math::Mat33::RotAxisX(dbgw_dlit_angle_v) * (-ngl::math::Vec3::UnitY()));
@@ -691,10 +700,13 @@ bool AppGame::ExecuteApp()
         }
     }
 
-    // CBTテッセレーションメッシュにカメラ位置を設定.
+    // CBTテッセレーションメッシュに情報設定.
     for (auto* sw_tess_mesh : sw_tessellation_mesh_array_)
     {
         sw_tess_mesh->SetImportantPoint(camera_pos_);
+
+        // デバッグ用
+        sw_tess_mesh->SetFixedSubdivisionLevel(sw_tess_fixed_subdivision_level);
     }
 
     // 描画用シーン情報.

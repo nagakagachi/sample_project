@@ -31,7 +31,7 @@ void WriteSplitCommands(uint bisector_index)
         bisector_chain[chain_length++] = current_index;
         
         // 現在のBisectorのTwinを取得
-        Bisector current_bisector = bisector_pool[current_index];
+        Bisector current_bisector = bisector_pool_rw[current_index];
         int twin_index = current_bisector.twin;
         
         // 終了条件チェック
@@ -43,7 +43,7 @@ void WriteSplitCommands(uint bisector_index)
         }
         
         // Twin のTwinをチェック
-        Bisector twin_bisector = bisector_pool[twin_index];
+        Bisector twin_bisector = bisector_pool_rw[twin_index];
         if (twin_bisector.twin == (int)current_index)
         {
             // Twin ペアが成立（twin.twin == self）→ 分割許可
@@ -76,7 +76,7 @@ void WriteSplitCommands(uint bisector_index)
             uint next_bisector_index = bisector_chain[i + 1];
             
             // next_bisector から見て current_bisector との関係を判定
-            Bisector next_bisector = bisector_pool[next_bisector_index];
+            Bisector next_bisector = bisector_pool_rw[next_bisector_index];
             
             if (next_bisector.twin == (int)current_bisector_index)
             {
@@ -107,7 +107,7 @@ void WriteSplitCommands(uint bisector_index)
 void WriteMergeCommands(uint bisector_index)
 {
     // bj1: 統合対象のBisector
-    Bisector bj1 = bisector_pool[bisector_index];
+    Bisector bj1 = bisector_pool_rw[bisector_index];
     uint j1 = bj1.bs_id;
     uint depth_j1 = bj1.bs_depth;
     
@@ -125,7 +125,7 @@ void WriteMergeCommands(uint bisector_index)
     // bj2が有効かチェック
     if (bj2_index < 0) return;
     
-    Bisector bj2 = bisector_pool[bj2_index];
+    Bisector bj2 = bisector_pool_rw[bj2_index];
     uint j2 = bj2.bs_id;
     
     // if ⌊j1/2⌋ = ⌊j2/2⌋ then (兄弟Bisectorかチェック)
@@ -135,19 +135,21 @@ void WriteMergeCommands(uint bisector_index)
         if (bj3_index < 0)
         {
             // Merge(bj1, bj2) - boundary
-            // 境界統合：BisectorIndexが最小のものを代表とする
-            uint representative_index = min(bisector_index, (uint)bj2_index);
+            // 境界統合：処理対象のbisectorのみコマンドを書き込み
+            uint command = BISECTOR_CMD_BOUNDARY_MERGE;
             
-            InterlockedOr(bisector_pool_rw[bisector_index].command, BISECTOR_CMD_BOUNDARY_MERGE);
-            InterlockedOr(bisector_pool_rw[bj2_index].command, BISECTOR_CMD_BOUNDARY_MERGE);
+            // bs_idが最小の場合は代表ビットも設定
+            if (j1 < j2)
+            {
+                command |= BISECTOR_CMD_MERGE_REPRESENTATIVE;
+            }
             
-            // 代表ビットは最小インデックスに直接設定
-            InterlockedOr(bisector_pool_rw[representative_index].command, BISECTOR_CMD_MERGE_REPRESENTATIVE);
+            InterlockedOr(bisector_pool_rw[bisector_index].command, command);
         }
         // else if depth_j1 = depth_j3 then
         else 
         {
-            Bisector bj3 = bisector_pool[bj3_index];
+            Bisector bj3 = bisector_pool_rw[bj3_index];
             uint depth_j3 = bj3.bs_depth;
             
             if (depth_j1 == depth_j3)
@@ -159,24 +161,24 @@ void WriteMergeCommands(uint bisector_index)
                 
                 if (bj4_index >= 0)
                 {
-                    Bisector bj4 = bisector_pool[bj4_index];
+                    Bisector bj4 = bisector_pool_rw[bj4_index];
                     uint j4 = bj4.bs_id;
                     
                     // if ⌊j3/2⌋ = ⌊j4/2⌋ then
                     if ((j3 >> 1) == (j4 >> 1))
                     {
                         // Merge(bj1, bj2, bj3, bj4) - non-boundary
-                        // 非境界統合：4つのBisectorすべてに統合コマンドを設定
-                        // BisectorIndexが最小のものを代表とする
-                        uint representative_index = min(min(bisector_index, (uint)bj2_index), min((uint)bj3_index, (uint)bj4_index));
+                        // 非境界統合：処理対象のbisectorのみコマンドを書き込み
+                        uint min_bs_id = min(min(j1, j2), min(j3, j4));
+                        uint command = BISECTOR_CMD_INTERIOR_MERGE;
                         
-                        InterlockedOr(bisector_pool_rw[bisector_index].command, BISECTOR_CMD_INTERIOR_MERGE);
-                        InterlockedOr(bisector_pool_rw[bj2_index].command, BISECTOR_CMD_INTERIOR_MERGE);
-                        InterlockedOr(bisector_pool_rw[bj3_index].command, BISECTOR_CMD_INTERIOR_MERGE);
-                        InterlockedOr(bisector_pool_rw[bj4_index].command, BISECTOR_CMD_INTERIOR_MERGE);
+                        // bs_idが最小の場合は代表ビットも設定
+                        if (j1 == min_bs_id)
+                        {
+                            command |= BISECTOR_CMD_MERGE_REPRESENTATIVE;
+                        }
                         
-                        // 代表ビットは最小インデックスに直接設定
-                        InterlockedOr(bisector_pool_rw[representative_index].command, BISECTOR_CMD_MERGE_REPRESENTATIVE);
+                        InterlockedOr(bisector_pool_rw[bisector_index].command, command);
                     }
                 }
             }
@@ -188,7 +190,7 @@ void WriteMergeCommands(uint bisector_index)
 void SetSplitCommands(uint bisector_index)
 {
     // Bisector情報を取得
-    Bisector bisector = bisector_pool[bisector_index];
+    Bisector bisector = bisector_pool_rw[bisector_index];
     
     // 分割に必要な最大アロケーション数を計算
     uint max_allocation = CalcMaxAllocationForSplit(bisector.bs_depth);
@@ -257,11 +259,16 @@ void main_cs(
         return;
     }
     
+    // デバッグコード：特定の場合だけ実行
+    //if (240 != GetCBTRootValue(cbt_buffer)) {
+    //    return;
+    //}
+    
     // index_cacheから有効なBisectorのインデックスを取得
     const uint bisector_index = index_cache[thread_id].x;
     
     // 処理対象のBisectorを取得
-    Bisector bisector = bisector_pool[bisector_index];
+    Bisector bisector = bisector_pool_rw[bisector_index];
     
     // Bisectorの基本頂点インデックスを取得 (curr, next, prev)
     int3 base_vertex_indices = CalcRootBisectorBaseVertex(bisector.bs_id, bisector.bs_depth);
@@ -308,13 +315,44 @@ void main_cs(
     
     // 5. 統合閾値を動的計算（分割閾値 × 統合係数）
     float merge_threshold = tessellation_split_threshold * tessellation_merge_factor;
-    
-    if (subdivision_value > tessellation_split_threshold)
+
+    bool do_subdivision = false;
+    bool do_merge = false;
+    if(0 <= fixed_subdivision_level)
+    {
+        const int effective_depth = bisector.bs_depth - cbt_mesh_minimum_tree_depth;
+        // 固定分割レベルが設定されている場合
+        if (effective_depth < fixed_subdivision_level)
+        {
+            do_subdivision = true;
+            do_merge = false; // 統合は行わない
+        }
+        else if (effective_depth > fixed_subdivision_level)
+        {
+            do_subdivision = false; // 分割は行わない
+            do_merge = true; // 統合は行う
+        }
+    }
+    else
+    {
+        if (subdivision_value > tessellation_split_threshold)
+        {
+            do_subdivision = true;
+            do_merge = false;
+        }
+        else if (subdivision_value < merge_threshold)
+        {
+            do_merge = true;
+            do_subdivision = false;
+        }
+    }
+
+    if (do_subdivision)
     {
         // 分割処理：分割コマンドを設定
         SetSplitCommands(bisector_index);
     }
-    else if (subdivision_value < merge_threshold)
+    else if (do_merge)
     {
         // 統合処理：統合コマンドを設定
         SetMergeCommands(bisector_index);

@@ -23,8 +23,9 @@
 // 適切なコード生成のためにインクルード.
 #include "../mtl_pass_base_declare.hlsli"
 
-
 #include "../../sw_tess/bisector.hlsli"
+// bisector関連のバッファ定義含む.
+#include "../../sw_tess/cbt_tess_common.hlsli"
 
 
 Texture2D tex_basecolor;
@@ -33,9 +34,8 @@ SamplerState samp_default;
 
 
 
-StructuredBuffer<HalfEdge> half_edge_buffer;
-Buffer<float3>  vertex_position_buffer;
-
+//StructuredBuffer<HalfEdge> half_edge_buffer;
+//Buffer<float3>  vertex_position_buffer;
 
 
 // 頂点入力の自由度を確保するために頂点入力定義とその取得, 変換はマテリアル側に記述する.
@@ -52,34 +52,82 @@ Buffer<float3>  vertex_position_buffer;
         MaterialVertexAttributeData output = (MaterialVertexAttributeData)0;
         
         const uint vertex_id = input.vertex_id;
+        const uint tri_index = vertex_id / 3;           // Bisectorキャッシュインデックス用
+        const uint local_index = vertex_id % 3;         // cur, next, prev相当 (0, 1, 2)
 
-    
-            const float2 test_tri_uv[3] = {
-                float2(0.0, 0.0),
-                float2(1.0, 0.0),
-                float2(0.5, 1.0)
-            };
+        // === CBTテッセレーション処理（共通関数使用版） ===
+        
+        // CBTテッセレーション：index_cacheから有効なBisectorのインデックスを取得
+        const uint bisector_index = index_cache[tri_index].x;
+        
+        // 処理対象のBisectorを取得
+        Bisector bisector = bisector_pool[bisector_index];
+        
+        // Bisectorの基本頂点インデックスを取得 (curr, next, prev)（共通関数を使用）
+        int3 base_vertex_indices = CalcRootBisectorBaseVertex(bisector.bs_id, bisector.bs_depth);
+        
+        // Bisectorの頂点属性補間マトリックスを計算（共通関数を使用）
+        float3x3 attribute_matrix = CalcBisectorAttributeMatrix(bisector.bs_id, bisector.bs_depth);
+        
+        // 基本三角形の頂点座標を取得
+        float3 v0_base = vertex_position_buffer[base_vertex_indices.x]; // curr
+        float3 v1_base = vertex_position_buffer[base_vertex_indices.y]; // next  
+        float3 v2_base = vertex_position_buffer[base_vertex_indices.z]; // prev
+        
+        // 属性マトリックスを使ってBisectorの頂点座標を計算
+        float3x3 base_positions = float3x3(v0_base, v1_base, v2_base);
+        float3x3 bisector_positions = mul(attribute_matrix, base_positions);
+        
+        // Bisectorの三角形頂点座標から適切な頂点を選択
+        output.pos = bisector_positions[local_index]; // local_index: 0=第1頂点, 1=第2頂点, 2=第3頂点
+        
+        // その他の属性設定
+        output.normal = float3(0.0, 1.0, 0.0); // 上向きの法線
+        output.tangent = float3(1.0, 0.0, 0.0); // X軸方向の接線
+        output.binormal = float3(0.0, 0.0, 1.0); // Z軸方向の副接線
+        
+        // Bisector可視化：bs_idから色を生成
+        uint bs_id = bisector.bs_id;
+        float3 bisector_color;
+        bisector_color.r = float((bs_id * 73) % 255) / 255.0;      // ハッシュ関数的な色生成
+        bisector_color.g = float((bs_id * 151) % 255) / 255.0;
+        bisector_color.b = float((bs_id * 233) % 255) / 255.0;
+        output.color0 = float4(bisector_color, 1.0);
+        
+        // UV座標の設定
+        const float2 test_tri_uv[3] = {
+            float2(0.0, 0.0),
+            float2(1.0, 0.0),
+            float2(0.5, 1.0)
+        };
+        output.uv0 = test_tri_uv[local_index];
 
-    
-    
-            const uint tri_index = vertex_id / 3;
-            const uint local_index = vertex_id % 3;
+        // === 元の描画コード（コメントアウト） ===
+        /*
+        const float2 test_tri_uv[3] = {
+            float2(0.0, 0.0),
+            float2(1.0, 0.0),
+            float2(0.5, 1.0)
+        };
 
-            // HalfEdgeからTriangleVertexIndex取得.
-            HalfEdge base_half_edge = half_edge_buffer[tri_index*3];
-            uint3 tri_vertex_index;    
-            tri_vertex_index.x = base_half_edge.vertex;
-            tri_vertex_index.y = half_edge_buffer[base_half_edge.next].vertex;
-            tri_vertex_index.z = half_edge_buffer[base_half_edge.prev].vertex;
-    
-            // ShaderResourceから頂点情報取得.
-	        output.pos = vertex_position_buffer[tri_vertex_index[local_index]];
-            output.normal = float3(0.0, 1.0, 0.0); // 上向きの法線.
-            output.tangent = float3(1.0, 0.0, 0.0); // X軸方向の接線.
-            output.binormal = float3(0.0, 0.0, 1.0); // Z軸方向の副接線.
-            output.color0 = float4(1.0, 1.0, 1.0, 1.0); // 白色.
-            output.uv0 = test_tri_uv[local_index]; // UV座標は矩形の頂点に対応.
-    
+        const uint tri_index = vertex_id / 3;
+        const uint local_index = vertex_id % 3;
+
+        // HalfEdgeからTriangleVertexIndex取得.
+        HalfEdge base_half_edge = half_edge_buffer[tri_index*3];
+        uint3 tri_vertex_index;    
+        tri_vertex_index.x = base_half_edge.vertex;
+        tri_vertex_index.y = half_edge_buffer[base_half_edge.next].vertex;
+        tri_vertex_index.z = half_edge_buffer[base_half_edge.prev].vertex;
+
+        // ShaderResourceから頂点情報取得.
+        output.pos = vertex_position_buffer[tri_vertex_index[local_index]];
+        output.normal = float3(0.0, 1.0, 0.0); // 上向きの法線.
+        output.tangent = float3(1.0, 0.0, 0.0); // X軸方向の接線.
+        output.binormal = float3(0.0, 0.0, 1.0); // Z軸方向の副接線.
+        output.color0 = float4(1.0, 1.0, 1.0, 1.0); // 白色.
+        output.uv0 = test_tri_uv[local_index]; // UV座標は矩形の頂点に対応.
+        */
 
         return output;
     }
@@ -99,7 +147,11 @@ MtlVsOutput MtlVsEntryPoint(MtlVsInput input)
 
 MtlPsOutput MtlPsEntryPoint(MtlPsInput input)
 {
-    const float4 mtl_base_color = tex_basecolor.Sample(samp_default, input.uv0);
+    // Bisector可視化：頂点カラーをベースカラーとして使用
+    const float4 mtl_base_color = input.color0;
+    
+    // 元のテクスチャサンプリング（コメントアウト）
+    //const float4 mtl_base_color = tex_basecolor.Sample(samp_default, input.uv0);
     
     const float occlusion = 1.0; // アトリビュート無しなので常に1.0.
     const float roughness = 0.5; // アトリビュート無しなので常に0.5.
@@ -114,7 +166,7 @@ MtlPsOutput MtlPsEntryPoint(MtlPsInput input)
     // マテリアル出力.
     MtlPsOutput output = (MtlPsOutput)0;
     {
-        output.base_color = mtl_base_color.xyz;
+        output.base_color = mtl_base_color.xyz; // Bisectorの色を出力
         output.occlusion = occlusion;
 
         output.normal_ws = normal_ws;

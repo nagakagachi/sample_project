@@ -130,7 +130,7 @@ namespace ngl::render::app
         return true;
     }
 
-    ngl::rhi::ConstantBufferPooledHandle CBTGpuResources::UpdateConstants(ngl::rhi::DeviceDep* p_device, const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, uint32_t frame_index)
+    ngl::rhi::ConstantBufferPooledHandle CBTGpuResources::UpdateConstants(ngl::rhi::DeviceDep* p_device, const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, uint32_t frame_index, int32_t fixed_subdivision_level)
     {
         // ConstantBufferPoolから定数バッファを確保
         auto cbh = p_device->GetConstantBufferPool()->Alloc(sizeof(CBTConstants));
@@ -146,6 +146,9 @@ namespace ngl::render::app
             
             // フレーム可変データ
             mapped_ptr->frame_index = frame_index;
+            
+            // 固定分割レベル
+            mapped_ptr->fixed_subdivision_level = fixed_subdivision_level;
             
             // 変換行列を更新
             mapped_ptr->object_to_world = object_to_world;
@@ -344,6 +347,16 @@ namespace ngl::render::app
                 // 追加でHalfEdgeバッファなどを設定.
                 pso->SetView(desc_set, "half_edge_buffer", half_edge_srv_array_[shape_index].Get());
                 pso->SetView(desc_set, "vertex_position_buffer", &(shape->position_.rhi_srv));
+                
+                // CBTテッセレーション用バッファを追加バインド
+                pso->SetView(desc_set, "index_cache", cbt_gpu_resources_array_[shape_index].index_cache_srv.Get());
+                pso->SetView(desc_set, "bisector_pool", cbt_gpu_resources_array_[shape_index].bisector_pool_srv.Get());
+                
+                // CBTテッセレーション定数バッファをバインド（最新フレームの定数バッファを使用）
+                if (!cbt_constant_handles_.empty() && shape_index < cbt_constant_handles_.size())
+                {
+                    pso->SetView(desc_set, "CBTTessellationConstants", &cbt_constant_handles_[shape_index]->cbv_);
+                }
             });
 
         // AttrLess用のDrawShape関数オーバーライド.
@@ -367,17 +380,22 @@ namespace ngl::render::app
     {
         // Gameスレッドで実行される更新処理.
         arg.dummy;
+
+        ++local_frame_index_;
     }
     void SwTessellationMesh::UpdateOnRender(gfx::scene::SceneMeshRenderUpdateCallbackArg arg)
     {
         // Renderスレッドで実行される更新処理.
         // command_listに対するシェーダディスパッチなどをする.
         auto* command_list = arg.command_list;
+
+        const int cur_local_frame_render_index_ = local_frame_render_index_;
+        ++local_frame_render_index_;
         
         // 定数バッファを毎フレーム更新（ConstantBufferPoolから確保）
         const auto shape_count = half_edge_mesh_array_.size();
-        std::vector<ngl::rhi::ConstantBufferPooledHandle> cbt_constant_handles;
-        cbt_constant_handles.reserve(shape_count);
+        cbt_constant_handles_.clear();
+        cbt_constant_handles_.reserve(shape_count);
         
         for (size_t shape_idx = 0; shape_idx < shape_count; ++shape_idx)
         {
@@ -388,12 +406,8 @@ namespace ngl::render::app
             // Important Point（テッセレーション評価で重視する座標）
             ngl::math::Vec3 important_point_world = important_point_world_;
             
-            // TODO: フレーム番号の適切な取得方法を実装
-            // 現在は暫定的に固定値を使用
-            uint32_t frame_index = 0;
-            
-            auto cb_handle = cbt_gpu_resources_array_[shape_idx].UpdateConstants(command_list->GetDevice(), object_to_world, important_point_world, frame_index);
-            cbt_constant_handles.push_back(cb_handle);
+            auto cb_handle = cbt_gpu_resources_array_[shape_idx].UpdateConstants(command_list->GetDevice(), object_to_world, important_point_world, cur_local_frame_render_index_, fixed_subdivision_level_);
+            cbt_constant_handles_.push_back(cb_handle);
         }
 
         // CBT Tessellation Pipeline (シェイプ単位で実行)
@@ -414,7 +428,7 @@ namespace ngl::render::app
                         command_list->SetPipelineState(cbt_init_leaf_pso_.Get());
                         
                         ngl::rhi::DescriptorSetDep desc_set = {};
-                        cbt_gpu_resources_array_[shape_idx].BindResources(cbt_init_leaf_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
+                        cbt_gpu_resources_array_[shape_idx].BindResources(cbt_init_leaf_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
                         
                         // HalfEdgeバッファを追加でバインド
                         cbt_init_leaf_pso_->SetView(&desc_set, "half_edge_buffer", half_edge_srv_array_[shape_idx].Get());
@@ -433,7 +447,7 @@ namespace ngl::render::app
                         command_list->SetPipelineState(cbt_sum_reduction_pso_.Get());
                         
                         ngl::rhi::DescriptorSetDep desc_set = {};
-                        cbt_gpu_resources_array_[shape_idx].BindResources(cbt_sum_reduction_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
+                        cbt_gpu_resources_array_[shape_idx].BindResources(cbt_sum_reduction_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
                         command_list->SetDescriptorSet(cbt_sum_reduction_pso_.Get(), &desc_set);
                         
                         cbt_sum_reduction_pso_->DispatchHelper(command_list, 1, 1, 1);
@@ -453,7 +467,7 @@ namespace ngl::render::app
                     command_list->SetPipelineState(cbt_begin_update_pso_.Get());
                     
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_begin_update_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_begin_update_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
                     command_list->SetDescriptorSet(cbt_begin_update_pso_.Get(), &desc_set);
                     
                     cbt_begin_update_pso_->DispatchHelper(command_list, 1, 1, 1);
@@ -466,11 +480,13 @@ namespace ngl::render::app
                     command_list->SetPipelineState(cbt_cache_index_pso_.Get());
                     
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_cache_index_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_cache_index_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
                     command_list->SetDescriptorSet(cbt_cache_index_pso_.Get(), &desc_set);
                     
                     // 有効なBisectorに対するDispatchIndirect実行
                     command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_index_cache_buffer.Get());
+
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].index_cache_buffer.Get() );
                 }
 
                 // 3. Reset Command Pass
@@ -480,11 +496,13 @@ namespace ngl::render::app
                     command_list->SetPipelineState(cbt_reset_command_pso_.Get());
                     
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_reset_command_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_reset_command_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
                     command_list->SetDescriptorSet(cbt_reset_command_pso_.Get(), &desc_set);
                     
                     // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
                     command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.Get());
+                    
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].bisector_pool_buffer.Get() );
                 }
 
                 // 4. Generate Command Pass
@@ -494,7 +512,7 @@ namespace ngl::render::app
                     command_list->SetPipelineState(cbt_generate_command_pso_.Get());
                     
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_generate_command_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_generate_command_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
                     
                     // Generate Commandパス用の追加リソースバインド
                     auto* shape = &(GetModel()->res_mesh_->data_.shape_array_[shape_idx]);
@@ -505,6 +523,8 @@ namespace ngl::render::app
                     
                     // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
                     command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.Get());
+                    
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].bisector_pool_buffer.Get() );
                 }
 
                 // 5. Reserve Block Pass
@@ -514,11 +534,13 @@ namespace ngl::render::app
                     command_list->SetPipelineState(cbt_reserve_block_pso_.Get());
                     
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_reserve_block_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_reserve_block_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
                     command_list->SetDescriptorSet(cbt_reserve_block_pso_.Get(), &desc_set);
                     
                     // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
                     command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.Get());
+                    
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].bisector_pool_buffer.Get() );
                 }
 
                 // 6. Fill New Block Pass
@@ -528,11 +550,13 @@ namespace ngl::render::app
                     command_list->SetPipelineState(cbt_fill_new_block_pso_.Get());
                     
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_fill_new_block_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_fill_new_block_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
                     command_list->SetDescriptorSet(cbt_fill_new_block_pso_.Get(), &desc_set);
                     
                     // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
                     command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.Get());
+                    
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].bisector_pool_buffer.Get() );
                 }
 
                 // 7. Update Neighbor Pass
@@ -542,11 +566,13 @@ namespace ngl::render::app
                     command_list->SetPipelineState(cbt_update_neighbor_pso_.Get());
                     
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_update_neighbor_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_update_neighbor_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
                     command_list->SetDescriptorSet(cbt_update_neighbor_pso_.Get(), &desc_set);
                     
                     // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
                     command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.Get());
+                    
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].bisector_pool_buffer.Get() );
                 }
 
                 // 8. Update CBT Bitfield Pass
@@ -556,11 +582,13 @@ namespace ngl::render::app
                     command_list->SetPipelineState(cbt_update_cbt_bitfield_pso_.Get());
                     
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_update_cbt_bitfield_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_update_cbt_bitfield_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
                     command_list->SetDescriptorSet(cbt_update_cbt_bitfield_pso_.Get(), &desc_set);
                     
                     // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
                     command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.Get());
+                    
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].cbt_buffer.Get() );
                 }
 
                 // 9. Sum Reduction Pass
@@ -570,10 +598,12 @@ namespace ngl::render::app
                     command_list->SetPipelineState(cbt_sum_reduction_pso_.Get());
                     
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_sum_reduction_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_sum_reduction_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
                     command_list->SetDescriptorSet(cbt_sum_reduction_pso_.Get(), &desc_set);
                     
                     cbt_sum_reduction_pso_->DispatchHelper(command_list, 1, 1, 1);
+                    
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].cbt_buffer.Get() );
                 }
 
                 // 10. End Update Pass
@@ -583,7 +613,7 @@ namespace ngl::render::app
                     command_list->SetPipelineState(cbt_end_update_pso_.Get());
                     
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_end_update_pso_.Get(), &desc_set, cbt_constant_handles[shape_idx]);
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_end_update_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
                     command_list->SetDescriptorSet(cbt_end_update_pso_.Get(), &desc_set);
                     
                     // 固定処理のため1グループDispatch

@@ -55,7 +55,7 @@ namespace ngl::render::app
             uint32_t frame_index{};
             uint32_t total_half_edges{};  // 初期化用
 
-            uint32_t padding1{};       // 16byte alignment
+            int32_t fixed_subdivision_level = -1; // 固定分割レベル（-1で無効、0以上で固定分割）
             uint32_t padding2{};       // 16byte alignment
             uint32_t padding3{};       // 16byte alignment
 
@@ -79,7 +79,7 @@ namespace ngl::render::app
         bool Initialize(ngl::rhi::DeviceDep* p_device, uint32_t shape_half_edges, uint32_t average_subdivision_level);
         
         // 定数バッファ更新メソッド（ConstantBufferPoolから確保）
-        ngl::rhi::ConstantBufferPooledHandle UpdateConstants(ngl::rhi::DeviceDep* p_device, const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, uint32_t frame_index);
+        ngl::rhi::ConstantBufferPooledHandle UpdateConstants(ngl::rhi::DeviceDep* p_device, const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, uint32_t frame_index, int32_t fixed_subdivision_level = -1);
         
         // リソースバインド用ヘルパー
         void BindResources(ngl::rhi::ComputePipelineStateDep* pso, ngl::rhi::DescriptorSetDep* desc_set, ngl::rhi::ConstantBufferPooledHandle cb_handle) const;
@@ -112,6 +112,18 @@ namespace ngl::render::app
             return important_point_world_;
         }
 
+        // 固定分割レベルを設定（-1で無効、0以上で固定分割）
+        void SetFixedSubdivisionLevel(int32_t level)
+        {
+            fixed_subdivision_level_ = level;
+        }
+
+        // 現在の固定分割レベルを取得
+        int32_t GetFixedSubdivisionLevel() const
+        {
+            return fixed_subdivision_level_;
+        }
+
     private:
         // Game更新.
         void UpdateOnGame(gfx::scene::SceneMeshGameUpdateCallbackArg arg);
@@ -140,12 +152,21 @@ namespace ngl::render::app
         // CBT GPU Resources (シェイプ単位で管理)
         std::vector<CBTGpuResources> cbt_gpu_resources_array_;
         
+        // CBT定数バッファハンドル（描画時にバインド用）
+        std::vector<ngl::rhi::ConstantBufferPooledHandle> cbt_constant_handles_;
+        
         // CBT共通パラメータ
         uint32_t average_subdivision_level_;
         bool cbt_initialized_ = false;
+
+        u32 local_frame_index_ = 0;  // ローカルフレームインデックス（更新用）
+        u32 local_frame_render_index_ = 0;  // ローカルフレームインデックス（更新用）
         
         // テッセレーション評価で重視する座標
         ngl::math::Vec3 important_point_world_ = ngl::math::Vec3::Zero();
+        
+        // 固定分割レベル（-1で無効、0以上で固定分割）
+        int32_t fixed_subdivision_level_ = -1;
     };
 
 }  // namespace ngl::render::app

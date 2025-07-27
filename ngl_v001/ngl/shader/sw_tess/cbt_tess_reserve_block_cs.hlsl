@@ -1,6 +1,104 @@
 // cbt_tess_reserve_block.hlsl
 #include "cbt_tess_common.hlsli"
 
+// 境界統合の条件をチェックする関数
+// 注意: bisector_indexは統合代表（bs_id最小）のBisectorを指す
+bool CheckBoundaryMergeConditions(uint bisector_index)
+{
+    Bisector bj1 = bisector_pool_rw[bisector_index];
+    
+    // bj2を取得（統合代表から見て常にnextの兄弟）
+    int bj2_index = bj1.next;
+    if (bj2_index < 0) return false;
+    
+    Bisector bj2 = bisector_pool_rw[bj2_index];
+    
+    // 条件1: 両方のBisectorが分割コマンドを持たない
+    if ((bj1.command & BISECTOR_CMD_ANY_SPLIT) || (bj2.command & BISECTOR_CMD_ANY_SPLIT))
+    {
+        return false;
+    }
+    
+    // 条件2: bj2も境界統合コマンドを持つ（bj1は代表なので必ず持つ）
+    if (!(bj2.command & BISECTOR_CMD_BOUNDARY_MERGE))
+    {
+        return false;
+    }
+    
+    // 条件3: 近傍Bisectorも分割コマンドを持たない
+    // bj1の近傍チェック
+    if (bj1.twin >= 0)
+    {
+        Bisector twin1 = bisector_pool_rw[bj1.twin];
+        if (twin1.command & BISECTOR_CMD_ANY_SPLIT)
+            return false;
+    }
+    
+    // bj2の近傍チェック
+    if (bj2.twin >= 0)
+    {
+        Bisector twin2 = bisector_pool_rw[bj2.twin];
+        if (twin2.command & BISECTOR_CMD_ANY_SPLIT)
+            return false;
+    }
+    
+    return true;
+}
+
+// 内部統合の条件をチェックする関数
+// 注意: bisector_indexは統合代表（bs_id最小）のBisectorを指す
+bool CheckInteriorMergeConditions(uint bisector_index)
+{
+    Bisector bj1 = bisector_pool_rw[bisector_index];
+    
+    // 4つのBisector（bj1, bj2, bj3, bj4）を順次取得
+    // 統合代表から見て: bj2=next, bj3=bj2.next, bj4=bj3.next
+    int bj2_index = bj1.next;
+    if (bj2_index < 0) return false;
+    
+    Bisector bj2 = bisector_pool_rw[bj2_index];
+    
+    int bj3_index = bj2.next;
+    if (bj3_index < 0) return false;
+    
+    Bisector bj3 = bisector_pool_rw[bj3_index];
+    
+    int bj4_index = bj3.next;
+    if (bj4_index < 0) return false;
+    
+    Bisector bj4 = bisector_pool_rw[bj4_index];
+    
+    // 条件1: 4つすべてのBisectorが分割コマンドを持たない
+    if ((bj1.command & BISECTOR_CMD_ANY_SPLIT) || (bj2.command & BISECTOR_CMD_ANY_SPLIT) ||
+        (bj3.command & BISECTOR_CMD_ANY_SPLIT) || (bj4.command & BISECTOR_CMD_ANY_SPLIT))
+    {
+        return false;
+    }
+    
+    // 条件2: bj2, bj3, bj4も内部統合コマンドを持つ（bj1は代表なので必ず持つ）
+    if (!(bj2.command & BISECTOR_CMD_INTERIOR_MERGE) ||
+        !(bj3.command & BISECTOR_CMD_INTERIOR_MERGE) ||
+        !(bj4.command & BISECTOR_CMD_INTERIOR_MERGE))
+    {
+        return false;
+    }
+    
+    // 条件3: 各Bisectorの近傍も分割コマンドを持たない
+    int neighbors[] = { bj1.twin, bj2.twin, bj3.twin, bj4.twin };
+    
+    for (int i = 0; i < 4; ++i)
+    {
+        if (neighbors[i] >= 0)
+        {
+            Bisector neighbor = bisector_pool_rw[neighbors[i]];
+            if (neighbor.command & BISECTOR_CMD_ANY_SPLIT)
+                return false;
+        }
+    }
+    
+    return true;
+}
+
 
 
 
@@ -24,11 +122,11 @@ void main_cs(
     const uint bisector_index = index_cache[thread_id].x;
     
     // 処理対象のBisectorを取得
-    Bisector bisector = bisector_pool[bisector_index];
+    Bisector bisector = bisector_pool_rw[bisector_index];
     uint command = bisector.command;
     
     // 分割コマンドのチェックと子Bisector情報の計算
-    if (command & (BISECTOR_CMD_TWIN_SPLIT | BISECTOR_CMD_PREV_SPLIT | BISECTOR_CMD_NEXT_SPLIT))
+    if (command & BISECTOR_CMD_ANY_SPLIT)
     {
         // 簡単のため、Twin分割のみ処理し、隣接コマンドがない場合のみ実行
         if ((command & BISECTOR_CMD_TWIN_SPLIT) && 
@@ -45,53 +143,119 @@ void main_cs(
             uint counter;
             InterlockedAdd(alloc_counter_rw[0], -(int)nAlloc, counter);
             
-            // counter から counter + nAlloc - 1 の未使用BisectorIndexを使用
-            // index_cacheのy成分（未使用インデックス）から実際のBisectorIndexを取得
-            int first_unused_index = FindIthBit0InCBT(cbt_buffer, counter);
-            int second_unused_index = FindIthBit0InCBT(cbt_buffer, counter + 1);
-            
-            // 両方のインデックスが有効な場合のみ処理続行
-            if (first_unused_index >= 0 && second_unused_index >= 0)
+            // アロケーション要求数が確保できているかチェック
+            if (counter < nAlloc)
             {
-                // 割り当て先インデックスをalloc_ptrに保存
-                bisector_pool_rw[bisector_index].alloc_ptr[0] = (uint)first_unused_index;
-                bisector_pool_rw[bisector_index].alloc_ptr[1] = (uint)second_unused_index;
-                
-                // TODO: 実際の子Bisector初期化は次のパスで実行
-                // - 新規Bisectorの基本情報設定 (bs_id, bs_depth)
-                // - Twin, Prev, Next リンクの設定
-                // - 親Bisectorからのリンク更新
-            }
-            else
-            {
-                // アロケーション失敗：カウンタを元に戻す
+                // 要求数が確保できない：カウンタを元に戻して終了
                 InterlockedAdd(alloc_counter_rw[0], (int)nAlloc);
+                return;
             }
+            
+            // 未使用インデックスを取得（アロケーション成功時は必ず有効）
+            uint first_unused_index = (uint)FindIthBit0InCBT(cbt_buffer, counter - nAlloc);
+            uint second_unused_index = (uint)FindIthBit0InCBT(cbt_buffer, counter - nAlloc + 1);
+            
+            // 割り当て先インデックスをalloc_ptrに保存
+            bisector_pool_rw[bisector_index].alloc_ptr[0] = first_unused_index;
+            bisector_pool_rw[bisector_index].alloc_ptr[1] = second_unused_index;
+            
+            // TODO: 実際の子Bisector初期化は次のパスで実行
+            // - 新規Bisectorの基本情報設定 (bs_id, bs_depth)
+            // - Twin, Prev, Next リンクの設定
+            // - 親Bisectorからのリンク更新
         }
     }
     // 分割コマンドが無い場合のみ統合処理を実行
     else if (command & (BISECTOR_CMD_BOUNDARY_MERGE | BISECTOR_CMD_INTERIOR_MERGE))
     {
-        // 親Bisectorの情報を計算
-        uint2 parent_info = CalcParentBisectorInfo(bisector.bs_id, bisector.bs_depth);
-        uint parent_id = parent_info.x;
-        uint parent_depth = parent_info.y;
-        
-        // TODO: 実際の統合処理
-        // 1. 兄弟Bisectorとの統合判定
-        // 2. 統合代表・同意ビットのチェック
-        // 3. 親Bisectorの作成または既存親への統合
-        
-        // 例：統合ロジック（実装予定）
-        // if (command & BISECTOR_CMD_MERGE_REPRESENTATIVE)
-        // {
-        //     uint new_parent_index;
-        //     if (ReserveBisectorSlots(1, new_parent_index))
-        //     {
-        //         InitializeParentBisector(new_parent_index, parent_id, parent_depth, bisector);
-        //         bisector_pool_rw[bisector_index].alloc_ptr[0] = new_parent_index;
-        //     }
-        // }
+        // 統合代表の場合のみ処理
+        if (command & BISECTOR_CMD_MERGE_REPRESENTATIVE)
+        {
+            bool merge_allowed = false;
+            
+            // 境界統合の場合
+            if (command & BISECTOR_CMD_BOUNDARY_MERGE)
+            {
+                merge_allowed = CheckBoundaryMergeConditions(bisector_index);
+            }
+            // 内部統合の場合
+            else if (command & BISECTOR_CMD_INTERIOR_MERGE)
+            {
+                merge_allowed = CheckInteriorMergeConditions(bisector_index);
+            }
+            
+            // 統合条件を満たす場合のみ統合処理を実行
+            if (merge_allowed)
+            {
+                // 親Bisectorの情報を計算
+                uint2 parent_info = CalcParentBisectorInfo(bisector.bs_id, bisector.bs_depth);
+                uint parent_id = parent_info.x;
+                uint parent_depth = parent_info.y;
+                
+                // 境界統合か内部統合かでアロケーション数を決定
+                // 境界統合: 1つの親Bisector, 内部統合: 2つの親Bisector
+                uint nAlloc = (command & BISECTOR_CMD_BOUNDARY_MERGE) ? 1 : 2;
+                
+                uint counter;
+                InterlockedAdd(alloc_counter_rw[0], -(int)nAlloc, counter);
+                
+                // アロケーション要求数が確保できているかチェック
+                if (counter < nAlloc)
+                {
+                    // 要求数が確保できない：カウンタを元に戻して終了
+                    InterlockedAdd(alloc_counter_rw[0], (int)nAlloc);
+                    return;
+                }
+                
+                // 未使用インデックスを取得（アロケーション成功時は必ず有効）
+                uint first_parent_index = (uint)FindIthBit0InCBT(cbt_buffer, counter - nAlloc);
+                uint second_parent_index = (nAlloc > 1) ? (uint)FindIthBit0InCBT(cbt_buffer, counter - nAlloc + 1) : 0;
+                
+                // 割り当て先インデックスをalloc_ptrに保存
+                bisector_pool_rw[bisector_index].alloc_ptr[0] = first_parent_index;
+                bisector_pool_rw[bisector_index].alloc_ptr[1] = second_parent_index;
+                
+                // 境界統合の場合：統合対象bisectorに統合同意ビットを立てる
+                if (command & BISECTOR_CMD_BOUNDARY_MERGE)
+                {
+                    Bisector current_bisector = bisector_pool_rw[bisector_index];
+                    
+                    // 統合代表（bj1）に統合同意ビットを立てる
+                    bisector_pool_rw[bisector_index].command |= BISECTOR_CMD_MERGE_CONSENT;
+                    
+                    // 統合相手（bj2）にも統合同意ビットを立てる
+                    int bj2_index = current_bisector.next;
+                    bisector_pool_rw[bj2_index].command |= BISECTOR_CMD_MERGE_CONSENT;
+                }
+                // 内部統合の場合：もう一方のペアの代表（bs_id最小）にも同じ情報を書き込み
+                else if (command & BISECTOR_CMD_INTERIOR_MERGE)
+                {
+                    Bisector current_bisector = bisector_pool_rw[bisector_index];
+                    
+                    // もう一方のペアの代表は bj1.next.next（bj3）
+                    // CheckInteriorMergeConditionsで存在確認済みのためifチェック不要
+                    int bj2_index = current_bisector.next;
+                    Bisector bj2 = bisector_pool_rw[bj2_index];
+                    int bj3_index = bj2.next;
+                    int bj4_index = bisector_pool_rw[bj3_index].next;
+                    
+                    // 第2ペアの代表（bj3）にも同じalloc_ptr情報を書き込み
+                    bisector_pool_rw[bj3_index].alloc_ptr[0] = first_parent_index;
+                    bisector_pool_rw[bj3_index].alloc_ptr[1] = second_parent_index;
+                    
+                    // 4つすべてのbisectorに統合同意ビットを立てる
+                    bisector_pool_rw[bisector_index].command |= BISECTOR_CMD_MERGE_CONSENT;  // bj1
+                    bisector_pool_rw[bj2_index].command |= BISECTOR_CMD_MERGE_CONSENT;       // bj2
+                    bisector_pool_rw[bj3_index].command |= BISECTOR_CMD_MERGE_CONSENT;       // bj3
+                    bisector_pool_rw[bj4_index].command |= BISECTOR_CMD_MERGE_CONSENT;       // bj4
+                }
+                
+                // TODO: 実際の親Bisector初期化は次のパスで実行
+                // - 新規親Bisectorの基本情報設定 (bs_id, bs_depth)
+                // - Twin, Prev, Next リンクの設定
+                // - 子Bisectorからのリンク更新
+            }
+        }
     }
 }
 

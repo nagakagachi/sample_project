@@ -100,6 +100,7 @@
 
         float2 uv0 = input_wrap.uv0;
 
+        float4 color0 = input_wrap.color0;
 
         // マテリアル側頂点計算コード呼び出し.
         MtlVsInput mtl_input = (MtlVsInput)0;
@@ -140,6 +141,7 @@
         {
             output.pos = pos_cs;
             output.uv0 = uv0;
+            output.color0 = color0;
 
             output.pos_ws = pos_ws;
             output.pos_vs = pos_vs;
