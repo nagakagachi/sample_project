@@ -318,6 +318,8 @@ bool AppGame::Initialize()
         const char* mesh_file_spider         = "../ngl/data/model/assimp/FBX/spider.fbx";
         const float spider_base_scale        = 0.0001f;
 
+        const char* mesh_file_box = "K:\\GitHub\\sample_projct_lib\\ngl_v001\\ngl\\external\\assimp\\test\\models\\FBX\\box.fbx";
+
         // シーンモデル.
 #if 1
         // Sponza.
@@ -361,9 +363,9 @@ bool AppGame::Initialize()
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc));
 
                 ngl::math::Mat34 tr = ngl::math::Mat34::Identity();
-                tr.SetDiagonal(ngl::math::Vec3(spider_base_scale * 1.0f));
+                tr.SetDiagonal(ngl::math::Vec3(spider_base_scale * 3.0f));
                 //tr.SetColumn3(ngl::math::Vec4(30.0f, 12.0f, 0.0f, 1.0f));
-                tr.SetColumn3(ngl::math::Vec3(-10.0f, 15.0f, 2.0f));
+                tr.SetColumn3(ngl::math::Vec3(-10.0f, 15.0f, 4.0f));
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
@@ -449,14 +451,20 @@ bool AppGame::Initialize()
                 sw_tessellation_mesh_array_.push_back(mc.get());
 
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-                // AttrLessなマテリアルを設定.
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc));
+                
 
-                // スケール設定.
                 ngl::math::Mat34 tr = ngl::math::Mat34::Identity();
                 tr.SetColumn3(ngl::math::Vec3(-10.0f, 15.0f, 0.0f));
-                // tr.SetColumn3(ngl::math::Vec3(0.0f, 10.0f, 0.0f));
-                tr.SetDiagonal(ngl::math::Vec3(spider_base_scale));
+                #if 1
+                // 蜘蛛
+                constexpr int tessellation_level = 4;  // 0で無効、1以上で有効.
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), tessellation_level);
+                tr.SetDiagonal(ngl::math::Vec3(spider_base_scale * 3.0f));
+                #else
+                constexpr int tessellation_level = 6;  // 0で無効、1以上で有効.
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), tessellation_level);
+                tr.SetDiagonal(ngl::math::Vec3(3.0f));
+                #endif
                 mc->SetTransform(tr);
             }
         }

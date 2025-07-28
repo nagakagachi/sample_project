@@ -65,7 +65,17 @@ SamplerState samp_default;
         
         // Bisectorの基本頂点インデックスを取得 (curr, next, prev)（共通関数を使用）
         int3 base_vertex_indices = CalcRootBisectorBaseVertex(bisector.bs_id, bisector.bs_depth);
-        
+        const uint base_triangle_hash = base_vertex_indices.x ^ 
+                                       base_vertex_indices.y ^ 
+                                       base_vertex_indices.z;
+        if(0 != (bisector.bs_depth & 1))
+        {
+            // 分割毎に順序が逆転するため表裏を戻すフリップ.
+            const int tmp = base_vertex_indices.x;
+            base_vertex_indices.x = base_vertex_indices.y;
+            base_vertex_indices.y = tmp;
+        }
+
         // Bisectorの頂点属性補間マトリックスを計算（共通関数を使用）
         float3x3 attribute_matrix = CalcBisectorAttributeMatrix(bisector.bs_id, bisector.bs_depth);
         
@@ -86,12 +96,21 @@ SamplerState samp_default;
         output.tangent = float3(1.0, 0.0, 0.0); // X軸方向の接線
         output.binormal = float3(0.0, 0.0, 1.0); // Z軸方向の副接線
         
-        // Bisector可視化：bs_idから色を生成
+        // Bisector可視化：RootBisectorとBisectorIDを組み合わせた色生成
         uint bs_id = bisector.bs_id;
+        
         float3 bisector_color;
-        bisector_color.r = float((bs_id * 73) % 255) / 255.0;      // ハッシュ関数的な色生成
-        bisector_color.g = float((bs_id * 151) % 255) / 255.0;
-        bisector_color.b = float((bs_id * 233) % 255) / 255.0;
+        // Rチャンネル：RootBisectorのID依存（オリジナルトライアングル識別）
+        bisector_color.r = float((base_triangle_hash * 73) % 255) / 255.0;
+        bisector_color.g = float((base_triangle_hash * 151) % 255) / 255.0;
+        bisector_color.b = float((base_triangle_hash * 233) % 255) / 255.0;
+
+        bisector_color.rgb += 0.25*float3(
+            float((bs_id * 73) % 255) / 255.0,
+            float((bs_id * 151) % 255) / 255.0,
+            float((bs_id * 233) % 255) / 255.0
+        );
+        
         output.color0 = float4(bisector_color, 1.0);
         
         // UV座標の設定

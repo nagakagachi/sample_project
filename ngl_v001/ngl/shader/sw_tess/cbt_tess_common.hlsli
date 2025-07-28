@@ -337,36 +337,28 @@ float3x3 CalcBisectorAttributeMatrix(uint bisector_id, uint bisector_depth)
     float3x3 m = float3x3(
         1.0, 0.0, 0.0,
         0.0, 1.0, 0.0,
-        0.5, 0.5, 0.5
+        1.0/3.0, 1.0/3.0, 1.0/3.0
     );
     
     // minimum_tree_depthより深い階層を遡って処理
     while (bisector_depth > cbt_mesh_minimum_tree_depth)
     {
         // 最下位ビットに基づいて変換マトリックスを選択
-        if (bisector_id & 1) // 最下位ビットが1の場合（右の子）
+        if (bisector_id & 1) // 最下位ビットが1の場合
         {
-            // 右の子用の変換マトリックス
-            // 行に頂点の属性を配置した行列に対して左から乗算することで
-            // Bisectorの頂点属性を得るための行列
-            float3x3 right_transform = float3x3(
+            m = mul(float3x3(
                 1.0, 0.0, 0.0,
                 0.0, 0.0, 1.0,
                 0.5, 0.5, 0.0
-            );
-            m = mul(m, right_transform);
+            ), m);
         }
-        else // 最下位ビットが0の場合（左の子）
+        else // 最下位ビットが0の場合
         {
-            // 左の子用の変換マトリックス
-            // 行に頂点の属性を配置した行列に対して左から乗算することで
-            // Bisectorの頂点属性を得るための行列
-            float3x3 left_transform = float3x3(
+            m = mul(float3x3(
                 0.0, 0.0, 1.0,
                 0.0, 1.0, 0.0,
                 0.5, 0.5, 0.0
-            );
-            m = mul(m, left_transform);
+            ), m);
         }
         
         // 次の階層へ
