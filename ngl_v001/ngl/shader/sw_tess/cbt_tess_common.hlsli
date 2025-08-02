@@ -115,20 +115,18 @@ cbuffer CBTTessellationConstants
     uint cbt_tree_depth;                // CBTの木の深さ (log2(leaf_count))
     uint cbt_mesh_minimum_tree_depth;   // オリジナルメッシュ表現の最小深度（Bisectorのdepthオフセット）
     uint bisector_pool_max_size;        // Bisectorプールの最大サイズ
-    uint frame_index;                   // フレーム番号 (デバッグ用)
     uint total_half_edges;              // 初期化すべきHalfEdge総数
+
     int fixed_subdivision_level;       // 固定分割レベル（-1で無効、0以上で固定分割）
-    uint padding2;                       // 16byte alignment（C++側CBTConstantsと対応）
-    uint padding3;                       // 16byte alignment（C++側CBTConstantsと対応）
+    float tessellation_split_threshold; // テッセレーション分割閾値
+    float tessellation_merge_factor;    // テッセレーション統合係数 (0.0~1.0, 分割閾値に対する比率)
+    uint debug_mode_int;                       // 16byte alignment（C++側CBTConstantsと対応）
 
     float3x4 object_to_world;           // オブジェクト空間からワールド空間への変換行列
     float3x4 world_to_object;           // ワールド空間からオブジェクト空間への変換行列
     float3 important_point;             // テッセレーション評価で重視する座標（ワールド空間）
-    float tessellation_split_threshold; // テッセレーション分割閾値
-    float tessellation_merge_factor;    // テッセレーション統合係数 (0.0~1.0, 分割閾値に対する比率)
-    float padding5;                     // 16byte alignment（C++側CBTConstantsと対応）
-    float padding6;                     // 16byte alignment（C++側CBTConstantsと対応）
-    float padding7;                     // 16byte alignment（C++側CBTConstantsと対応）
+
+    uint padding0;
 };
 
 // CBT計算ヘルパー関数

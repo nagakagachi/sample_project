@@ -135,7 +135,7 @@ private:
     ngl::fwk::GraphicsFramework gfxfw_{};
     std::vector<ngl::rhi::EResourceState> swapchain_resource_state_;
 
-    ngl::math::Vec3 camera_pos_   = {-5.0f, 15.0f, -10.0f};
+    ngl::math::Vec3 camera_pos_   = {-9.0f, 15.0f, -5.0f};
     ngl::math::Mat33 camera_pose_ = ngl::math::Mat33::Identity();
     float camera_fov_y            = ngl::math::Deg2Rad(60.0f);  // not half fov.
     PlayerController player_controller{};
@@ -363,7 +363,7 @@ bool AppGame::Initialize()
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc));
 
                 ngl::math::Mat34 tr = ngl::math::Mat34::Identity();
-                tr.SetDiagonal(ngl::math::Vec3(spider_base_scale * 3.0f));
+                tr.SetDiagonal(ngl::math::Vec3(spider_base_scale * 4.0f));
                 //tr.SetColumn3(ngl::math::Vec4(30.0f, 12.0f, 0.0f, 1.0f));
                 tr.SetColumn3(ngl::math::Vec3(-10.0f, 15.0f, 4.0f));
 
@@ -454,16 +454,16 @@ bool AppGame::Initialize()
                 
 
                 ngl::math::Mat34 tr = ngl::math::Mat34::Identity();
-                tr.SetColumn3(ngl::math::Vec3(-10.0f, 15.0f, 0.0f));
-                #if 1
+                tr.SetColumn3(ngl::math::Vec3(-10.0f, 15.0f, -2.0f));
+                #if 0
                 // 蜘蛛
                 constexpr int tessellation_level = 4;  // 0で無効、1以上で有効.
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), tessellation_level);
                 tr.SetDiagonal(ngl::math::Vec3(spider_base_scale * 3.0f));
                 #else
                 constexpr int tessellation_level = 6;  // 0で無効、1以上で有効.
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), tessellation_level);
-                tr.SetDiagonal(ngl::math::Vec3(3.0f));
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), tessellation_level, true);
+                tr.SetDiagonal(ngl::math::Vec3(4.0f));
                 #endif
                 mc->SetTransform(tr);
             }
@@ -685,6 +685,14 @@ bool AppGame::ExecuteApp()
         if (ImGui::CollapsingHeader("SwTessellation Mesh"))
         {
             ImGui::SliderInt("fixed subdivision level", &sw_tess_fixed_subdivision_level, -1, 10);
+            
+            if (ImGui::Button("Reset Tessellation"))
+            {
+                for (auto* sw_tess_mesh : sw_tessellation_mesh_array_)
+                {
+                    sw_tess_mesh->ResetTessellation();
+                }
+            }
         }
 
         ImGui::End();

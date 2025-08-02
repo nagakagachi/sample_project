@@ -5,16 +5,12 @@
 void RefinePointers(uint bisector_index)
 {
     // 分割で生成された子Bisectorのインデックスを取得
-    uint first_child_index = bisector_pool_rw[bisector_index].alloc_ptr[0];   // b^(d+1)_(2j)
-    uint second_child_index = bisector_pool_rw[bisector_index].alloc_ptr[1];  // b^(d+1)_(2j+1)
+    uint first_child_index = bisector_pool_rw[bisector_index].alloc_ptr[0];
+    uint second_child_index = bisector_pool_rw[bisector_index].alloc_ptr[1];
     
-    // next ← Next(b^d_j)
     int next_index = bisector_pool_rw[bisector_index].next;
-    
-    // prev ← Prev(b^d_j)
     int prev_index = bisector_pool_rw[bisector_index].prev;
     
-    // if Prev(next) = b^d_j then
     if (next_index >= 0)
     {
         if (bisector_pool_rw[next_index].command & BISECTOR_CMD_TWIN_SPLIT)
@@ -28,19 +24,16 @@ void RefinePointers(uint bisector_index)
         {
             if (bisector_pool_rw[next_index].prev == (int)bisector_index)
             {
-                // Prev(next) ← b^(d+1)_(2j+1)
                 bisector_pool_rw[next_index].prev = second_child_index;
             }
             else
             {
-                // Twin(next) ← b^(d+1)_(2j+1)
                 bisector_pool_rw[next_index].twin = second_child_index;
             }
         }
         
     }
     
-    // if Next(prev) = b^d_j then
     if (prev_index >= 0)
     {
         if (bisector_pool_rw[prev_index].command & BISECTOR_CMD_TWIN_SPLIT)
@@ -54,12 +47,10 @@ void RefinePointers(uint bisector_index)
         {
             if (bisector_pool_rw[prev_index].next == (int)bisector_index)
             {
-                // Next(prev) ← b^(d+1)_(2j)
                 bisector_pool_rw[prev_index].next = first_child_index;
             }
             else
             {
-                // Twin(prev) ← b^(d+1)_(2j)
                 bisector_pool_rw[prev_index].twin = first_child_index;
             }
         }
@@ -69,46 +60,41 @@ void RefinePointers(uint bisector_index)
 // DecimatePointers実装：統合される2つのBisectorのペアを一つに統合
 void DecimatePointers(uint first_child_index, uint second_child_index, uint parent_index)
 {
-    // procedure DecimatePointers(b^(d+1)_(2j), b^(d+1)_(2j+1))
-    Bisector first_child = bisector_pool_rw[first_child_index];    // b^(d+1)_(2j)
-    Bisector second_child = bisector_pool_rw[second_child_index];  // b^(d+1)_(2j+1)
+    int next_index = bisector_pool_rw[second_child_index].twin;
+    int prev_index = bisector_pool_rw[first_child_index].twin;
     
-    // next ← Twin(b^(d+1)_(2j+1))
-    int next_index = second_child.twin;
-    
-    // prev ← Twin(b^(d+1)_(2j))
-    int prev_index = first_child.twin;
-    
-    // if Prev(next) = b^(d+1)_(2j+1) then
     if (next_index >= 0)
     {
-        Bisector next_bisector = bisector_pool_rw[next_index];
-        if (next_bisector.prev == (int)second_child_index)
+        int edit_neighbor_index = next_index;
+        // 現実装では隣接で統合のみが許可され, 分割の隣接では統合は発生しないためそのパターンは考慮しない.
+        if (bisector_pool_rw[next_index].command & BISECTOR_CMD_MERGE_CONSENT)
         {
-            // Prev(next) ← b^d_j
-            bisector_pool_rw[next_index].prev = parent_index;
+            // reserve時にINTERIORの場合は2つ目のペアの1つ目(prev)の確保ポインタには0番目にそのペアが使用するポインタを設定しているため.
+            // BOUNDARYでもINTERIORでも同じように, ペアの1つ目の確保ポインタの0番目を使用できるように簡略化.
+            edit_neighbor_index = (0==(bisector_pool_rw[next_index].bs_id & 0x01))? bisector_pool_rw[next_index].alloc_ptr[0] : bisector_pool_rw[bisector_pool_rw[next_index].prev].alloc_ptr[0];
         }
+
+        if (bisector_pool_rw[edit_neighbor_index].prev == (int)second_child_index)
+            bisector_pool_rw[edit_neighbor_index].prev = parent_index;
         else
-        {
-            // Twin(next) ← b^d_j
-            bisector_pool_rw[next_index].twin = parent_index;
-        }
+            bisector_pool_rw[edit_neighbor_index].twin = parent_index;
     }
     
-    // if Next(prev) = b^(d+1)_(2j) then
     if (prev_index >= 0)
     {
-        Bisector prev_bisector = bisector_pool_rw[prev_index];
-        if (prev_bisector.next == (int)first_child_index)
+        int edit_neighbor_index = prev_index;
+        // 現実装では隣接で統合のみが許可され, 分割の隣接では統合は発生しないためそのパターンは考慮しない.
+        if (bisector_pool_rw[prev_index].command & BISECTOR_CMD_MERGE_CONSENT)
         {
-            // Next(prev) ← b^d_j
-            bisector_pool_rw[prev_index].next = parent_index;
+            // reserve時にINTERIORの場合は2つ目のペアの1つ目(prev)の確保ポインタには0番目にそのペアが使用するポインタを設定しているため.
+            // BOUNDARYでもINTERIORでも同じように, ペアの1つ目の確保ポインタの0番目を使用できるように簡略化.
+            edit_neighbor_index = (0==(bisector_pool_rw[prev_index].bs_id & 0x01))? bisector_pool_rw[prev_index].alloc_ptr[0] : bisector_pool_rw[bisector_pool_rw[prev_index].prev].alloc_ptr[0];
         }
+
+        if (bisector_pool_rw[edit_neighbor_index].next == (int)first_child_index)
+            bisector_pool_rw[edit_neighbor_index].next = parent_index;
         else
-        {
-            // Twin(prev) ← b^d_j
-            bisector_pool_rw[prev_index].twin = parent_index;
-        }
+            bisector_pool_rw[edit_neighbor_index].twin = parent_index;
     }
 }
 
@@ -126,13 +112,8 @@ void UpdateNeighborsForMerge(uint bisector_index)
         int second_child_index = bisector.next;   // b^(d+1)_(2j+1)（統合相手）
         
         // 統合で生成された親Bisector（b^d_j）
-        uint parent_index = bisector.alloc_ptr[0];
-        
-        if (second_child_index >= 0)
-        {
-            // DecimatePointers適用
-            DecimatePointers(first_child_index, second_child_index, parent_index);
-        }
+        uint parent_index = bisector.alloc_ptr[0];        
+        DecimatePointers(first_child_index, second_child_index, parent_index);
     }
     // 内部統合の場合：2つのペアを統合（DecimatePointersを2回呼び出し）
     else if (command & BISECTOR_CMD_INTERIOR_MERGE)
@@ -171,7 +152,15 @@ void main_cs(
     if (thread_id >= GetCBTRootValue(cbt_buffer)) {
         return;
     }
-    
+
+
+    // デバッグ
+    if(0 != debug_mode_int)
+    {
+        return;
+    }
+
+
     // index_cacheから有効なBisectorのインデックスを取得
     const uint bisector_index = index_cache[thread_id].x;
     
@@ -194,7 +183,7 @@ void main_cs(
              (command & BISECTOR_CMD_MERGE_CONSENT))
     {
         // 統合代表かつ統合同意がある場合のみ隣接Bisectorのリンク更新
-        //UpdateNeighborsForMerge(bisector_index);
+        UpdateNeighborsForMerge(bisector_index);
     }
 }
 

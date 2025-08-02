@@ -259,10 +259,13 @@ void main_cs(
         return;
     }
     
-    // デバッグコード：特定の場合だけ実行
-    //if (240 != GetCBTRootValue(cbt_buffer)) {
-    //    return;
-    //}
+
+    // デバッグ
+    if(0 != debug_mode_int)
+    {
+        return;
+    }
+    
     
     // index_cacheから有効なBisectorのインデックスを取得
     const uint bisector_index = index_cache[thread_id].x;

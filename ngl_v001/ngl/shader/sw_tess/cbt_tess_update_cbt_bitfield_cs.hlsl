@@ -11,12 +11,20 @@ void main_cs(
 {
     const uint thread_id = DTid.x;
     
-    // CBTルート値から有効なBisector数を取得
-    uint active_bisector_count = GetCBTRootValue(cbt_buffer);
-    
     // 有効なBisector範囲外は早期リターン
-    if (thread_id >= active_bisector_count) return;
+    if (thread_id >= GetCBTRootValue(cbt_buffer))
+    {
+        return;
+    }
+
+
+    // デバッグ
+    if(0 != debug_mode_int)
+    {
+        return;
+    }
     
+
     // index_cacheから有効なBisectorインデックスを取得
     int bisector_index = index_cache[thread_id].x;  // x = i番目の1ビット（使用中Bisector）
     

@@ -100,10 +100,11 @@ SamplerState samp_default;
         uint bs_id = bisector.bs_id;
         
         float3 bisector_color;
+        uint debug_color_seed = bs_id;//base_triangle_hash; // デバッグ用のシード値（任意）
         // Rチャンネル：RootBisectorのID依存（オリジナルトライアングル識別）
-        bisector_color.r = float((base_triangle_hash * 73) % 255) / 255.0;
-        bisector_color.g = float((base_triangle_hash * 151) % 255) / 255.0;
-        bisector_color.b = float((base_triangle_hash * 233) % 255) / 255.0;
+        bisector_color.r = float((debug_color_seed * 73) % 255) / 255.0;
+        bisector_color.g = float((debug_color_seed * 151) % 255) / 255.0;
+        bisector_color.b = float((debug_color_seed * 233) % 255) / 255.0;
 
         bisector_color.rgb += 0.25*float3(
             float((bs_id * 73) % 255) / 255.0,

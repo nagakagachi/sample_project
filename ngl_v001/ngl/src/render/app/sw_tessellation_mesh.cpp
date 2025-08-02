@@ -130,7 +130,7 @@ namespace ngl::render::app
         return true;
     }
 
-    ngl::rhi::ConstantBufferPooledHandle CBTGpuResources::UpdateConstants(ngl::rhi::DeviceDep* p_device, const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, uint32_t frame_index, int32_t fixed_subdivision_level)
+    ngl::rhi::ConstantBufferPooledHandle CBTGpuResources::UpdateConstants(ngl::rhi::DeviceDep* p_device, const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, uint32_t frame_index, int32_t fixed_subdivision_level, int debug_count)
     {
         // ConstantBufferPoolから定数バッファを確保
         auto cbh = p_device->GetConstantBufferPool()->Alloc(sizeof(CBTConstants));
@@ -144,8 +144,6 @@ namespace ngl::render::app
             mapped_ptr->bisector_pool_max_size = max_bisectors;
             mapped_ptr->total_half_edges = total_half_edges;
             
-            // フレーム可変データ
-            mapped_ptr->frame_index = frame_index;
             
             // 固定分割レベル
             mapped_ptr->fixed_subdivision_level = fixed_subdivision_level;
@@ -161,6 +159,9 @@ namespace ngl::render::app
             mapped_ptr->tessellation_split_threshold = 0.1f;   // 分割閾値
             mapped_ptr->tessellation_merge_factor = 0.5f;      // 統合係数（分割閾値に対する比率, 0.5 = 50%）
             
+            // デバッグカウント
+            mapped_ptr->debug_mode_int = debug_count;
+
             cbh->buffer_.Unmap();
         }
         
@@ -206,10 +207,13 @@ namespace ngl::render::app
         ngl::rhi::DeviceDep* p_device,
         ngl::fwk::GfxScene* gfx_scene,
         const ngl::res::ResourceHandle<ngl::gfx::ResMeshData>& res_mesh,
-        uint32_t average_subdivision_level)
+        uint32_t average_subdivision_level,
+        bool debug_shape_mode)
     {
         // 専用にマテリアル指定.
         constexpr text::HashText<64> attrles_material_name = "opaque_attrless";
+
+        debug_shape_mode_ = debug_shape_mode;
 
         if (!Super::Initialize(p_device, gfx_scene, res_mesh, attrles_material_name.Get()))
         {
@@ -217,15 +221,28 @@ namespace ngl::render::app
             return false;
         }
 
-        const auto shape_count  =res_mesh->data_.shape_array_.size();
-        
-        // HalfEdge生成.
-        half_edge_mesh_array_.resize(shape_count);
-        for (int i = 0; i < res_mesh->data_.shape_array_.size(); ++i)
+        if(debug_shape_mode_)
         {
-            // Shape単位.
-            const gfx::MeshShapePart& shape = res_mesh->data_.shape_array_[i];
-            half_edge_mesh_array_[i].Initialize(shape.index_.GetTypedRawDataPtr(), shape.num_primitive_ * 3);
+            // デバッグモード.
+            half_edge_mesh_array_.resize(1);
+
+            // デバッグように固定三角形.
+            const u32 tri_index_list[] = {0, 1, 2};
+
+            half_edge_mesh_array_[0].Initialize(tri_index_list, 3);
+        }
+        else
+        {
+            const auto shape_count  =res_mesh->data_.shape_array_.size();
+            
+            // HalfEdge生成.
+            half_edge_mesh_array_.resize(shape_count);
+            for (int i = 0; i < res_mesh->data_.shape_array_.size(); ++i)
+            {
+                // Shape単位.
+                const gfx::MeshShapePart& shape = res_mesh->data_.shape_array_[i];
+                half_edge_mesh_array_[i].Initialize(shape.index_.GetTypedRawDataPtr(), shape.num_primitive_ * 3);
+            }
         }
 
         // HalfEdgeのShaderResource作成.
@@ -293,7 +310,6 @@ namespace ngl::render::app
             cbt_update_neighbor_pso_ = CreateComputePSO("sw_tess/cbt_tess_update_neighbor_cs.hlsl");
             cbt_update_cbt_bitfield_pso_ = CreateComputePSO("sw_tess/cbt_tess_update_cbt_bitfield_cs.hlsl");
             cbt_sum_reduction_pso_ = CreateComputePSO("sw_tess/cbt_sum_reduction_naive_cs.hlsl");
-            cbt_end_update_pso_ = CreateComputePSO("sw_tess/cbt_tess_end_update_cs.hlsl");
         }
 
         // CBT Tessellation Buffers初期化 (シェイプ単位で管理)
@@ -341,6 +357,14 @@ namespace ngl::render::app
                 auto* pso       = arg.pso;
                 auto* desc_set  = arg.desc_set;
                 int shape_index = arg.shape_index;
+
+                if(debug_shape_mode_)
+                {
+                    if(0 != shape_index)
+                    {
+                        return; // デバッグモードでは0番目のシェイプのみ使用
+                    }
+                }
 
                 auto* shape = &(GetModel()->res_mesh_->data_.shape_array_[shape_index]);
 
@@ -397,6 +421,16 @@ namespace ngl::render::app
         cbt_constant_handles_.clear();
         cbt_constant_handles_.reserve(shape_count);
         
+
+
+                static bool debug_subdiv_stop = false;
+                 
+                if(reset_request_)
+                {
+                    debug_subdiv_stop = false; // リセットリクエストがある場合はデバッグ分割停止を解除
+                }
+
+
         for (size_t shape_idx = 0; shape_idx < shape_count; ++shape_idx)
         {
             // 基底クラスからオブジェクトワールド変換行列を取得
@@ -406,9 +440,29 @@ namespace ngl::render::app
             // Important Point（テッセレーション評価で重視する座標）
             ngl::math::Vec3 important_point_world = important_point_world_;
             
-            auto cb_handle = cbt_gpu_resources_array_[shape_idx].UpdateConstants(command_list->GetDevice(), object_to_world, important_point_world, cur_local_frame_render_index_, fixed_subdivision_level_);
+            auto cb_handle = cbt_gpu_resources_array_[shape_idx].UpdateConstants(command_list->GetDevice(), object_to_world, important_point_world, cur_local_frame_render_index_, fixed_subdivision_level_, debug_subdiv_stop ? 1 : 0);
             cbt_constant_handles_.push_back(cb_handle);
         }
+        
+
+        
+                static int s_prev_subdiv_level = -1;
+                if(0 > s_prev_subdiv_level)
+                    s_prev_subdiv_level = fixed_subdivision_level_;
+
+                int prev_subdiv_level = s_prev_subdiv_level;
+                s_prev_subdiv_level = fixed_subdivision_level_;
+                if(!debug_subdiv_stop)
+                {
+                    if(prev_subdiv_level == 1 && fixed_subdivision_level_ == 0)
+                    {
+                        // 特定の遷移が発生したタイミングで停止.
+                        //debug_subdiv_stop = true;
+                    }
+                }
+
+
+
 
         // CBT Tessellation Pipeline (シェイプ単位で実行)
         // TODO: 現在はBisectorPool総数に対してDispatchやDrawしているシェーダがあるが、
@@ -416,8 +470,8 @@ namespace ngl::render::app
         {
             const auto shape_count = half_edge_mesh_array_.size();
 
-            // 初回のみCBT初期化を実行
-            if (!cbt_initialized_)
+            // 初回及びリセットリクエストがある場合.
+            if (reset_request_)
             {
                 for (size_t shape_idx = 0; shape_idx < shape_count; ++shape_idx)
                 {
@@ -435,9 +489,9 @@ namespace ngl::render::app
                         
                         command_list->SetDescriptorSet(cbt_init_leaf_pso_.Get(), &desc_set);
                         
-                        // HalfEdge数をワークサイズとしてDispatchHelper使用
-                        uint32_t half_edge_work_size = static_cast<uint32_t>(half_edge_mesh_array_[shape_idx].half_edge_.size());
-                        cbt_init_leaf_pso_->DispatchHelper(command_list, half_edge_work_size, 1, 1);
+                        // 未使用ビットのクリアをするために最大数をワークサイズとしてDispatch
+                        uint32_t max_bisector_work_size = static_cast<uint32_t>(cbt_gpu_resources_array_[shape_idx].max_bisectors);
+                        cbt_init_leaf_pso_->DispatchHelper(command_list, max_bisector_work_size, 1, 1);
                     }
 
                     // 2. Sum Reduction実行
@@ -454,7 +508,7 @@ namespace ngl::render::app
                     }
                 }
                 
-                cbt_initialized_ = true;
+                reset_request_ = false;
             }
             
             // シェイプ単位でCBT処理を実行
@@ -604,20 +658,6 @@ namespace ngl::render::app
                     cbt_sum_reduction_pso_->DispatchHelper(command_list, 1, 1, 1);
                     
                     command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].cbt_buffer.Get() );
-                }
-
-                // 10. End Update Pass
-                {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_EndUpdate_Shape" + std::to_string(shape_idx)).c_str());
-                    
-                    command_list->SetPipelineState(cbt_end_update_pso_.Get());
-                    
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_end_update_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
-                    command_list->SetDescriptorSet(cbt_end_update_pso_.Get(), &desc_set);
-                    
-                    // 固定処理のため1グループDispatch
-                    cbt_end_update_pso_->DispatchHelper(command_list, 1, 1, 1);
                 }
             }
         }

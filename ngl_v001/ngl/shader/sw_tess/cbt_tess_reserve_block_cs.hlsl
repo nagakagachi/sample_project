@@ -117,6 +117,14 @@ void main_cs(
     if (thread_id >= GetCBTRootValue(cbt_buffer)) {
         return;
     }
+
+
+    // デバッグ
+    if(0 != debug_mode_int)
+    {
+        return;
+    }
+
     
     // index_cacheから有効なBisectorのインデックスを取得
     const uint bisector_index = index_cache[thread_id].x;
@@ -132,12 +140,6 @@ void main_cs(
         if ((command & BISECTOR_CMD_TWIN_SPLIT) && 
             !(command & (BISECTOR_CMD_PREV_SPLIT | BISECTOR_CMD_NEXT_SPLIT)))
         {
-            // 最初の子Bisectorの情報を計算
-            uint2 first_child_info = CalcFirstChildBisectorInfo(bisector.bs_id, bisector.bs_depth);
-            uint first_child_id = first_child_info.x;
-            uint child_depth = first_child_info.y;
-            uint second_child_id = first_child_id + 1;  // 二番目の子は +1
-            
             // 新規アロケーション: 2つのBisectorを確保
             const uint nAlloc = 2;
             uint counter;
@@ -152,8 +154,8 @@ void main_cs(
             }
             
             // 未使用インデックスを取得（アロケーション成功時は必ず有効）
-            uint first_unused_index = (uint)FindIthBit0InCBT(cbt_buffer, counter - nAlloc);
-            uint second_unused_index = (uint)FindIthBit0InCBT(cbt_buffer, counter - nAlloc + 1);
+            const int first_unused_index = index_cache[counter - nAlloc].y;
+            const int second_unused_index = index_cache[counter - nAlloc + 1].y;
             
             // 割り当て先インデックスをalloc_ptrに保存
             bisector_pool_rw[bisector_index].alloc_ptr[0] = first_unused_index;
@@ -165,7 +167,6 @@ void main_cs(
             // - 親Bisectorからのリンク更新
         }
     }
-    // 分割コマンドが無い場合のみ統合処理を実行
     else if (command & (BISECTOR_CMD_BOUNDARY_MERGE | BISECTOR_CMD_INTERIOR_MERGE))
     {
         // 統合代表の場合のみ処理
@@ -187,11 +188,6 @@ void main_cs(
             // 統合条件を満たす場合のみ統合処理を実行
             if (merge_allowed)
             {
-                // 親Bisectorの情報を計算
-                uint2 parent_info = CalcParentBisectorInfo(bisector.bs_id, bisector.bs_depth);
-                uint parent_id = parent_info.x;
-                uint parent_depth = parent_info.y;
-                
                 // 境界統合か内部統合かでアロケーション数を決定
                 // 境界統合: 1つの親Bisector, 内部統合: 2つの親Bisector
                 uint nAlloc = (command & BISECTOR_CMD_BOUNDARY_MERGE) ? 1 : 2;
@@ -208,12 +204,8 @@ void main_cs(
                 }
                 
                 // 未使用インデックスを取得（アロケーション成功時は必ず有効）
-                uint first_parent_index = (uint)FindIthBit0InCBT(cbt_buffer, counter - nAlloc);
-                uint second_parent_index = (nAlloc > 1) ? (uint)FindIthBit0InCBT(cbt_buffer, counter - nAlloc + 1) : 0;
-                
-                // 割り当て先インデックスをalloc_ptrに保存
+                const int first_parent_index = index_cache[counter - nAlloc].y;
                 bisector_pool_rw[bisector_index].alloc_ptr[0] = first_parent_index;
-                bisector_pool_rw[bisector_index].alloc_ptr[1] = second_parent_index;
                 
                 // 境界統合の場合：統合対象bisectorに統合同意ビットを立てる
                 if (command & BISECTOR_CMD_BOUNDARY_MERGE)
@@ -230,6 +222,9 @@ void main_cs(
                 // 内部統合の場合：もう一方のペアの代表（bs_id最小）にも同じ情報を書き込み
                 else if (command & BISECTOR_CMD_INTERIOR_MERGE)
                 {
+                    const int second_parent_index = index_cache[counter - nAlloc + 1].y;
+                    bisector_pool_rw[bisector_index].alloc_ptr[1] = second_parent_index;
+                    
                     Bisector current_bisector = bisector_pool_rw[bisector_index];
                     
                     // もう一方のペアの代表は bj1.next.next（bj3）
@@ -239,9 +234,9 @@ void main_cs(
                     int bj3_index = bj2.next;
                     int bj4_index = bisector_pool_rw[bj3_index].next;
                     
-                    // 第2ペアの代表（bj3）にも同じalloc_ptr情報を書き込み
-                    bisector_pool_rw[bj3_index].alloc_ptr[0] = first_parent_index;
-                    bisector_pool_rw[bj3_index].alloc_ptr[1] = second_parent_index;
+                    // 第2ペアの代表（bj3）にも同じalloc_ptr情報を書き込み. neighbor処理時に簡略化するためにこのペアが使用するsecond_parent_indexを1つ目の要素にいれる.
+                    bisector_pool_rw[bj3_index].alloc_ptr[0] = second_parent_index;
+                    bisector_pool_rw[bj3_index].alloc_ptr[1] = first_parent_index;
                     
                     // 4つすべてのbisectorに統合同意ビットを立てる
                     bisector_pool_rw[bisector_index].command |= BISECTOR_CMD_MERGE_CONSENT;  // bj1

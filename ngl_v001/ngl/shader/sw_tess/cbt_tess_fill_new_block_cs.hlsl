@@ -15,6 +15,14 @@ void main_cs(
         return;
     }
     
+
+    // デバッグ
+    if(0 != debug_mode_int)
+    {
+        return;
+    }
+
+    
     // index_cacheから有効なBisectorのインデックスを取得
     const uint bisector_index = index_cache[thread_id].x;
     
@@ -40,8 +48,7 @@ void main_cs(
             uint second_child_id = first_child_id + 1;
             
             // 最初の子Bisectorを初期化
-            bisector_pool_rw[first_child_index].bs_id = first_child_id;
-            bisector_pool_rw[first_child_index].bs_depth = child_depth;
+            ResetBisector(bisector_pool_rw[first_child_index], first_child_id, child_depth);
             bisector_pool_rw[first_child_index].command = 0;  // コマンドは次フレームで設定
             
             // 最初の子のリンク設定
@@ -60,8 +67,7 @@ void main_cs(
             }
             
             // 2つ目の子Bisectorを初期化
-            bisector_pool_rw[second_child_index].bs_id = second_child_id;
-            bisector_pool_rw[second_child_index].bs_depth = child_depth;
+            ResetBisector(bisector_pool_rw[second_child_index], second_child_id, child_depth);
             bisector_pool_rw[second_child_index].command = 0;  // コマンドは次フレームで設定
             
             // 2つ目の子のリンク設定
@@ -80,7 +86,7 @@ void main_cs(
             }
         }
     }
-    // 分割コマンドがない場合の統合処理
+    // 統合処理
     else if ((command & (BISECTOR_CMD_BOUNDARY_MERGE | BISECTOR_CMD_INTERIOR_MERGE)) &&
              (command & BISECTOR_CMD_MERGE_CONSENT))
     {
@@ -103,14 +109,13 @@ void main_cs(
                 uint parent_depth = parent_info.y;
                 
                 // 親Bisectorを初期化
-                bisector_pool_rw[parent_index].bs_id = parent_id;
-                bisector_pool_rw[parent_index].bs_depth = parent_depth;
+                ResetBisector(bisector_pool_rw[parent_index], parent_id, parent_depth);
                 bisector_pool_rw[parent_index].command = 0;  // コマンドは次フレームで設定
                 
                 // 親のリンク設定（分割の逆）
-                bisector_pool_rw[parent_index].prev = bisector.twin;      // 最初の子のtwin
-                bisector_pool_rw[parent_index].next = merge_partner.twin; // 2つ目の子のtwin
-                bisector_pool_rw[parent_index].twin = bisector.prev;      // 最初の子のprev
+                bisector_pool_rw[parent_index].next = merge_partner.twin;
+                bisector_pool_rw[parent_index].prev = bisector.twin;
+                bisector_pool_rw[parent_index].twin = bisector.prev;
             }
             // 内部統合の処理
             else if (command & BISECTOR_CMD_INTERIOR_MERGE)
@@ -138,24 +143,22 @@ void main_cs(
                 uint second_parent_id = second_parent_info.x;
                 
                 // 第1親Bisectorを初期化
-                bisector_pool_rw[first_parent_index].bs_id = first_parent_id;
-                bisector_pool_rw[first_parent_index].bs_depth = parent_depth;
+                ResetBisector(bisector_pool_rw[first_parent_index], first_parent_id, parent_depth);
                 bisector_pool_rw[first_parent_index].command = 0;  // コマンドは次フレームで設定
                 
                 // 第2親Bisectorを初期化
-                bisector_pool_rw[second_parent_index].bs_id = second_parent_id;
-                bisector_pool_rw[second_parent_index].bs_depth = parent_depth;
+                ResetBisector(bisector_pool_rw[second_parent_index], second_parent_id, parent_depth);
                 bisector_pool_rw[second_parent_index].command = 0;  // コマンドは次フレームで設定
                 
                 // 第1親のリンク設定（分割の逆）
-                bisector_pool_rw[first_parent_index].prev = bj1.twin;      // bj1のtwin
-                bisector_pool_rw[first_parent_index].next = bj2.twin;      // bj2のtwin
-                bisector_pool_rw[first_parent_index].twin = second_parent_index; // 第2親とのtwin関係
+                bisector_pool_rw[first_parent_index].next = bj2.twin;
+                bisector_pool_rw[first_parent_index].prev = bj1.twin;
+                bisector_pool_rw[first_parent_index].twin = second_parent_index;//bj1.prev;
                 
                 // 第2親のリンク設定（分割の逆）
-                bisector_pool_rw[second_parent_index].prev = bj3.twin;     // bj3のtwin
-                bisector_pool_rw[second_parent_index].next = bj4.twin;     // bj4のtwin
-                bisector_pool_rw[second_parent_index].twin = first_parent_index; // 第1親とのtwin関係
+                bisector_pool_rw[second_parent_index].next = bj4.twin;
+                bisector_pool_rw[second_parent_index].prev = bj3.twin;
+                bisector_pool_rw[second_parent_index].twin = first_parent_index;//bj3.prev;
             }
         }
     }
