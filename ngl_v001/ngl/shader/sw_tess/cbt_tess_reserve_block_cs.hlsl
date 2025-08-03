@@ -113,7 +113,7 @@ void main_cs(
 {
     const uint thread_id = DTid.x;
 
-    if(!tessellation_update) return;
+    //if(!tessellation_update) return;
     
     // 有効なBisector範囲外は早期リターン
     if (thread_id >= GetCBTRootValue(cbt_buffer)) return;
@@ -130,9 +130,8 @@ void main_cs(
     // 分割コマンドのチェックと子Bisector情報の計算
     if (command & BISECTOR_CMD_ANY_SPLIT)
     {
-        // 簡単のため、Twin分割のみ処理し、隣接コマンドがない場合のみ実行
-        if ((command & BISECTOR_CMD_TWIN_SPLIT) && 
-            !(command & (BISECTOR_CMD_PREV_SPLIT | BISECTOR_CMD_NEXT_SPLIT)))
+        // 簡単のためTwin分割のみ実行
+        if ((command & BISECTOR_CMD_TWIN_SPLIT))
         {
             // 新規アロケーション: 2つのBisectorを確保
             const int nAlloc = 2;

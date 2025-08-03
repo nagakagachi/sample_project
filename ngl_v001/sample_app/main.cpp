@@ -467,12 +467,12 @@ bool AppGame::Initialize()
                 tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 3.0f, 1.0f));
                 #else
                 // 6に設定して分割を 0->5 に一気に変更すると不整合
-                constexpr int tessellation_level = 3;  // 0で無効、1以上で有効.
+                constexpr int tessellation_level = 8;  // 0で無効、1以上で有効.
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), tessellation_level, true);
-                tr.SetDiagonal(ngl::math::Vec4(8.0f));
+                tr.SetDiagonal(ngl::math::Vec4(60.0f));
                 tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
                 #endif
-                tr.SetColumn3(ngl::math::Vec4(-10.0f, 13.0f, -2.0f, 0.0f));
+                tr.SetColumn3(ngl::math::Vec4(-10.0f, 19.0f, -2.0f, 0.0f));
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
@@ -740,9 +740,10 @@ bool AppGame::ExecuteApp()
     }
 
     // CBTテッセレーションメッシュに情報設定.
+    const ngl::math::Vec3 tessellation_important_point = camera_pos_ + camera_pose_.GetColumn2() * 6.0f;
     for (auto* sw_tess_mesh : sw_tessellation_mesh_array_)
     {
-        sw_tess_mesh->SetImportantPoint(camera_pos_);
+        sw_tess_mesh->SetImportantPoint(tessellation_important_point);
 
         // デバッグ用
         sw_tess_mesh->SetFixedSubdivisionLevel(sw_tess_fixed_subdivision_level);

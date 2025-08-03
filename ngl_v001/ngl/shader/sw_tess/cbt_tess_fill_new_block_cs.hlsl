@@ -28,9 +28,8 @@ void main_cs(
     // 分割コマンドがある場合の分割処理
     if (command & BISECTOR_CMD_ANY_SPLIT)
     {
-        // Twin分割のみ対応（隣接コマンドがない場合のみ）
-        if ((command & BISECTOR_CMD_TWIN_SPLIT) && 
-            !(command & (BISECTOR_CMD_PREV_SPLIT | BISECTOR_CMD_NEXT_SPLIT)))
+        // Twin分割のみ対応.
+        if ((command & BISECTOR_CMD_TWIN_SPLIT))
         {
             // 予約された子Bisectorのインデックスを取得
             uint first_child_index = bisector.alloc_ptr[0];

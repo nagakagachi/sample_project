@@ -11,7 +11,7 @@ void main_cs(
 {
     const uint thread_id = DTid.x;
 
-    if(!tessellation_update) return;
+    //if(!tessellation_update) return;
     
     // 有効なBisector範囲外は早期リターン
     if (thread_id >= GetCBTRootValue(cbt_buffer)) return;
@@ -23,5 +23,11 @@ void main_cs(
     
     // Bisectorのcommandフィールドをゼロリセット
     bisector_pool_rw[bisector_index].command = 0;
+
+    // デバッグ用更新フラグによるスキップで不整合が起きないように念の為クリア.
+    for (uint i = 0; i < BISECTOR_ALLOC_PTR_SIZE; ++i)
+    {
+        bisector_pool_rw[bisector_index].alloc_ptr[i] = -1;  // 無効値で初期化
+    }
 }
 

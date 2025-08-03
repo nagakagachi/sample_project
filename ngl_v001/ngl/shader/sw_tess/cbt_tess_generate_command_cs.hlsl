@@ -51,8 +51,8 @@ void WriteSplitCommands(uint bisector_index)
             if (chain_length < MAX_CHAIN_LENGTH)
             {
                 bisector_chain[chain_length++] = (uint)twin_index;
+                split_allowed = true;
             }
-            split_allowed = true;
             break;
         }
         
@@ -63,37 +63,67 @@ void WriteSplitCommands(uint bisector_index)
     // 分割許可判定と実行
     if (split_allowed)
     {
-        // チェーン内の全BisectorにTwin分割コマンドを設定
-        for (uint i = 0; i < chain_length; ++i)
-        {
-            InterlockedOr(bisector_pool_rw[bisector_chain[i]].command, BISECTOR_CMD_TWIN_SPLIT);
-        }
-        
-        // チェーン上の隣接要素間の関係性に応じた分割コマンドを追加設定
-        for (uint i = 0; i < chain_length - 1; ++i)
-        {
-            uint current_bisector_index = bisector_chain[i];
-            uint next_bisector_index = bisector_chain[i + 1];
+        #if 1
+            // 以前の実装ではTwin分割に制限しているにも関わらず, 同一DepthのチェックをしていなかったためT-Junctionが発生していた.
+            // その対策バージョン.
+
+            // チェーン上の隣接要素間の関係性に応じた分割コマンドを追加設定
+            for (uint i = 0; i < chain_length; ++i)
+            {
+                const uint current_bisector_index = bisector_chain[i];
+                
+                // next から見て current_bisector との関係を判定
+                if (0 > bisector_pool_rw[current_bisector_index].twin)
+                {
+                    // Twinが境界の場合は分割.
+                    InterlockedOr(bisector_pool_rw[current_bisector_index].command, BISECTOR_CMD_TWIN_SPLIT);
+                }
+                else if (i < chain_length-1)
+                {
+                    const uint next_bisector_index = bisector_chain[i + 1];
+
+                    if(bisector_pool_rw[next_bisector_index].twin == (int)current_bisector_index)
+                    {
+                        // Twinペアの両方に分割コマンドを設定.
+                        InterlockedOr(bisector_pool_rw[current_bisector_index].command, BISECTOR_CMD_TWIN_SPLIT);
+                        InterlockedOr(bisector_pool_rw[next_bisector_index].command, BISECTOR_CMD_TWIN_SPLIT);
+                    }
+                }
+            }
+
+        #else
+            // チェーン内の全BisectorにTwin分割コマンドを設定
+            for (uint i = 0; i < chain_length; ++i)
+            {
+                InterlockedOr(bisector_pool_rw[bisector_chain[i]].command, BISECTOR_CMD_TWIN_SPLIT);
+            }
             
-            // next_bisector から見て current_bisector との関係を判定
-            Bisector next_bisector = bisector_pool_rw[next_bisector_index];
-            
-            if (next_bisector.twin == (int)current_bisector_index)
+            // チェーン上の隣接要素間の関係性に応じた分割コマンドを追加設定
+            for (uint i = 0; i < chain_length - 1; ++i)
             {
-                // current が next のTwinの場合
-                InterlockedOr(bisector_pool_rw[next_bisector_index].command, BISECTOR_CMD_TWIN_SPLIT);
+                uint current_bisector_index = bisector_chain[i];
+                uint next_bisector_index = bisector_chain[i + 1];
+                
+                // next_bisector から見て current_bisector との関係を判定
+                Bisector next_bisector = bisector_pool_rw[next_bisector_index];
+                
+                if (next_bisector.twin == (int)current_bisector_index)
+                {
+                    // current が next のTwinの場合
+                    InterlockedOr(bisector_pool_rw[next_bisector_index].command, BISECTOR_CMD_TWIN_SPLIT);
+                }
+                else if (next_bisector.prev == (int)current_bisector_index)
+                {
+                    // current が next のPrevの場合
+                    InterlockedOr(bisector_pool_rw[next_bisector_index].command, BISECTOR_CMD_PREV_SPLIT);
+                }
+                else if (next_bisector.next == (int)current_bisector_index)
+                {
+                    // current が next のNextの場合
+                    InterlockedOr(bisector_pool_rw[next_bisector_index].command, BISECTOR_CMD_NEXT_SPLIT);
+                }
             }
-            else if (next_bisector.prev == (int)current_bisector_index)
-            {
-                // current が next のPrevの場合
-                InterlockedOr(bisector_pool_rw[next_bisector_index].command, BISECTOR_CMD_PREV_SPLIT);
-            }
-            else if (next_bisector.next == (int)current_bisector_index)
-            {
-                // current が next のNextの場合
-                InterlockedOr(bisector_pool_rw[next_bisector_index].command, BISECTOR_CMD_NEXT_SPLIT);
-            }
-        }
+        #endif
     }
     
     // デバッグ. 探索深さを格納.
@@ -252,11 +282,10 @@ void main_cs(
 {
     const uint thread_id = DTid.x;
 
-    if(!tessellation_update) return;
+    //if(!tessellation_update) return;
     
     // 有効なBisector範囲外は早期リターン
     if (thread_id >= GetCBTRootValue(cbt_buffer)) return;
-    
     
     
     // index_cacheから有効なBisectorのインデックスを取得
@@ -290,23 +319,45 @@ void main_cs(
     float3 v1_world = mul(object_to_world, float4(v1, 1.0f)).xyz;
     float3 v2_world = mul(object_to_world, float4(v2, 1.0f)).xyz;
     
-    // オブジェクト空間での重要座標を計算
-    float3 important_point_object = mul(world_to_object, float4(important_point, 1.0f)).xyz;
-    
-    // Bisectorの分割・統合評価
-    // 1. 三角形の重心座標を計算
-    float3 triangle_center = (v0 + v1 + v2) / 3.0f;
-    
-    // 2. 三角形の面積を計算（外積の半分）
-    float3 edge1 = v1 - v0;
-    float3 edge2 = v2 - v0;
-    float area = length(cross(edge1, edge2)) * 0.5f;
-    
-    // 3. important_pointからの距離を計算
-    float distance_to_important = length(triangle_center - important_point_object);
+    #if 1
+        // ワールド空間での重要座標を計算
+        // Bisectorの分割・統合評価
+        // 1. 三角形の重心座標を計算
+        float3 triangle_center = (v0_world + v1_world + v2_world) / 3.0f;
+
+        // 2. 三角形の面積を計算（外積の半分）
+        float3 edge1 = v1_world - v0_world;
+        float3 edge2 = v2_world - v0_world;
+        float area = length(cross(edge1, edge2)) * 0.5f;
+        
+        // 3. important_pointからの距離を計算
+        //float distance_to_important = length(triangle_center - important_point);
+        float distance_to_important = pow(length(triangle_center - important_point), 1.25);
+    #else
+        const float3 obj_axis_scale = float3(length(object_to_world._m00_m01_m02), 
+                                             length(object_to_world._m10_m11_m12), 
+                                             length(object_to_world._m20_m21_m22));
+        const float obj_approx_scale = max(max(obj_axis_scale.x, obj_axis_scale.y), obj_axis_scale.z);
+
+        // オブジェクト空間での重要座標を計算
+        float3 important_point_object = mul(world_to_object, float4(important_point, 1.0f)).xyz;
+        
+        // Bisectorの分割・統合評価
+        // 1. 三角形の重心座標を計算
+        float3 triangle_center = (v0 + v1 + v2) / 3.0f;
+        
+        // 2. 三角形の面積を計算（外積の半分）
+        float3 edge1 = v1 - v0;
+        float3 edge2 = v2 - v0;
+        float area = length(cross(edge1, edge2)) * 0.5f * obj_approx_scale;
+        
+        // 3. important_pointからの距離を計算
+        float distance_to_important = length(triangle_center - important_point_object);
+    #endif
+
     
     // 4. 分割評価値を計算（面積を距離で重み付け）
-    float subdivision_value = area / max(distance_to_important, 0.001f); // ゼロ除算防止
+    float subdivision_value = area / max(distance_to_important, 0.5f); // ゼロ除算防止
     
     // 5. 統合閾値を動的計算（分割閾値 × 統合係数）
     float merge_threshold = tessellation_split_threshold * tessellation_merge_factor;
@@ -330,7 +381,7 @@ void main_cs(
     }
     else
     {
-        if (subdivision_value > tessellation_split_threshold)
+        if (subdivision_value >= tessellation_split_threshold)
         {
             do_subdivision = true;
             do_merge = false;
@@ -352,12 +403,4 @@ void main_cs(
         // 統合処理：統合コマンドを設定
         SetMergeCommands(bisector_index);
     }
-
-
-    // デバッグ用: 分割評価値をBisectorに保存
-    //bisector_pool_rw[bisector_index].debug_subdivision_value = subdivision_value;
-    
-
-
-    // else: 閾値範囲内の場合は何もしない（既存のcommandを保持）
 }

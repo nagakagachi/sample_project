@@ -148,19 +148,41 @@ float iqint2(float4 pos)
             
             float3 bisector_color;
             
-            const float local_debug_color_seed = local_index * 0.01;
+            const float local_debug_color_seed = local_index;
+
+            
+            
+            const float depth_color_rate = frac((float(bisector.bs_depth - cbt_mesh_minimum_tree_depth)) / 12.0);
+
+            const float3 depth_color_test0 = lerp(float3(0.0, 0.0, 0.8), float3(0.0, 0.8, 0.0), saturate(depth_color_rate*2.0));
+            const float3 depth_color_test1 = lerp(depth_color_test0, float3(1.0, 0.0, 0.0), saturate((depth_color_rate-0.5)*2.0));
+
+            bisector_color.rgb = depth_color_test1;//lerp(float3(0.1, 0.1, 0.3), float3(1.0, 0.0, 0.0), depth_color_rate*depth_color_rate);
+            //bisector_color.g = bisector_color.r;//iqint2(float4(bisector.bs_id, 0.0, 0.0, 0.0)) * 0.1;
+            //bisector_color.b = bisector_color.r;//iqint2(float4(bisector.bs_id, 0.0, 0.0, 0.0)) * 0.1;
+            /*
+            const float local_debug_color_seed = local_index * 0.0;
             bisector_color.r = iqint2(float4(bisector.bs_id, local_debug_color_seed, 0.0, 0.0));
             bisector_color.g = iqint2(float4(bisector.bs_id + total_half_edges, local_debug_color_seed, 0.0, 0.0));
             bisector_color.b = iqint2(float4(bisector.bs_id + total_half_edges * 2, local_debug_color_seed, 0.0, 0.0));
-
+            */
         
         output.color0 = float4(bisector_color, 1.0);
         
         // UV座標の設定
+        /*
         const float2 test_tri_uv[3] = {
             float2(0.0, 0.0),
             float2(1.0, 0.0),
             float2(0.5, 1.0)
+        };
+        output.uv0 = test_tri_uv[local_tri_vtx_indices[local_index]];
+        */
+        // 重心座標可視化用.
+        const float2 test_tri_uv[3] = {
+            float2(0.0, 0.0),
+            float2(1.0, 0.0),
+            float2(0.0, 1.0)
         };
         output.uv0 = test_tri_uv[local_tri_vtx_indices[local_index]];
 
@@ -183,13 +205,21 @@ MtlVsOutput MtlVsEntryPoint(MtlVsInput input)
 MtlPsOutput MtlPsEntryPoint(MtlPsInput input)
 {
     // Bisector可視化：頂点カラーをベースカラーとして使用
-    const float4 mtl_base_color = input.color0;
+    float4 mtl_base_color = input.color0;
     
     // 元のテクスチャサンプリング（コメントアウト）
-    //const float4 mtl_base_color = tex_basecolor.Sample(samp_default, input.uv0);
-    
+    //float4 mtl_base_color = tex_basecolor.Sample(samp_default, input.uv0);
+    {
+        const float3 bary3 = float3(input.uv0, 1.0 - input.uv0.x - input.uv0.y);
+        const float min_bary = min(bary3.x, min(bary3.y, bary3.z));
+
+        mtl_base_color.xyz = (0.01 > min_bary) ? float3(1.0, 1.0, 1.0) : mtl_base_color.xyz; // 赤色で可視化
+    }
+
+
+
     const float occlusion = 1.0; // アトリビュート無しなので常に1.0.
-    const float roughness = 0.5; // アトリビュート無しなので常に0.5.
+    const float roughness = 0.1; // アトリビュート無しなので常に0.5.
     const float metallic = 0.0; // アトリビュート無しなので常に0.0.
     const float surface_optional = 0.0;
     const float material_id = 0.0;
@@ -197,7 +227,6 @@ MtlPsOutput MtlPsEntryPoint(MtlPsInput input)
     const float3 normal_ws = input.normal_ws;
 
     const float3 emissive = float3(0.0, 0.0, 0.0);
-    //const float3 emissive = mtl_base_color.xyz;//float3(0.0, 0.0, 0.0);
 
     // マテリアル出力.
     MtlPsOutput output = (MtlPsOutput)0;

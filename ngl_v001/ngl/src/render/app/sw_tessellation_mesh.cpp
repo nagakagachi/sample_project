@@ -157,8 +157,8 @@ namespace ngl::render::app
             mapped_ptr->important_point = important_point_world;
             
             // テッセレーション閾値を設定
-            mapped_ptr->tessellation_split_threshold = 0.1f;   // 分割閾値
-            mapped_ptr->tessellation_merge_factor = 0.5f;      // 統合係数（分割閾値に対する比率, 0.5 = 50%）
+            mapped_ptr->tessellation_split_threshold = 0.2f;   // 分割閾値
+            mapped_ptr->tessellation_merge_factor = 0.45f;      // 統合係数（分割閾値に対する比率, 0.5 = 50%）
             
             // デバッグその他.
             mapped_ptr->tessellation_debug_flag = debug_flag;
@@ -234,10 +234,12 @@ namespace ngl::render::app
             // デバッグモード.
             half_edge_mesh_array_.resize(1);
 
-            // デバッグように固定三角形.
-            const u32 tri_index_list[] = {0, 1, 2};
+            // デバッグ固定三角形.
+            //const u32 tri_index_list[] = {0, 1, 2};
+            // デバッグ固定四角形.
+            const u32 tri_index_list[] = {0, 2, 1, 0, 1, 3};
 
-            half_edge_mesh_array_[0].Initialize(tri_index_list, 3);
+            half_edge_mesh_array_[0].Initialize(tri_index_list, std::size(tri_index_list));
         }
         else
         {
