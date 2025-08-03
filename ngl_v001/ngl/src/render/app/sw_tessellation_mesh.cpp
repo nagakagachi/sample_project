@@ -438,17 +438,6 @@ namespace ngl::render::app
                     s_prev_subdiv_level = fixed_subdivision_level_;
 
 
-                int prev_subdiv_level = s_prev_subdiv_level;
-                s_prev_subdiv_level = fixed_subdivision_level_;
-                if(!debug_subdiv_stop)
-                {
-                    if(prev_subdiv_level == 4 && fixed_subdivision_level_ == 5)
-                    {
-                        // 特定の遷移が発生したタイミングで停止.
-                        //debug_subdiv_stop = true;
-                    }
-                }
-
 
         for (size_t shape_idx = 0; shape_idx < shape_count; ++shape_idx)
         {
@@ -464,6 +453,17 @@ namespace ngl::render::app
         }
         
 
+
+                int prev_subdiv_level = s_prev_subdiv_level;
+                s_prev_subdiv_level = fixed_subdivision_level_;
+                if(!debug_subdiv_stop)
+                {
+                    if(prev_subdiv_level == 4 && fixed_subdivision_level_ == 5)
+                    {
+                        // 特定の遷移が発生したタイミングで停止.
+                        //debug_subdiv_stop = true;
+                    }
+                }
         
 
 

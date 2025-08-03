@@ -53,31 +53,48 @@ SamplerState samp_default;
         
         const uint vertex_id = input.vertex_id;
         const uint tri_index = vertex_id / 3;           // Bisectorキャッシュインデックス用
-        const uint local_index = vertex_id % 3;         // cur, next, prev相当 (0, 1, 2)
 
-        // === CBTテッセレーション処理（共通関数使用版） ===
-        
         // CBTテッセレーション：index_cacheから有効なBisectorのインデックスを取得
         const uint bisector_index = index_cache[tri_index].x;
         
         // 処理対象のBisectorを取得
         Bisector bisector = bisector_pool[bisector_index];
+        const uint local_index = (bisector.bs_depth & 1)? 2-(vertex_id % 3) : (vertex_id % 3);// Bisectorの深さによる順序反転対応.
 
 
-        // 特定Bisector表示デバッグ.
-        if(IsDebugTargetValid())
-        {
-            if(IsDebugTargetBisector(bisector.bs_id, bisector.bs_depth))
-            {
-                // デバッグ対象のBisectorのみ処理を行う
-            }
-            else
-            {
-                // デバッグ対象でないBisectorはキル
-                output.pos.x = 1.0 / 0.0;
-                return output;
-            }
-        }
+                // 特定Bisector表示デバッグ.
+                if(0 <= debug_target_bisector_id || 0 <= debug_target_bisector_depth)
+                {
+                    if(0 <= debug_target_bisector_id && 0 <= debug_target_bisector_depth)
+                    {
+                        if(bisector.bs_id != debug_target_bisector_id || bisector.bs_depth != debug_target_bisector_depth)
+                        {
+                            // デバッグ対象でないBisectorはキル
+                            output.pos.x = 1.0 / 0.0;
+                            return output;
+                        }
+                    }
+
+                    if(0 > debug_target_bisector_depth)
+                    {
+                        if(0 <= debug_target_bisector_id && bisector.bs_id != debug_target_bisector_id)
+                        {
+                            // デバッグ対象でないBisectorはキル
+                            output.pos.x = 1.0 / 0.0;
+                            return output;
+                        }
+                    }
+                    
+                    if(0 > debug_target_bisector_id)
+                    {
+                        if(0 <= debug_target_bisector_depth && bisector.bs_depth != debug_target_bisector_depth)
+                        {
+                            // デバッグ対象でないBisectorはキル
+                            output.pos.x = 1.0 / 0.0;
+                            return output;
+                        }
+                    }
+                }
 
         
         // Bisectorの基本頂点インデックスを取得 (curr, next, prev)（共通関数を使用）
@@ -85,14 +102,6 @@ SamplerState samp_default;
         const uint base_triangle_hash = base_vertex_indices.x ^ 
                                        base_vertex_indices.y ^ 
                                        base_vertex_indices.z;
-        
-        if(0 != (bisector.bs_depth & 1))
-        {
-            // 分割毎に順序が逆転するため表裏を戻すフリップ.
-            const int tmp = base_vertex_indices.x;
-            base_vertex_indices.x = base_vertex_indices.y;
-            base_vertex_indices.y = tmp;
-        }
 
         // Bisectorの頂点属性補間マトリックスを計算（共通関数を使用）
         float3x3 attribute_matrix = CalcBisectorAttributeMatrix(bisector.bs_id, bisector.bs_depth);
@@ -114,23 +123,23 @@ SamplerState samp_default;
         output.tangent = float3(1.0, 0.0, 0.0); // X軸方向の接線
         output.binormal = float3(0.0, 0.0, 1.0); // Z軸方向の副接線
         
-        // Bisector可視化：RootBisectorとBisectorIDを組み合わせた色生成
-        uint bs_id_seed = bisector.bs_id + 1;
-        
-        float3 bisector_color;
-        //uint debug_color_seed = bs_id_seed;//base_triangle_hash; // デバッグ用のシード値（任意）
-        uint debug_color_seed = (bs_id_seed)/2;//base_triangle_hash; // デバッグ用のシード値（任意）
+            // Bisector可視化：RootBisectorとBisectorIDを組み合わせた色生成
+            uint bs_id_seed = bisector.bs_id + 1;
+            
+            float3 bisector_color;
+            //uint debug_color_seed = bs_id_seed;//base_triangle_hash; // デバッグ用のシード値（任意）
+            uint debug_color_seed = (bs_id_seed)/2;//base_triangle_hash; // デバッグ用のシード値（任意）
 
-        // Rチャンネル：RootBisectorのID依存（オリジナルトライアングル識別）
-        bisector_color.r = float((debug_color_seed * 73) % 255) / 255.0;
-        bisector_color.g = float((debug_color_seed * 151) % 255) / 255.0;
-        bisector_color.b = float((debug_color_seed * 233) % 255) / 255.0;
+            // Rチャンネル：RootBisectorのID依存（オリジナルトライアングル識別）
+            bisector_color.r = float((debug_color_seed * 73) % 255) / 255.0;
+            bisector_color.g = float((debug_color_seed * 151) % 255) / 255.0;
+            bisector_color.b = float((debug_color_seed * 233) % 255) / 255.0;
 
-        bisector_color.rgb += 0.25*float3(
-            float((bs_id_seed * 73) % 255) / 255.0,
-            float((bs_id_seed * 151) % 255) / 255.0,
-            float((bs_id_seed * 233) % 255) / 255.0
-        );
+            bisector_color.rgb += 0.25*float3(
+                float((bs_id_seed * 73) % 255) / 255.0,
+                float((bs_id_seed * 151) % 255) / 255.0,
+                float((bs_id_seed * 233) % 255) / 255.0
+            );
         
         output.color0 = float4(bisector_color, 1.0);
         
@@ -141,33 +150,6 @@ SamplerState samp_default;
             float2(0.5, 1.0)
         };
         output.uv0 = test_tri_uv[local_index];
-
-        // === 元の描画コード（コメントアウト） ===
-        /*
-        const float2 test_tri_uv[3] = {
-            float2(0.0, 0.0),
-            float2(1.0, 0.0),
-            float2(0.5, 1.0)
-        };
-
-        const uint tri_index = vertex_id / 3;
-        const uint local_index = vertex_id % 3;
-
-        // HalfEdgeからTriangleVertexIndex取得.
-        HalfEdge base_half_edge = half_edge_buffer[tri_index*3];
-        uint3 tri_vertex_index;    
-        tri_vertex_index.x = base_half_edge.vertex;
-        tri_vertex_index.y = half_edge_buffer[base_half_edge.next].vertex;
-        tri_vertex_index.z = half_edge_buffer[base_half_edge.prev].vertex;
-
-        // ShaderResourceから頂点情報取得.
-        output.pos = vertex_position_buffer[tri_vertex_index[local_index]];
-        output.normal = float3(0.0, 1.0, 0.0); // 上向きの法線.
-        output.tangent = float3(1.0, 0.0, 0.0); // X軸方向の接線.
-        output.binormal = float3(0.0, 0.0, 1.0); // Z軸方向の副接線.
-        output.color0 = float4(1.0, 1.0, 1.0, 1.0); // 白色.
-        output.uv0 = test_tri_uv[local_index]; // UV座標は矩形の頂点に対応.
-        */
 
         return output;
     }

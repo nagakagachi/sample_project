@@ -369,20 +369,3 @@ float3x3 CalcBisectorAttributeMatrix(uint bisector_id, uint bisector_depth)
     
     return m;
 }
-
-// デバッグ用ヘルパー関数
-
-// 指定したBisectorがデバッグ対象かどうかを判定
-bool IsDebugTargetBisector(uint bisector_id, uint bisector_depth)
-{
-    if (debug_target_bisector_id < 0 || debug_target_bisector_depth < 0)
-        return false; // デバッグターゲットが無効の場合
-    
-    return (int(bisector_id) == debug_target_bisector_id) && (int(bisector_depth) == debug_target_bisector_depth);
-}
-
-// デバッグターゲットが有効かどうかを判定
-bool IsDebugTargetValid()
-{
-    return (debug_target_bisector_id >= 0) && (debug_target_bisector_depth >= 0);
-}

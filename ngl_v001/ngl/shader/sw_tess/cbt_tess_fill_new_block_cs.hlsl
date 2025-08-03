@@ -18,7 +18,7 @@ void main_cs(
     // デバッグ
     if(0 != debug_mode_int)
     {
-        //return;
+        return;
     }
 
     

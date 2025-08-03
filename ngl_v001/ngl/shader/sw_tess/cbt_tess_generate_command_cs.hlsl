@@ -95,12 +95,10 @@ void WriteSplitCommands(uint bisector_index)
             }
         }
     }
-    // else: 配列サイズ不足または無限ループ検出 → 分割キャンセル（何もしない）
     
-    // 追加のPrev/Next分割判定も可能
-    // 必要に応じてPrev/Next Bisectorに対しても分割コマンドを設定
-    // 例: bisector_pool_rw[bj.prev_index].command |= BISECTOR_CMD_PREV_SPLIT;
-    //     bisector_pool_rw[bj.next_index].command |= BISECTOR_CMD_NEXT_SPLIT;
+    // デバッグ. 探索深さを格納.
+    bisector_pool_rw[bisector_index].debug_subdivision_value = chain_length;
+
 }
 
 // 実際の統合コマンドビットを書き込む関数
@@ -257,12 +255,12 @@ void main_cs(
     // 有効なBisector範囲外は早期リターン
     if (thread_id >= GetCBTRootValue(cbt_buffer)) return;
     
-    
+
 
     // デバッグ
     if(0 != debug_mode_int)
     {
-        //return;
+        return;
     }
     
     
@@ -362,7 +360,7 @@ void main_cs(
 
 
     // デバッグ用: 分割評価値をBisectorに保存
-    bisector_pool_rw[bisector_index].debug_subdivision_value = subdivision_value;
+    //bisector_pool_rw[bisector_index].debug_subdivision_value = subdivision_value;
     
 
 
