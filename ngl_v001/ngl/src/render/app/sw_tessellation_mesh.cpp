@@ -130,7 +130,8 @@ namespace ngl::render::app
         return true;
     }
 
-    ngl::rhi::ConstantBufferPooledHandle CBTGpuResources::UpdateConstants(ngl::rhi::DeviceDep* p_device, const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, uint32_t frame_index, int32_t fixed_subdivision_level, int debug_count, int32_t debug_target_bisector_id, int32_t debug_target_bisector_depth)
+    ngl::rhi::ConstantBufferPooledHandle CBTGpuResources::UpdateConstants(ngl::rhi::DeviceDep* p_device, 
+        const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, bool tessellation_update, int32_t fixed_subdivision_level, u32 debug_flag, int32_t debug_target_bisector_id, int32_t debug_target_bisector_depth)
     {
         // ConstantBufferPoolから定数バッファを確保
         auto cbh = p_device->GetConstantBufferPool()->Alloc(sizeof(CBTConstants));
@@ -159,8 +160,11 @@ namespace ngl::render::app
             mapped_ptr->tessellation_split_threshold = 0.1f;   // 分割閾値
             mapped_ptr->tessellation_merge_factor = 0.5f;      // 統合係数（分割閾値に対する比率, 0.5 = 50%）
             
-            // デバッグカウント
-            mapped_ptr->debug_mode_int = debug_count;
+            // デバッグその他.
+            mapped_ptr->tessellation_debug_flag = debug_flag;
+
+            // テッセレーション更新フラグ
+            mapped_ptr->tessellation_update = tessellation_update ? 1 : 0;
 
             // デバッグ対象Bisector情報
             mapped_ptr->debug_target_bisector_id = debug_target_bisector_id;
@@ -451,25 +455,25 @@ namespace ngl::render::app
             // TODO: カメラ位置の適切な取得方法を実装
             // Important Point（テッセレーション評価で重視する座標）
             ngl::math::Vec3 important_point_world = important_point_world_;
-            
-            auto cb_handle = cbt_gpu_resources_array_[shape_idx].UpdateConstants(command_list->GetDevice(), object_to_world, important_point_world, cur_local_frame_render_index_, fixed_subdivision_level_, debug_subdiv_stop ? 1 : 0, debug_target_bisector_id_, debug_target_bisector_depth_);
+
+            auto cb_handle = cbt_gpu_resources_array_[shape_idx].UpdateConstants(command_list->GetDevice(), object_to_world, important_point_world, tessellation_update_, fixed_subdivision_level_, debug_subdiv_stop ? 1 : 0, debug_target_bisector_id_, debug_target_bisector_depth_);
             cbt_constant_handles_.push_back(cb_handle);
         }
         
-
+            /*
                 if(!debug_subdiv_stop)
                 {
-                    if(/*prev_subdiv_level == 4 && */fixed_subdivision_level_ == 5)
+                    if(fixed_subdivision_level_ == 3)
                     {
                         ++debug_div_level_counter;
-                        if(6 <= debug_div_level_counter)
+                        if(2 <= debug_div_level_counter)
                         {
                             // 特定の遷移が発生したタイミングで停止.
-                            //debug_subdiv_stop = true;
+                            debug_subdiv_stop = true;
                         }
                     }
                 }
-        
+            */
 
 
 

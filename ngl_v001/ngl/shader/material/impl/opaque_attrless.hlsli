@@ -33,9 +33,21 @@ Texture2D tex_basecolor;
 SamplerState samp_default;
 
 
-
-//StructuredBuffer<HalfEdge> half_edge_buffer;
-//Buffer<float3>  vertex_position_buffer;
+uint3 iqint2_orig(uint3 x)  
+{  
+    uint k = 1103515245;  
+  
+    x = ((x >> 8) ^ x.yzx) * k;  
+    x = ((x >> 8) ^ x.yzx) * k;  
+    x = ((x >> 8) ^ x.yzx) * k;  
+      
+    return x;  
+} 
+float iqint2(float4 pos)  
+{
+    const uint4 bin_val = uint4(asuint(pos));
+    return (dot(iqint2_orig(bin_val.xyz), 1) + dot(iqint2_orig(bin_val.w), 1)) * 2.3283064365386962890625e-10;
+}
 
 
 // 頂点入力の自由度を確保するために頂点入力定義とその取得, 変換はマテリアル側に記述する.
@@ -135,19 +147,12 @@ SamplerState samp_default;
             uint bs_id_seed = bisector.bs_id + 1;
             
             float3 bisector_color;
-            //uint debug_color_seed = base_triangle_hash; // デバッグ用のシード値（任意）
-            uint debug_color_seed = bs_id_seed ^ base_triangle_hash; // デバッグ用のシード値（任意）
+            
+            const float local_debug_color_seed = local_index * 0.01;
+            bisector_color.r = iqint2(float4(bisector.bs_id, local_debug_color_seed, 0.0, 0.0));
+            bisector_color.g = iqint2(float4(bisector.bs_id + total_half_edges, local_debug_color_seed, 0.0, 0.0));
+            bisector_color.b = iqint2(float4(bisector.bs_id + total_half_edges * 2, local_debug_color_seed, 0.0, 0.0));
 
-            // Rチャンネル：RootBisectorのID依存（オリジナルトライアングル識別）
-            bisector_color.r = float((debug_color_seed * 73) % 255) / 255.0;
-            bisector_color.g = float((debug_color_seed * 151) % 255) / 255.0;
-            bisector_color.b = float((debug_color_seed * 233) % 255) / 255.0;
-
-            bisector_color.rgb += 0.25*float3(
-                float((bs_id_seed * 73) % 255) / 255.0,
-                float((bs_id_seed * 151) % 255) / 255.0,
-                float((bs_id_seed * 233) % 255) / 255.0
-            );
         
         output.color0 = float4(bisector_color, 1.0);
         

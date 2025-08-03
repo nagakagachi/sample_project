@@ -69,6 +69,10 @@ static int dbgw_sky_debug_mode       = {};
 static float dbgw_sky_debug_mip_bias = 0.0f;
 
 static int sw_tess_fixed_subdivision_level = 0; // -1で無効、0以上で固定分割レベルを指定
+static bool sw_tess_update_tessellation = true; // trueでテッセレーション更新を有効化
+static bool sw_tess_update_tessellation_frame_toggle = false; // trueで1F毎にテッセレーション更新フラグをOFFにするデバッグ用.
+
+
 static int sw_tess_debug_bisector_id = -1;      // デバッグ対象BisectorID（-1で無効）
 static int sw_tess_debug_bisector_depth = -1;   // デバッグ対象BisectorDepth（-1で無効）
 
@@ -463,7 +467,7 @@ bool AppGame::Initialize()
                 tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 3.0f, 1.0f));
                 #else
                 // 6に設定して分割を 0->5 に一気に変更すると不整合
-                constexpr int tessellation_level = 6;  // 0で無効、1以上で有効.
+                constexpr int tessellation_level = 3;  // 0で無効、1以上で有効.
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), tessellation_level, true);
                 tr.SetDiagonal(ngl::math::Vec4(8.0f));
                 tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
@@ -689,20 +693,10 @@ bool AppGame::ExecuteApp()
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("SwTessellation Mesh"))
         {
-            ImGui::SliderInt("fixed subdivision level", &sw_tess_fixed_subdivision_level, -1, 10);
-            
-            ImGui::Separator();
-            ImGui::Text("Debug Target Bisector:");
-            ImGui::SliderInt("Bisector Depth", &sw_tess_debug_bisector_depth, -1, 15);
-            ImGui::InputInt("Bisector ID", &sw_tess_debug_bisector_id, 1);
-            
-            if (ImGui::Button("Clear Debug Target"))
-            {
-                sw_tess_debug_bisector_id = -1;
-                sw_tess_debug_bisector_depth = -1;
-            }
-            
-            ImGui::Separator();
+            ImGui::Checkbox("Enable Tessellation Update", &sw_tess_update_tessellation);
+            ImGui::Checkbox("Tessellation Update Frame Toggle", &sw_tess_update_tessellation_frame_toggle);
+            ImGui::SliderInt("Fixed Subdivision Level", &sw_tess_fixed_subdivision_level, -1, 10);
+
             if (ImGui::Button("Reset Tessellation"))
             {
                 for (auto* sw_tess_mesh : sw_tessellation_mesh_array_)
@@ -710,6 +704,18 @@ bool AppGame::ExecuteApp()
                     sw_tess_mesh->ResetTessellation();
                 }
             }
+
+
+            ImGui::Separator();
+            ImGui::Text("Debug Target Bisector:");
+            ImGui::SliderInt("Bisector Depth", &sw_tess_debug_bisector_depth, -1, 15);
+            ImGui::InputInt("Bisector ID", &sw_tess_debug_bisector_id, 1);
+            if (ImGui::Button("Clear Debug Target"))
+            {
+                sw_tess_debug_bisector_id = -1;
+                sw_tess_debug_bisector_depth = -1;
+            }
+            
         }
 
         ImGui::End();
@@ -741,6 +747,13 @@ bool AppGame::ExecuteApp()
         // デバッグ用
         sw_tess_mesh->SetFixedSubdivisionLevel(sw_tess_fixed_subdivision_level);
         sw_tess_mesh->SetDebugTargetBisector(sw_tess_debug_bisector_id, sw_tess_debug_bisector_depth);
+        sw_tess_mesh->SetTessellationUpdate(sw_tess_update_tessellation);
+    }
+
+    if(sw_tess_update_tessellation_frame_toggle)
+    {
+        // 1FでOFFにする.
+        sw_tess_update_tessellation = false;
     }
 
     // 描画用シーン情報.

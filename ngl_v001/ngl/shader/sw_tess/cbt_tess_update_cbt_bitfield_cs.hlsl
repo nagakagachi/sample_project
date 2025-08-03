@@ -10,18 +10,12 @@ void main_cs(
     uint3 Gid : SV_GroupID)
 {
     const uint thread_id = DTid.x;
+
+    if(!tessellation_update) return;
     
     // 有効なBisector範囲外は早期リターン
     if (thread_id >= GetCBTRootValue(cbt_buffer)) return;
     
-    
-
-
-    // デバッグ
-    if(0 != debug_mode_int)
-    {
-        return;
-    }
     
 
     // index_cacheから有効なBisectorインデックスを取得
@@ -72,7 +66,7 @@ void main_cs(
         {
             // 子が適切に確保できていた場合のみ自身を無効化. コマンドが設定されていてもアロケーション失敗している可能性があるため).
             // 必要分確保できていなければすべて -1 なので0番目のみチェック.
-            
+
             if (command & BISECTOR_CMD_BOUNDARY_MERGE)
             {
                 // 境界統合：自身と統合相手のビットを0にする

@@ -57,11 +57,11 @@ namespace ngl::render::app
             int32_t fixed_subdivision_level = -1; // 固定分割レベル（-1で無効、0以上で固定分割）
             float tessellation_split_threshold = 0.1f;    // テッセレーション分割閾値
             float tessellation_merge_factor = 0.5f;       // テッセレーション統合係数 (0.0~1.0, 分割閾値に対する比率)
-            uint32_t debug_mode_int = 0;                       // 16byte alignment（C++側CBTConstantsと対応）
+            int32_t tessellation_update = 1; // テッセレーション更新フラグ（1で更新、0で更新なし）
 
             int32_t debug_target_bisector_id = -1;        // デバッグ対象BisectorID（-1で無効）
             int32_t debug_target_bisector_depth = -1;     // デバッグ対象BisectorDepth（-1で無効）
-            int32_t padding1;
+            uint32_t tessellation_debug_flag = 0;                       // 16byte alignment（C++側CBTConstantsと対応）
             int32_t padding2;
 
             ngl::math::Mat34 object_to_world{};      // オブジェクト→ワールド変換行列
@@ -81,7 +81,8 @@ namespace ngl::render::app
         bool Initialize(ngl::rhi::DeviceDep* p_device, uint32_t shape_half_edges, uint32_t average_subdivision_level);
         
         // 定数バッファ更新メソッド（ConstantBufferPoolから確保）
-        ngl::rhi::ConstantBufferPooledHandle UpdateConstants(ngl::rhi::DeviceDep* p_device, const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, uint32_t frame_index, int32_t fixed_subdivision_level = -1, int debug_count = 0, int32_t debug_target_bisector_id = -1, int32_t debug_target_bisector_depth = -1);
+        ngl::rhi::ConstantBufferPooledHandle UpdateConstants(ngl::rhi::DeviceDep* p_device, 
+            const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, bool tessellation_update, int32_t fixed_subdivision_level = -1, u32 debug_flag = 0, int32_t debug_target_bisector_id = -1, int32_t debug_target_bisector_depth = -1);
         
         // リソースバインド用ヘルパー
         void BindResources(ngl::rhi::ComputePipelineStateDep* pso, ngl::rhi::DescriptorSetDep* desc_set, ngl::rhi::ConstantBufferPooledHandle cb_handle) const;
@@ -146,6 +147,12 @@ namespace ngl::render::app
             return debug_target_bisector_depth_;
         }
 
+        // テッセレーション更新フラグを設定
+        void SetTessellationUpdate(bool update)
+        {
+            tessellation_update_ = update;
+        }
+
         // テッセレーションをリセット
         void ResetTessellation()
         {
@@ -201,6 +208,8 @@ namespace ngl::render::app
         
         // 固定分割レベル（-1で無効、0以上で固定分割）
         int32_t fixed_subdivision_level_ = -1;
+
+        bool tessellation_update_ = true; // テッセレーション更新フラグ（trueで更新、falseで更新なし）
 
         // デバッグ対象Bisector情報（-1で無効）
         int32_t debug_target_bisector_id_ = -1;
