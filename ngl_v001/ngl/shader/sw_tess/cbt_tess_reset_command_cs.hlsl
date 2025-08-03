@@ -14,12 +14,12 @@ void main_cs(
     // 有効なBisector範囲外は早期リターン
     if (thread_id >= GetCBTRootValue(cbt_buffer)) return;
     
-    
+
 
     // デバッグ
     if(0 != debug_mode_int)
     {
-        return;
+        //return;
     }
 
 

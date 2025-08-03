@@ -33,8 +33,9 @@ namespace ngl::render::app
         std::vector<HalfEdge> half_edge_;
     };
 
+    // Bisector毎の分割統合に伴うアロケーション結果の保持サイズ. シェーダ側と一致させる. 元論文では4だが, 現実装ではTwinペア分割制限により実際は2.
+    #define BISECTOR_ALLOC_PTR_SIZE 4
     // Bisector構造体（テッセレーション用）
-    // 16byteアライメント最適化済み
     struct Bisector
     {
         uint32_t bs_depth;      // 4 bytes
@@ -44,7 +45,7 @@ namespace ngl::render::app
         
         int      prev;          // 4 bytes
         int      twin;          // 4 bytes
-        int      alloc_ptr[4];  // 16 bytes  (24 bytes total)
+        int      alloc_ptr[BISECTOR_ALLOC_PTR_SIZE];
         
         float    debug_subdivision_value; // 4 bytes - デバッグ用: GenerateCommandで計算された分割評価値
         uint32_t padding1, padding2, padding3; // 12 bytes - 16byteアライメント調整用 (16 bytes total)

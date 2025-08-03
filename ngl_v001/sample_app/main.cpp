@@ -455,19 +455,22 @@ bool AppGame::Initialize()
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
                 
 
-                ngl::math::Mat34 tr = ngl::math::Mat34::Identity();
-                tr.SetColumn3(ngl::math::Vec3(-10.0f, 15.0f, -2.0f));
+                ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
                 #if 0
                 // 蜘蛛
                 constexpr int tessellation_level = 4;  // 0で無効、1以上で有効.
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), tessellation_level);
-                tr.SetDiagonal(ngl::math::Vec3(spider_base_scale * 3.0f));
+                tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 3.0f, 1.0f));
                 #else
+                // 6に設定して分割を 0->5 に一気に変更すると不整合
                 constexpr int tessellation_level = 6;  // 0で無効、1以上で有効.
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), tessellation_level, true);
-                tr.SetDiagonal(ngl::math::Vec3(4.0f));
+                tr.SetDiagonal(ngl::math::Vec4(8.0f));
+                tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
                 #endif
-                mc->SetTransform(tr);
+                tr.SetColumn3(ngl::math::Vec4(-10.0f, 13.0f, -2.0f, 0.0f));
+
+                mc->SetTransform(ngl::math::Mat34(tr));
             }
         }
     }

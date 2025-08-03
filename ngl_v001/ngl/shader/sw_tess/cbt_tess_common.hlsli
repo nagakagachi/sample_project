@@ -60,9 +60,10 @@
                 int2で xにはi番目の使用中Bisectorインデックス, yにはi番目の未使用Bisectorインデックスをキャッシュする
                 割り当て済みのBisectorに対する処理や, 未使用Bisectorに対する処理の際のインデックス解決を高速にするため, cbt_bufferを使って毎フレーム更新される
 
-    alloc_counter / alloc_counter_rw : 新規割り当てカウンタ（uint型）
+    alloc_counter / alloc_counter_rw : 新規割り当てカウンタ（int型）
                 ライフサイクル: フレーム開始時リセット → 割り当て時アトミック増分
-                Tessellation処理中に新規Bisector割り当てをする際のカウンタ管理 uintひとつだけでatomic操作される
+                Tessellation処理中に新規Bisector割り当てをする際のカウンタ管理 intひとつだけでatomic操作される
+                デクリメント操作もされるため符号付き.
 
     indirect_dispatch_arg_for_bisector : Bisector処理用Dispatch引数バッファ（uint3型）
                 ライフサイクル: begin_update.hlsl で更新 → 後続DispatchIndirect呼び出し
@@ -179,8 +180,8 @@ StructuredBuffer<float3> vertex_position_buffer;  // 頂点座標バッファ
 Buffer<int2> index_cache;
 RWBuffer<int2> index_cache_rw;
 
-Buffer<uint> alloc_counter;
-RWBuffer<uint> alloc_counter_rw;
+Buffer<int> alloc_counter;
+RWBuffer<int> alloc_counter_rw;
 
 RWBuffer<uint> indirect_dispatch_arg_for_bisector;
 RWBuffer<uint> indirect_dispatch_arg_for_index_cache;

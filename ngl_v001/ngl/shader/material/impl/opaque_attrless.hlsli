@@ -53,14 +53,15 @@ SamplerState samp_default;
         
         const uint vertex_id = input.vertex_id;
         const uint tri_index = vertex_id / 3;           // Bisectorキャッシュインデックス用
+        const uint local_index = vertex_id % 3;         // Bisectorのローカル頂点インデックス（0, 1, 2）
 
         // CBTテッセレーション：index_cacheから有効なBisectorのインデックスを取得
         const uint bisector_index = index_cache[tri_index].x;
         
         // 処理対象のBisectorを取得
         Bisector bisector = bisector_pool[bisector_index];
-        const uint local_index = (bisector.bs_depth & 1)? 2-(vertex_id % 3) : (vertex_id % 3);// Bisectorの深さによる順序反転対応.
 
+        const uint3 local_tri_vtx_indices = (bisector.bs_depth & 1)? uint3(1, 0, 2) : uint3(0, 1, 2);
 
                 // 特定Bisector表示デバッグ.
                 if(0 <= debug_target_bisector_id || 0 <= debug_target_bisector_depth)
@@ -116,19 +117,26 @@ SamplerState samp_default;
         float3x3 bisector_positions = mul(attribute_matrix, base_positions);
         
         // Bisectorの三角形頂点座標から適切な頂点を選択
-        output.pos = bisector_positions[local_index]; // local_index: 0=第1頂点, 1=第2頂点, 2=第3頂点
+        output.pos = bisector_positions[local_tri_vtx_indices[local_index]]; // local_index: 0=第1頂点, 1=第2頂点, 2=第3頂点
         
         // その他の属性設定
-        output.normal = float3(0.0, 1.0, 0.0); // 上向きの法線
-        output.tangent = float3(1.0, 0.0, 0.0); // X軸方向の接線
-        output.binormal = float3(0.0, 0.0, 1.0); // Z軸方向の副接線
+        #if 1
+            // 仮のタンジェントフレーム.
+            output.normal = normalize(cross(bisector_positions[local_tri_vtx_indices.y] - bisector_positions[local_tri_vtx_indices.x], bisector_positions[local_tri_vtx_indices.z] - bisector_positions[local_tri_vtx_indices.x]));
+            output.tangent = normalize(bisector_positions[local_tri_vtx_indices.y] - bisector_positions[local_tri_vtx_indices.x]);
+            output.binormal = normalize(cross(output.normal, output.tangent));
+        #else
+            output.normal = float3(0.0, 1.0, 0.0);
+            output.tangent = float3(1.0, 0.0, 0.0);
+            output.binormal = float3(0.0, 0.0, 1.0);
+        #endif
         
             // Bisector可視化：RootBisectorとBisectorIDを組み合わせた色生成
             uint bs_id_seed = bisector.bs_id + 1;
             
             float3 bisector_color;
-            //uint debug_color_seed = bs_id_seed;//base_triangle_hash; // デバッグ用のシード値（任意）
-            uint debug_color_seed = (bs_id_seed)/2;//base_triangle_hash; // デバッグ用のシード値（任意）
+            //uint debug_color_seed = base_triangle_hash; // デバッグ用のシード値（任意）
+            uint debug_color_seed = bs_id_seed ^ base_triangle_hash; // デバッグ用のシード値（任意）
 
             // Rチャンネル：RootBisectorのID依存（オリジナルトライアングル識別）
             bisector_color.r = float((debug_color_seed * 73) % 255) / 255.0;
@@ -149,7 +157,7 @@ SamplerState samp_default;
             float2(1.0, 0.0),
             float2(0.5, 1.0)
         };
-        output.uv0 = test_tri_uv[local_index];
+        output.uv0 = test_tri_uv[local_tri_vtx_indices[local_index]];
 
         return output;
     }
@@ -184,6 +192,7 @@ MtlPsOutput MtlPsEntryPoint(MtlPsInput input)
     const float3 normal_ws = input.normal_ws;
 
     const float3 emissive = float3(0.0, 0.0, 0.0);
+    //const float3 emissive = mtl_base_color.xyz;//float3(0.0, 0.0, 0.0);
 
     // マテリアル出力.
     MtlPsOutput output = (MtlPsOutput)0;

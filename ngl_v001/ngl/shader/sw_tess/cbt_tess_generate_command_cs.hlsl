@@ -191,14 +191,14 @@ void SetSplitCommands(uint bisector_index)
     Bisector bisector = bisector_pool_rw[bisector_index];
     
     // 分割に必要な最大アロケーション数を計算
-    uint max_allocation = CalcMaxAllocationForSplit(bisector.bs_depth);
+    int max_allocation = CalcMaxAllocationForSplit(bisector.bs_depth);
     
     // アロケーションカウンタを原子的に増加
-    uint old_counter;
+    int old_counter;
     InterlockedAdd(alloc_counter_rw[0], max_allocation, old_counter);
     
     // CBTのルート値（現在の使用中Bisector数）を取得
-    uint current_used = GetCBTRootValue(cbt_buffer);
+    int current_used = GetCBTRootValue(cbt_buffer);
     
     // アロケーション可能性をチェック（現在使用数 + 新規割り当て <= 最大プールサイズ）
     if (current_used + old_counter + max_allocation <= bisector_pool_max_size)
@@ -209,7 +209,7 @@ void SetSplitCommands(uint bisector_index)
     else
     {
         // アロケーション不可：カウンタを元に戻して終了
-        InterlockedAdd(alloc_counter_rw[0], -(int)max_allocation);
+        InterlockedAdd(alloc_counter_rw[0], -max_allocation);
     }
 }
 
@@ -217,15 +217,15 @@ void SetSplitCommands(uint bisector_index)
 void SetMergeCommands(uint bisector_index)
 {
     // 統合に必要な最大アロケーション数を計算
-    uint max_allocation = CalcMaxAllocationForMerge();
+    int max_allocation = CalcMaxAllocationForMerge();
     
     // アロケーションカウンタを原子的に増加
-    uint old_counter;
+    int old_counter;
     InterlockedAdd(alloc_counter_rw[0], max_allocation, old_counter);
     
     // CBTのルート値（現在の使用中Bisector数）を取得
-    uint current_used = GetCBTRootValue(cbt_buffer);
-    
+    int current_used = GetCBTRootValue(cbt_buffer);
+
     // アロケーション可能性をチェック（現在使用数 + 新規割り当て <= 最大プールサイズ）
     if (current_used + old_counter + max_allocation <= bisector_pool_max_size)
     {
@@ -235,7 +235,7 @@ void SetMergeCommands(uint bisector_index)
     else
     {
         // アロケーション不可：カウンタを元に戻して終了
-        InterlockedAdd(alloc_counter_rw[0], -(int)max_allocation);
+        InterlockedAdd(alloc_counter_rw[0], -max_allocation);
     }
 }
 
@@ -260,7 +260,7 @@ void main_cs(
     // デバッグ
     if(0 != debug_mode_int)
     {
-        return;
+        //return;
     }
     
     

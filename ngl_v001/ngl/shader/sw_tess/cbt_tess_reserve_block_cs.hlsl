@@ -121,7 +121,7 @@ void main_cs(
     // デバッグ
     if(0 != debug_mode_int)
     {
-        return;
+        //return;
     }
 
     
@@ -140,15 +140,15 @@ void main_cs(
             !(command & (BISECTOR_CMD_PREV_SPLIT | BISECTOR_CMD_NEXT_SPLIT)))
         {
             // 新規アロケーション: 2つのBisectorを確保
-            const uint nAlloc = 2;
-            uint counter;
-            InterlockedAdd(alloc_counter_rw[0], -(int)nAlloc, counter);
+            const int nAlloc = 2;
+            int counter;
+            InterlockedAdd(alloc_counter_rw[0], -nAlloc, counter);
             
             // アロケーション要求数が確保できているかチェック
             if (counter < nAlloc)
             {
                 // 要求数が確保できない：カウンタを元に戻して終了
-                InterlockedAdd(alloc_counter_rw[0], (int)nAlloc);
+                InterlockedAdd(alloc_counter_rw[0], nAlloc);
                 return;
             }
             
@@ -189,16 +189,16 @@ void main_cs(
             {
                 // 境界統合か内部統合かでアロケーション数を決定
                 // 境界統合: 1つの親Bisector, 内部統合: 2つの親Bisector
-                uint nAlloc = (command & BISECTOR_CMD_BOUNDARY_MERGE) ? 1 : 2;
+                int nAlloc = (command & BISECTOR_CMD_BOUNDARY_MERGE) ? 1 : 2;
                 
-                uint counter;
-                InterlockedAdd(alloc_counter_rw[0], -(int)nAlloc, counter);
+                int counter;
+                InterlockedAdd(alloc_counter_rw[0], -nAlloc, counter);
                 
                 // アロケーション要求数が確保できているかチェック
                 if (counter < nAlloc)
                 {
                     // 要求数が確保できない：カウンタを元に戻して終了
-                    InterlockedAdd(alloc_counter_rw[0], (int)nAlloc);
+                    InterlockedAdd(alloc_counter_rw[0], nAlloc);
                     return;
                 }
                 
