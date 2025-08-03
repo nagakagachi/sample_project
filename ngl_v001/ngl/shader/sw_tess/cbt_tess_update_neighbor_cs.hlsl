@@ -148,10 +148,10 @@ void main_cs(
 {
     const uint thread_id = DTid.x;
     
-    // 早期リターン：スレッド範囲チェック
-    if (thread_id >= GetCBTRootValue(cbt_buffer)) {
-        return;
-    }
+    // 有効なBisector範囲外は早期リターン
+    if (thread_id >= GetCBTRootValue(cbt_buffer)) return;
+    
+    
 
 
     // デバッグ

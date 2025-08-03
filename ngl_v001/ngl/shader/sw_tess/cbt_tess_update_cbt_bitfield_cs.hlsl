@@ -12,10 +12,9 @@ void main_cs(
     const uint thread_id = DTid.x;
     
     // 有効なBisector範囲外は早期リターン
-    if (thread_id >= GetCBTRootValue(cbt_buffer))
-    {
-        return;
-    }
+    if (thread_id >= GetCBTRootValue(cbt_buffer)) return;
+    
+    
 
 
     // デバッグ

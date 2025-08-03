@@ -69,6 +69,8 @@ static int dbgw_sky_debug_mode       = {};
 static float dbgw_sky_debug_mip_bias = 0.0f;
 
 static int sw_tess_fixed_subdivision_level = 0; // -1で無効、0以上で固定分割レベルを指定
+static int sw_tess_debug_bisector_id = -1;      // デバッグ対象BisectorID（-1で無効）
+static int sw_tess_debug_bisector_depth = -1;   // デバッグ対象BisectorDepth（-1で無効）
 
 class PlayerController
 {
@@ -686,6 +688,18 @@ bool AppGame::ExecuteApp()
         {
             ImGui::SliderInt("fixed subdivision level", &sw_tess_fixed_subdivision_level, -1, 10);
             
+            ImGui::Separator();
+            ImGui::Text("Debug Target Bisector:");
+            ImGui::SliderInt("Bisector Depth", &sw_tess_debug_bisector_depth, -1, 15);
+            ImGui::InputInt("Bisector ID", &sw_tess_debug_bisector_id, 1);
+            
+            if (ImGui::Button("Clear Debug Target"))
+            {
+                sw_tess_debug_bisector_id = -1;
+                sw_tess_debug_bisector_depth = -1;
+            }
+            
+            ImGui::Separator();
             if (ImGui::Button("Reset Tessellation"))
             {
                 for (auto* sw_tess_mesh : sw_tessellation_mesh_array_)
@@ -723,6 +737,7 @@ bool AppGame::ExecuteApp()
 
         // デバッグ用
         sw_tess_mesh->SetFixedSubdivisionLevel(sw_tess_fixed_subdivision_level);
+        sw_tess_mesh->SetDebugTargetBisector(sw_tess_debug_bisector_id, sw_tess_debug_bisector_depth);
     }
 
     // 描画用シーン情報.

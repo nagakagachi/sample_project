@@ -130,7 +130,7 @@ namespace ngl::render::app
         return true;
     }
 
-    ngl::rhi::ConstantBufferPooledHandle CBTGpuResources::UpdateConstants(ngl::rhi::DeviceDep* p_device, const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, uint32_t frame_index, int32_t fixed_subdivision_level, int debug_count)
+    ngl::rhi::ConstantBufferPooledHandle CBTGpuResources::UpdateConstants(ngl::rhi::DeviceDep* p_device, const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, uint32_t frame_index, int32_t fixed_subdivision_level, int debug_count, int32_t debug_target_bisector_id, int32_t debug_target_bisector_depth)
     {
         // ConstantBufferPoolから定数バッファを確保
         auto cbh = p_device->GetConstantBufferPool()->Alloc(sizeof(CBTConstants));
@@ -161,6 +161,10 @@ namespace ngl::render::app
             
             // デバッグカウント
             mapped_ptr->debug_mode_int = debug_count;
+
+            // デバッグ対象Bisector情報
+            mapped_ptr->debug_target_bisector_id = debug_target_bisector_id;
+            mapped_ptr->debug_target_bisector_depth = debug_target_bisector_depth;
 
             cbh->buffer_.Unmap();
         }
@@ -429,6 +433,21 @@ namespace ngl::render::app
                 {
                     debug_subdiv_stop = false; // リセットリクエストがある場合はデバッグ分割停止を解除
                 }
+                static int s_prev_subdiv_level = -1;
+                if(0 > s_prev_subdiv_level)
+                    s_prev_subdiv_level = fixed_subdivision_level_;
+
+
+                int prev_subdiv_level = s_prev_subdiv_level;
+                s_prev_subdiv_level = fixed_subdivision_level_;
+                if(!debug_subdiv_stop)
+                {
+                    if(prev_subdiv_level == 4 && fixed_subdivision_level_ == 5)
+                    {
+                        // 特定の遷移が発生したタイミングで停止.
+                        //debug_subdiv_stop = true;
+                    }
+                }
 
 
         for (size_t shape_idx = 0; shape_idx < shape_count; ++shape_idx)
@@ -440,26 +459,13 @@ namespace ngl::render::app
             // Important Point（テッセレーション評価で重視する座標）
             ngl::math::Vec3 important_point_world = important_point_world_;
             
-            auto cb_handle = cbt_gpu_resources_array_[shape_idx].UpdateConstants(command_list->GetDevice(), object_to_world, important_point_world, cur_local_frame_render_index_, fixed_subdivision_level_, debug_subdiv_stop ? 1 : 0);
+            auto cb_handle = cbt_gpu_resources_array_[shape_idx].UpdateConstants(command_list->GetDevice(), object_to_world, important_point_world, cur_local_frame_render_index_, fixed_subdivision_level_, debug_subdiv_stop ? 1 : 0, debug_target_bisector_id_, debug_target_bisector_depth_);
             cbt_constant_handles_.push_back(cb_handle);
         }
         
 
         
-                static int s_prev_subdiv_level = -1;
-                if(0 > s_prev_subdiv_level)
-                    s_prev_subdiv_level = fixed_subdivision_level_;
 
-                int prev_subdiv_level = s_prev_subdiv_level;
-                s_prev_subdiv_level = fixed_subdivision_level_;
-                if(!debug_subdiv_stop)
-                {
-                    if(prev_subdiv_level == 1 && fixed_subdivision_level_ == 0)
-                    {
-                        // 特定の遷移が発生したタイミングで停止.
-                        //debug_subdiv_stop = true;
-                    }
-                }
 
 
 

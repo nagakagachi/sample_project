@@ -122,6 +122,11 @@ cbuffer CBTTessellationConstants
     float tessellation_merge_factor;    // テッセレーション統合係数 (0.0~1.0, 分割閾値に対する比率)
     uint debug_mode_int;                       // 16byte alignment（C++側CBTConstantsと対応）
 
+    int debug_target_bisector_id;       // デバッグ対象BisectorID（-1で無効）
+    int debug_target_bisector_depth;    // デバッグ対象BisectorDepth（-1で無効）
+    int padding1;
+    int padding2;
+
     float3x4 object_to_world;           // オブジェクト空間からワールド空間への変換行列
     float3x4 world_to_object;           // ワールド空間からオブジェクト空間への変換行列
     float3 important_point;             // テッセレーション評価で重視する座標（ワールド空間）
@@ -338,19 +343,11 @@ float3x3 CalcBisectorAttributeMatrix(uint bisector_id, uint bisector_depth)
         1.0/3.0, 1.0/3.0, 1.0/3.0
     );
     
-    // minimum_tree_depthより深い階層を遡って処理
-    while (bisector_depth > cbt_mesh_minimum_tree_depth)
+    // bisector_depth < cbt_mesh_minimum_tree_depth は仕組み上ありえない.
+    int effective_depth = (bisector_depth - cbt_mesh_minimum_tree_depth);
+    for (;effective_depth >= 1;)
     {
-        // 最下位ビットに基づいて変換マトリックスを選択
-        if (bisector_id & 1) // 最下位ビットが1の場合
-        {
-            m = mul(float3x3(
-                1.0, 0.0, 0.0,
-                0.0, 0.0, 1.0,
-                0.5, 0.5, 0.0
-            ), m);
-        }
-        else // 最下位ビットが0の場合
+        if ((1 << (effective_depth-1)) & bisector_id)
         {
             m = mul(float3x3(
                 0.0, 0.0, 1.0,
@@ -358,11 +355,34 @@ float3x3 CalcBisectorAttributeMatrix(uint bisector_id, uint bisector_depth)
                 0.5, 0.5, 0.0
             ), m);
         }
+        else // 最下位ビットが0の場合
+        {
+            m = mul(float3x3(
+                1.0, 0.0, 0.0,
+                0.0, 0.0, 1.0,
+                0.5, 0.5, 0.0
+            ), m);
+        }
         
-        // 次の階層へ
-        bisector_id = bisector_id >> 1;
-        bisector_depth = bisector_depth - 1;
+        --effective_depth;
     }
     
     return m;
+}
+
+// デバッグ用ヘルパー関数
+
+// 指定したBisectorがデバッグ対象かどうかを判定
+bool IsDebugTargetBisector(uint bisector_id, uint bisector_depth)
+{
+    if (debug_target_bisector_id < 0 || debug_target_bisector_depth < 0)
+        return false; // デバッグターゲットが無効の場合
+    
+    return (int(bisector_id) == debug_target_bisector_id) && (int(bisector_depth) == debug_target_bisector_depth);
+}
+
+// デバッグターゲットが有効かどうかを判定
+bool IsDebugTargetValid()
+{
+    return (debug_target_bisector_id >= 0) && (debug_target_bisector_depth >= 0);
 }

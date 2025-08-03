@@ -62,12 +62,30 @@ SamplerState samp_default;
         
         // 処理対象のBisectorを取得
         Bisector bisector = bisector_pool[bisector_index];
+
+
+        // 特定Bisector表示デバッグ.
+        if(IsDebugTargetValid())
+        {
+            if(IsDebugTargetBisector(bisector.bs_id, bisector.bs_depth))
+            {
+                // デバッグ対象のBisectorのみ処理を行う
+            }
+            else
+            {
+                // デバッグ対象でないBisectorはキル
+                output.pos.x = 1.0 / 0.0;
+                return output;
+            }
+        }
+
         
         // Bisectorの基本頂点インデックスを取得 (curr, next, prev)（共通関数を使用）
         int3 base_vertex_indices = CalcRootBisectorBaseVertex(bisector.bs_id, bisector.bs_depth);
         const uint base_triangle_hash = base_vertex_indices.x ^ 
                                        base_vertex_indices.y ^ 
                                        base_vertex_indices.z;
+        
         if(0 != (bisector.bs_depth & 1))
         {
             // 分割毎に順序が逆転するため表裏を戻すフリップ.
@@ -97,19 +115,21 @@ SamplerState samp_default;
         output.binormal = float3(0.0, 0.0, 1.0); // Z軸方向の副接線
         
         // Bisector可視化：RootBisectorとBisectorIDを組み合わせた色生成
-        uint bs_id = bisector.bs_id;
+        uint bs_id_seed = bisector.bs_id + 1;
         
         float3 bisector_color;
-        uint debug_color_seed = bs_id;//base_triangle_hash; // デバッグ用のシード値（任意）
+        //uint debug_color_seed = bs_id_seed;//base_triangle_hash; // デバッグ用のシード値（任意）
+        uint debug_color_seed = (bs_id_seed)/2;//base_triangle_hash; // デバッグ用のシード値（任意）
+
         // Rチャンネル：RootBisectorのID依存（オリジナルトライアングル識別）
         bisector_color.r = float((debug_color_seed * 73) % 255) / 255.0;
         bisector_color.g = float((debug_color_seed * 151) % 255) / 255.0;
         bisector_color.b = float((debug_color_seed * 233) % 255) / 255.0;
 
         bisector_color.rgb += 0.25*float3(
-            float((bs_id * 73) % 255) / 255.0,
-            float((bs_id * 151) % 255) / 255.0,
-            float((bs_id * 233) % 255) / 255.0
+            float((bs_id_seed * 73) % 255) / 255.0,
+            float((bs_id_seed * 151) % 255) / 255.0,
+            float((bs_id_seed * 233) % 255) / 255.0
         );
         
         output.color0 = float4(bisector_color, 1.0);
