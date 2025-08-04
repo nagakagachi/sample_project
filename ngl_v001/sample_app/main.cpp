@@ -467,7 +467,8 @@ bool AppGame::Initialize()
                 tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 3.0f, 1.0f));
                 #else
                 // 6に設定して分割を 0->5 に一気に変更すると不整合
-                constexpr int tessellation_level = 8;  // 0で無効、1以上で有効.
+                constexpr int tessellation_level = 3;  // 0で無効、1以上で有効.
+
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), tessellation_level, true);
                 tr.SetDiagonal(ngl::math::Vec4(60.0f));
                 tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;

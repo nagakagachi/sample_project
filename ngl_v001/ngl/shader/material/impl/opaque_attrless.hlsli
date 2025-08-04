@@ -75,41 +75,6 @@ float iqint2(float4 pos)
 
         const uint3 local_tri_vtx_indices = (bisector.bs_depth & 1)? uint3(1, 0, 2) : uint3(0, 1, 2);
 
-                // 特定Bisector表示デバッグ.
-                if(0 <= debug_target_bisector_id || 0 <= debug_target_bisector_depth)
-                {
-                    if(0 <= debug_target_bisector_id && 0 <= debug_target_bisector_depth)
-                    {
-                        if(bisector.bs_id != debug_target_bisector_id || bisector.bs_depth != debug_target_bisector_depth)
-                        {
-                            // デバッグ対象でないBisectorはキル
-                            output.pos.x = 1.0 / 0.0;
-                            return output;
-                        }
-                    }
-
-                    if(0 > debug_target_bisector_depth)
-                    {
-                        if(0 <= debug_target_bisector_id && bisector.bs_id != debug_target_bisector_id)
-                        {
-                            // デバッグ対象でないBisectorはキル
-                            output.pos.x = 1.0 / 0.0;
-                            return output;
-                        }
-                    }
-                    
-                    if(0 > debug_target_bisector_id)
-                    {
-                        if(0 <= debug_target_bisector_depth && bisector.bs_depth != debug_target_bisector_depth)
-                        {
-                            // デバッグ対象でないBisectorはキル
-                            output.pos.x = 1.0 / 0.0;
-                            return output;
-                        }
-                    }
-                }
-
-        
         // Bisectorの基本頂点インデックスを取得 (curr, next, prev)（共通関数を使用）
         int3 base_vertex_indices = CalcRootBisectorBaseVertex(bisector.bs_id, bisector.bs_depth);
         const uint base_triangle_hash = base_vertex_indices.x ^ 
@@ -132,24 +97,17 @@ float iqint2(float4 pos)
         output.pos = bisector_positions[local_tri_vtx_indices[local_index]]; // local_index: 0=第1頂点, 1=第2頂点, 2=第3頂点
         
         // その他の属性設定
-        #if 1
-            // 仮のタンジェントフレーム.
-            output.normal = normalize(cross(bisector_positions[local_tri_vtx_indices.y] - bisector_positions[local_tri_vtx_indices.x], bisector_positions[local_tri_vtx_indices.z] - bisector_positions[local_tri_vtx_indices.x]));
-            output.tangent = normalize(bisector_positions[local_tri_vtx_indices.y] - bisector_positions[local_tri_vtx_indices.x]);
-            output.binormal = normalize(cross(output.normal, output.tangent));
-        #else
-            output.normal = float3(0.0, 1.0, 0.0);
-            output.tangent = float3(1.0, 0.0, 0.0);
-            output.binormal = float3(0.0, 0.0, 1.0);
-        #endif
+        // 仮のタンジェントフレーム.
+        output.normal = normalize(cross(bisector_positions[local_tri_vtx_indices.y] - bisector_positions[local_tri_vtx_indices.x], bisector_positions[local_tri_vtx_indices.z] - bisector_positions[local_tri_vtx_indices.x]));
+        output.tangent = normalize(bisector_positions[local_tri_vtx_indices.y] - bisector_positions[local_tri_vtx_indices.x]);
+        output.binormal = normalize(cross(output.normal, output.tangent));
+    
+        // Bisector可視化：RootBisectorとBisectorIDを組み合わせた色生成
+        uint bs_id_seed = bisector.bs_id + 1;
         
-            // Bisector可視化：RootBisectorとBisectorIDを組み合わせた色生成
-            uint bs_id_seed = bisector.bs_id + 1;
-            
-            float3 bisector_color;
-            
-            const float local_debug_color_seed = local_index;
-
+        float3 bisector_color;
+        
+        const float local_debug_color_seed = local_index;
             
             
             const float depth_color_rate = frac((float(bisector.bs_depth - cbt_mesh_minimum_tree_depth)) / 12.0);
@@ -157,17 +115,32 @@ float iqint2(float4 pos)
             const float3 depth_color_test0 = lerp(float3(0.0, 0.0, 0.8), float3(0.0, 0.8, 0.0), saturate(depth_color_rate*2.0));
             const float3 depth_color_test1 = lerp(depth_color_test0, float3(1.0, 0.0, 0.0), saturate((depth_color_rate-0.5)*2.0));
 
-            bisector_color.rgb = depth_color_test1;//lerp(float3(0.1, 0.1, 0.3), float3(1.0, 0.0, 0.0), depth_color_rate*depth_color_rate);
-            //bisector_color.g = bisector_color.r;//iqint2(float4(bisector.bs_id, 0.0, 0.0, 0.0)) * 0.1;
-            //bisector_color.b = bisector_color.r;//iqint2(float4(bisector.bs_id, 0.0, 0.0, 0.0)) * 0.1;
-            /*
-            const float local_debug_color_seed = local_index * 0.0;
-            bisector_color.r = iqint2(float4(bisector.bs_id, local_debug_color_seed, 0.0, 0.0));
-            bisector_color.g = iqint2(float4(bisector.bs_id + total_half_edges, local_debug_color_seed, 0.0, 0.0));
-            bisector_color.b = iqint2(float4(bisector.bs_id + total_half_edges * 2, local_debug_color_seed, 0.0, 0.0));
-            */
+            bisector_color.rgb = depth_color_test1;
+
+            float selected_bisector_flag = 0.0;
+            if(0 <= debug_target_bisector_id && 0 <= debug_target_bisector_depth)
+            {
+                if(debug_target_bisector_id == bisector.bs_id && debug_target_bisector_depth == bisector.bs_depth)
+                {
+                    // デバッグ対象のBisectorは選択されたフラグを立てる
+                    selected_bisector_flag = 1.0;
+                }
+            }
+            else if(0 <= debug_target_bisector_id || 0 <= debug_target_bisector_depth)
+            {
+                if(debug_target_bisector_id == bisector.bs_id || debug_target_bisector_depth == bisector.bs_depth)
+                {
+                    // デバッグ対象のBisectorは選択されたフラグを立てる
+                    selected_bisector_flag = 1.0;
+                }
+            }
+
+
+        output.uv1.x = selected_bisector_flag; // デバッグ用フラグ（選択されたBisectorかどうか）
+        output.uv1.y = 0.0;
         
         output.color0 = float4(bisector_color, 1.0);
+        output.color0.rgb = lerp(output.color0.rgb, float3(1.0, 0.0, 0.0), selected_bisector_flag);
         
         // UV座標の設定
         /*
@@ -198,6 +171,8 @@ MtlVsOutput MtlVsEntryPoint(MtlVsInput input)
 
     // テスト
     //output.position_offset_ws = input.normal_ws * abs(sin(ngl_cb_sceneview.cb_time_sec / 1.0f)) * 0.05;
+
+    output.position_offset_ws += input.normal_ws * input.uv1.x*0.5;
     
     return output;
 }

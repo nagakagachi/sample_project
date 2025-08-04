@@ -92,6 +92,10 @@ ConstantBuffer<SceneDirectionalShadowRenderInfo> ngl_cb_shadowview;
     {
         float3 position_ws;
         float3 normal_ws;
+        
+        float2 uv0;
+        float2 uv1;
+        float4 color0;
     };
 
     // マテリアル側のVSからの出力.

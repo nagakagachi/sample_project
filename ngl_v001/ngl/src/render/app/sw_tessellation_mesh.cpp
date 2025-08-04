@@ -234,10 +234,13 @@ namespace ngl::render::app
             // デバッグモード.
             half_edge_mesh_array_.resize(1);
 
-            // デバッグ固定三角形.
-            //const u32 tri_index_list[] = {0, 1, 2};
-            // デバッグ固定四角形.
-            const u32 tri_index_list[] = {0, 2, 1, 0, 1, 3};
+            #if 1
+                // デバッグ固定三角形.
+                const u32 tri_index_list[] = {0, 1, 2};
+            #else
+                // デバッグ固定四角形.
+                const u32 tri_index_list[] = {0, 2, 1, 0, 1, 3};
+            #endif
 
             half_edge_mesh_array_[0].Initialize(tri_index_list, std::size(tri_index_list));
         }
