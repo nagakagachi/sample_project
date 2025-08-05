@@ -61,7 +61,7 @@ namespace ngl::render::app
 
             int32_t debug_target_bisector_id = -1;        // デバッグ対象BisectorID（-1で無効）
             int32_t debug_target_bisector_depth = -1;     // デバッグ対象BisectorDepth（-1で無効）
-            uint32_t tessellation_debug_flag = 0;                       // 16byte alignment（C++側CBTConstantsと対応）
+            int32_t tessellation_debug_flag = 0;                       // 16byte alignment（C++側CBTConstantsと対応）
             int32_t padding2;
 
             ngl::math::Mat34 object_to_world{};      // オブジェクト→ワールド変換行列
@@ -82,7 +82,7 @@ namespace ngl::render::app
         
         // 定数バッファ更新メソッド（ConstantBufferPoolから確保）
         ngl::rhi::ConstantBufferPooledHandle UpdateConstants(ngl::rhi::DeviceDep* p_device, 
-            const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, bool tessellation_update, int32_t fixed_subdivision_level = -1, u32 debug_flag = 0, int32_t debug_target_bisector_id = -1, int32_t debug_target_bisector_depth = -1);
+            const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, bool tessellation_update, int32_t fixed_subdivision_level = -1, int32_t debug_bisector_neighbor = -1, int32_t debug_target_bisector_id = -1, int32_t debug_target_bisector_depth = -1);
         
         // リソースバインド用ヘルパー
         void BindResources(ngl::rhi::ComputePipelineStateDep* pso, ngl::rhi::DescriptorSetDep* desc_set, ngl::rhi::ConstantBufferPooledHandle cb_handle) const;
@@ -126,6 +126,12 @@ namespace ngl::render::app
         int32_t GetFixedSubdivisionLevel() const
         {
             return fixed_subdivision_level_;
+        }
+
+        // デバッグ対象Bisector隣接情報を設定
+        void SetDebugBisectorNeighbor(int32_t neighbor)
+        {
+            debug_bisector_neighbor_ = neighbor;
         }
 
         // デバッグ対象のBisectorIDとDepthを設定（-1で無効）
@@ -214,6 +220,7 @@ namespace ngl::render::app
         // デバッグ対象Bisector情報（-1で無効）
         int32_t debug_target_bisector_id_ = -1;
         int32_t debug_target_bisector_depth_ = -1;
+        int32_t debug_bisector_neighbor_ = -1; // デバッグ用Bisector隣接情報 0,1,2->Twin,Prev,Next
 
     };
 

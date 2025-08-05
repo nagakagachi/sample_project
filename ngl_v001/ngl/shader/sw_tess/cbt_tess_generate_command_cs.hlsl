@@ -125,10 +125,6 @@ void WriteSplitCommands(uint bisector_index)
             }
         #endif
     }
-    
-    // デバッグ. 探索深さを格納.
-    bisector_pool_rw[bisector_index].debug_subdivision_value = chain_length;
-
 }
 
 // 実際の統合コマンドビットを書き込む関数
@@ -282,14 +278,41 @@ void main_cs(
 {
     const uint thread_id = DTid.x;
 
-    //if(!tessellation_update) return;
-    
     // 有効なBisector範囲外は早期リターン
     if (thread_id >= GetCBTRootValue(cbt_buffer)) return;
-    
-    
     // index_cacheから有効なBisectorのインデックスを取得
     const uint bisector_index = index_cache[thread_id].x;
+    
+
+        // デバッグ機能
+        if(0 <= debug_target_bisector_id || 0 <= debug_target_bisector_depth)
+        {
+            // デバッグ対象のBisectorは選択されたフラグを立てる
+            if(debug_target_bisector_id == bisector_pool_rw[bisector_index].bs_id && 
+            debug_target_bisector_depth == bisector_pool_rw[bisector_index].bs_depth)
+            {
+                if(0 == tessellation_debug_flag)
+                {
+                    if(0<= bisector_pool_rw[bisector_index].twin)
+                        bisector_pool_rw[ bisector_pool_rw[bisector_index].twin ].debug_value = 1;
+                }
+                else if(1 == tessellation_debug_flag)
+                {
+                    if(0<= bisector_pool_rw[bisector_index].prev)
+                        bisector_pool_rw[ bisector_pool_rw[bisector_index].prev ].debug_value = 1;
+                }
+                else if(2 == tessellation_debug_flag)
+                {
+                    if(0<= bisector_pool_rw[bisector_index].next)
+                        bisector_pool_rw[ bisector_pool_rw[bisector_index].next ].debug_value = 1;
+                }
+            }
+        }
+
+
+
+    //if(!tessellation_update) return;
+    
     
     // 処理対象のBisectorを取得
     Bisector bisector = bisector_pool_rw[bisector_index];

@@ -125,7 +125,7 @@ cbuffer CBTTessellationConstants
 
     int debug_target_bisector_id;       // デバッグ対象BisectorID（-1で無効）
     int debug_target_bisector_depth;    // デバッグ対象BisectorDepth（-1で無効）
-    uint tessellation_debug_flag;                       // 16byte alignment（C++側CBTConstantsと対応）
+    int tessellation_debug_flag;       // 16byte alignment（C++側CBTConstantsと対応）
     int padding2;
 
     float3x4 object_to_world;           // オブジェクト空間からワールド空間への変換行列

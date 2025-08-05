@@ -135,12 +135,18 @@ float iqint2(float4 pos)
                 }
             }
 
+            float selected_neighbor_flag = 0.0;
+            if(0 < bisector.debug_value)
+            {
+                selected_neighbor_flag = 1.0;
+            }
 
         output.uv1.x = selected_bisector_flag; // デバッグ用フラグ（選択されたBisectorかどうか）
         output.uv1.y = 0.0;
         
         output.color0 = float4(bisector_color, 1.0);
-        output.color0.rgb = lerp(output.color0.rgb, float3(1.0, 0.0, 0.0), selected_bisector_flag);
+        output.color0.rgb = lerp(output.color0.rgb, float3(1.0, 0.0, 0.0), selected_bisector_flag);// 選択Bisectorの色変え
+        output.color0.rgb = lerp(output.color0.rgb, float3(1.0, 0.0, 1.0), selected_neighbor_flag);// 選択Bisectorの隣接Bisectorの色変え
         
         // UV座標の設定
         /*

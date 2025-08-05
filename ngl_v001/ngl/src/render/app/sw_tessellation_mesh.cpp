@@ -131,7 +131,7 @@ namespace ngl::render::app
     }
 
     ngl::rhi::ConstantBufferPooledHandle CBTGpuResources::UpdateConstants(ngl::rhi::DeviceDep* p_device, 
-        const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, bool tessellation_update, int32_t fixed_subdivision_level, u32 debug_flag, int32_t debug_target_bisector_id, int32_t debug_target_bisector_depth)
+        const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, bool tessellation_update, int32_t fixed_subdivision_level, int32_t debug_bisector_neighbor, int32_t debug_target_bisector_id, int32_t debug_target_bisector_depth)
     {
         // ConstantBufferPoolから定数バッファを確保
         auto cbh = p_device->GetConstantBufferPool()->Alloc(sizeof(CBTConstants));
@@ -161,7 +161,7 @@ namespace ngl::render::app
             mapped_ptr->tessellation_merge_factor = 0.45f;      // 統合係数（分割閾値に対する比率, 0.5 = 50%）
             
             // デバッグその他.
-            mapped_ptr->tessellation_debug_flag = debug_flag;
+            mapped_ptr->tessellation_debug_flag = debug_bisector_neighbor;
 
             // テッセレーション更新フラグ
             mapped_ptr->tessellation_update = tessellation_update ? 1 : 0;
@@ -436,22 +436,6 @@ namespace ngl::render::app
         
 
 
-                static bool debug_subdiv_stop = false;
-                static int debug_div_level_counter = 0;
-                 
-                if(reset_request_)
-                {
-                    debug_subdiv_stop = false; // リセットリクエストがある場合はデバッグ分割停止を解除
-                    debug_div_level_counter = 0;
-                }
-                static int s_prev_subdiv_level = -1;
-                if(0 > s_prev_subdiv_level)
-                    s_prev_subdiv_level = fixed_subdivision_level_;
-                int prev_subdiv_level = s_prev_subdiv_level;
-                s_prev_subdiv_level = fixed_subdivision_level_;
-
-
-
         for (size_t shape_idx = 0; shape_idx < shape_count; ++shape_idx)
         {
             // 基底クラスからオブジェクトワールド変換行列を取得
@@ -461,7 +445,7 @@ namespace ngl::render::app
             // Important Point（テッセレーション評価で重視する座標）
             ngl::math::Vec3 important_point_world = important_point_world_;
 
-            auto cb_handle = cbt_gpu_resources_array_[shape_idx].UpdateConstants(command_list->GetDevice(), object_to_world, important_point_world, tessellation_update_, fixed_subdivision_level_, debug_subdiv_stop ? 1 : 0, debug_target_bisector_id_, debug_target_bisector_depth_);
+            auto cb_handle = cbt_gpu_resources_array_[shape_idx].UpdateConstants(command_list->GetDevice(), object_to_world, important_point_world, tessellation_update_, fixed_subdivision_level_, debug_bisector_neighbor_, debug_target_bisector_id_, debug_target_bisector_depth_);
             cbt_constant_handles_.push_back(cb_handle);
         }
         

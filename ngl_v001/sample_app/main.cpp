@@ -75,6 +75,7 @@ static bool sw_tess_update_tessellation_frame_toggle = false; // trueで1F毎に
 
 static int sw_tess_debug_bisector_id = -1;      // デバッグ対象BisectorID（-1で無効）
 static int sw_tess_debug_bisector_depth = -1;   // デバッグ対象BisectorDepth（-1で無効）
+static int sw_tess_debug_bisector_neighbor = -1;
 
 class PlayerController
 {
@@ -467,7 +468,7 @@ bool AppGame::Initialize()
                 tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 3.0f, 1.0f));
                 #else
                 // 6に設定して分割を 0->5 に一気に変更すると不整合
-                constexpr int tessellation_level = 3;  // 0で無効、1以上で有効.
+                constexpr int tessellation_level = 3;  // 3でも一気に分割すると問題発生.
 
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), tessellation_level, true);
                 tr.SetDiagonal(ngl::math::Vec4(60.0f));
@@ -711,10 +712,14 @@ bool AppGame::ExecuteApp()
             ImGui::Text("Debug Target Bisector:");
             ImGui::SliderInt("Bisector Depth", &sw_tess_debug_bisector_depth, -1, 15);
             ImGui::InputInt("Bisector ID", &sw_tess_debug_bisector_id, 1);
+            
+            ImGui::SliderInt("Neighbor(Twin,Prev,Next)", &sw_tess_debug_bisector_neighbor, -1, 2);
+
             if (ImGui::Button("Clear Debug Target"))
             {
                 sw_tess_debug_bisector_id = -1;
                 sw_tess_debug_bisector_depth = -1;
+                sw_tess_debug_bisector_neighbor = -1;
             }
             
         }
@@ -749,6 +754,8 @@ bool AppGame::ExecuteApp()
         // デバッグ用
         sw_tess_mesh->SetFixedSubdivisionLevel(sw_tess_fixed_subdivision_level);
         sw_tess_mesh->SetDebugTargetBisector(sw_tess_debug_bisector_id, sw_tess_debug_bisector_depth);
+        sw_tess_mesh->SetDebugBisectorNeighbor(sw_tess_debug_bisector_neighbor);
+
         sw_tess_mesh->SetTessellationUpdate(sw_tess_update_tessellation);
     }
 
