@@ -31,8 +31,7 @@ void WriteSplitCommands(uint bisector_index)
         bisector_chain[chain_length++] = current_index;
         
         // 現在のBisectorのTwinを取得
-        Bisector current_bisector = bisector_pool_rw[current_index];
-        int twin_index = current_bisector.twin;
+        int twin_index = bisector_pool_rw[current_index].twin;
         
         // 終了条件チェック
         if (twin_index < 0)
@@ -43,11 +42,9 @@ void WriteSplitCommands(uint bisector_index)
         }
         
         // Twin のTwinをチェック
-        Bisector twin_bisector = bisector_pool_rw[twin_index];
-        if (twin_bisector.twin == (int)current_index)
+        if (bisector_pool_rw[twin_index].twin == (int)current_index)
         {
             // Twin ペアが成立（twin.twin == self）→ 分割許可
-            // Twin もチェーンに追加
             if (chain_length < MAX_CHAIN_LENGTH)
             {
                 bisector_chain[chain_length++] = (uint)twin_index;
@@ -63,114 +60,70 @@ void WriteSplitCommands(uint bisector_index)
     // 分割許可判定と実行
     if (split_allowed)
     {
-        #if 1
-            // 以前の実装ではTwin分割に制限しているにも関わらず, 同一DepthのチェックをしていなかったためT-Junctionが発生していた.
-            // その対策バージョン.
-
-            // チェーン上の隣接要素間の関係性に応じた分割コマンドを追加設定
-            for (uint i = 0; i < chain_length; ++i)
-            {
-                const uint current_bisector_index = bisector_chain[i];
-                
-                // next から見て current_bisector との関係を判定
-                if (0 > bisector_pool_rw[current_bisector_index].twin)
-                {
-                    // Twinが境界の場合は分割.
-                    InterlockedOr(bisector_pool_rw[current_bisector_index].command, BISECTOR_CMD_TWIN_SPLIT);
-                }
-                else if (i < chain_length-1)
-                {
-                    const uint next_bisector_index = bisector_chain[i + 1];
-
-                    if(bisector_pool_rw[next_bisector_index].twin == (int)current_bisector_index)
-                    {
-                        // Twinペアの両方に分割コマンドを設定.
-                        InterlockedOr(bisector_pool_rw[current_bisector_index].command, BISECTOR_CMD_TWIN_SPLIT);
-                        InterlockedOr(bisector_pool_rw[next_bisector_index].command, BISECTOR_CMD_TWIN_SPLIT);
-                    }
-                }
-            }
-
-        #else
-            // チェーン内の全BisectorにTwin分割コマンドを設定
-            for (uint i = 0; i < chain_length; ++i)
-            {
-                InterlockedOr(bisector_pool_rw[bisector_chain[i]].command, BISECTOR_CMD_TWIN_SPLIT);
-            }
+        // 以前の実装ではTwin分割に制限しているにも関わらず, 同一Depth(相互twin)のチェックをしていなかったためT-Junctionが発生していたため対策.
+        
+        for (uint i = 0; i < chain_length; ++i)
+        {
+            const uint current_bisector_index = bisector_chain[i];
             
-            // チェーン上の隣接要素間の関係性に応じた分割コマンドを追加設定
-            for (uint i = 0; i < chain_length - 1; ++i)
+            if (0 > bisector_pool_rw[current_bisector_index].twin)
             {
-                uint current_bisector_index = bisector_chain[i];
-                uint next_bisector_index = bisector_chain[i + 1];
-                
-                // next_bisector から見て current_bisector との関係を判定
-                Bisector next_bisector = bisector_pool_rw[next_bisector_index];
-                
-                if (next_bisector.twin == (int)current_bisector_index)
+                // Twinが境界の場合は分割.
+                InterlockedOr(bisector_pool_rw[current_bisector_index].command, BISECTOR_CMD_TWIN_SPLIT);
+            }
+            else if (i < chain_length-1)
+            {
+                const uint next_bisector_index = bisector_chain[i + 1];
+
+                if(bisector_pool_rw[next_bisector_index].twin == (int)current_bisector_index)
                 {
-                    // current が next のTwinの場合
+                    // Twinペアの両方に分割コマンドを設定.
+                    InterlockedOr(bisector_pool_rw[current_bisector_index].command, BISECTOR_CMD_TWIN_SPLIT);
                     InterlockedOr(bisector_pool_rw[next_bisector_index].command, BISECTOR_CMD_TWIN_SPLIT);
                 }
-                else if (next_bisector.prev == (int)current_bisector_index)
-                {
-                    // current が next のPrevの場合
-                    InterlockedOr(bisector_pool_rw[next_bisector_index].command, BISECTOR_CMD_PREV_SPLIT);
-                }
-                else if (next_bisector.next == (int)current_bisector_index)
-                {
-                    // current が next のNextの場合
-                    InterlockedOr(bisector_pool_rw[next_bisector_index].command, BISECTOR_CMD_NEXT_SPLIT);
-                }
             }
-        #endif
+        }
     }
 }
 
-// 実際の統合コマンドビットを書き込む関数
-void WriteMergeCommands(uint bisector_index)
+// 統合コマンドの計算.
+uint CalcMergeCommands(uint bisector_index)
 {
     // bj1: 統合対象のBisector
     Bisector bj1 = bisector_pool_rw[bisector_index];
     uint j1 = bj1.bs_id;
     uint depth_j1 = bj1.bs_depth;
-    
+
     // minimum_tree_depth以下の場合は統合不可（早期リターン）
-    if (depth_j1 <= cbt_mesh_minimum_tree_depth) return;
+    if (depth_j1 <= cbt_mesh_minimum_tree_depth)
+        return 0;
     
-    // bitValue ← BitwiseAnd(j1, 1)
     uint bit_value = j1 & 1;
-    
-    // bj2 ← bitValue ? Prev(bj1) : Next(bj1)
-    // bj3 ← bitValue ? Next(bj1) : Prev(bj1)
     int bj2_index = bit_value ? bj1.prev : bj1.next;
     int bj3_index = bit_value ? bj1.next : bj1.prev;
     
     // bj2が有効かチェック
-    if (bj2_index < 0) return;
+    if (bj2_index < 0)
+        return 0;
     
-    Bisector bj2 = bisector_pool_rw[bj2_index];
-    uint j2 = bj2.bs_id;
-    
-    // if ⌊j1/2⌋ = ⌊j2/2⌋ then (兄弟Bisectorかチェック)
+    uint j2 = bisector_pool_rw[bj2_index].bs_id;
+
+    uint out_command = 0;
+
     if ((j1 >> 1) == (j2 >> 1))
     {
         // if bj3 = null then (境界統合)
         if (bj3_index < 0)
         {
-            // Merge(bj1, bj2) - boundary
             // 境界統合：処理対象のbisectorのみコマンドを書き込み
-            uint command = BISECTOR_CMD_BOUNDARY_MERGE;
+            out_command = BISECTOR_CMD_BOUNDARY_MERGE;
             
-            // bs_idが最小の場合は代表ビットも設定
+            // bs_idが最小の場合は代表ビット設定
             if (j1 < j2)
             {
-                command |= BISECTOR_CMD_MERGE_REPRESENTATIVE;
+                out_command |= BISECTOR_CMD_MERGE_REPRESENTATIVE;
             }
-            
-            InterlockedOr(bisector_pool_rw[bisector_index].command, command);
         }
-        // else if depth_j1 = depth_j3 then
         else 
         {
             Bisector bj3 = bisector_pool_rw[bj3_index];
@@ -179,8 +132,6 @@ void WriteMergeCommands(uint bisector_index)
             if (depth_j1 == depth_j3)
             {
                 uint j3 = bj3.bs_id;
-                
-                // bj4 ← bitValue ? Next(bj3) : Prev(bj3)
                 int bj4_index = bit_value ? bj3.next : bj3.prev;
                 
                 if (bj4_index >= 0)
@@ -188,26 +139,23 @@ void WriteMergeCommands(uint bisector_index)
                     Bisector bj4 = bisector_pool_rw[bj4_index];
                     uint j4 = bj4.bs_id;
                     
-                    // if ⌊j3/2⌋ = ⌊j4/2⌋ then
                     if ((j3 >> 1) == (j4 >> 1))
                     {
-                        // Merge(bj1, bj2, bj3, bj4) - non-boundary
                         // 非境界統合：処理対象のbisectorのみコマンドを書き込み
-                        uint min_bs_id = min(min(j1, j2), min(j3, j4));
-                        uint command = BISECTOR_CMD_INTERIOR_MERGE;
+                        out_command = BISECTOR_CMD_INTERIOR_MERGE;
                         
-                        // bs_idが最小の場合は代表ビットも設定
+                        // bs_idが最小の場合は代表ビット設定
+                        uint min_bs_id = min(min(j1, j2), min(j3, j4));
                         if (j1 == min_bs_id)
                         {
-                            command |= BISECTOR_CMD_MERGE_REPRESENTATIVE;
+                            out_command |= BISECTOR_CMD_MERGE_REPRESENTATIVE;
                         }
-                        
-                        InterlockedOr(bisector_pool_rw[bisector_index].command, command);
                     }
                 }
             }
         }
     }
+    return out_command;
 }
 
 // 分割コマンドを設定する関数（隣接Bisectorのコマンドも含めて直接書き換え）
@@ -241,27 +189,42 @@ void SetSplitCommands(uint bisector_index)
 
 // 統合コマンドを設定する関数（隣接Bisectorのコマンドも含めて直接書き換え）
 void SetMergeCommands(uint bisector_index)
-{
-    // 統合に必要な最大アロケーション数を計算
-    int max_allocation = CalcMaxAllocationForMerge();
-    
-    // アロケーションカウンタを原子的に増加
-    int old_counter;
-    InterlockedAdd(alloc_counter_rw[0], max_allocation, old_counter);
-    
+{   
     // CBTのルート値（現在の使用中Bisector数）を取得
     int current_used = GetCBTRootValue(cbt_buffer);
+    
+    uint merge_command = CalcMergeCommands(bisector_index);
+    if(0 != merge_command)
+    {
 
-    // アロケーション可能性をチェック（現在使用数 + 新規割り当て <= 最大プールサイズ）
-    if (current_used + old_counter + max_allocation <= bisector_pool_max_size)
-    {
-        // アロケーション可能：実際の統合コマンドを書き込み
-        WriteMergeCommands(bisector_index);
-    }
-    else
-    {
-        // アロケーション不可：カウンタを元に戻して終了
-        InterlockedAdd(alloc_counter_rw[0], -max_allocation);
+        // 統合は代表が必要分の確保チェックのみする.
+        // 代表以外はチェックせずにコマンド書き込みするが, 後段では代表ビットが立っているBisectorがいなければ無効になるため問題ない.
+        // これによって不要なアロケーションカウンタ増加によってアロケーション失敗する統合が減る.
+        if(BISECTOR_CMD_MERGE_REPRESENTATIVE & merge_command)
+        {
+            // 代表ビットが立っている場合はマージのモード毎に 1 か 2 のアロケーションを行う.
+            const int alloc_count = (BISECTOR_CMD_BOUNDARY_MERGE & merge_command) ? 1 : 2;
+            // アロケーションカウンタを原子的に増加
+            int old_counter;
+            InterlockedAdd(alloc_counter_rw[0], alloc_count, old_counter);
+
+            // アロケーション可能性をチェック（現在使用数 + 新規割り当て <= 最大プールサイズ）
+            if (current_used + old_counter + alloc_count <= bisector_pool_max_size)
+            {
+                // アロケーション成功なら 代表Bisectorビットの書き込み.
+                InterlockedOr(bisector_pool_rw[bisector_index].command, merge_command);
+            }
+            else
+            {
+                // アロケーション失敗なら カウンタを元に戻して終了
+                InterlockedAdd(alloc_counter_rw[0], -alloc_count);
+            }
+        }
+        else
+        {
+            // 代表ビットがなければそのまま書き込み.
+            InterlockedOr(bisector_pool_rw[bisector_index].command, merge_command);
+        }
     }
 }
 
@@ -288,8 +251,7 @@ void main_cs(
         if(0 <= debug_target_bisector_id || 0 <= debug_target_bisector_depth)
         {
             // デバッグ対象のBisectorは選択されたフラグを立てる
-            if(debug_target_bisector_id == bisector_pool_rw[bisector_index].bs_id && 
-            debug_target_bisector_depth == bisector_pool_rw[bisector_index].bs_depth)
+            if(debug_target_bisector_id == bisector_pool_rw[bisector_index].bs_id ||  debug_target_bisector_depth == bisector_pool_rw[bisector_index].bs_depth)
             {
                 if(0 == tessellation_debug_flag)
                 {

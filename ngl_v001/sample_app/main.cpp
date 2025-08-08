@@ -468,7 +468,7 @@ bool AppGame::Initialize()
                 tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 3.0f, 1.0f));
                 #else
                 // 6に設定して分割を 0->5 に一気に変更すると不整合
-                constexpr int tessellation_level = 3;  // 3でも一気に分割すると問題発生.
+                constexpr int tessellation_level = 10;  // 3でも一気に分割すると問題発生 -> 統合時のアロケーションチェックを代表Bisectorのみにしたことで改善.
 
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), tessellation_level, true);
                 tr.SetDiagonal(ngl::math::Vec4(60.0f));

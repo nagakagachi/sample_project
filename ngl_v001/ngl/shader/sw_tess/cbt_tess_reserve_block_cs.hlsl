@@ -26,19 +26,16 @@ bool CheckBoundaryMergeConditions(uint bisector_index)
     }
     
     // 条件3: 近傍Bisectorも分割コマンドを持たない
-    // bj1の近傍チェック
     if (bj1.twin >= 0)
     {
-        Bisector twin1 = bisector_pool_rw[bj1.twin];
-        if (twin1.command & BISECTOR_CMD_ANY_SPLIT)
+        if (bisector_pool_rw[bj1.twin].command & BISECTOR_CMD_ANY_SPLIT)
             return false;
     }
     
     // bj2の近傍チェック
     if (bj2.twin >= 0)
     {
-        Bisector twin2 = bisector_pool_rw[bj2.twin];
-        if (twin2.command & BISECTOR_CMD_ANY_SPLIT)
+        if (bisector_pool_rw[bj2.twin].command & BISECTOR_CMD_ANY_SPLIT)
             return false;
     }
     
@@ -90,8 +87,7 @@ bool CheckInteriorMergeConditions(uint bisector_index)
     {
         if (neighbors[i] >= 0)
         {
-            Bisector neighbor = bisector_pool_rw[neighbors[i]];
-            if (neighbor.command & BISECTOR_CMD_ANY_SPLIT)
+            if (bisector_pool_rw[neighbors[i]].command & BISECTOR_CMD_ANY_SPLIT)
                 return false;
         }
     }
@@ -152,11 +148,6 @@ void main_cs(
             // 割り当て先インデックスをalloc_ptrに保存
             bisector_pool_rw[bisector_index].alloc_ptr[0] = first_unused_index;
             bisector_pool_rw[bisector_index].alloc_ptr[1] = second_unused_index;
-            
-            // TODO: 実際の子Bisector初期化は次のパスで実行
-            // - 新規Bisectorの基本情報設定 (bs_id, bs_depth)
-            // - Twin, Prev, Next リンクの設定
-            // - 親Bisectorからのリンク更新
         }
     }
     else if (command & (BISECTOR_CMD_BOUNDARY_MERGE | BISECTOR_CMD_INTERIOR_MERGE))
@@ -204,12 +195,11 @@ void main_cs(
                 {
                     Bisector current_bisector = bisector_pool_rw[bisector_index];
                     
-                    // 統合代表（bj1）に統合同意ビットを立てる
+                    // 統合代表（bj1）に統合同意ビットを立てる.
                     bisector_pool_rw[bisector_index].command |= BISECTOR_CMD_MERGE_CONSENT;
                     
                     // 統合相手（bj2）にも統合同意ビットを立てる
-                    int bj2_index = current_bisector.next;
-                    bisector_pool_rw[bj2_index].command |= BISECTOR_CMD_MERGE_CONSENT;
+                    bisector_pool_rw[current_bisector.next].command |= BISECTOR_CMD_MERGE_CONSENT;
                 }
                 // 内部統合の場合：もう一方のペアの代表（bs_id最小）にも同じ情報を書き込み
                 else if (command & BISECTOR_CMD_INTERIOR_MERGE)
@@ -231,16 +221,11 @@ void main_cs(
                     bisector_pool_rw[bj3_index].alloc_ptr[1] = first_parent_index;
                     
                     // 4つすべてのbisectorに統合同意ビットを立てる
-                    bisector_pool_rw[bisector_index].command |= BISECTOR_CMD_MERGE_CONSENT;  // bj1
-                    bisector_pool_rw[bj2_index].command |= BISECTOR_CMD_MERGE_CONSENT;       // bj2
-                    bisector_pool_rw[bj3_index].command |= BISECTOR_CMD_MERGE_CONSENT;       // bj3
-                    bisector_pool_rw[bj4_index].command |= BISECTOR_CMD_MERGE_CONSENT;       // bj4
+                    bisector_pool_rw[bisector_index].command |= BISECTOR_CMD_MERGE_CONSENT;
+                    bisector_pool_rw[bj2_index].command |= BISECTOR_CMD_MERGE_CONSENT;
+                    bisector_pool_rw[bj3_index].command |= BISECTOR_CMD_MERGE_CONSENT;
+                    bisector_pool_rw[bj4_index].command |= BISECTOR_CMD_MERGE_CONSENT;
                 }
-                
-                // TODO: 実際の親Bisector初期化は次のパスで実行
-                // - 新規親Bisectorの基本情報設定 (bs_id, bs_depth)
-                // - Twin, Prev, Next リンクの設定
-                // - 子Bisectorからのリンク更新
             }
         }
     }

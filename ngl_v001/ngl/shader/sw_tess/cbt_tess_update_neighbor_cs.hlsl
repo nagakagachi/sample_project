@@ -134,9 +134,6 @@ void UpdateNeighborsForMerge(uint bisector_index)
         // 第2ペア（bj3, bj4）にDecimatePointersを適用
         DecimatePointers(bj2.next, bj3.next, second_parent_index);
     }
-    
-    // TODO: 将来の拡張
-    // 隣接Bisectorでの統合がサポートされた場合、ここに追加処理を実装
 }
 
 // 隣接情報を更新するパス
