@@ -178,8 +178,15 @@ MtlVsOutput MtlVsEntryPoint(MtlVsInput input)
     // テスト
     //output.position_offset_ws = input.normal_ws * abs(sin(ngl_cb_sceneview.cb_time_sec / 1.0f)) * 0.05;
 
-    output.position_offset_ws += input.normal_ws * input.uv1.x*0.5;
-    
+    #if 1
+        // 重要点からの距離に基づく変位を計算
+        const float3 dist_from_important_point = input.position_ws - important_point;
+        const float dist_length = length(dist_from_important_point);
+        const float displacement_rate = 1.0 - saturate(dist_length / 8.0); // 重要点からの距離に基づく変位率
+        output.position_offset_ws += input.normal_ws * (displacement_rate * cos(displacement_rate * 20.0))*0.5;
+    #else
+        output.position_offset_ws += input.normal_ws * input.uv1.x*0.5;
+    #endif 
     return output;
 }
 

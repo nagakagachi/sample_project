@@ -68,6 +68,8 @@ static float dbgw_stat_primary_rtg_execute   = {};
 static int dbgw_sky_debug_mode       = {};
 static float dbgw_sky_debug_mip_bias = 0.0f;
 
+static float sw_tess_important_point_offset_in_view = 9.0;
+
 static int sw_tess_fixed_subdivision_level = 0; // -1で無効、0以上で固定分割レベルを指定
 static bool sw_tess_update_tessellation = true; // trueでテッセレーション更新を有効化
 static bool sw_tess_update_tessellation_frame_toggle = false; // trueで1F毎にテッセレーション更新フラグをOFFにするデバッグ用.
@@ -468,9 +470,9 @@ bool AppGame::Initialize()
                 tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 3.0f, 1.0f));
                 #else
                 // 6に設定して分割を 0->5 に一気に変更すると不整合
-                constexpr int tessellation_level = 10;  // 3でも一気に分割すると問題発生 -> 統合時のアロケーションチェックを代表Bisectorのみにしたことで改善.
+                constexpr int tessellation_level = 8;  // 3でも一気に分割すると問題発生 -> 統合時のアロケーションチェックを代表Bisectorのみにしたことで改善.
 
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), tessellation_level, true);
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), tessellation_level, false);
                 tr.SetDiagonal(ngl::math::Vec4(60.0f));
                 tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
                 #endif
@@ -708,6 +710,8 @@ bool AppGame::ExecuteApp()
                 }
             }
 
+            ImGui::Separator();
+            ImGui::SliderFloat("Important Point View Offset", &sw_tess_important_point_offset_in_view, 0.01f, 50.0f);
 
             ImGui::Separator();
             ImGui::Text("Debug Target Bisector:");
@@ -747,7 +751,7 @@ bool AppGame::ExecuteApp()
     }
 
     // CBTテッセレーションメッシュに情報設定.
-    const ngl::math::Vec3 tessellation_important_point = camera_pos_ + camera_pose_.GetColumn2() * 6.0f;
+    const ngl::math::Vec3 tessellation_important_point = camera_pos_ + camera_pose_.GetColumn2() * sw_tess_important_point_offset_in_view;
     for (auto* sw_tess_mesh : sw_tessellation_mesh_array_)
     {
         sw_tess_mesh->SetImportantPoint(tessellation_important_point);

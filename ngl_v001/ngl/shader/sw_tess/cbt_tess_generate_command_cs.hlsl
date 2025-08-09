@@ -371,7 +371,7 @@ void main_cs(
         
         // 3. important_pointからの距離を計算
         //float distance_to_important = length(triangle_center - important_point);
-        float distance_to_important = pow(length(triangle_center - important_point), 1.1);
+        float distance_to_important = pow(length(triangle_center - important_point), 1.5);
     #else
         const float3 obj_axis_scale = float3(length(object_to_world._m00_m01_m02), 
                                              length(object_to_world._m10_m11_m12), 
