@@ -71,7 +71,7 @@ static float dbgw_sky_debug_mip_bias = 0.0f;
 static int sw_tess_fixed_subdivision_level = 0; // -1で無効、0以上で固定分割レベルを指定
 static bool sw_tess_update_tessellation = true; // trueでテッセレーション更新を有効化
 static bool sw_tess_update_tessellation_frame_toggle = false; // trueで1F毎にテッセレーション更新フラグをOFFにするデバッグ用.
-
+static float sw_tess_split_threshold = 0.05f; // テッセレーション分割閾値
 
 static int sw_tess_debug_bisector_id = -1;      // デバッグ対象BisectorID（-1で無効）
 static int sw_tess_debug_bisector_depth = -1;   // デバッグ対象BisectorDepth（-1で無効）
@@ -698,6 +698,7 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("Enable Tessellation Update", &sw_tess_update_tessellation);
             ImGui::Checkbox("Tessellation Update Frame Toggle", &sw_tess_update_tessellation_frame_toggle);
             ImGui::SliderInt("Fixed Subdivision Level", &sw_tess_fixed_subdivision_level, -1, 10);
+            ImGui::SliderFloat("Split Threshold", &sw_tess_split_threshold, 0.0001f, 0.1f, "%.4f");
 
             if (ImGui::Button("Reset Tessellation"))
             {
@@ -755,6 +756,9 @@ bool AppGame::ExecuteApp()
         sw_tess_mesh->SetFixedSubdivisionLevel(sw_tess_fixed_subdivision_level);
         sw_tess_mesh->SetDebugTargetBisector(sw_tess_debug_bisector_id, sw_tess_debug_bisector_depth);
         sw_tess_mesh->SetDebugBisectorNeighbor(sw_tess_debug_bisector_neighbor);
+
+        // テッセレーション分割閾値を設定
+        sw_tess_mesh->SetTessellationSplitThreshold(sw_tess_split_threshold);
 
         sw_tess_mesh->SetTessellationUpdate(sw_tess_update_tessellation);
     }

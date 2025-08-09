@@ -153,7 +153,7 @@ namespace ngl::render::app
     }
 
     ngl::rhi::ConstantBufferPooledHandle CBTGpuResources::UpdateConstants(ngl::rhi::DeviceDep* p_device, 
-        const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, bool tessellation_update, int32_t fixed_subdivision_level, int32_t debug_bisector_neighbor, int32_t debug_target_bisector_id, int32_t debug_target_bisector_depth)
+        const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, bool tessellation_update, float tessellation_split_threshold, int32_t fixed_subdivision_level, int32_t debug_bisector_neighbor, int32_t debug_target_bisector_id, int32_t debug_target_bisector_depth)
     {
         // ConstantBufferPoolから定数バッファを確保
         auto cbh = p_device->GetConstantBufferPool()->Alloc(sizeof(CBTConstants));
@@ -179,7 +179,7 @@ namespace ngl::render::app
             mapped_ptr->important_point = important_point_world;
             
             // テッセレーション閾値を設定
-            mapped_ptr->tessellation_split_threshold = 0.2f;   // 分割閾値
+            mapped_ptr->tessellation_split_threshold = tessellation_split_threshold;
             mapped_ptr->tessellation_merge_factor = 0.45f;      // 統合係数（分割閾値に対する比率, 0.5 = 50%）
             
             // デバッグその他.
@@ -474,7 +474,7 @@ namespace ngl::render::app
             // Important Point（テッセレーション評価で重視する座標）
             ngl::math::Vec3 important_point_world = important_point_world_;
 
-            auto cb_handle = cbt_gpu_resources_array_[shape_idx].UpdateConstants(command_list->GetDevice(), object_to_world, important_point_world, cur_update_enable, fixed_subdivision_level_, debug_bisector_neighbor_, debug_target_bisector_id_, debug_target_bisector_depth_);
+            auto cb_handle = cbt_gpu_resources_array_[shape_idx].UpdateConstants(command_list->GetDevice(), object_to_world, important_point_world, cur_update_enable, tessellation_split_threshold_, fixed_subdivision_level_, debug_bisector_neighbor_, debug_target_bisector_id_, debug_target_bisector_depth_);
             cbt_constant_handles_.push_back(cb_handle);
         }
         
@@ -556,7 +556,7 @@ namespace ngl::render::app
                     
                     cbt_begin_update_pso_->DispatchHelper(command_list, 1, 1, 1);
 
-                    
+
                     cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_index_cache_buffer.ResourceBarrier(command_list, rhi::EResourceState::IndirectArgument);
                     cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.ResourceBarrier(command_list, rhi::EResourceState::IndirectArgument);
                     cbt_gpu_resources_array_[shape_idx].draw_indirect_arg_buffer.ResourceBarrier(command_list, rhi::EResourceState::IndirectArgument);

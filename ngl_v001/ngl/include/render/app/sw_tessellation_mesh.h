@@ -79,7 +79,7 @@ namespace ngl::render::app
         
         // 定数バッファ更新メソッド（ConstantBufferPoolから確保）
         ngl::rhi::ConstantBufferPooledHandle UpdateConstants(ngl::rhi::DeviceDep* p_device, 
-            const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, bool tessellation_update, int32_t fixed_subdivision_level = -1, int32_t debug_bisector_neighbor = -1, int32_t debug_target_bisector_id = -1, int32_t debug_target_bisector_depth = -1);
+            const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, bool tessellation_update, float tessellation_split_threshold, int32_t fixed_subdivision_level = -1, int32_t debug_bisector_neighbor = -1, int32_t debug_target_bisector_id = -1, int32_t debug_target_bisector_depth = -1);
         
         // リソースバインド用ヘルパー
         void BindResources(ngl::rhi::ComputePipelineStateDep* pso, ngl::rhi::DescriptorSetDep* desc_set, ngl::rhi::ConstantBufferPooledHandle cb_handle) const;
@@ -150,6 +150,18 @@ namespace ngl::render::app
             return debug_target_bisector_depth_;
         }
 
+        // テッセレーション分割閾値を設定
+        void SetTessellationSplitThreshold(float threshold)
+        {
+            tessellation_split_threshold_ = threshold;
+        }
+
+        // 現在のテッセレーション分割閾値を取得
+        float GetTessellationSplitThreshold() const
+        {
+            return tessellation_split_threshold_;
+        }
+
         // テッセレーション更新フラグを設定
         void SetTessellationUpdate(bool update)
         {
@@ -214,6 +226,9 @@ namespace ngl::render::app
 
         bool tessellation_update_ = true; // テッセレーション更新フラグ
         bool tessellation_update_on_render_ = true; // テッセレーション更新フラグ(Render側)
+
+        // テッセレーション分割閾値
+        float tessellation_split_threshold_ = 0.002f;
 
         // デバッグ対象Bisector情報（-1で無効）
         int32_t debug_target_bisector_id_ = -1;
