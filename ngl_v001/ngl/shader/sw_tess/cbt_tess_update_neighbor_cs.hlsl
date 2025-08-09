@@ -18,6 +18,7 @@ void RefinePointers(uint bisector_index)
             // 隣接でTwin分割されている場合.
             int target_next_index = bisector_pool_rw[next_index].alloc_ptr[0];  // 第1子
 
+            // 元実装.
             bisector_pool_rw[target_next_index].twin = second_child_index;
         }
         else
@@ -145,14 +146,14 @@ void main_cs(
 {
     const uint thread_id = DTid.x;
 
+
+    if(!tessellation_update) return;
+
+
     // 有効なBisector範囲外は早期リターン
     if (thread_id >= GetCBTRootValue(cbt_buffer)) return;
     // index_cacheから有効なBisectorのインデックスを取得
     const uint bisector_index = index_cache[thread_id].x;
-
-
-    if(!tessellation_update) return;
-
 
     // 処理対象のBisectorを取得
     Bisector bisector = bisector_pool_rw[bisector_index];

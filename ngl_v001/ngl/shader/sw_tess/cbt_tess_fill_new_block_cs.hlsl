@@ -10,14 +10,14 @@ void main_cs(
 {
     const uint thread_id = DTid.x;
 
+
+    if(!tessellation_update) return;
+
+
     // 有効なBisector範囲外は早期リターン
     if (thread_id >= GetCBTRootValue(cbt_buffer)) return;
     // index_cacheから有効なBisectorのインデックスを取得
     const uint bisector_index = index_cache[thread_id].x;
-
-
-    if(!tessellation_update) return;
-
     
     // 処理対象のBisectorを取得
     Bisector bisector = bisector_pool_rw[bisector_index];
@@ -47,11 +47,10 @@ void main_cs(
             bisector_pool_rw[first_child_index].twin = bisector.prev;  // 親のprev
             bisector_pool_rw[first_child_index].next = second_child_index;  // 親の2つ目の子
             
-            // 親にtwinがいれば親のtwinの2つ目の子、いなければ無効値
+            // 親にtwinがいれば,そちらも分割されているはずなのでその2つ目の子、いなければ無効値
             if (bisector.twin >= 0)
             {
-                Bisector parent_twin = bisector_pool_rw[bisector.twin];
-                bisector_pool_rw[first_child_index].prev = parent_twin.alloc_ptr[1];  // 親のtwinの2つ目の子
+                bisector_pool_rw[first_child_index].prev = bisector_pool_rw[bisector.twin].alloc_ptr[1];  // 親のtwinの2つ目の子
             }
             else
             {
@@ -66,11 +65,10 @@ void main_cs(
             bisector_pool_rw[second_child_index].twin = bisector.next;  // 親のnext
             bisector_pool_rw[second_child_index].prev = first_child_index;  // 親の最初の子
             
-            // 親にTwinがいれば親のTwinの最初の子、いなければ無効値
+            // 親にtwinがいれば,そちらも分割されているはずなのでその最初の子、いなければ無効値
             if (bisector.twin >= 0)
             {
-                Bisector parent_twin = bisector_pool_rw[bisector.twin];
-                bisector_pool_rw[second_child_index].next = parent_twin.alloc_ptr[0];  // 親のtwinの最初の子
+                bisector_pool_rw[second_child_index].next = bisector_pool_rw[bisector.twin].alloc_ptr[0];  // 親のtwinの最初の子
             }
             else
             {

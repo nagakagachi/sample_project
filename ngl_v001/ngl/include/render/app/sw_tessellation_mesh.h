@@ -11,40 +11,37 @@
 
 namespace ngl::render::app
 {
+    class RhiBufferSet
+    {
+    public:
+        RhiBufferSet() = default;
+        ~RhiBufferSet() = default;
+
+        bool InitializeAsStructured(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc);
+        bool InitializeAsTyped(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc, rhi::EResourceFormat format);
+
+        void ResourceBarrier(ngl::rhi::GraphicsCommandListDep* p_command_list, rhi::EResourceState next_state);
+
+    public:
+        // CBT Buffer
+        rhi::RefBufferDep buffer;
+        rhi::RefUavDep uav;
+        rhi::RefSrvDep srv;
+
+        rhi::EResourceState resource_state = rhi::EResourceState::Common;
+    };
+
     // CBT関連のGPUリソースをまとめたクラス
     class CBTGpuResources
     {
     public:
-        // CBT Buffer
-        rhi::RefBufferDep cbt_buffer;
-        rhi::RefUavDep cbt_buffer_uav;
-        rhi::RefSrvDep cbt_buffer_srv;
-        
-        // Bisector Pool Buffer
-        rhi::RefBufferDep bisector_pool_buffer;
-        rhi::RefUavDep bisector_pool_uav;
-        rhi::RefSrvDep bisector_pool_srv;
-        
-        // Index Cache Buffer
-        rhi::RefBufferDep index_cache_buffer;
-        rhi::RefUavDep index_cache_uav;
-        rhi::RefSrvDep index_cache_srv;
-        
-        // Alloc Counter Buffer
-        rhi::RefBufferDep alloc_counter_buffer;
-        rhi::RefUavDep alloc_counter_uav;
-        rhi::RefSrvDep alloc_counter_srv;
-        
-        // Indirect Dispatch Args Buffers
-        rhi::RefBufferDep indirect_dispatch_arg_for_bisector_buffer;
-        rhi::RefUavDep indirect_dispatch_arg_for_bisector_uav;
-        
-        rhi::RefBufferDep indirect_dispatch_arg_for_index_cache_buffer;
-        rhi::RefUavDep indirect_dispatch_arg_for_index_cache_uav;
-        
-        // Draw Indirect Args Buffer
-        rhi::RefBufferDep draw_indirect_arg_buffer;
-        rhi::RefUavDep draw_indirect_arg_uav;
+        RhiBufferSet cbt_buffer;
+        RhiBufferSet bisector_pool_buffer;
+        RhiBufferSet index_cache_buffer;
+        RhiBufferSet alloc_counter_buffer;
+        RhiBufferSet indirect_dispatch_arg_for_bisector_buffer;
+        RhiBufferSet indirect_dispatch_arg_for_index_cache_buffer;
+        RhiBufferSet draw_indirect_arg_buffer;
 
         // CBT Constants
         struct CBTConstants
@@ -215,7 +212,8 @@ namespace ngl::render::app
         // 固定分割レベル（-1で無効、0以上で固定分割）
         int32_t fixed_subdivision_level_ = -1;
 
-        bool tessellation_update_ = true; // テッセレーション更新フラグ（trueで更新、falseで更新なし）
+        bool tessellation_update_ = true; // テッセレーション更新フラグ
+        bool tessellation_update_on_render_ = true; // テッセレーション更新フラグ(Render側)
 
         // デバッグ対象Bisector情報（-1で無効）
         int32_t debug_target_bisector_id_ = -1;

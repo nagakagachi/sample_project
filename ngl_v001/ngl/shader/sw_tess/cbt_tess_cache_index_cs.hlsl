@@ -10,13 +10,15 @@ void main_cs(
 {
     const uint thread_id = DTid.x;
     
+    
+    //if(!tessellation_update) return;
+
+
     // CBTルート値から有効なBisector数を取得
     uint active_bisector_count = GetCBTRootValue(cbt_buffer);
     uint available_slots = bisector_pool_max_size - active_bisector_count;
-    
     // 範囲チェック: 有効Bisector総数と利用可能スロット数の大きい方
     uint max_range = max(active_bisector_count, available_slots);
-    
     if (thread_id < max_range)
     {
         int2 cache_value = int2(-1, -1);  // 初期値: 無効インデックス

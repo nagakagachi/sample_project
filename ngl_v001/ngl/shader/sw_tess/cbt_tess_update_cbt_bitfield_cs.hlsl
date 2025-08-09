@@ -11,16 +11,14 @@ void main_cs(
 {
     const uint thread_id = DTid.x;
 
+
+    if(!tessellation_update) return;
+    
     
     // 有効なBisector範囲外は早期リターン
     if (thread_id >= GetCBTRootValue(cbt_buffer)) return;
     // index_cacheから有効なBisectorインデックスを取得
     int bisector_index = index_cache[thread_id].x;  // x = i番目の1ビット（使用中Bisector）
-
-
-    if(!tessellation_update) return;
-
-
 
     uint command = bisector_pool[bisector_index].command;
     

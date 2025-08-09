@@ -13,7 +13,7 @@ uint CalcMaxAllocationForMerge()
     return 2;
 }
 
-// 実際の分割コマンドビットを書き込む関数
+// Twinチェイン全体に対して分割コマンドを書き込むバージョン. 不具合とアロケーションチェックが過剰でアロケーション失敗によるキャンセルが懸念される点から現在は未採用.
 void WriteSplitCommands(uint bisector_index)
 {   
     // 新実装：Twinチェーン追跡による分割許可判定
@@ -86,6 +86,89 @@ void WriteSplitCommands(uint bisector_index)
     }
 }
 
+// 分割コマンドを設定する関数（隣接Bisectorのコマンドも含めて直接書き換え）
+void SetSplitCommands(uint bisector_index)
+{
+    // Bisector情報を取得
+    Bisector bisector = bisector_pool_rw[bisector_index];
+
+    // CBTのルート値（現在の使用中Bisector数）を取得
+    int current_used = GetCBTRootValue(cbt_buffer);
+    
+    #if 1
+        // より単純実装：Bisector毎にTwin境界かTwinペアに行き当たるまで探索し, 1つまたはペアである2つのBisectorのみを分割する. 
+        // フレーム分散で最終的に全体が目的の分割レベルに到達する. 
+        // 1Fでの分割では目的の分割レベルに到達しにくいが, 代わりにロジックがシンプルになり, アロケーションチェックがBisector毎に最大2つ=新しい4つのBisectorで済みアロケーション失敗による分割停止の可能性が抑制できる.
+
+        // Twin連鎖を辿って末端を分割.
+        int current_index = bisector_index;
+        int terminate_twin_index = -1;
+        while (true)
+        {
+            // 現在のBisectorのTwinを取得
+            int twin_index = bisector_pool_rw[current_index].twin;
+            
+            // Twinが境界のBisectorに到達したら終了.
+            if (twin_index < 0)
+                break;
+            
+            // Twin のTwinをチェック
+            if (bisector_pool_rw[twin_index].twin == current_index)
+            {
+                terminate_twin_index = twin_index;
+                break;
+            }
+            
+            // 次のBisectorに進む
+            current_index = twin_index;
+        }
+
+        // アロケーション試行.
+        const int alloc_count = (0 <= terminate_twin_index) ? 4 : 2;
+        int old_counter;
+        InterlockedAdd(alloc_counter_rw[0], alloc_count, old_counter);
+
+        // アロケーション可能性をチェック(現在使用数 + 新規割り当て <= 最大プールサイズ)
+        if (current_used + old_counter + alloc_count <= bisector_pool_max_size)
+        {
+            InterlockedOr(bisector_pool_rw[current_index].command, BISECTOR_CMD_TWIN_SPLIT);
+            if(0 <= terminate_twin_index)
+            {
+                // Twinがいる場合はその分も込でAllocチェックしているので相手にもコマンド書き込み.
+                InterlockedOr(bisector_pool_rw[terminate_twin_index].command, BISECTOR_CMD_TWIN_SPLIT);
+            }
+        }
+        else
+        {
+            // アロケーション不可：カウンタを元に戻して終了
+            InterlockedAdd(alloc_counter_rw[0], -alloc_count);
+        }
+
+    #else
+        // 元実装. 再帰でTwin隣接を巡回してコマンド書き込みしていくバージョン. 多段階分割時にT-Junctionが発生する不具合あり.
+
+        // 分割に必要な最大アロケーション数を計算
+        int max_allocation = CalcMaxAllocationForSplit(bisector.bs_depth);
+        
+        // アロケーションカウンタを原子的に増加
+        int old_counter;
+        InterlockedAdd(alloc_counter_rw[0], max_allocation, old_counter);
+        
+        // アロケーション可能性をチェック（現在使用数 + 新規割り当て <= 最大プールサイズ）
+        if (current_used + old_counter + max_allocation <= bisector_pool_max_size)
+        {
+            // アロケーション可能：実際の分割コマンドを書き込み
+            WriteSplitCommands(bisector_index);
+        }
+        else
+        {
+            // アロケーション不可：カウンタを元に戻して終了
+            InterlockedAdd(alloc_counter_rw[0], -max_allocation);
+        }
+    #endif
+}
+
+
 // 統合コマンドの計算.
 uint CalcMergeCommands(uint bisector_index)
 {
@@ -156,35 +239,6 @@ uint CalcMergeCommands(uint bisector_index)
         }
     }
     return out_command;
-}
-
-// 分割コマンドを設定する関数（隣接Bisectorのコマンドも含めて直接書き換え）
-void SetSplitCommands(uint bisector_index)
-{
-    // Bisector情報を取得
-    Bisector bisector = bisector_pool_rw[bisector_index];
-    
-    // 分割に必要な最大アロケーション数を計算
-    int max_allocation = CalcMaxAllocationForSplit(bisector.bs_depth);
-    
-    // アロケーションカウンタを原子的に増加
-    int old_counter;
-    InterlockedAdd(alloc_counter_rw[0], max_allocation, old_counter);
-    
-    // CBTのルート値（現在の使用中Bisector数）を取得
-    int current_used = GetCBTRootValue(cbt_buffer);
-    
-    // アロケーション可能性をチェック（現在使用数 + 新規割り当て <= 最大プールサイズ）
-    if (current_used + old_counter + max_allocation <= bisector_pool_max_size)
-    {
-        // アロケーション可能：実際の分割コマンドを書き込み
-        WriteSplitCommands(bisector_index);
-    }
-    else
-    {
-        // アロケーション不可：カウンタを元に戻して終了
-        InterlockedAdd(alloc_counter_rw[0], -max_allocation);
-    }
 }
 
 // 統合コマンドを設定する関数（隣接Bisectorのコマンドも含めて直接書き換え）
@@ -273,7 +327,7 @@ void main_cs(
 
 
 
-    //if(!tessellation_update) return;
+    if(!tessellation_update) return;
     
     
     // 処理対象のBisectorを取得
