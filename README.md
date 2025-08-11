@@ -9,7 +9,6 @@ The following reference materials are available on RenderGraph. </br>
 https://nagakagachi.notion.site/RenderGraph-54f0cf4284c7466697b99cc0df81be80
 </br>
 
- 
 # Build
   - clone
   - build third_party/assimp (cmake)
@@ -169,6 +168,13 @@ https://github.com/nagakagachi/sample_projct/blob/2517e77d16df00e03a779febc52884
 
 レンダリングパイプラインの構築と実行は以下.<br/>
 https://github.com/nagakagachi/sample_projct/blob/2517e77d16df00e03a779febc52884ade85293eb/ngl_v001/ngl/src/render/test_render_path.cpp#L76
+
+# Concurrent Binary Trees Based Software Tessellation Demo
+CBT based ComputeShader Tessellation の検証コードが含まれます.</br>
+Concurrent Binary Trees for Large-Scale Game Components. </br>
+- https://arxiv.org/pdf/2407.02215
+<img width="720" alt="Image" src="https://github.com/user-attachments/assets/53a5800e-a7fc-4dc3-8c87-c4be37c18fc7" />
+
 
 # Third Party
   - Assimp
