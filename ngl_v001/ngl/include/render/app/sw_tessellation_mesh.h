@@ -204,6 +204,7 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_update_neighbor_pso_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_update_cbt_bitfield_pso_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_sum_reduction_pso_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_sum_reduction_naive_pso_ = {};  // 既存のnaive版
 
         // CBT GPU Resources (シェイプ単位で管理)
         std::vector<CBTGpuResources> cbt_gpu_resources_array_;

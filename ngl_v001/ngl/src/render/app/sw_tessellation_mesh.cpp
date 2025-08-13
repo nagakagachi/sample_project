@@ -344,7 +344,8 @@ namespace ngl::render::app
             cbt_fill_new_block_pso_ = CreateComputePSO("sw_tess/cbt_tess_fill_new_block_cs.hlsl");
             cbt_update_neighbor_pso_ = CreateComputePSO("sw_tess/cbt_tess_update_neighbor_cs.hlsl");
             cbt_update_cbt_bitfield_pso_ = CreateComputePSO("sw_tess/cbt_tess_update_cbt_bitfield_cs.hlsl");
-            cbt_sum_reduction_pso_ = CreateComputePSO("sw_tess/cbt_sum_reduction_naive_cs.hlsl");
+            cbt_sum_reduction_pso_ = CreateComputePSO("sw_tess/cbt_sum_reduction_cs.hlsl");
+            cbt_sum_reduction_naive_pso_ = CreateComputePSO("sw_tess/cbt_sum_reduction_naive_cs.hlsl");
         }
 
         // CBT Tessellation Buffers初期化 (シェイプ単位で管理)
@@ -478,12 +479,79 @@ namespace ngl::render::app
             cbt_constant_handles_.push_back(cb_handle);
         }
         
-        if(!cur_update_enable)
+        // 9. Sum Reduction Pass
+        auto execute_sum_reduction_cs = [this](rhi::GraphicsCommandListDep* command_list, size_t shape_idx)
         {
-            // TODO: CPU側でキャンセルする. こちらの場合はシェーダ側でキャンセルするとの違い1ステップ毎に止めるようにするとT-Junction発生するようになる(0->8の分割レベル遷移).
-            //return;
-        }
+            #if 1
+                // マルチパスのSumReduction.
+                {
+                    struct CbCbtSumReduction
+                    {
+                        // Dispatch側で log2(CBT_SUM_REDUCTION_WIDTH)ずつDepthを減らして呼び出す.
+                        u32 target_depth;
 
+                        u32 padding0;
+                        u32 padding1;
+                        u32 padding2;
+                    };
+
+                    // CSはワークバッファをThreadGroup単位で分担してその範囲内でSumReductionを実行するため, ThreadGroupサイズは2の冪となっている. そのMSB==処理Depthサイズ.
+                    const int sum_reduction_cs_work_depth_per_pass = MostSignificantBit32(cbt_sum_reduction_pso_->GetThreadGroupSizeX());//10;
+
+                    int sum_reduction_work_size = static_cast<int>(cbt_gpu_resources_array_[shape_idx].max_bisectors);
+                    int sum_reduction_cbt_depth = cbt_gpu_resources_array_[shape_idx].cbt_tree_depth;
+
+                    for(; sum_reduction_cbt_depth > 0; sum_reduction_cbt_depth -= sum_reduction_cs_work_depth_per_pass)
+                    {
+                        // ConstantBufferPoolから定数バッファを確保
+                        auto cbh = command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(CbCbtSumReduction));
+                        // 定数バッファに全データを書き込み
+                        if (auto* mapped_ptr = cbh->buffer_.MapAs<CbCbtSumReduction>())
+                        {
+                            mapped_ptr->target_depth = sum_reduction_cbt_depth;
+
+                            cbh->buffer_.Unmap();
+                        }
+
+                        {
+                            NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_SumReduction_shape" + std::to_string(shape_idx) + "_depth" + std::to_string(sum_reduction_cbt_depth)).c_str());
+
+                            command_list->SetPipelineState(cbt_sum_reduction_pso_.Get());
+                            
+                            ngl::rhi::DescriptorSetDep desc_set = {};
+                            {
+                                cbt_gpu_resources_array_[shape_idx].BindResources(cbt_sum_reduction_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
+                                cbt_sum_reduction_pso_->SetView(&desc_set, "cb_sum_reduction", &cbh->cbv_);
+                            }
+                            command_list->SetDescriptorSet(cbt_sum_reduction_pso_.Get(), &desc_set);
+
+                            cbt_sum_reduction_pso_->DispatchHelper(command_list, sum_reduction_work_size, 1, 1);
+
+                            command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].cbt_buffer.buffer.Get() );
+                        }
+                        
+
+                        // 次のSumReductionのワークサイズを計算.
+                        sum_reduction_work_size = sum_reduction_work_size >> sum_reduction_cs_work_depth_per_pass;
+                    }
+                }
+            #else
+                {
+                    // 検証用のナイーブ実装SumReduction. シングルスレッド.
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_SumReductionSingleThread_Shape" + std::to_string(shape_idx)).c_str());
+                    
+                    command_list->SetPipelineState(cbt_sum_reduction_naive_pso_.Get());
+                    
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_sum_reduction_naive_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
+                    command_list->SetDescriptorSet(cbt_sum_reduction_naive_pso_.Get(), &desc_set);
+
+                    cbt_sum_reduction_naive_pso_->DispatchHelper(command_list, 1, 1, 1);
+
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].cbt_buffer.buffer.Get() );
+                }
+            #endif
+        };
 
 
         // CBT Tessellation Pipeline (シェイプ単位で実行)
@@ -512,23 +580,13 @@ namespace ngl::render::app
                         // 未使用ビットのクリアをするために最大数をワークサイズとしてDispatch
                         uint32_t max_bisector_work_size = static_cast<uint32_t>(cbt_gpu_resources_array_[shape_idx].max_bisectors);
                         cbt_init_leaf_pso_->DispatchHelper(command_list, max_bisector_work_size, 1, 1);
-                    }
-
-                    // 2. Sum Reduction実行
-                    {
-                        NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_InitializeSumReduction_Shape" + std::to_string(shape_idx)).c_str());
                         
                         // バリア.
                         command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].cbt_buffer.buffer.Get() );
-
-                        command_list->SetPipelineState(cbt_sum_reduction_pso_.Get());
-                        
-                        ngl::rhi::DescriptorSetDep desc_set = {};
-                        cbt_gpu_resources_array_[shape_idx].BindResources(cbt_sum_reduction_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
-                        command_list->SetDescriptorSet(cbt_sum_reduction_pso_.Get(), &desc_set);
-                        
-                        cbt_sum_reduction_pso_->DispatchHelper(command_list, 1, 1, 1);
                     }
+
+                    // SumReduction.
+                    execute_sum_reduction_cs(command_list, shape_idx);
                 }
                 
                 reset_request_ = false;
@@ -688,19 +746,7 @@ namespace ngl::render::app
                 }
 
                 // 9. Sum Reduction Pass
-                {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_SumReduction_Shape" + std::to_string(shape_idx)).c_str());
-                    
-                    command_list->SetPipelineState(cbt_sum_reduction_pso_.Get());
-                    
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_sum_reduction_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
-                    command_list->SetDescriptorSet(cbt_sum_reduction_pso_.Get(), &desc_set);
-                    
-                    cbt_sum_reduction_pso_->DispatchHelper(command_list, 1, 1, 1);
-                    
-                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].cbt_buffer.buffer.Get() );
-                }
+                execute_sum_reduction_cs(command_list, shape_idx);
             }
         }
     }

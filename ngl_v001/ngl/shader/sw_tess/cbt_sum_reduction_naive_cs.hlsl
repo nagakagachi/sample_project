@@ -16,24 +16,16 @@
 #include "cbt_tess_common.hlsli"
 
 
-// CBT SumReduction - リーフのビットカウントを上位ノードに伝播（ナイーブなシングルスレッド実装）
+// CBT SumReduction : Single Thread Naive Implementation
 [numthreads(1, 1, 1)]
 void main_cs(
     uint3 DTid : SV_DispatchThreadID,
     uint3 GTid : SV_GroupThreadID,
     uint3 Gid : SV_GroupID)
 {
-    // スレッド0のみで全体を処理（ナイーブ実装）
     if (DTid.x != 0) return;
     
-    // 共通定数バッファからパラメータを取得
-    const uint leaf_count = GetCBTLeafCount();
-    const uint leaf_offset = GetCBTLeafOffset();
-    const uint tree_depth = cbt_tree_depth;
-    
-    // リーフから上位ノードへボトムアップでSum Reductionを実行
-    // リーフのビット情報は保持したまま、内部ノードのみ更新
-    for (uint level = tree_depth; level > 0; level--)
+    for (uint level = cbt_tree_depth; level > 0; level--)
     {
         uint level_start = 1u << (level - 1);
         uint level_count = level_start;
@@ -41,23 +33,15 @@ void main_cs(
         for (uint i = 0; i < level_count; i++)
         {
             uint node_index = level_start + i;
-            uint left_child = node_index << 1;      // node_index * 2 をビットシフトで高速化
+            uint left_child = node_index << 1;
             uint right_child = left_child + 1;
             
             uint sum = 0;
-            
-            if (level == tree_depth)
-            {
-                // リーフレベル：ビットフィールドから個別のビット値（0または1）を取得
+            if (level == cbt_tree_depth)
                 sum += GetCBTBit(cbt_buffer_rw, (i << 1)) + GetCBTBit(cbt_buffer_rw, (i << 1)+1);
-            }
             else
-            {
-                // 内部ノード：子ノードの合計値を使用
                 sum = cbt_buffer_rw[left_child] + cbt_buffer_rw[right_child];
-            }
             
-            // 内部ノードのみ更新（リーフは変更しない）
             cbt_buffer_rw[node_index] = sum;
         }
     }
