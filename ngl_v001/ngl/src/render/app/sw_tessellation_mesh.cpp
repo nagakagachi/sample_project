@@ -3,305 +3,229 @@
 */
 
 #include "render/app/sw_tessellation_mesh.h"
+#include "gfx/rtg/rtg_common.h"
+#include <cmath>
+#include <string>
 
 
 namespace ngl::render::app
 {
 
-    // IndexListからHalfEdge構造を生成する関数
-    void HalfEdgeMesh::Initialize(const uint32_t* index_list, int index_count)
+    // RhiBufferSetクラスの実装
+    bool RhiBufferSet::InitializeAsStructured(ngl::rhi::DeviceDep* p_device,const rhi::BufferDep::Desc& desc)
     {
-        // 三角形メッシュを仮定
-        int face_count = index_count / 3;
-        half_edge_.clear();
-        half_edge_.reserve(index_count);
+        resource_state = desc.initial_state;
 
-        // 各エッジを一意に識別するためのキー
-        using EdgeKey    = uint64_t;
-        auto MakeEdgeKey = [](int v0, int v1) -> EdgeKey
+        buffer = new rhi::BufferDep();
+        if (!buffer->Initialize(p_device, desc)) return false;
+
+        if (desc.bind_flag & rhi::ResourceBindFlag::UnorderedAccess)
         {
-            return (static_cast<uint64_t>(v0) << 32) | static_cast<uint32_t>(v1);
-        };
-        auto DecodeEdgeKey = [](EdgeKey key) -> std::pair<int, int>
-        {
-            int v0 = static_cast<int>(key >> 32);
-            int v1 = static_cast<int>(key & 0xFFFFFFFF);
-            return {v0, v1};
-        };
-
-        {
-            std::unordered_map<EdgeKey, int> edge_map;
-            // HalfEdge生成
-            for (int f = 0; f < face_count; ++f)
-            {
-                int idx0 = index_list[f * 3 + 0];
-                int idx1 = index_list[f * 3 + 1];
-                int idx2 = index_list[f * 3 + 2];
-
-                int he_base = static_cast<int>(half_edge_.size());
-                // Triangle単位でHalfEdgeループを追加. twinは未定として後処理.
-                half_edge_.push_back({-1, he_base + 1, he_base + 2, idx0});  // 0→1
-                half_edge_.push_back({-1, he_base + 2, he_base + 0, idx1});  // 1→2
-                half_edge_.push_back({-1, he_base + 0, he_base + 1, idx2});  // 2→0
-
-                // エッジ情報をmapに登録
-                edge_map[MakeEdgeKey(idx0, idx1)] = he_base + 0;
-                edge_map[MakeEdgeKey(idx1, idx2)] = he_base + 1;
-                edge_map[MakeEdgeKey(idx2, idx0)] = he_base + 2;
-            }
-
-            // twin探索
-            for (const auto& [key, he_idx] : edge_map)
-            {
-                auto [v0, v1]    = DecodeEdgeKey(key);
-                EdgeKey twin_key = MakeEdgeKey(v1, v0);
-                auto it          = edge_map.find(twin_key);
-                if (it != edge_map.end())
-                {
-                    half_edge_[he_idx].twin = it->second;
-                }
-            }
-            edge_map.clear();
+            uav = new rhi::UnorderedAccessViewDep();
+            if (!uav->InitializeAsStructured(p_device, buffer.Get(), desc.element_byte_size, 0, desc.element_count)) return false;
         }
+        if (desc.bind_flag & rhi::ResourceBindFlag::ShaderResource)
+        {
+            srv = new rhi::ShaderResourceViewDep();
+            if (!srv->InitializeAsStructured(p_device, buffer.Get(), desc.element_byte_size, 0, desc.element_count)) return false;
+        }
+
+        return true;
+    }
+    bool RhiBufferSet::InitializeAsTyped(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc, rhi::EResourceFormat format)
+    {
+        resource_state = desc.initial_state;
+
+        buffer = new rhi::BufferDep();
+        if (!buffer->Initialize(p_device, desc)) return false;
+
+        if (desc.bind_flag & rhi::ResourceBindFlag::UnorderedAccess)
+        {
+            uav = new rhi::UnorderedAccessViewDep();
+            if (!uav->InitializeAsTyped(p_device, buffer.Get(), format, 0, desc.element_count)) return false;
+        }
+        if (desc.bind_flag & rhi::ResourceBindFlag::ShaderResource)
+        {
+            srv = new rhi::ShaderResourceViewDep();
+            if (!srv->InitializeAsTyped(p_device, buffer.Get(), format, 0, desc.element_count)) return false;
+        }
+
+        return true;
+    }
+
+    void RhiBufferSet::ResourceBarrier(ngl::rhi::GraphicsCommandListDep* p_command_list, rhi::EResourceState next_state)
+    {
+        p_command_list->ResourceBarrier(buffer.Get(), resource_state, next_state);
+        resource_state = next_state;// 内部ステート更新.
     }
 
 
-
-    void ConcurrentBinaryTreeU32::Initialize(u32 require_leaf_count)
+    // CBTGpuResourcesクラスの実装
+    bool CBTGpuResources::Initialize(ngl::rhi::DeviceDep* p_device, uint32_t shape_half_edges, uint32_t average_subdivision_level)
     {
-        // 以上の最小の2の冪
-        const u32 min_large_power_of_2 = 1u << (ngl::MostSignificantBit32(require_leaf_count-1)+1);
-        // require_leaf_countのリーフの完全二分木のノードを格納するためのサイズ.   
-        const auto required_packed_leaf_count = std::max(1u, min_large_power_of_2 >> LeafTypePackedIndexShift);
-        // 全ノードを格納可能なサイズの木の深さ と インデックス計算簡易化のため1ベースインデックスのために +2
-        const auto packed_node_depth = ngl::MostSignificantBit32(required_packed_leaf_count) + 1;
-
-        const auto packed_node_count = 1u << packed_node_depth;
+        // パラメータ保存
+        total_half_edges = shape_half_edges;
         
-        packed_leaf_count_ = (1 << (packed_node_depth-1));
-        packed_leaf_offset_ = packed_node_count >> 1;
+        // CBT動的パラメータ計算
+        cbt_mesh_minimum_tree_depth = static_cast<uint32_t>(std::ceil(std::log2(std::max(1u, shape_half_edges))));
+        cbt_tree_depth = cbt_mesh_minimum_tree_depth + average_subdivision_level;
+        
+        const uint32_t max_bisectors = 1u << cbt_tree_depth;  // 2^cbt_tree_depth
+        this->max_bisectors = max_bisectors;  // メンバー変数に保存
+        
+        // CBTバッファサイズ計算（新構造）
+        // 内部ノード数（インデックス1から2^cbt_tree_depth - 1） + リーフビットフィールド数
+        const uint32_t internal_node_count = (1u << cbt_tree_depth) - 1;  // 2^cbt_tree_depth - 1
+        const uint32_t leaf_bitfield_count = (max_bisectors + 31) / 32;    // ceil(max_bisectors / 32)
+        const uint32_t cbt_total_nodes = internal_node_count + leaf_bitfield_count + 1;  // +1 for index 0 (unused)
+        
+        // CBT Buffer (uint型の完全二分木) - パフォーマンスのためDefaultヒープを使用
+        {
+            rhi::BufferDep::Desc desc = {};
+            desc.heap_type = rhi::EResourceHeapType::Default;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.element_byte_size = sizeof(uint32_t);
+            desc.element_count = cbt_total_nodes;
+            if (!cbt_buffer.InitializeAsStructured(p_device, desc)) return false;
+        }
 
-        cbt_node_.resize(packed_node_count);
+        // Bisector Pool Buffer
+        {
+            rhi::BufferDep::Desc desc = {};
+            desc.heap_type = rhi::EResourceHeapType::Default;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.element_byte_size = sizeof(Bisector);
+            desc.element_count = max_bisectors;
+            if (!bisector_pool_buffer.InitializeAsStructured(p_device, desc)) return false;
+        }
+
+        // Index Cache Buffer (int2型)
+        {
+            rhi::BufferDep::Desc desc = {};
+            desc.heap_type = rhi::EResourceHeapType::Default;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.element_byte_size = sizeof(int) * 2;  // int2
+            desc.element_count = max_bisectors;
+            if (!index_cache_buffer.InitializeAsStructured(p_device, desc)) return false;
+        }
+
+        // Alloc Counter Buffer (uint型)
+        {
+            rhi::BufferDep::Desc desc = {};
+            desc.heap_type = rhi::EResourceHeapType::Default;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.element_byte_size = sizeof(int32_t);
+            desc.element_count = 1;
+            if (!alloc_counter_buffer.InitializeAsStructured(p_device, desc)) return false;
+        }
+
+        // Indirect Dispatch Args Buffers (uint3型)
+        {
+            rhi::BufferDep::Desc desc = {};
+            desc.heap_type = rhi::EResourceHeapType::Default;
+            desc.bind_flag = rhi::ResourceBindFlag::UnorderedAccess | rhi::ResourceBindFlag::IndirectArg;
+            desc.element_byte_size = sizeof(uint32_t);
+            desc.element_count = 3;
+            if (!indirect_dispatch_arg_for_bisector_buffer.InitializeAsTyped(p_device, desc, rhi::EResourceFormat::Format_R32_UINT)) return false;
+        }
+
+        {
+            rhi::BufferDep::Desc desc = {};
+            desc.heap_type = rhi::EResourceHeapType::Default;
+            desc.bind_flag = rhi::ResourceBindFlag::UnorderedAccess | rhi::ResourceBindFlag::IndirectArg;
+            desc.element_byte_size = sizeof(uint32_t);
+            desc.element_count = 3;
+            if (!indirect_dispatch_arg_for_index_cache_buffer.InitializeAsTyped(p_device, desc, rhi::EResourceFormat::Format_R32_UINT)) return false;
+        }
+        
+        // Draw Indirect Args Buffer (uint4型: VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation)
+        {
+            rhi::BufferDep::Desc desc = {};
+            desc.heap_type = rhi::EResourceHeapType::Default;
+            desc.bind_flag = rhi::ResourceBindFlag::UnorderedAccess | rhi::ResourceBindFlag::IndirectArg;
+            desc.element_byte_size = sizeof(uint32_t);
+            desc.element_count = 4;
+            if (!draw_indirect_arg_buffer.InitializeAsTyped(p_device, desc, rhi::EResourceFormat::Format_R32_UINT)) return false;
+        }
+
+
+        return true;
+    }
+
+    ngl::rhi::ConstantBufferPooledHandle CBTGpuResources::UpdateConstants(ngl::rhi::DeviceDep* p_device, 
+        const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, bool tessellation_update, float tessellation_split_threshold, int32_t fixed_subdivision_level, int32_t debug_bisector_neighbor, int32_t debug_target_bisector_id, int32_t debug_target_bisector_depth)
+    {
+        // ConstantBufferPoolから定数バッファを確保
+        auto cbh = p_device->GetConstantBufferPool()->Alloc(sizeof(CBTConstants));
+        
+        // 定数バッファに全データを書き込み
+        if (auto* mapped_ptr = cbh->buffer_.MapAs<CBTConstants>())
+        {
+            // CBT固有の設定値
+            mapped_ptr->cbt_tree_depth = cbt_tree_depth;
+            mapped_ptr->cbt_mesh_minimum_tree_depth = cbt_mesh_minimum_tree_depth;
+            mapped_ptr->bisector_pool_max_size = max_bisectors;
+            mapped_ptr->total_half_edges = total_half_edges;
             
-        Clear();
-    }
-    void ConcurrentBinaryTreeU32::Clear()
-    {
-        // Leafの範囲のみクリア
-        memset(&(cbt_node_[packed_leaf_offset_]), 0, packed_leaf_count_ * sizeof(LeafType));
+            
+            // 固定分割レベル
+            mapped_ptr->fixed_subdivision_level = fixed_subdivision_level;
+            
+            // 変換行列を更新
+            mapped_ptr->object_to_world = object_to_world;
+            mapped_ptr->world_to_object = ngl::math::Mat34::Inverse(object_to_world);
+            
+            // 重要座標を更新
+            mapped_ptr->important_point = important_point_world;
+            
+            // テッセレーション閾値を設定
+            mapped_ptr->tessellation_split_threshold = tessellation_split_threshold;
+            mapped_ptr->tessellation_merge_factor = 0.45f;      // 統合係数（分割閾値に対する比率, 0.5 = 50%）
+            
+            // デバッグその他.
+            mapped_ptr->tessellation_debug_flag = debug_bisector_neighbor;
+
+            // テッセレーション更新フラグ
+            mapped_ptr->tessellation_update = tessellation_update ? 1 : 0;
+
+            // デバッグ対象Bisector情報
+            mapped_ptr->debug_target_bisector_id = debug_target_bisector_id;
+            mapped_ptr->debug_target_bisector_depth = debug_target_bisector_depth;
+
+            cbh->buffer_.Unmap();
+        }
         
-        // 合計値クリア.
-        cbt_node_[SumValueLocation] = 0;
-    }
-    void ConcurrentBinaryTreeU32::SetBit(u32 index, u32 bit)
-    {
-        const u32 packed_leaf_node_index = (index >> LeafTypePackedIndexShift);
-        const u32 packed_leaf_bit_location = (LeafTypeBitLocalIndexMask & index);
-        const u32 packed_leaf_node_location = packed_leaf_offset_ + packed_leaf_node_index;
-        const u32 bit_pattern = (1 << packed_leaf_bit_location);
-
-        if(0 != bit)
-        {
-            cbt_node_[packed_leaf_node_location] |= bit_pattern;
-        }
-        else
-        {
-            cbt_node_[packed_leaf_node_location] &= ~bit_pattern;
-        }
-    }
-    u32 ConcurrentBinaryTreeU32::GetBit(u32 index) const
-    {
-        const u32 packed_leaf_node_index = (index >> LeafTypePackedIndexShift);
-        const u32 packed_leaf_bit_location = (LeafTypeBitLocalIndexMask & index);
-        const u32 packed_leaf_node_location = packed_leaf_offset_ + packed_leaf_node_index;
-
-        return (cbt_node_[packed_leaf_node_location] >> packed_leaf_bit_location) & 0x01;
+        return cbh;
     }
 
-    u32 ConcurrentBinaryTreeU32::GetSum() const
+    void CBTGpuResources::BindResources(ngl::rhi::ComputePipelineStateDep* pso, ngl::rhi::DescriptorSetDep* desc_set, ngl::rhi::ConstantBufferPooledHandle cb_handle) const
     {
-        return cbt_node_[SumValueLocation];// 1ベースのインデックス付け.
-    }
-    void ConcurrentBinaryTreeU32::SumReduction()
-    {
-        {
-            // Leafのbitカウント.
-            const auto leaf_parent_start = packed_leaf_offset_ >> 1;
-            for(u32 i = 0; i < (packed_leaf_count_ >> 1); ++i)
-            {
-                const auto target_node_location = leaf_parent_start + i;
-                const auto bit_count_leaf_2 = ngl::Count32bit(cbt_node_[((target_node_location) << 1) + 0]) + ngl::Count32bit(cbt_node_[(target_node_location << 1) + 1]);
-                cbt_node_[target_node_location] = bit_count_leaf_2;
-            }
-        }
-
-        // bitカウントよりも親の通常バイナリツリー合計.
-        for(int d = 2; d <= ngl::MostSignificantBit32(packed_leaf_count_); ++d)
-        {
-            const auto leaf_parent_start = packed_leaf_offset_ >> d;
-            for(u32 i = 0; i < (packed_leaf_count_ >> d); ++i)
-            {
-                const auto target_node_location = leaf_parent_start + i;
-                const auto bit_count_leaf_2 = cbt_node_[((target_node_location) << 1) + 0] + cbt_node_[(target_node_location << 1) + 1];
-                cbt_node_[target_node_location] = bit_count_leaf_2;
-            }
-        }
-    }
-
-    // u32の値とインデックス値を引数に取り, u32の下位からインデックス番目に現れる 1 のビットの位置を返す関数
-    int Find_ith_Bit1_in_u32(uint32_t value, int index)
-    {
-        // value: 検索対象のu32値
-        // index: 下位からi番目の1（0-based）
-        // 戻り値: ビット位置（0-based, 存在しなければ-1）
-        int count = 0;
-        for (int bit = 0; bit < 32; ++bit)
-        {
-            if ((value >> bit) & 0x1)
-            {
-                if (count == index)
-                    return bit;
-                ++count;
-            }
-        }
-        return -1;
-    }
-
-
-    // 下位から i番目 の 1 の位置を検索. SumReduction後に使用可能.
-    int ConcurrentBinaryTreeU32::Find_ith_Bit1(u32 index)
-    {
-        if(0 == GetSum())
-        return -1;
-
-        // CBT: 完全二分木のノード配列（cbt_node_）
-        // index: i番目の1（0-based）
-        // 戻り値: ビット位置（0-based, 存在しなければ-1）
-        const u32 D = ngl::MostSignificantBit32(packed_leaf_count_); // 木の深さ
-        u32 bitID = 1; // 1ベース
-        while (bitID < (1u << D))
-        {
-            bitID = bitID << 1;
-            if (index >= cbt_node_[bitID])
-            {
-                index -= cbt_node_[bitID];
-                bitID += 1;
-            }
-        }
-        const int leaf_pos = static_cast<int>(bitID - (1u << D));
-        const LeafType bit_field = (cbt_node_[packed_leaf_offset_ + leaf_pos]);
-        if(0 <= leaf_pos && 0 != bit_field)
-        {
-            const int local_bit_pos = Find_ith_Bit1_in_u32(bit_field, index);
-            assert(0 <= local_bit_pos);
-            return local_bit_pos + (leaf_pos * LeafTypeBitWidth);
-        }
-
-        return -1;
-    }
-
-    // 下位から i番目 の 0 の位置を検索. SumReduction後に使用可能.
-    int ConcurrentBinaryTreeU32::Find_ith_Bit0(u32 index)
-    {
-        if(NumLeaf() == GetSum())
-            return -1;
+        // Constant Buffer (ConstantBufferPoolから)
+        pso->SetView(desc_set, "CBTTessellationConstants", &cb_handle->cbv_);
         
-        // CBT: 完全二分木のノード配列（cbt_node_）
-        // index: i番目の0（0-based）
-        // 戻り値: ビット位置（0-based, 存在しなければ-1）
-        const u32 D = ngl::MostSignificantBit32(packed_leaf_count_); // 木の深さ
-        u32 bitID = 1; // 1ベース
-        u32 c = NumLeaf() >> 1;//1u << (D - 1);
-        while (bitID < (1u << D))
-        {
-            bitID = bitID << 1;
-            if (index >= (c - cbt_node_[bitID]))
-            {
-                index -= (c - cbt_node_[bitID]);
-                bitID += 1;
-            }
-            c = c >> 1;
-        }
-        const int leaf_pos = static_cast<int>(bitID - (1u << D));
-        // 反転ビットで1を探す.
-        const LeafType bit_field = ~(cbt_node_[packed_leaf_offset_ + leaf_pos]);
-        if(0 <= leaf_pos && 0 != bit_field)
-        {
-            const int local_bit_pos = Find_ith_Bit1_in_u32(bit_field, index);
-            assert(0 <= local_bit_pos);
-            return local_bit_pos + (leaf_pos * LeafTypeBitWidth);
-        }
-        return -1;
+        // CBT Buffer
+        pso->SetView(desc_set, "cbt_buffer", cbt_buffer.srv.Get());
+        pso->SetView(desc_set, "cbt_buffer_rw", cbt_buffer.uav.Get());
+        
+        // Bisector Pool
+        pso->SetView(desc_set, "bisector_pool", bisector_pool_buffer.srv.Get());
+        pso->SetView(desc_set, "bisector_pool_rw", bisector_pool_buffer.uav.Get());
+        
+        // Index Cache
+        pso->SetView(desc_set, "index_cache", index_cache_buffer.srv.Get());
+        pso->SetView(desc_set, "index_cache_rw", index_cache_buffer.uav.Get());
+        
+        // Alloc Counter
+        pso->SetView(desc_set, "alloc_counter", alloc_counter_buffer.srv.Get());
+        pso->SetView(desc_set, "alloc_counter_rw", alloc_counter_buffer.uav.Get());
+        
+        // Indirect Dispatch Args
+        pso->SetView(desc_set, "indirect_dispatch_arg_for_bisector", indirect_dispatch_arg_for_bisector_buffer.uav.Get());
+        pso->SetView(desc_set, "indirect_dispatch_arg_for_index_cache", indirect_dispatch_arg_for_index_cache_buffer.uav.Get());
+
+        // Draw Indirect Args
+        pso->SetView(desc_set, "draw_indirect_arg", draw_indirect_arg_buffer.uav.Get());
     }
-
-    u32 ConcurrentBinaryTreeU32::NumLeaf() const
-    {
-        return packed_leaf_count_ * LeafTypeBitWidth;
-    }
-
-    // テストコード.
-    void ConcurrentBinaryTreeU32::Test()
-    {
-        ConcurrentBinaryTreeU32 cbt;
-        cbt.Initialize(513);
-        
-        cbt.SetBit(0, 1);
-        cbt.SetBit(1, 1);
-        cbt.SetBit(3, 1);
-        cbt.SetBit(513, 1);
-        assert(1 == cbt.GetBit(0));
-        assert(1 == cbt.GetBit(1));
-        assert(0 == cbt.GetBit(2));
-        assert(1 == cbt.GetBit(3));
-        assert(0 == cbt.GetBit(4));
-        assert(1 == cbt.GetBit(513));
-        cbt.SumReduction();
-        assert(4 == cbt.GetSum());
-
-        
-        // i番目の1の位置.
-        const auto bit1_location_0 = cbt.Find_ith_Bit1(0);
-        const auto bit1_location_1 = cbt.Find_ith_Bit1(1);
-        const auto bit1_location_2 = cbt.Find_ith_Bit1(2);
-        const auto bit1_location_3 = cbt.Find_ith_Bit1(3);
-        const auto bit1_location_4 = cbt.Find_ith_Bit1(4);
-        assert(0 == bit1_location_0);
-        assert(1 == bit1_location_1);
-        assert(3 == bit1_location_2);
-        assert(513 == bit1_location_3);
-        assert(-1 == bit1_location_4);
-
-        // i番目の0の位置.
-        const auto bit0_location_0 = cbt.Find_ith_Bit0(0);
-        const auto bit0_location_1 = cbt.Find_ith_Bit0(1);
-        const auto bit0_location_2 = cbt.Find_ith_Bit0(2);
-        const auto bit0_location_3 = cbt.Find_ith_Bit0(3);
-        const auto bit0_location_4 = cbt.Find_ith_Bit0(4);
-        const auto bit0_location_5 = cbt.Find_ith_Bit0(512);
-        assert(2 == bit0_location_0);
-        assert(4 == bit0_location_1);
-        assert(5 == bit0_location_2);
-        assert(6 == bit0_location_3);
-        assert(7 == bit0_location_4);
-        assert(516 == bit0_location_5);
-        
-
-
-        cbt.Clear();
-
-        const auto num_leaf = cbt.NumLeaf();
-        for(u32 i = 0; i < cbt.NumLeaf(); ++i)
-        {
-            cbt.SetBit(i, 1);
-        }
-        cbt.SumReduction();
-        assert(cbt.NumLeaf() == cbt.GetSum());
-        
-        cbt.Clear();
-    }
-
-
-
 
     SwTessellationMesh::~SwTessellationMesh()
     {
@@ -312,10 +236,14 @@ namespace ngl::render::app
     bool SwTessellationMesh::Initialize(
         ngl::rhi::DeviceDep* p_device,
         ngl::fwk::GfxScene* gfx_scene,
-        const ngl::res::ResourceHandle<ngl::gfx::ResMeshData>& res_mesh)
+        const ngl::res::ResourceHandle<ngl::gfx::ResMeshData>& res_mesh,
+        uint32_t average_subdivision_level,
+        bool debug_shape_mode)
     {
         // 専用にマテリアル指定.
         constexpr text::HashText<64> attrles_material_name = "opaque_attrless";
+
+        debug_shape_mode_ = debug_shape_mode;
 
         if (!Super::Initialize(p_device, gfx_scene, res_mesh, attrles_material_name.Get()))
         {
@@ -323,15 +251,33 @@ namespace ngl::render::app
             return false;
         }
 
-        const auto shape_count  =res_mesh->data_.shape_array_.size();
-        
-        // HalfEdge生成.
-        half_edge_mesh_array_.resize(shape_count);
-        for (int i = 0; i < res_mesh->data_.shape_array_.size(); ++i)
+        if(debug_shape_mode_)
         {
-            // Shape単位.
-            const gfx::MeshShapePart& shape = res_mesh->data_.shape_array_[i];
-            half_edge_mesh_array_[i].Initialize(shape.index_.GetTypedRawDataPtr(), shape.num_primitive_ * 3);
+            // デバッグモード.
+            half_edge_mesh_array_.resize(1);
+
+            #if 0
+                // デバッグ固定三角形.
+                const u32 tri_index_list[] = {0, 1, 2};
+            #else
+                // デバッグ固定四角形.
+                const u32 tri_index_list[] = {0, 2, 1, 0, 1, 3};
+            #endif
+
+            half_edge_mesh_array_[0].Initialize(tri_index_list, static_cast<int>(std::size(tri_index_list)));
+        }
+        else
+        {
+            const auto shape_count  =res_mesh->data_.shape_array_.size();
+            
+            // HalfEdge生成.
+            half_edge_mesh_array_.resize(shape_count);
+            for (int i = 0; i < res_mesh->data_.shape_array_.size(); ++i)
+            {
+                // Shape単位.
+                const gfx::MeshShapePart& shape = res_mesh->data_.shape_array_[i];
+                half_edge_mesh_array_[i].Initialize(shape.index_.GetTypedRawDataPtr(), shape.num_primitive_ * 3);
+            }
         }
 
         // HalfEdgeのShaderResource作成.
@@ -367,6 +313,65 @@ namespace ngl::render::app
             }
         }
 
+        // CBT Tessellation Compute Shaders初期化
+        {
+            // Helper function to create compute shader PSO
+            auto CreateComputePSO = [&](const char* shader_path) -> ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep>
+            {
+                auto pso = ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep>(new ngl::rhi::ComputePipelineStateDep());
+                ngl::rhi::ComputePipelineStateDep::Desc cpso_desc = {};
+                {
+                    ngl::gfx::ResShader::LoadDesc cs_load_desc = {};
+                    cs_load_desc.stage = ngl::rhi::EShaderStage::Compute;
+                    cs_load_desc.shader_model_version = k_shader_model;
+                    cs_load_desc.entry_point_name = "main_cs";
+                    auto cs_load_handle = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
+                        p_device, NGL_RENDER_SHADER_PATH(shader_path), &cs_load_desc
+                    );
+                    cpso_desc.cs = &cs_load_handle->data_;
+                }
+                pso->Initialize(p_device, cpso_desc);
+                return pso;
+            };
+
+            // Initialize all compute shaders
+            cbt_init_leaf_pso_ = CreateComputePSO("sw_tess/cbt_tess_init_leaf_cs.hlsl");
+            cbt_begin_update_pso_ = CreateComputePSO("sw_tess/cbt_tess_begin_update_cs.hlsl");
+            cbt_cache_index_pso_ = CreateComputePSO("sw_tess/cbt_tess_cache_index_cs.hlsl");
+            cbt_reset_command_pso_ = CreateComputePSO("sw_tess/cbt_tess_reset_command_cs.hlsl");
+            cbt_generate_command_pso_ = CreateComputePSO("sw_tess/cbt_tess_generate_command_cs.hlsl");
+            cbt_reserve_block_pso_ = CreateComputePSO("sw_tess/cbt_tess_reserve_block_cs.hlsl");
+            cbt_fill_new_block_pso_ = CreateComputePSO("sw_tess/cbt_tess_fill_new_block_cs.hlsl");
+            cbt_update_neighbor_pso_ = CreateComputePSO("sw_tess/cbt_tess_update_neighbor_cs.hlsl");
+            cbt_update_cbt_bitfield_pso_ = CreateComputePSO("sw_tess/cbt_tess_update_cbt_bitfield_cs.hlsl");
+            cbt_sum_reduction_pso_ = CreateComputePSO("sw_tess/cbt_sum_reduction_cs.hlsl");
+            cbt_sum_reduction_naive_pso_ = CreateComputePSO("sw_tess/cbt_sum_reduction_naive_cs.hlsl");
+        }
+
+        // CBT Tessellation Buffers初期化 (シェイプ単位で管理)
+        {
+            // 平均分割レベルを保存
+            average_subdivision_level_ = average_subdivision_level;
+            
+            // シェイプ数分のCBTリソース配列を準備
+            const auto shape_count = half_edge_mesh_array_.size();
+            cbt_gpu_resources_array_.resize(shape_count);
+            
+            // シェイプ単位でCBTリソースを初期化
+            for (size_t shape_idx = 0; shape_idx < shape_count; ++shape_idx)
+            {
+                // 各シェイプのHalfEdge数を取得
+                const uint32_t shape_half_edges = static_cast<uint32_t>(half_edge_mesh_array_[shape_idx].half_edge_.size());
+                
+                // CBTGpuResourcesを初期化
+                if (!cbt_gpu_resources_array_[shape_idx].Initialize(p_device, shape_half_edges, average_subdivision_level_))
+                {
+                    assert(false);
+                    return false;
+                }
+            }
+        }
+
         // Game更新のコールバックを設定.
         SetGameUpdateCallback(
             [this](gfx::scene::SceneMeshGameUpdateCallbackArg arg)
@@ -389,11 +394,29 @@ namespace ngl::render::app
                 auto* desc_set  = arg.desc_set;
                 int shape_index = arg.shape_index;
 
+                if(debug_shape_mode_)
+                {
+                    if(0 != shape_index)
+                    {
+                        return; // デバッグモードでは0番目のシェイプのみ使用
+                    }
+                }
+
                 auto* shape = &(GetModel()->res_mesh_->data_.shape_array_[shape_index]);
 
                 // 追加でHalfEdgeバッファなどを設定.
                 pso->SetView(desc_set, "half_edge_buffer", half_edge_srv_array_[shape_index].Get());
                 pso->SetView(desc_set, "vertex_position_buffer", &(shape->position_.rhi_srv));
+                
+                // CBTテッセレーション用バッファを追加バインド
+                pso->SetView(desc_set, "index_cache", cbt_gpu_resources_array_[shape_index].index_cache_buffer.srv.Get());
+                pso->SetView(desc_set, "bisector_pool", cbt_gpu_resources_array_[shape_index].bisector_pool_buffer.srv.Get());
+
+                // CBTテッセレーション定数バッファをバインド（最新フレームの定数バッファを使用）
+                if (!cbt_constant_handles_.empty() && shape_index < cbt_constant_handles_.size())
+                {
+                    pso->SetView(desc_set, "CBTTessellationConstants", &cbt_constant_handles_[shape_index]->cbv_);
+                }
             });
 
         // AttrLess用のDrawShape関数オーバーライド.
@@ -403,9 +426,11 @@ namespace ngl::render::app
                 auto* p_command_list = arg.command_list;
                 int shape_index      = arg.shape_index;
 
-                // AttributeLess描画のため頂点入力を使わずにDraw発行.
+                // CBTテッセレーション結果をIndirect描画で実行
                 p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
-                p_command_list->DrawInstanced(static_cast<u32>(half_edge_mesh_array_[shape_index].half_edge_.size()), 1, 0, 0);
+                
+                // 該当するシェイプのdraw_indirect_arg_bufferを使用してIndirect描画
+                p_command_list->DrawIndirect(cbt_gpu_resources_array_[shape_index].draw_indirect_arg_buffer.buffer.Get());
             });
 
         return true;
@@ -413,13 +438,317 @@ namespace ngl::render::app
 
     void SwTessellationMesh::UpdateOnGame(gfx::scene::SceneMeshGameUpdateCallbackArg arg)
     {
-        // TODO.
+        // Gameスレッドで実行される更新処理.
         arg.dummy;
+
+        ++local_frame_index_;
     }
     void SwTessellationMesh::UpdateOnRender(gfx::scene::SceneMeshRenderUpdateCallbackArg arg)
     {
-        // TODO.
-        arg.command_list;
+        // Renderスレッドで実行される更新処理.
+        // command_listに対するシェーダディスパッチなどをする.
+        auto* command_list = arg.command_list;
+
+        const int cur_local_frame_render_index_ = local_frame_render_index_;
+        ++local_frame_render_index_;
+        
+
+
+
+        // 定数バッファを毎フレーム更新（ConstantBufferPoolから確保）
+        const auto shape_count = half_edge_mesh_array_.size();
+        cbt_constant_handles_.clear();
+        cbt_constant_handles_.reserve(shape_count);
+        
+
+
+        const bool cur_update_enable = tessellation_update_on_render_;
+        tessellation_update_on_render_ = tessellation_update_;
+
+
+        for (size_t shape_idx = 0; shape_idx < shape_count; ++shape_idx)
+        {
+            // 基底クラスからオブジェクトワールド変換行列を取得
+            ngl::math::Mat34 object_to_world = GetTransform();
+            
+            // TODO: カメラ位置の適切な取得方法を実装
+            // Important Point（テッセレーション評価で重視する座標）
+            ngl::math::Vec3 important_point_world = important_point_world_;
+
+            auto cb_handle = cbt_gpu_resources_array_[shape_idx].UpdateConstants(command_list->GetDevice(), object_to_world, important_point_world, cur_update_enable, tessellation_split_threshold_, fixed_subdivision_level_, debug_bisector_neighbor_, debug_target_bisector_id_, debug_target_bisector_depth_);
+            cbt_constant_handles_.push_back(cb_handle);
+        }
+        
+        // 9. Sum Reduction Pass
+        auto execute_sum_reduction_cs = [this](rhi::GraphicsCommandListDep* command_list, size_t shape_idx)
+        {
+            #if 1
+                // マルチパスのSumReduction.
+                {
+                    struct CbCbtSumReduction
+                    {
+                        // Dispatch側で log2(CBT_SUM_REDUCTION_WIDTH)ずつDepthを減らして呼び出す.
+                        u32 target_depth;
+
+                        u32 padding0;
+                        u32 padding1;
+                        u32 padding2;
+                    };
+
+                    // CSはワークバッファをThreadGroup単位で分担してその範囲内でSumReductionを実行するため, ThreadGroupサイズは2の冪となっている. そのMSB==処理Depthサイズ.
+                    const int sum_reduction_cs_work_depth_per_pass = MostSignificantBit32(cbt_sum_reduction_pso_->GetThreadGroupSizeX());//10;
+
+                    int sum_reduction_work_size = static_cast<int>(cbt_gpu_resources_array_[shape_idx].max_bisectors);
+                    int sum_reduction_cbt_depth = cbt_gpu_resources_array_[shape_idx].cbt_tree_depth;
+
+                    for(; sum_reduction_cbt_depth > 0; sum_reduction_cbt_depth -= sum_reduction_cs_work_depth_per_pass)
+                    {
+                        // ConstantBufferPoolから定数バッファを確保
+                        auto cbh = command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(CbCbtSumReduction));
+                        // 定数バッファに全データを書き込み
+                        if (auto* mapped_ptr = cbh->buffer_.MapAs<CbCbtSumReduction>())
+                        {
+                            mapped_ptr->target_depth = sum_reduction_cbt_depth;
+
+                            cbh->buffer_.Unmap();
+                        }
+
+                        {
+                            NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_SumReduction_shape" + std::to_string(shape_idx) + "_depth" + std::to_string(sum_reduction_cbt_depth)).c_str());
+
+                            command_list->SetPipelineState(cbt_sum_reduction_pso_.Get());
+                            
+                            ngl::rhi::DescriptorSetDep desc_set = {};
+                            {
+                                cbt_gpu_resources_array_[shape_idx].BindResources(cbt_sum_reduction_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
+                                cbt_sum_reduction_pso_->SetView(&desc_set, "cb_sum_reduction", &cbh->cbv_);
+                            }
+                            command_list->SetDescriptorSet(cbt_sum_reduction_pso_.Get(), &desc_set);
+
+                            cbt_sum_reduction_pso_->DispatchHelper(command_list, sum_reduction_work_size, 1, 1);
+
+                            command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].cbt_buffer.buffer.Get() );
+                        }
+                        
+
+                        // 次のSumReductionのワークサイズを計算.
+                        sum_reduction_work_size = sum_reduction_work_size >> sum_reduction_cs_work_depth_per_pass;
+                    }
+                }
+            #else
+                {
+                    // 検証用のナイーブ実装SumReduction. シングルスレッド.
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_SumReductionSingleThread_Shape" + std::to_string(shape_idx)).c_str());
+                    
+                    command_list->SetPipelineState(cbt_sum_reduction_naive_pso_.Get());
+                    
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_sum_reduction_naive_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
+                    command_list->SetDescriptorSet(cbt_sum_reduction_naive_pso_.Get(), &desc_set);
+
+                    cbt_sum_reduction_naive_pso_->DispatchHelper(command_list, 1, 1, 1);
+
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].cbt_buffer.buffer.Get() );
+                }
+            #endif
+        };
+
+
+        // CBT Tessellation Pipeline (シェイプ単位で実行)
+        {
+            const auto shape_count = half_edge_mesh_array_.size();
+
+            // 初回及びリセットリクエストがある場合.
+            if (reset_request_)
+            {
+                for (size_t shape_idx = 0; shape_idx < shape_count; ++shape_idx)
+                {
+                    // 1. リーフノード初期化
+                    {
+                        NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_InitializeLeaf_Shape" + std::to_string(shape_idx)).c_str());
+                        
+                        command_list->SetPipelineState(cbt_init_leaf_pso_.Get());
+                        
+                        ngl::rhi::DescriptorSetDep desc_set = {};
+                        cbt_gpu_resources_array_[shape_idx].BindResources(cbt_init_leaf_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
+                        
+                        // HalfEdgeバッファを追加でバインド
+                        cbt_init_leaf_pso_->SetView(&desc_set, "half_edge_buffer", half_edge_srv_array_[shape_idx].Get());
+                        
+                        command_list->SetDescriptorSet(cbt_init_leaf_pso_.Get(), &desc_set);
+                        
+                        // 未使用ビットのクリアをするために最大数をワークサイズとしてDispatch
+                        uint32_t max_bisector_work_size = static_cast<uint32_t>(cbt_gpu_resources_array_[shape_idx].max_bisectors);
+                        cbt_init_leaf_pso_->DispatchHelper(command_list, max_bisector_work_size, 1, 1);
+                        
+                        // バリア.
+                        command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].cbt_buffer.buffer.Get() );
+                    }
+
+                    // SumReduction.
+                    execute_sum_reduction_cs(command_list, shape_idx);
+                }
+                
+                reset_request_ = false;
+            }
+            
+            // シェイプ単位でCBT処理を実行
+            for (size_t shape_idx = 0; shape_idx < shape_count; ++shape_idx)
+            {
+                // 1. Begin Update Pass
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_BeginUpdate_Shape" + std::to_string(shape_idx)).c_str());
+                    
+                    // IndirectArgをUAV書き込みするためのバリア.
+                    // MEMO:Dispatch後とペアのこのバリアがない場合にはシェーダ側ロジックに問題がなくてもテッセレーションが破綻しT-Junctionが起きるなどしていた.
+                    cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_index_cache_buffer.ResourceBarrier(command_list, rhi::EResourceState::UnorderedAccess);
+                    cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.ResourceBarrier(command_list, rhi::EResourceState::UnorderedAccess);
+                    cbt_gpu_resources_array_[shape_idx].draw_indirect_arg_buffer.ResourceBarrier(command_list, rhi::EResourceState::UnorderedAccess);
+
+
+                    command_list->SetPipelineState(cbt_begin_update_pso_.Get());
+                    
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_begin_update_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
+                    command_list->SetDescriptorSet(cbt_begin_update_pso_.Get(), &desc_set);
+                    
+                    cbt_begin_update_pso_->DispatchHelper(command_list, 1, 1, 1);
+
+
+                    cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_index_cache_buffer.ResourceBarrier(command_list, rhi::EResourceState::IndirectArgument);
+                    cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.ResourceBarrier(command_list, rhi::EResourceState::IndirectArgument);
+                    cbt_gpu_resources_array_[shape_idx].draw_indirect_arg_buffer.ResourceBarrier(command_list, rhi::EResourceState::IndirectArgument);
+                }
+
+                // 2. Cache Index Pass
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_CacheIndex_Shape" + std::to_string(shape_idx)).c_str());
+                    
+                    command_list->SetPipelineState(cbt_cache_index_pso_.Get());
+                    
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_cache_index_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
+                    command_list->SetDescriptorSet(cbt_cache_index_pso_.Get(), &desc_set);
+                    
+                    // 有効なBisectorに対するDispatchIndirect実行
+                    command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_index_cache_buffer.buffer.Get());
+
+                    // バリア.
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].index_cache_buffer.buffer.Get() );
+                }
+                
+                // 3. Reset Command Pass
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_ResetCommand_Shape" + std::to_string(shape_idx)).c_str());
+                    
+                    command_list->SetPipelineState(cbt_reset_command_pso_.Get());
+                    
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_reset_command_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
+                    command_list->SetDescriptorSet(cbt_reset_command_pso_.Get(), &desc_set);
+                    
+                    // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
+                    command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.buffer.Get());
+                    
+                    // バリア.
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].bisector_pool_buffer.buffer.Get() );
+                }
+
+                // 4. Generate Command Pass
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_GenerateCommand_Shape" + std::to_string(shape_idx)).c_str());
+                    
+                    command_list->SetPipelineState(cbt_generate_command_pso_.Get());
+                    
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_generate_command_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
+                    
+                    // Generate Commandパス用の追加リソースバインド
+                    auto* shape = &(GetModel()->res_mesh_->data_.shape_array_[shape_idx]);
+                    cbt_generate_command_pso_->SetView(&desc_set, "half_edge_buffer", half_edge_srv_array_[shape_idx].Get());
+                    cbt_generate_command_pso_->SetView(&desc_set, "vertex_position_buffer", &(shape->position_.rhi_srv));
+                    
+                    command_list->SetDescriptorSet(cbt_generate_command_pso_.Get(), &desc_set);
+                    
+                    // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
+                    command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.buffer.Get());
+
+                    // バリア.
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].bisector_pool_buffer.buffer.Get() );
+                }
+
+                // 5. Reserve Block Pass
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_ReserveBlock_Shape" + std::to_string(shape_idx)).c_str());
+                    
+                    command_list->SetPipelineState(cbt_reserve_block_pso_.Get());
+                    
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_reserve_block_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
+                    command_list->SetDescriptorSet(cbt_reserve_block_pso_.Get(), &desc_set);
+                    
+                    // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
+                    command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.buffer.Get());
+                    
+                    // バリア.
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].bisector_pool_buffer.buffer.Get() );
+                }
+
+                // 6. Fill New Block Pass
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_FillNewBlock_Shape" + std::to_string(shape_idx)).c_str());
+                    
+                    command_list->SetPipelineState(cbt_fill_new_block_pso_.Get());
+                    
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_fill_new_block_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
+                    command_list->SetDescriptorSet(cbt_fill_new_block_pso_.Get(), &desc_set);
+                    
+                    // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
+                    command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.buffer.Get());
+
+                    // バリア.
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].bisector_pool_buffer.buffer.Get() );
+                }
+
+                // 7. Update Neighbor Pass
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_UpdateNeighbor_Shape" + std::to_string(shape_idx)).c_str());
+                    
+                    command_list->SetPipelineState(cbt_update_neighbor_pso_.Get());
+                    
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_update_neighbor_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
+                    command_list->SetDescriptorSet(cbt_update_neighbor_pso_.Get(), &desc_set);
+                    
+                    // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
+                    command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.buffer.Get());
+
+                    // バリア.
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].bisector_pool_buffer.buffer.Get() );
+                }
+
+                // 8. Update CBT Bitfield Pass
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, ("CBT_UpdateCBTBitfield_Shape" + std::to_string(shape_idx)).c_str());
+                    
+                    command_list->SetPipelineState(cbt_update_cbt_bitfield_pso_.Get());
+                    
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    cbt_gpu_resources_array_[shape_idx].BindResources(cbt_update_cbt_bitfield_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
+                    command_list->SetDescriptorSet(cbt_update_cbt_bitfield_pso_.Get(), &desc_set);
+                    
+                    // Bisector総数または未割り当てBisectorの最大数に対するDispatchIndirect実行
+                    command_list->DispatchIndirect(cbt_gpu_resources_array_[shape_idx].indirect_dispatch_arg_for_bisector_buffer.buffer.Get());
+
+                    // バリア.
+                    command_list->ResourceUavBarrier( cbt_gpu_resources_array_[shape_idx].cbt_buffer.buffer.Get() );
+                }
+
+                // 9. Sum Reduction Pass
+                execute_sum_reduction_cs(command_list, shape_idx);
+            }
+        }
     }
 
 }  // namespace ngl::render::app

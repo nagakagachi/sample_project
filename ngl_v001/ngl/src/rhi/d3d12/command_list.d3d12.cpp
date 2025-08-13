@@ -78,6 +78,21 @@ namespace ngl
 				return false;
 			}
 
+			// Create CommandSignature for DispatchIndirect
+			D3D12_INDIRECT_ARGUMENT_DESC dispatch_indirect_arg_desc = {};
+			dispatch_indirect_arg_desc.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DISPATCH;
+
+			D3D12_COMMAND_SIGNATURE_DESC dispatch_cmd_sig_desc = {};
+			dispatch_cmd_sig_desc.pArgumentDescs = &dispatch_indirect_arg_desc;
+			dispatch_cmd_sig_desc.NumArgumentDescs = 1;
+			dispatch_cmd_sig_desc.ByteStride = sizeof(uint32_t) * 3; // DispatchIndirect requires 3 uint32_t values (x, y, z)
+
+			if (FAILED(p_device->GetD3D12Device()->CreateCommandSignature(&dispatch_cmd_sig_desc, nullptr, IID_PPV_ARGS(&p_dispatch_indirect_command_signature_))))
+			{
+				std::cout << "[ERROR] Create CommandSignature for DispatchIndirect" << std::endl;
+				return false;
+			}
+
 			return true;
 		}
 		void CommandListBaseDep::Begin()
@@ -116,6 +131,25 @@ namespace ngl
 		void CommandListBaseDep::Dispatch(u32 x, u32 y, u32 z)
 		{
 			p_command_list_->Dispatch(x, y, z);
+		}
+		void CommandListBaseDep::DispatchIndirect(BufferDep* p_arg_buffer)
+		{
+			if (!p_arg_buffer)
+				return;
+
+			// Get D3D12 resource from BufferDep
+			ID3D12Resource* p_arg_buffer_resource = p_arg_buffer->GetD3D12Resource();
+			
+			// Execute indirect dispatch command
+			// Buffer contains DispatchIndirect arguments (3 uint32_t values: x, y, z)
+			p_command_list_->ExecuteIndirect(
+				p_dispatch_indirect_command_signature_.Get(),
+				1,                      // MaxCommandCount (1 dispatch command)
+				p_arg_buffer_resource,  // ArgumentBuffer
+				0,                      // ArgumentBufferOffset
+				nullptr,                // CountBuffer (not used)
+				0                       // CountBufferOffset
+			);
 		}
 		
 		// UAV Barrier.
@@ -326,7 +360,26 @@ namespace ngl
 			{
 				base_desc.type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 			}
-			return CommandListBaseDep::Initialize(p_device, base_desc);
+			
+			if (!CommandListBaseDep::Initialize(p_device, base_desc))
+				return false;
+
+			// Create CommandSignature for DrawIndirect
+			D3D12_INDIRECT_ARGUMENT_DESC indirect_arg_desc = {};
+			indirect_arg_desc.Type = D3D12_INDIRECT_ARGUMENT_TYPE_DRAW;
+
+			D3D12_COMMAND_SIGNATURE_DESC cmd_sig_desc = {};
+			cmd_sig_desc.pArgumentDescs = &indirect_arg_desc;
+			cmd_sig_desc.NumArgumentDescs = 1;
+			cmd_sig_desc.ByteStride = sizeof(uint32_t) * 4; // DrawInstancedIndirect requires 4 uint32_t values
+
+			if (FAILED(p_device->GetD3D12Device()->CreateCommandSignature(&cmd_sig_desc, nullptr, IID_PPV_ARGS(&p_draw_indirect_command_signature_))))
+			{
+				std::cout << "[ERROR] Create CommandSignature for DrawIndirect" << std::endl;
+				return false;
+			}
+
+			return true;
 		}
 		void GraphicsCommandListDep::Finalize()
 		{
@@ -432,6 +485,29 @@ namespace ngl
 		void GraphicsCommandListDep::DrawIndexedInstanced(u32 index_count_per_instance, u32 instance_count, u32 start_index_location, s32  base_vertex_location, u32 start_instance_location)
 		{
 			p_command_list_->DrawIndexedInstanced(index_count_per_instance, instance_count, start_index_location, base_vertex_location, start_instance_location);
+		}
+		void GraphicsCommandListDep::DrawIndirect(BufferDep* p_arg_buffer)
+		{
+			if (!p_arg_buffer)
+				return;
+
+			// Get D3D12 resource from BufferDep
+			ID3D12Resource* p_arg_buffer_resource = p_arg_buffer->GetD3D12Resource();
+			
+			// Execute indirect draw command
+			// Buffer contains DrawInstancedIndirect arguments (4 uint32_t values)
+			// - VertexCountPerInstance
+			// - InstanceCount  
+			// - StartVertexLocation
+			// - StartInstanceLocation
+			p_command_list_->ExecuteIndirect(
+				p_draw_indirect_command_signature_.Get(),
+				1,                      // MaxCommandCount (1 draw command)
+				p_arg_buffer_resource,  // ArgumentBuffer
+				0,                      // ArgumentBufferOffset
+				nullptr,                // CountBuffer (not used)
+				0                       // CountBufferOffset
+			);
 		}
 
 		void GraphicsCommandListDep::SetPipelineState(GraphicsPipelineStateDep* pso)

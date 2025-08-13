@@ -4,88 +4,86 @@
 
 #pragma once
 
-#include "util/bit_operation.h"
+#include "render/app/half_edge_mesh.h"
+#include "render/app/concurrent_binary_tree.h"
 #include "render/scene/scene_mesh.h"
+#include "rhi/constant_buffer_pool.h"
 
 namespace ngl::render::app
 {
-
-    // HalfEdge構造体の定義.
-    //  今回はTessellation用のためリンクとVertexIndexのみ.
-    struct HalfEdge
-    {
-        int twin   = -1;
-        int next   = -1;  // 次のエッジ
-        int prev   = -1;  // 前のエッジ
-        int vertex = -1;  // このエッジの頂点
-    };
-
-    // IndexListからHalfEdge構造を生成するクラス定義
-    class HalfEdgeMesh
+    class RhiBufferSet
     {
     public:
-        HalfEdgeMesh()  = default;
-        ~HalfEdgeMesh() = default;
+        RhiBufferSet() = default;
+        ~RhiBufferSet() = default;
 
-        // IndexListからHalfEdge構造を生成する関数
-        void Initialize(const uint32_t* index_list, int index_count);
+        bool InitializeAsStructured(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc);
+        bool InitializeAsTyped(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc, rhi::EResourceFormat format);
 
-        std::vector<HalfEdge> half_edge_;
-    };
+        void ResourceBarrier(ngl::rhi::GraphicsCommandListDep* p_command_list, rhi::EResourceState next_state);
 
-
-    struct Bisector
-    {
-        u32 bs_depth;
-        u32 bs_index;
-
-        int next;
-        int prev;
-        int twin;
-
-        u32 command;
-        u32 alloc_ptr[4];
-    };
-    static constexpr auto sizeof_Bisector = sizeof(Bisector);
-
-
-    // 完全二分木ビットフィールド.
-    class ConcurrentBinaryTreeU32
-    {
-        using LeafType = u32;
-        static constexpr u32 LeafTypeBitWidth = sizeof(LeafType) * 8;
-        static constexpr u32 LeafTypePackedIndexShift = ngl::MostSignificantBit32(LeafTypeBitWidth);
-        static constexpr u32 LeafTypeBitLocalIndexMask = (1u << LeafTypePackedIndexShift) - 1;
-        static constexpr u32 SumValueLocation = 1;
     public:
-        ConcurrentBinaryTreeU32()  = default;
-        ~ConcurrentBinaryTreeU32() = default;
+        // CBT Buffer
+        rhi::RefBufferDep buffer;
+        rhi::RefUavDep uav;
+        rhi::RefSrvDep srv;
 
-        void Initialize(u32 require_leaf_count);
-
-        void Clear();
-
-        void SetBit(u32 index, u32 bit);
-        u32 GetBit(u32 index) const;
-
-        u32 GetSum() const;
-        void SumReduction();
-
-        // 下位から i番目 の 1 の位置を検索. SumReduction後に使用可能.
-        int Find_ith_Bit1(u32 i);
-        // 下位から i番目 の 0 の位置を検索. SumReduction後に使用可能.
-        int Find_ith_Bit0(u32 i);
-
-        u32 NumLeaf() const;
-    
-    public:
-        static void Test();
-    private:
-        std::vector<u32> cbt_node_{};
-        u32 packed_leaf_count_{};
-        u32 packed_leaf_offset_{};
+        rhi::EResourceState resource_state = rhi::EResourceState::Common;
     };
 
+    // CBT関連のGPUリソースをまとめたクラス
+    class CBTGpuResources
+    {
+    public:
+        RhiBufferSet cbt_buffer;
+        RhiBufferSet bisector_pool_buffer;
+        RhiBufferSet index_cache_buffer;
+        RhiBufferSet alloc_counter_buffer;
+        RhiBufferSet indirect_dispatch_arg_for_bisector_buffer;
+        RhiBufferSet indirect_dispatch_arg_for_index_cache_buffer;
+        RhiBufferSet draw_indirect_arg_buffer;
+
+        // CBT Constants
+        struct CBTConstants
+        {
+            uint32_t cbt_tree_depth{};
+            uint32_t cbt_mesh_minimum_tree_depth{};
+            uint32_t bisector_pool_max_size{};
+            uint32_t total_half_edges{};  // 初期化用
+
+            int32_t fixed_subdivision_level = -1; // 固定分割レベル（-1で無効、0以上で固定分割）
+            float tessellation_split_threshold = 0.1f;    // テッセレーション分割閾値
+            float tessellation_merge_factor = 0.5f;       // テッセレーション統合係数 (0.0~1.0, 分割閾値に対する比率)
+            int32_t tessellation_update = 1; // テッセレーション更新フラグ（1で更新、0で更新なし）
+
+            int32_t debug_target_bisector_id = -1;        // デバッグ対象BisectorID（-1で無効）
+            int32_t debug_target_bisector_depth = -1;     // デバッグ対象BisectorDepth（-1で無効）
+            int32_t tessellation_debug_flag = 0;                       // 16byte alignment（C++側CBTConstantsと対応）
+            int32_t padding2;
+
+            ngl::math::Mat34 object_to_world{};      // オブジェクト→ワールド変換行列
+            ngl::math::Mat34 world_to_object{};      // ワールド→オブジェクト変換行列
+            ngl::math::Vec3 important_point{};       // テッセレーション評価で重視する座標（ワールド空間）
+            
+            int padding0;
+        };
+        
+        // CBT initialization data
+        uint32_t total_half_edges;
+        uint32_t cbt_mesh_minimum_tree_depth;  // log2(HalfEdge数)
+        uint32_t cbt_tree_depth;              // CBT最大深さ
+        uint32_t max_bisectors;               // Bisector総数 (2^cbt_tree_depth)
+
+        // 初期化メソッド
+        bool Initialize(ngl::rhi::DeviceDep* p_device, uint32_t shape_half_edges, uint32_t average_subdivision_level);
+        
+        // 定数バッファ更新メソッド（ConstantBufferPoolから確保）
+        ngl::rhi::ConstantBufferPooledHandle UpdateConstants(ngl::rhi::DeviceDep* p_device, 
+            const ngl::math::Mat34& object_to_world, const ngl::math::Vec3& important_point_world, bool tessellation_update, float tessellation_split_threshold, int32_t fixed_subdivision_level = -1, int32_t debug_bisector_neighbor = -1, int32_t debug_target_bisector_id = -1, int32_t debug_target_bisector_depth = -1);
+        
+        // リソースバインド用ヘルパー
+        void BindResources(ngl::rhi::ComputePipelineStateDep* pso, ngl::rhi::DescriptorSetDep* desc_set, ngl::rhi::ConstantBufferPooledHandle cb_handle) const;
+    };
 
     class SwTessellationMesh : public ngl::gfx::scene::SceneMesh
     {
@@ -99,7 +97,88 @@ namespace ngl::render::app
         bool Initialize(
             ngl::rhi::DeviceDep* p_device,
             ngl::fwk::GfxScene* gfx_scene,
-            const ngl::res::ResourceHandle<ngl::gfx::ResMeshData>& res_mesh);
+            const ngl::res::ResourceHandle<ngl::gfx::ResMeshData>& res_mesh,
+            uint32_t average_subdivision_level = 3,
+            bool debug_shape_mode = false);  // 平均分割レベル
+
+        // テッセレーション評価で重視する座標を設定
+        void SetImportantPoint(const ngl::math::Vec3& point_world)
+        {
+            important_point_world_ = point_world;
+        }
+
+        // 現在の重視座標を取得
+        const ngl::math::Vec3& GetImportantPoint() const
+        {
+            return important_point_world_;
+        }
+
+        // 固定分割レベルを設定（-1で無効、0以上で固定分割）
+        void SetFixedSubdivisionLevel(int32_t level)
+        {
+            fixed_subdivision_level_ = level;
+        }
+
+        // 現在の固定分割レベルを取得
+        int32_t GetFixedSubdivisionLevel() const
+        {
+            return fixed_subdivision_level_;
+        }
+
+        // デバッグ対象Bisector隣接情報を設定
+        void SetDebugBisectorNeighbor(int32_t neighbor)
+        {
+            debug_bisector_neighbor_ = neighbor;
+        }
+
+        // デバッグ対象のBisectorIDとDepthを設定（-1で無効）
+        void SetDebugTargetBisector(int32_t bisector_id, int32_t bisector_depth)
+        {
+            debug_target_bisector_id_ = bisector_id;
+            debug_target_bisector_depth_ = bisector_depth;
+        }
+
+        // 現在のデバッグ対象BisectorIDを取得
+        int32_t GetDebugTargetBisectorId() const
+        {
+            return debug_target_bisector_id_;
+        }
+
+        // 現在のデバッグ対象BisectorDepthを取得
+        int32_t GetDebugTargetBisectorDepth() const
+        {
+            return debug_target_bisector_depth_;
+        }
+
+        // テッセレーション分割閾値を設定
+        void SetTessellationSplitThreshold(float threshold)
+        {
+            tessellation_split_threshold_ = threshold;
+        }
+
+        // 現在のテッセレーション分割閾値を取得
+        float GetTessellationSplitThreshold() const
+        {
+            return tessellation_split_threshold_;
+        }
+
+        // テッセレーション更新フラグを設定
+        void SetTessellationUpdate(bool update)
+        {
+            tessellation_update_ = update;
+        }
+
+        // テッセレーションをリセット
+        void ResetTessellation()
+        {
+            reset_request_ = true;
+        }
+
+        // リセット要求状態を確認
+        bool IsResetRequested() const
+        {
+            return reset_request_;
+        }
 
     private:
         // Game更新.
@@ -108,10 +187,55 @@ namespace ngl::render::app
         void UpdateOnRender(gfx::scene::SceneMeshRenderUpdateCallbackArg arg);
 
     private:
+        bool debug_shape_mode_ = false;
         std::vector<HalfEdgeMesh> half_edge_mesh_array_;
 
         std::vector<rhi::RefBufferDep> half_edge_buffer_array_;
         std::vector<rhi::RefSrvDep> half_edge_srv_array_;
+
+        // CBT Tessellation Compute Shaders
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_init_leaf_pso_ = {};  // リーフ初期化専用
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_begin_update_pso_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_cache_index_pso_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_reset_command_pso_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_generate_command_pso_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_reserve_block_pso_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_fill_new_block_pso_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_update_neighbor_pso_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_update_cbt_bitfield_pso_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_sum_reduction_pso_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> cbt_sum_reduction_naive_pso_ = {};  // 既存のnaive版
+
+        // CBT GPU Resources (シェイプ単位で管理)
+        std::vector<CBTGpuResources> cbt_gpu_resources_array_;
+        
+        // CBT定数バッファハンドル（描画時にバインド用）
+        std::vector<ngl::rhi::ConstantBufferPooledHandle> cbt_constant_handles_;
+        
+        // CBT共通パラメータ
+        uint32_t average_subdivision_level_;
+        bool reset_request_ = true;
+
+        u32 local_frame_index_ = 0;  // ローカルフレームインデックス（更新用）
+        u32 local_frame_render_index_ = 0;  // ローカルフレームインデックス（更新用）
+        
+        // テッセレーション評価で重視する座標
+        ngl::math::Vec3 important_point_world_ = ngl::math::Vec3::Zero();
+        
+        // 固定分割レベル（-1で無効、0以上で固定分割）
+        int32_t fixed_subdivision_level_ = -1;
+
+        bool tessellation_update_ = true; // テッセレーション更新フラグ
+        bool tessellation_update_on_render_ = true; // テッセレーション更新フラグ(Render側)
+
+        // テッセレーション分割閾値
+        float tessellation_split_threshold_ = 0.002f;
+
+        // デバッグ対象Bisector情報（-1で無効）
+        int32_t debug_target_bisector_id_ = -1;
+        int32_t debug_target_bisector_depth_ = -1;
+        int32_t debug_bisector_neighbor_ = -1; // デバッグ用Bisector隣接情報 0,1,2->Twin,Prev,Next
+
     };
 
 }  // namespace ngl::render::app

@@ -14,6 +14,7 @@
         {
             mtl_input.pos_sv = input.pos;
             mtl_input.uv0 = input.uv0;
+            mtl_input.color0 = input.color0;
             
             mtl_input.pos_ws = input.pos_ws;
             mtl_input.pos_vs = input.pos_vs;

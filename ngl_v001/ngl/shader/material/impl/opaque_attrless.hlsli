@@ -23,8 +23,9 @@
 // 適切なコード生成のためにインクルード.
 #include "../mtl_pass_base_declare.hlsli"
 
-
 #include "../../sw_tess/bisector.hlsli"
+// bisector関連のバッファ定義含む.
+#include "../../sw_tess/cbt_tess_common.hlsli"
 
 
 Texture2D tex_basecolor;
@@ -32,10 +33,21 @@ Texture2D tex_basecolor;
 SamplerState samp_default;
 
 
-
-StructuredBuffer<HalfEdge> half_edge_buffer;
-Buffer<float3>  vertex_position_buffer;
-
+uint3 iqint2_orig(uint3 x)  
+{  
+    uint k = 1103515245;  
+  
+    x = ((x >> 8) ^ x.yzx) * k;  
+    x = ((x >> 8) ^ x.yzx) * k;  
+    x = ((x >> 8) ^ x.yzx) * k;  
+      
+    return x;  
+} 
+float iqint2(float4 pos)  
+{
+    const uint4 bin_val = uint4(asuint(pos));
+    return (dot(iqint2_orig(bin_val.xyz), 1) + dot(iqint2_orig(bin_val.w), 1)) * 2.3283064365386962890625e-10;
+}
 
 
 // 頂点入力の自由度を確保するために頂点入力定義とその取得, 変換はマテリアル側に記述する.
@@ -52,34 +64,106 @@ Buffer<float3>  vertex_position_buffer;
         MaterialVertexAttributeData output = (MaterialVertexAttributeData)0;
         
         const uint vertex_id = input.vertex_id;
+        const uint tri_index = vertex_id / 3;           // Bisectorキャッシュインデックス用
+        const uint local_index = vertex_id % 3;         // Bisectorのローカル頂点インデックス（0, 1, 2）
 
-    
-            const float2 test_tri_uv[3] = {
-                float2(0.0, 0.0),
-                float2(1.0, 0.0),
-                float2(0.5, 1.0)
-            };
+        // CBTテッセレーション：index_cacheから有効なBisectorのインデックスを取得
+        const uint bisector_index = index_cache[tri_index].x;
+        
+        // 処理対象のBisectorを取得
+        Bisector bisector = bisector_pool[bisector_index];
 
-    
-    
-            const uint tri_index = vertex_id / 3;
-            const uint local_index = vertex_id % 3;
+        const uint3 local_tri_vtx_indices = (bisector.bs_depth & 1)? uint3(1, 0, 2) : uint3(0, 1, 2);
 
-            // HalfEdgeからTriangleVertexIndex取得.
-            HalfEdge base_half_edge = half_edge_buffer[tri_index*3];
-            uint3 tri_vertex_index;    
-            tri_vertex_index.x = base_half_edge.vertex;
-            tri_vertex_index.y = half_edge_buffer[base_half_edge.next].vertex;
-            tri_vertex_index.z = half_edge_buffer[base_half_edge.prev].vertex;
+        // Bisectorの基本頂点インデックスを取得 (curr, next, prev)（共通関数を使用）
+        int3 base_vertex_indices = CalcRootBisectorBaseVertex(bisector.bs_id, bisector.bs_depth);
+        const uint base_triangle_hash = base_vertex_indices.x ^ 
+                                       base_vertex_indices.y ^ 
+                                       base_vertex_indices.z;
+
+        // Bisectorの頂点属性補間マトリックスを計算（共通関数を使用）
+        float3x3 attribute_matrix = CalcBisectorAttributeMatrix(bisector.bs_id, bisector.bs_depth);
+        
+        // 基本三角形の頂点座標を取得
+        float3 v0_base = vertex_position_buffer[base_vertex_indices.x]; // curr
+        float3 v1_base = vertex_position_buffer[base_vertex_indices.y]; // next  
+        float3 v2_base = vertex_position_buffer[base_vertex_indices.z]; // prev
+        
+        // 属性マトリックスを使ってBisectorの頂点座標を計算
+        float3x3 base_positions = float3x3(v0_base, v1_base, v2_base);
+        float3x3 bisector_positions = mul(attribute_matrix, base_positions);
+        
+        // Bisectorの三角形頂点座標から適切な頂点を選択
+        output.pos = bisector_positions[local_tri_vtx_indices[local_index]]; // local_index: 0=第1頂点, 1=第2頂点, 2=第3頂点
+        
+        // その他の属性設定
+        // 仮のタンジェントフレーム.
+        output.normal = normalize(cross(bisector_positions[local_tri_vtx_indices.y] - bisector_positions[local_tri_vtx_indices.x], bisector_positions[local_tri_vtx_indices.z] - bisector_positions[local_tri_vtx_indices.x]));
+        output.tangent = normalize(bisector_positions[local_tri_vtx_indices.y] - bisector_positions[local_tri_vtx_indices.x]);
+        output.binormal = normalize(cross(output.normal, output.tangent));
     
-            // ShaderResourceから頂点情報取得.
-	        output.pos = vertex_position_buffer[tri_vertex_index[local_index]];
-            output.normal = float3(0.0, 1.0, 0.0); // 上向きの法線.
-            output.tangent = float3(1.0, 0.0, 0.0); // X軸方向の接線.
-            output.binormal = float3(0.0, 0.0, 1.0); // Z軸方向の副接線.
-            output.color0 = float4(1.0, 1.0, 1.0, 1.0); // 白色.
-            output.uv0 = test_tri_uv[local_index]; // UV座標は矩形の頂点に対応.
-    
+        // Bisector可視化：RootBisectorとBisectorIDを組み合わせた色生成
+        uint bs_id_seed = bisector.bs_id + 1;
+        
+        float3 bisector_color;
+        
+        const float local_debug_color_seed = local_index;
+            
+            
+            const float depth_color_rate = frac((float(bisector.bs_depth - cbt_mesh_minimum_tree_depth)) / 12.0);
+
+            const float3 depth_color_test0 = lerp(float3(0.0, 0.0, 0.8), float3(0.0, 0.8, 0.0), saturate(depth_color_rate*2.0));
+            const float3 depth_color_test1 = lerp(depth_color_test0, float3(1.0, 0.0, 0.0), saturate((depth_color_rate-0.5)*2.0));
+
+            bisector_color.rgb = depth_color_test1;
+
+            float selected_bisector_flag = 0.0;
+            if(0 <= debug_target_bisector_id && 0 <= debug_target_bisector_depth)
+            {
+                if(debug_target_bisector_id == bisector.bs_id && debug_target_bisector_depth == bisector.bs_depth)
+                {
+                    // デバッグ対象のBisectorは選択されたフラグを立てる
+                    selected_bisector_flag = 1.0;
+                }
+            }
+            else if(0 <= debug_target_bisector_id || 0 <= debug_target_bisector_depth)
+            {
+                if(debug_target_bisector_id == bisector.bs_id || debug_target_bisector_depth == bisector.bs_depth)
+                {
+                    // デバッグ対象のBisectorは選択されたフラグを立てる
+                    selected_bisector_flag = 1.0;
+                }
+            }
+
+            float selected_neighbor_flag = 0.0;
+            if(0 < bisector.debug_value)
+            {
+                selected_neighbor_flag = 1.0;
+            }
+
+        output.uv1.x = selected_bisector_flag; // デバッグ用フラグ（選択されたBisectorかどうか）
+        output.uv1.y = 0.0;
+        
+        output.color0 = float4(bisector_color, 1.0);
+        output.color0.rgb = lerp(output.color0.rgb, float3(1.0, 0.0, 0.0), selected_bisector_flag);// 選択Bisectorの色変え
+        output.color0.rgb = lerp(output.color0.rgb, float3(1.0, 0.0, 1.0), selected_neighbor_flag);// 選択Bisectorの隣接Bisectorの色変え
+        
+        // UV座標の設定
+        /*
+        const float2 test_tri_uv[3] = {
+            float2(0.0, 0.0),
+            float2(1.0, 0.0),
+            float2(0.5, 1.0)
+        };
+        output.uv0 = test_tri_uv[local_tri_vtx_indices[local_index]];
+        */
+        // 重心座標可視化用.
+        const float2 test_tri_uv[3] = {
+            float2(0.0, 0.0),
+            float2(1.0, 0.0),
+            float2(0.0, 1.0)
+        };
+        output.uv0 = test_tri_uv[local_tri_vtx_indices[local_index]];
 
         return output;
     }
@@ -93,16 +177,37 @@ MtlVsOutput MtlVsEntryPoint(MtlVsInput input)
 
     // テスト
     //output.position_offset_ws = input.normal_ws * abs(sin(ngl_cb_sceneview.cb_time_sec / 1.0f)) * 0.05;
-    
+
+    #if 1
+        // 重要点からの距離に基づく変位を計算
+        const float3 dist_from_important_point = input.position_ws - important_point;
+        const float dist_length = length(dist_from_important_point);
+        const float displacement_rate = 1.0 - saturate(dist_length / 8.0); // 重要点からの距離に基づく変位率
+        output.position_offset_ws += input.normal_ws * (displacement_rate * cos(displacement_rate * 20.0))*0.5;
+    #else
+        output.position_offset_ws += input.normal_ws * input.uv1.x*0.5;
+    #endif 
     return output;
 }
 
 MtlPsOutput MtlPsEntryPoint(MtlPsInput input)
 {
-    const float4 mtl_base_color = tex_basecolor.Sample(samp_default, input.uv0);
+    // Bisector可視化：頂点カラーをベースカラーとして使用
+    float4 mtl_base_color = input.color0;
     
+    // 元のテクスチャサンプリング（コメントアウト）
+    //float4 mtl_base_color = tex_basecolor.Sample(samp_default, input.uv0);
+    {
+        const float3 bary3 = float3(input.uv0, 1.0 - input.uv0.x - input.uv0.y);
+        const float min_bary = min(bary3.x, min(bary3.y, bary3.z));
+
+        mtl_base_color.xyz = (0.01 > min_bary) ? float3(1.0, 1.0, 1.0) : mtl_base_color.xyz; // 赤色で可視化
+    }
+
+
+
     const float occlusion = 1.0; // アトリビュート無しなので常に1.0.
-    const float roughness = 0.5; // アトリビュート無しなので常に0.5.
+    const float roughness = 0.1; // アトリビュート無しなので常に0.5.
     const float metallic = 0.0; // アトリビュート無しなので常に0.0.
     const float surface_optional = 0.0;
     const float material_id = 0.0;
@@ -114,7 +219,7 @@ MtlPsOutput MtlPsEntryPoint(MtlPsInput input)
     // マテリアル出力.
     MtlPsOutput output = (MtlPsOutput)0;
     {
-        output.base_color = mtl_base_color.xyz;
+        output.base_color = mtl_base_color.xyz; // Bisectorの色を出力
         output.occlusion = occlusion;
 
         output.normal_ws = normal_ws;

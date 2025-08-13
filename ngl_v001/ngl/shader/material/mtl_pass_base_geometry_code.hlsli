@@ -99,13 +99,21 @@
         float3 binormal_ws = normalize(mul(instance_mtx, float4(input_wrap.binormal, 0.0)).xyz);
 
         float2 uv0 = input_wrap.uv0;
+        float2 uv1 = input_wrap.uv1;
+        float2 uv2 = input_wrap.uv2;
+        float2 uv3 = input_wrap.uv3;
 
+        float4 color0 = input_wrap.color0;
 
         // マテリアル側頂点計算コード呼び出し.
         MtlVsInput mtl_input = (MtlVsInput)0;
         {
             mtl_input.position_ws = pos_ws;
             mtl_input.normal_ws = normal_ws;
+
+            mtl_input.uv0 = uv0;
+            mtl_input.uv1 = uv1;
+            mtl_input.color0 = color0;
         }
         // Material Customize Point.
         // マテリアル側の頂点オフセット操作.
@@ -140,6 +148,7 @@
         {
             output.pos = pos_cs;
             output.uv0 = uv0;
+            output.color0 = color0;
 
             output.pos_ws = pos_ws;
             output.pos_vs = pos_vs;

@@ -548,29 +548,28 @@ namespace ngl
 			{
 				assert(p_buffer);
 				D3D12_UNORDERED_ACCESS_VIEW_DESC desc = {};
-				u32 bufferElementCount = 0;
 				if (BufferViewMode::Typed == mode)
 				{
 					// Typed.
-					bufferElementCount = p_buffer->getElementCount();
 					desc.Format = ConvertResourceFormat(typed_format);
 				}
 				else if (BufferViewMode::Structured == mode)
 				{
 					// Structured.
-					bufferElementCount = p_buffer->getElementCount();
+					
+				    u32 checkBufferElementCount = p_buffer->getElementCount();
 					desc.Format = DXGI_FORMAT_UNKNOWN;
 					desc.Buffer.StructureByteStride = structured_element_size;
+                    
+    				assert((element_offset + element_count) <= checkBufferElementCount); // Check range
 				}
 				else
 				{
 					// ByteAddress.
-					bufferElementCount = p_buffer->getElementCount();
 					desc.Format = DXGI_FORMAT_R32_TYPELESS;
 					desc.Buffer.Flags = D3D12_BUFFER_UAV_FLAG_RAW;
 				}
 
-				assert((element_offset + element_count) <= bufferElementCount); // Check range
 				desc.Buffer.FirstElement = element_offset;
 				desc.Buffer.NumElements = element_count;
 				desc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;

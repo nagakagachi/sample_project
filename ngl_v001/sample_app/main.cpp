@@ -68,6 +68,17 @@ static float dbgw_stat_primary_rtg_execute   = {};
 static int dbgw_sky_debug_mode       = {};
 static float dbgw_sky_debug_mip_bias = 0.0f;
 
+static float sw_tess_important_point_offset_in_view = 9.0;
+
+static int sw_tess_fixed_subdivision_level = 0; // -1で無効、0以上で固定分割レベルを指定
+static bool sw_tess_update_tessellation = true; // trueでテッセレーション更新を有効化
+static bool sw_tess_update_tessellation_frame_toggle = false; // trueで1F毎にテッセレーション更新フラグをOFFにするデバッグ用.
+static float sw_tess_split_threshold = 0.05f; // テッセレーション分割閾値
+
+static int sw_tess_debug_bisector_id = -1;      // デバッグ対象BisectorID（-1で無効）
+static int sw_tess_debug_bisector_depth = -1;   // デバッグ対象BisectorDepth（-1で無効）
+static int sw_tess_debug_bisector_neighbor = -1;
+
 class PlayerController
 {
 private:
@@ -133,7 +144,7 @@ private:
     ngl::fwk::GraphicsFramework gfxfw_{};
     std::vector<ngl::rhi::EResourceState> swapchain_resource_state_;
 
-    ngl::math::Vec3 camera_pos_   = {-5.0f, 15.0f, -10.0f};
+    ngl::math::Vec3 camera_pos_   = {-9.0f, 15.0f, -5.0f};
     ngl::math::Mat33 camera_pose_ = ngl::math::Mat33::Identity();
     float camera_fov_y            = ngl::math::Deg2Rad(60.0f);  // not half fov.
     PlayerController player_controller{};
@@ -141,6 +152,9 @@ private:
     // GfxSceneMesh版
     std::vector<std::shared_ptr<ngl::gfx::scene::SceneMesh>> mesh_entity_array_;
     std::vector<ngl::gfx::scene::SceneMesh*> test_move_mesh_entity_array_;
+    
+    // SwTessellationMesh管理用
+    std::vector<ngl::render::app::SwTessellationMesh*> sw_tessellation_mesh_array_;
 
     // RaytraceScene.
     ngl::gfx::RtSceneManager rt_scene_;
@@ -190,6 +204,7 @@ AppGame::~AppGame()
 
     // リソース参照クリア.
     mesh_entity_array_.clear();
+    sw_tessellation_mesh_array_.clear();
 
     // Material Shader Manager.
     ngl::gfx::MaterialShaderManager::Instance().Finalize();
@@ -312,6 +327,8 @@ bool AppGame::Initialize()
         const char* mesh_file_spider         = "../ngl/data/model/assimp/FBX/spider.fbx";
         const float spider_base_scale        = 0.0001f;
 
+        const char* mesh_file_box = "K:\\GitHub\\sample_projct_lib\\ngl_v001\\ngl\\external\\assimp\\test\\models\\FBX\\box.fbx";
+
         // シーンモデル.
 #if 1
         // Sponza.
@@ -354,9 +371,10 @@ bool AppGame::Initialize()
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc));
 
-                ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
-                tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 5.0f));
-                tr.SetColumn3(ngl::math::Vec4(30.0f, 12.0f, 0.0f, 1.0f));
+                ngl::math::Mat34 tr = ngl::math::Mat34::Identity();
+                tr.SetDiagonal(ngl::math::Vec3(spider_base_scale * 4.0f));
+                //tr.SetColumn3(ngl::math::Vec4(30.0f, 12.0f, 0.0f, 1.0f));
+                tr.SetColumn3(ngl::math::Vec3(-10.0f, 15.0f, 4.0f));
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
@@ -437,17 +455,30 @@ bool AppGame::Initialize()
                 // SwTessellationのテスト.
                 auto mc = std::make_shared<ngl::render::app::SwTessellationMesh>();
                 mesh_entity_array_.push_back(mc);
+                
+                // SwTessellationMesh管理用vectorにも追加
+                sw_tessellation_mesh_array_.push_back(mc.get());
 
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-                // AttrLessなマテリアルを設定.
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc));
+                
 
-                // スケール設定.
-                ngl::math::Mat34 tr = ngl::math::Mat34::Identity();
-                tr.SetColumn3(ngl::math::Vec3(-10.0f, 15.0f, 0.0f));
-                // tr.SetColumn3(ngl::math::Vec3(0.0f, 10.0f, 0.0f));
-                tr.SetDiagonal(ngl::math::Vec3(spider_base_scale));
-                mc->SetTransform(tr);
+                ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
+                #if 0
+                // 蜘蛛
+                constexpr int tessellation_level = 4;  // 0で無効、1以上で有効.
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), tessellation_level);
+                tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 3.0f, 1.0f));
+                #else
+                // 6に設定して分割を 0->5 に一気に変更すると不整合
+                constexpr int tessellation_level = 8;  // 3でも一気に分割すると問題発生 -> 統合時のアロケーションチェックを代表Bisectorのみにしたことで改善.
+
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), tessellation_level, false);
+                tr.SetDiagonal(ngl::math::Vec4(60.0f));
+                tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
+                #endif
+                tr.SetColumn3(ngl::math::Vec4(-10.0f, 19.0f, -2.0f, 0.0f));
+
+                mc->SetTransform(ngl::math::Mat34(tr));
             }
         }
     }
@@ -663,6 +694,41 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("Enable SubView Render", &dbgw_enable_sub_view_path);
         }
 
+        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
+        if (ImGui::CollapsingHeader("SwTessellation Mesh"))
+        {
+            ImGui::Checkbox("Enable Tessellation Update", &sw_tess_update_tessellation);
+            ImGui::Checkbox("Tessellation Update Frame Toggle", &sw_tess_update_tessellation_frame_toggle);
+            ImGui::SliderInt("Fixed Subdivision Level", &sw_tess_fixed_subdivision_level, -1, 10);
+            ImGui::SliderFloat("Split Threshold", &sw_tess_split_threshold, 0.0001f, 0.1f, "%.4f");
+
+            if (ImGui::Button("Reset Tessellation"))
+            {
+                for (auto* sw_tess_mesh : sw_tessellation_mesh_array_)
+                {
+                    sw_tess_mesh->ResetTessellation();
+                }
+            }
+
+            ImGui::Separator();
+            ImGui::SliderFloat("Important Point View Offset", &sw_tess_important_point_offset_in_view, 0.01f, 50.0f);
+
+            ImGui::Separator();
+            ImGui::Text("Debug Target Bisector:");
+            ImGui::SliderInt("Bisector Depth", &sw_tess_debug_bisector_depth, -1, 15);
+            ImGui::InputInt("Bisector ID", &sw_tess_debug_bisector_id, 1);
+            
+            ImGui::SliderInt("Neighbor(Twin,Prev,Next)", &sw_tess_debug_bisector_neighbor, -1, 2);
+
+            if (ImGui::Button("Clear Debug Target"))
+            {
+                sw_tess_debug_bisector_id = -1;
+                sw_tess_debug_bisector_depth = -1;
+                sw_tess_debug_bisector_neighbor = -1;
+            }
+            
+        }
+
         ImGui::End();
     }
     const auto dlit_dir = ngl::math::Vec3::Normalize(ngl::math::Mat33::RotAxisY(dbgw_dlit_angle_h) * ngl::math::Mat33::RotAxisX(dbgw_dlit_angle_v) * (-ngl::math::Vec3::UnitY()));
@@ -682,6 +748,29 @@ bool AppGame::ExecuteApp()
             tr.SetColumn3(trans);
             e->SetTransform(tr);
         }
+    }
+
+    // CBTテッセレーションメッシュに情報設定.
+    const ngl::math::Vec3 tessellation_important_point = camera_pos_ + camera_pose_.GetColumn2() * sw_tess_important_point_offset_in_view;
+    for (auto* sw_tess_mesh : sw_tessellation_mesh_array_)
+    {
+        sw_tess_mesh->SetImportantPoint(tessellation_important_point);
+
+        // デバッグ用
+        sw_tess_mesh->SetFixedSubdivisionLevel(sw_tess_fixed_subdivision_level);
+        sw_tess_mesh->SetDebugTargetBisector(sw_tess_debug_bisector_id, sw_tess_debug_bisector_depth);
+        sw_tess_mesh->SetDebugBisectorNeighbor(sw_tess_debug_bisector_neighbor);
+
+        // テッセレーション分割閾値を設定
+        sw_tess_mesh->SetTessellationSplitThreshold(sw_tess_split_threshold);
+
+        sw_tess_mesh->SetTessellationUpdate(sw_tess_update_tessellation);
+    }
+
+    if(sw_tess_update_tessellation_frame_toggle)
+    {
+        // 1FでOFFにする.
+        sw_tess_update_tessellation = false;
     }
 
     // 描画用シーン情報.
