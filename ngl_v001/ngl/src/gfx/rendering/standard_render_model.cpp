@@ -12,11 +12,13 @@ namespace ngl::gfx
 
     // --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-    bool StandardRenderModel::Initialize(rhi::DeviceDep* p_device, res::ResourceHandle<ResMeshData> res_mesh, const char* material_name)
+    bool StandardRenderModel::Initialize(rhi::DeviceDep* p_device, res::ResourceHandle<ResMeshData> res_mesh, std::shared_ptr<gfx::MeshData> override_mesh_shape_data, const char* material_name)
     {
         auto& res_manager = ngl::res::ResourceManager::Instance();
 
         res_mesh_ = res_mesh;
+
+        override_mesh_shape_data_ = override_mesh_shape_data;
 
         material_array_ = {};
         material_array_.resize(res_mesh_->material_data_array_.size());
@@ -42,9 +44,15 @@ namespace ngl::gfx
 
         // 標準不透明マテリアルでShape毎のマテリアルPsoを準備.
         // material_name = "opaque_standard";
-        for (int i = 0; i < res_mesh_->data_.shape_array_.size(); ++i)
+        auto* shape_array = &(res_mesh_->data_.shape_array_);
+        if(override_mesh_shape_data_)
         {
-            shape_mtl_pso_set_.push_back(MaterialShaderManager::Instance().GetMaterialPsoSet(material_name, res_mesh_->data_.shape_array_[i].vtx_attr_mask_));
+            // OverrideMeshShapeDataがある場合はそちらを参照.
+            shape_array = &(override_mesh_shape_data_->shape_array_);
+        }
+        for (int i = 0; i < shape_array->size(); ++i)
+        {
+            shape_mtl_pso_set_.push_back(MaterialShaderManager::Instance().GetMaterialPsoSet(material_name, (*shape_array)[i].vtx_attr_mask_));
         }
 
         return true;
@@ -95,25 +103,37 @@ namespace ngl::gfx
             return;
         }
 
-        // 規程のShape描画.
-        auto& shape = res_mesh_->data_.shape_array_[shape_index];
+        // Shape描画.
+        
+        auto* shape_array = &(res_mesh_->data_.shape_array_);
+        if(override_mesh_shape_data_)
+        {
+            // OverrideMeshShapeDataがある場合はそちらを参照.
+            shape_array = &(override_mesh_shape_data_->shape_array_);
+        }
+        if (shape_index >= shape_array->size())
+        {
+            return;
+        }
+
+        const gfx::MeshShapePart* shape = &(*shape_array)[shape_index];
 
         // 一括設定. Mesh描画はセマンティクスとスロットを固定化しているため, Meshデータロード時にマッピングを構築してそのまま利用する.
         // PSO側のInputLayoutが要求するセマンティクスとのValidationチェックも可能なはず.
         D3D12_VERTEX_BUFFER_VIEW vtx_views[gfx::MeshVertexSemantic::SemanticSlotMaxCount()] = {};
         for (auto vi = 0; vi < gfx::MeshVertexSemantic::SemanticSlotMaxCount(); ++vi)
         {
-            if (shape.vtx_attr_mask_.mask & (1 << vi))
-                vtx_views[vi] = shape.p_vtx_attr_mapping_[vi]->rhi_vbv_.GetView();
+            if (shape->vtx_attr_mask_.mask & (1 << vi))
+                vtx_views[vi] = shape->p_vtx_attr_mapping_[vi]->rhi_vbv_.GetView();
         }
         p_command_list->SetVertexBuffers(0, (u32)std::size(vtx_views), vtx_views);
 
         // Set Index and topology.
-        p_command_list->SetIndexBuffer(&shape.index_.rhi_vbv_.GetView());
+        p_command_list->SetIndexBuffer(&shape->index_.rhi_vbv_.GetView());
         p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
 
         // Draw.
-        p_command_list->DrawIndexedInstanced(shape.num_primitive_ * 3, 1, 0, 0, 0);
+        p_command_list->DrawIndexedInstanced(shape->num_primitive_ * 3, 1, 0, 0, 0);
     }
 
 }  // namespace ngl::gfx

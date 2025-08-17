@@ -97,9 +97,8 @@ namespace ngl::render::app
         bool Initialize(
             ngl::rhi::DeviceDep* p_device,
             ngl::fwk::GfxScene* gfx_scene,
-            const ngl::res::ResourceHandle<ngl::gfx::ResMeshData>& res_mesh,
-            uint32_t average_subdivision_level = 3,
-            bool debug_shape_mode = false);  // 平均分割レベル
+            const ngl::res::ResourceHandle<ngl::gfx::ResMeshData>& res_mesh, std::shared_ptr<gfx::MeshData> override_mesh_shape_data = {},
+            uint32_t average_subdivision_level = 3);
 
         // テッセレーション評価で重視する座標を設定
         void SetImportantPoint(const ngl::math::Vec3& point_world)
@@ -187,7 +186,7 @@ namespace ngl::render::app
         void UpdateOnRender(gfx::scene::SceneMeshRenderUpdateCallbackArg arg);
 
     private:
-        bool debug_shape_mode_ = false;
+    
         std::vector<HalfEdgeMesh> half_edge_mesh_array_;
 
         std::vector<rhi::RefBufferDep> half_edge_buffer_array_;

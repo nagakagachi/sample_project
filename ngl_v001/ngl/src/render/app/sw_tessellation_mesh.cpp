@@ -236,46 +236,30 @@ namespace ngl::render::app
     bool SwTessellationMesh::Initialize(
         ngl::rhi::DeviceDep* p_device,
         ngl::fwk::GfxScene* gfx_scene,
-        const ngl::res::ResourceHandle<ngl::gfx::ResMeshData>& res_mesh,
-        uint32_t average_subdivision_level,
-        bool debug_shape_mode)
+        const ngl::res::ResourceHandle<ngl::gfx::ResMeshData>& res_mesh, std::shared_ptr<gfx::MeshData> override_mesh_shape_data,
+        uint32_t average_subdivision_level)
     {
         // 専用にマテリアル指定.
         constexpr text::HashText<64> attrles_material_name = "opaque_attrless";
 
-        debug_shape_mode_ = debug_shape_mode;
-
-        if (!Super::Initialize(p_device, gfx_scene, res_mesh, attrles_material_name.Get()))
+        if (!Super::Initialize(p_device, gfx_scene, res_mesh, override_mesh_shape_data, attrles_material_name.Get()))
         {
             assert(false);
             return false;
         }
 
-        if(debug_shape_mode_)
         {
-            // デバッグモード.
-            half_edge_mesh_array_.resize(1);
+            // OverrideShapeがある場合はそちらでHalfEdge初期化.
+            const auto* shape_array = override_mesh_shape_data ? &override_mesh_shape_data->shape_array_ : &res_mesh->data_.shape_array_;
 
-            #if 0
-                // デバッグ固定三角形.
-                const u32 tri_index_list[] = {0, 1, 2};
-            #else
-                // デバッグ固定四角形.
-                const u32 tri_index_list[] = {0, 2, 1, 0, 1, 3};
-            #endif
+            const auto shape_count  = shape_array->size();
 
-            half_edge_mesh_array_[0].Initialize(tri_index_list, static_cast<int>(std::size(tri_index_list)));
-        }
-        else
-        {
-            const auto shape_count  =res_mesh->data_.shape_array_.size();
-            
             // HalfEdge生成.
             half_edge_mesh_array_.resize(shape_count);
-            for (int i = 0; i < res_mesh->data_.shape_array_.size(); ++i)
+            for (int i = 0; i < shape_count; ++i)
             {
                 // Shape単位.
-                const gfx::MeshShapePart& shape = res_mesh->data_.shape_array_[i];
+                const gfx::MeshShapePart& shape = (*shape_array)[i];
                 half_edge_mesh_array_[i].Initialize(shape.index_.GetTypedRawDataPtr(), shape.num_primitive_ * 3);
             }
         }
@@ -394,15 +378,11 @@ namespace ngl::render::app
                 auto* desc_set  = arg.desc_set;
                 int shape_index = arg.shape_index;
 
-                if(debug_shape_mode_)
+                if(shape_index >= GetModel()->NumShape())
                 {
-                    if(0 != shape_index)
-                    {
-                        return; // デバッグモードでは0番目のシェイプのみ使用
-                    }
+                    return;
                 }
-
-                auto* shape = &(GetModel()->res_mesh_->data_.shape_array_[shape_index]);
+                auto* shape = GetModel()->GetShape(shape_index);
 
                 // 追加でHalfEdgeバッファなどを設定.
                 pso->SetView(desc_set, "half_edge_buffer", half_edge_srv_array_[shape_index].Get());
@@ -664,7 +644,7 @@ namespace ngl::render::app
                     cbt_gpu_resources_array_[shape_idx].BindResources(cbt_generate_command_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
                     
                     // Generate Commandパス用の追加リソースバインド
-                    auto* shape = &(GetModel()->res_mesh_->data_.shape_array_[shape_idx]);
+                    auto* shape = GetModel()->GetShape((int)shape_idx);
                     cbt_generate_command_pso_->SetView(&desc_set, "half_edge_buffer", half_edge_srv_array_[shape_idx].Get());
                     cbt_generate_command_pso_->SetView(&desc_set, "vertex_position_buffer", &(shape->position_.rhi_srv));
                     

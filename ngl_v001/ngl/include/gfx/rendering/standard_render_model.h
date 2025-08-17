@@ -50,7 +50,7 @@ namespace ngl
             StandardRenderModel()  = default;
             ~StandardRenderModel() = default;
 
-            bool Initialize(rhi::DeviceDep* p_device, res::ResourceHandle<ResMeshData> res_mesh, const char* material_name);
+            bool Initialize(rhi::DeviceDep* p_device, res::ResourceHandle<ResMeshData> res_mesh, std::shared_ptr<gfx::MeshData> override_mesh_shape_data, const char* material_name);
 
             // Descriptorへのリソース設定コールバック.
             void BindModelResourceCallback(BindModelResourceOptionCallbackArg arg);
@@ -58,10 +58,39 @@ namespace ngl
             void DrawShape(rhi::GraphicsCommandListDep* p_command_list, int shape_index);
 
         public:
-            res::ResourceHandle<ResMeshData> res_mesh_          = {};
+            int NumShape() const
+            {
+                if (override_mesh_shape_data_)
+                {
+                    return static_cast<int>(override_mesh_shape_data_->shape_array_.size());
+                }
+                return static_cast<int>(res_mesh_->data_.shape_array_.size());
+            }
+            const MeshShapePart* GetShape(int shape_index) const
+            {
+                if (override_mesh_shape_data_)
+                {
+                    return &(override_mesh_shape_data_->shape_array_[shape_index]);
+                }
+                return &(res_mesh_->data_.shape_array_[shape_index]);
+            }
+
+            const ResMeshData* GetResMeshData() const
+            {
+                return res_mesh_.Get();
+            }
+
+        public:
+
             std::vector<MaterialPsoSet> shape_mtl_pso_set_      = {};
             std::vector<StandardRenderMaterial> material_array_ = {};
 
+        private:
+            res::ResourceHandle<ResMeshData> res_mesh_          = {};
+            // マテリアルはResourceを使いつつShape0を上書きするShape().
+            std::shared_ptr<gfx::MeshData> override_mesh_shape_data_ = {};
+
+        public:
             BindModelResourceOptionCallback bind_model_resource_option_callback_{};
             DrawShapeOverrideFuncion draw_shape_override_{};
         };

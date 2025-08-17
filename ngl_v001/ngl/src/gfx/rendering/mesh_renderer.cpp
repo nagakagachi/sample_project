@@ -39,7 +39,8 @@ namespace ngl
                     mesh_instance_cbh->buffer_.Unmap();
                 }
 
-                for (int shape_i = 0; shape_i < model->res_mesh_->data_.shape_array_.size(); ++shape_i)
+                const auto shape_count = model->NumShape();
+                for (int shape_i = 0; shape_i < shape_count; ++shape_i)
                 {
                     // Shapeに対応したMaterial Pass Psoを取得.
                     const auto&& pso = model->shape_mtl_pso_set_[shape_i].GetPassPso(pass_name);

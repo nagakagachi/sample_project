@@ -72,6 +72,8 @@ namespace ngl
 
 			// 初期データバッファ. InitRenderでrhi_buffer_へコピー命令を発行した後に破棄される.
 			rhi::RhiRef<rhi::BufferDep>	ref_upload_rhibuffer_ = {};
+
+            // CPUアクセス用元データ.
 			void* raw_ptr_ = nullptr;
 		};
 
@@ -130,6 +132,29 @@ namespace ngl
 			// rhi index buffer view.
 			//rhi::IndexBufferViewDep rhi_vbv_ = {};
 		};
+        
+
+        class MeshShapeInitializeSourceData
+		{
+		public:
+			MeshShapeInitializeSourceData()
+			{
+			}
+			~MeshShapeInitializeSourceData()
+			{
+			}
+
+			int num_vertex_ = 0;
+			int num_primitive_ = 0;// triangle.
+
+			uint32_t* index_ = {};
+			math::Vec3* position_ = {};
+			math::Vec3* normal_ = {};
+			math::Vec3* tangent_ = {};
+			math::Vec3* binormal_ = {};
+			std::vector<VertexColor*>	color_{};
+			std::vector<math::Vec2*>	texcoord_{};
+		};
 
 		// Mesh Shape Data.
 		// 頂点属性の情報のメモリ実態は親のMeshDataが保持し, ロードや初期化でマッピングされる.
@@ -142,6 +167,9 @@ namespace ngl
 			~MeshShapePart()
 			{
 			}
+
+            void Initialize(rhi::DeviceDep* p_device, const MeshShapeInitializeSourceData& init_source_data);
+
 
 			int num_vertex_ = 0;
 			int num_primitive_ = 0;// num primitive(triangle).
@@ -158,8 +186,10 @@ namespace ngl
 			// バインド時等に効率的に設定するためのポインタ配列.
 			std::array<MeshShapeVertexDataBase*, MeshVertexSemantic::SemanticSlotMaxCount()> p_vtx_attr_mapping_ = {};
 			MeshVertexSemanticSlotMask	vtx_attr_mask_ = {};
-
 		};
+
+
+
 
 		// Mesh Shape Data.
 		class MeshData
@@ -174,10 +204,14 @@ namespace ngl
 
 			// ジオメトリ情報のRawDataメモリ. 個々でメモリ確保してマッピングする場合に利用.
 			std::vector<uint8_t> raw_data_mem_;
-			// RawData以外にもRHIBufferも一纏めにする場合はここで管理してshapeのviewが参照することもできるかもしれない.
 
+            // 各Shape情報.
 			std::vector<MeshShapePart> shape_array_;
 		};
+
+        // MeshShapeInitializeSourceDataからMeshDataを生成する. 内部に必要なメモリを別途確保する.
+        // リソースではなくプログラムからメッシュ生成し, ResMeshのシェイプ部分のみオーバーライドすることが可能.
+        void GenerateMeshDataProcedural(MeshData& out_mesh, rhi::DeviceDep* p_device, const MeshShapeInitializeSourceData& init_source_data);
 
 
 		// Meshデータにマテリアル情報が含まれる場合の取り出し用.
@@ -203,7 +237,6 @@ namespace ngl
 				int dummy;
 			};
 
-
 			ResMeshData()
 			{
 			}
@@ -211,12 +244,11 @@ namespace ngl
 			{
 			}
 
-
-			bool IsNeedRenderThreadInitialize() const override { return true; }
-			void RenderThreadInitialize(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist) override;
+            // メッシュのBuffer生成(CreateShapeDataRhiBuffer)でそれぞれのバッファが自身のRenderThread初期化タスクを発行するようになったためここは不要になった.
+			//bool IsNeedRenderThreadInitialize() const override { return true; }
+			//void RenderThreadInitialize(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist) override;
 
 			MeshData data_ = {};
-
 			std::vector<SurfaceMaterialInfo> material_data_array_;
 			std::vector<int> shape_material_index_array_;
 		};

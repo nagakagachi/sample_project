@@ -1774,7 +1774,7 @@ namespace ngl
 			auto* proxy_buffer = scene.gfx_scene_->GetEntityProxyBuffer<fwk::GfxSceneEntityMesh>();
 			for (auto& e : scene.mesh_proxy_id_array_)
 			{
-				auto* p_mesh = proxy_buffer->proxy_buffer_[e.GetIndex()]->model_->res_mesh_.Get();
+				auto* p_mesh = proxy_buffer->proxy_buffer_[e.GetIndex()]->model_->GetResMeshData();
 				//auto* p_mesh = e->GetMeshData();
 				if (scene_mesh_to_id.end() == scene_mesh_to_id.find(p_mesh))
 				{

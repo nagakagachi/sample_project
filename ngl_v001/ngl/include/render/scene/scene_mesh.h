@@ -34,14 +34,14 @@ namespace ngl::gfx::scene
         }
 
 
-        bool Initialize(rhi::DeviceDep* p_device, fwk::GfxScene* gfx_scene, const res::ResourceHandle<ResMeshData>& res_mesh, const char* material_name = "opaque_standard")
+        bool Initialize(rhi::DeviceDep* p_device, fwk::GfxScene* gfx_scene, const res::ResourceHandle<ResMeshData>& res_mesh, std::shared_ptr<gfx::MeshData> override_mesh_shape_data = {}, const char* material_name = "opaque_standard")
         {
             if (!gfx_mesh_entity_.Initialize(gfx_scene))
             {
                 assert(false);
             }
 
-            if (!model_.Initialize(p_device, res_mesh, material_name))
+            if (!model_.Initialize(p_device, res_mesh, override_mesh_shape_data, material_name))
             {
                 assert(false);
             }

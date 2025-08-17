@@ -7,25 +7,408 @@ namespace ngl
 {
 namespace gfx
 {
-	void ResMeshData::RenderThreadInitialize(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist)
-	{
-		auto* p_d3d_commandlist = p_commandlist->GetD3D12GraphicsCommandList();
+    // 生成用.
+    auto CreateShapeDataRhiBuffer(
+        ngl::gfx::MeshShapeGeomBufferBase* p_mesh_geom_buffer,
 
-		for (auto& e : this->data_.shape_array_)
-		{
-			e.index_.InitRender(p_device, p_commandlist);
-			e.position_.InitRender(p_device, p_commandlist);
+        ngl::rhi::ShaderResourceViewDep* p_out_view,
+        ngl::rhi::VertexBufferViewDep* p_out_vbv,
+        ngl::rhi::IndexBufferViewDep* p_out_ibv,
 
-			e.normal_.InitRender(p_device, p_commandlist);
-			e.tangent_.InitRender(p_device, p_commandlist);
-			e.binormal_.InitRender(p_device, p_commandlist);
+        ngl::rhi::DeviceDep* p_device,
+        uint32_t bind_flag, rhi::EResourceFormat view_format, int element_size_in_byte, int element_count, void* initial_data = nullptr)
+        -> bool
+    {
+        ngl::rhi::BufferDep::Desc buffer_desc = {};
+        // 高速化のため描画用のバッファをDefaultHeapにしてUploadBufferからコピーする対応.
+        buffer_desc.heap_type         = ngl::rhi::EResourceHeapType::Default;
+        buffer_desc.initial_state     = ngl::rhi::EResourceState::Common;                        // DefaultHeapの場合?は初期ステートがGeneralだとValidationErrorとされるようになった.
+        buffer_desc.bind_flag         = bind_flag | ngl::rhi::ResourceBindFlag::ShaderResource;  // Raytrace用のShaderResource.
+        buffer_desc.element_count     = element_count;
+        buffer_desc.element_byte_size = element_size_in_byte;
 
-			for (auto& ve : e.color_)
-				ve.InitRender(p_device, p_commandlist);
+        p_mesh_geom_buffer->rhi_init_state_ = buffer_desc.initial_state;  // 初期ステート保存.
+        // GPU側バッファ生成.
+        if (!p_mesh_geom_buffer->rhi_buffer_.Initialize(p_device, buffer_desc))
+        {
+            assert(false);
+            return false;
+        }
 
-			for (auto& ve : e.texcoord_)
-				ve.InitRender(p_device, p_commandlist);
-		}
-	}
+        // Upload用Bufferが必要な場合は生成.
+        if (p_mesh_geom_buffer->ref_upload_rhibuffer_.IsValid())
+        {
+            auto upload_desc          = buffer_desc;
+            upload_desc.heap_type     = ngl::rhi::EResourceHeapType::Upload;
+            upload_desc.initial_state = ngl::rhi::EResourceState::General;  // UploadHeapはGenericRead.
+
+            if (!p_mesh_geom_buffer->ref_upload_rhibuffer_->Initialize(p_device, upload_desc))
+            {
+                assert(false);
+                return false;
+            }
+
+            // 初期データのコピー.
+            if (initial_data)
+            {
+                if (void* mapped = p_mesh_geom_buffer->ref_upload_rhibuffer_->Map())
+                {
+                    memcpy(mapped, initial_data, element_size_in_byte * element_count);
+                    p_mesh_geom_buffer->ref_upload_rhibuffer_->Unmap();
+                }
+            }
+        }
+
+        rhi::BufferDep* p_buffer = &p_mesh_geom_buffer->rhi_buffer_;
+        // Viewの生成. 引数で生成対象ポインタを指定された要素のみ.
+        bool result = true;
+        if (p_out_view)
+        {
+            if (!p_out_view->InitializeAsTyped(p_device, p_buffer, view_format, 0, p_buffer->getElementCount()))
+            {
+                assert(false);
+                result = false;
+            }
+        }
+        if (p_out_vbv)
+        {
+            rhi::VertexBufferViewDep::Desc vbv_desc = {};
+            if (!p_out_vbv->Initialize(p_buffer, vbv_desc))
+            {
+                assert(false);
+                result = false;
+            }
+        }
+        if (p_out_ibv)
+        {
+            rhi::IndexBufferViewDep::Desc ibv_desc = {};
+            if (!p_out_ibv->Initialize(p_buffer, ibv_desc))
+            {
+                assert(false);
+                result = false;
+            }
+        }
+
+        // RenderThread初期化タスクを発行する.
+        fwk::PushCommonRenderCommand([p_mesh_geom_buffer](fwk::_CommonRenderCommandArg arg)
+        {
+            p_mesh_geom_buffer->InitRender(arg.command_list->GetDevice(), arg.command_list);
+        });
+
+        return result;
+    }
+
+    void MeshShapePart::Initialize(rhi::DeviceDep* p_device, const MeshShapeInitializeSourceData& init_source_data)
+    {
+        // Slotマッピングクリア.
+        p_vtx_attr_mapping_.fill(nullptr);
+        vtx_attr_mask_ = {};
+
+        num_vertex_ = init_source_data.num_vertex_;
+        num_primitive_ = init_source_data.num_primitive_;
+
+        // Vertex Attribute.
+        {
+            position_.raw_ptr_ = init_source_data.position_;
+
+            position_.ref_upload_rhibuffer_.Reset(new rhi::BufferDep());
+
+            CreateShapeDataRhiBuffer(
+                &position_,
+                &position_.rhi_srv,
+                &position_.rhi_vbv_,
+                nullptr,
+                p_device, ngl::rhi::ResourceBindFlag::VertexBuffer, rhi::EResourceFormat::Format_R32G32B32_FLOAT, sizeof(ngl::math::Vec3), num_vertex_,
+                position_.raw_ptr_);
+
+            // Slotマッピング.
+            p_vtx_attr_mapping_[gfx::MeshVertexSemantic::SemanticSlot(gfx::EMeshVertexSemanticKind::POSITION)] = &position_;
+            vtx_attr_mask_.AddSlot(gfx::EMeshVertexSemanticKind::POSITION);
+        }
+
+        if (init_source_data.normal_)
+        {
+            normal_.raw_ptr_ = init_source_data.normal_;
+
+            normal_.ref_upload_rhibuffer_.Reset(new rhi::BufferDep());
+
+            CreateShapeDataRhiBuffer(
+                &normal_,
+                &normal_.rhi_srv,
+                &normal_.rhi_vbv_,
+                nullptr,
+                p_device, ngl::rhi::ResourceBindFlag::VertexBuffer, rhi::EResourceFormat::Format_R32G32B32_FLOAT, sizeof(ngl::math::Vec3), num_vertex_,
+                normal_.raw_ptr_);
+
+            rhi::VertexBufferViewDep::Desc vbv_desc = {};
+            normal_.rhi_vbv_.Initialize(&normal_.rhi_buffer_, vbv_desc);
+
+            // Slotマッピング.
+            p_vtx_attr_mapping_[gfx::MeshVertexSemantic::SemanticSlot(gfx::EMeshVertexSemanticKind::NORMAL)] = &normal_;
+            vtx_attr_mask_.AddSlot(gfx::EMeshVertexSemanticKind::NORMAL);
+        }
+        if (init_source_data.tangent_)
+        {
+            tangent_.raw_ptr_ = init_source_data.tangent_;
+
+            tangent_.ref_upload_rhibuffer_.Reset(new rhi::BufferDep());
+
+            CreateShapeDataRhiBuffer(
+                &tangent_,
+                &tangent_.rhi_srv,
+                &tangent_.rhi_vbv_,
+                nullptr,
+                p_device, ngl::rhi::ResourceBindFlag::VertexBuffer, rhi::EResourceFormat::Format_R32G32B32_FLOAT, sizeof(ngl::math::Vec3), num_vertex_,
+                tangent_.raw_ptr_);
+
+            rhi::VertexBufferViewDep::Desc vbv_desc = {};
+            tangent_.rhi_vbv_.Initialize(&tangent_.rhi_buffer_, vbv_desc);
+
+            // Slotマッピング.
+            p_vtx_attr_mapping_[gfx::MeshVertexSemantic::SemanticSlot(gfx::EMeshVertexSemanticKind::TANGENT)] = &tangent_;
+            vtx_attr_mask_.AddSlot(gfx::EMeshVertexSemanticKind::TANGENT);
+        }
+        if (init_source_data.binormal_)
+        {
+            binormal_.raw_ptr_ = init_source_data.binormal_;
+
+            binormal_.ref_upload_rhibuffer_.Reset(new rhi::BufferDep());
+
+            CreateShapeDataRhiBuffer(
+                &binormal_,
+                &binormal_.rhi_srv,
+                &binormal_.rhi_vbv_,
+                nullptr,
+                p_device, ngl::rhi::ResourceBindFlag::VertexBuffer, rhi::EResourceFormat::Format_R32G32B32_FLOAT, sizeof(ngl::math::Vec3), num_vertex_,
+                binormal_.raw_ptr_);
+
+            rhi::VertexBufferViewDep::Desc vbv_desc = {};
+            binormal_.rhi_vbv_.Initialize(&binormal_.rhi_buffer_, vbv_desc);
+
+            // Slotマッピング.
+            p_vtx_attr_mapping_[gfx::MeshVertexSemantic::SemanticSlot(gfx::EMeshVertexSemanticKind::BINORMAL)] = &binormal_;
+            vtx_attr_mask_.AddSlot(gfx::EMeshVertexSemanticKind::BINORMAL);
+        }
+        // SRGBかLinearで問題になるかもしれない. 現状はとりあえずLinear扱い.
+        for (int ci = 0; ci < init_source_data.color_.size(); ++ci)
+        {
+            color_.push_back({});
+            color_.back().raw_ptr_ = init_source_data.color_[ci];
+
+            color_[ci].ref_upload_rhibuffer_.Reset(new rhi::BufferDep());
+
+            CreateShapeDataRhiBuffer(
+                &color_[ci],
+                &color_[ci].rhi_srv,
+                &color_[ci].rhi_vbv_,
+                nullptr,
+                p_device, ngl::rhi::ResourceBindFlag::VertexBuffer, rhi::EResourceFormat::Format_R8G8B8A8_UNORM, sizeof(ngl::gfx::VertexColor), num_vertex_,
+                color_[ci].raw_ptr_);
+
+            rhi::VertexBufferViewDep::Desc vbv_desc = {};
+            color_[ci].rhi_vbv_.Initialize(&color_[ci].rhi_buffer_, vbv_desc);
+
+            // Slotマッピング.
+            p_vtx_attr_mapping_[gfx::MeshVertexSemantic::SemanticSlot(gfx::EMeshVertexSemanticKind::COLOR, ci)] = &color_[ci];
+            vtx_attr_mask_.AddSlot(gfx::EMeshVertexSemanticKind::COLOR, ci);
+        }
+        for (int ci = 0; ci < init_source_data.texcoord_.size(); ++ci)
+        {
+            texcoord_.push_back({});
+            texcoord_.back().raw_ptr_ = init_source_data.texcoord_[ci];
+
+            texcoord_[ci].ref_upload_rhibuffer_.Reset(new rhi::BufferDep());
+
+            CreateShapeDataRhiBuffer(
+                &texcoord_[ci],
+                &texcoord_[ci].rhi_srv,
+                &texcoord_[ci].rhi_vbv_,
+                nullptr,
+                p_device, ngl::rhi::ResourceBindFlag::VertexBuffer, rhi::EResourceFormat::Format_R32G32_FLOAT, sizeof(ngl::math::Vec2), num_vertex_,
+                texcoord_[ci].raw_ptr_);
+
+            rhi::VertexBufferViewDep::Desc vbv_desc = {};
+            texcoord_[ci].rhi_vbv_.Initialize(&texcoord_[ci].rhi_buffer_, vbv_desc);
+
+            // Slotマッピング.
+            p_vtx_attr_mapping_[gfx::MeshVertexSemantic::SemanticSlot(gfx::EMeshVertexSemanticKind::TEXCOORD, ci)] = &texcoord_[ci];
+            vtx_attr_mask_.AddSlot(gfx::EMeshVertexSemanticKind::TEXCOORD, ci);
+        }
+
+        // Index.
+        {
+            index_.raw_ptr_ = init_source_data.index_;
+
+            index_.ref_upload_rhibuffer_.Reset(new rhi::BufferDep());
+
+            CreateShapeDataRhiBuffer(
+                &index_,
+                &index_.rhi_srv,
+                nullptr,
+                &index_.rhi_vbv_,
+                p_device, ngl::rhi::ResourceBindFlag::IndexBuffer, rhi::EResourceFormat::Format_R32_UINT, sizeof(uint32_t), num_primitive_ * 3,
+                index_.raw_ptr_);
+        }
+    }
+
+    /*
+        // Procedural MeshData生成.
+        std::shared_ptr<ngl::gfx::MeshData> procedural_mesh_data = std::make_shared<ngl::gfx::MeshData>();
+        {
+            const float mesh_scale = 10.0f;
+            ngl::math::Vec3 quad_pos[4] = {
+                ngl::math::Vec3(-1.0f, 0.0f, -1.0f) * mesh_scale,
+                ngl::math::Vec3(1.0f, 0.0f, -1.0f) * mesh_scale,
+                ngl::math::Vec3(1.0f, 0.0f, 1.0f) * mesh_scale,
+                ngl::math::Vec3(-1.0f, 0.0f, 1.0f) * mesh_scale
+            };
+            ngl::math::Vec3 quad_normal[4] = {
+                ngl::math::Vec3(0.0f, 1.0f, 0.0f),
+                ngl::math::Vec3(0.0f, 1.0f, 0.0f),
+                ngl::math::Vec3(0.0f, 1.0f, 0.0f),
+                ngl::math::Vec3(0.0f, 1.0f, 0.0f)
+            };
+            ngl::math::Vec3 quad_tangent[4] = {
+                ngl::math::Vec3(1.0f, 0.0f, 0.0f),
+                ngl::math::Vec3(1.0f, 0.0f, 0.0f),
+                ngl::math::Vec3(1.0f, 0.0f, 0.0f),
+                ngl::math::Vec3(1.0f, 0.0f, 0.0f)
+            };
+            ngl::math::Vec3 quad_binormal[4] = {
+                ngl::math::Vec3(0.0f, 0.0f, 1.0f),
+                ngl::math::Vec3(0.0f, 0.0f, 1.0f),
+                ngl::math::Vec3(0.0f, 0.0f, 1.0f),
+                ngl::math::Vec3(0.0f, 0.0f, 1.0f)
+            };
+            ngl::math::Vec2 quad_texcoord[4] = {
+                ngl::math::Vec2(0.0f, 0.0f),
+                ngl::math::Vec2(1.0f, 0.0f),
+                ngl::math::Vec2(0.0f, 1.0f),
+                ngl::math::Vec2(1.0f, 1.0f)
+            };
+            ngl::gfx::VertexColor quad_color[4] = {
+                ngl::gfx::VertexColor{255, 255, 255, 255},
+                ngl::gfx::VertexColor{255, 255, 255, 255},
+                ngl::gfx::VertexColor{255, 255, 255, 255},
+                ngl::gfx::VertexColor{255, 255, 255, 255}
+            };
+
+            ngl::u32 index_data[6] = {
+                0, 1, 2,
+                0, 2, 3
+            };
+
+            ngl::gfx::MeshShapeInitializeSourceData init_source_data{};
+            init_source_data.num_vertex_ = 4;
+            init_source_data.num_primitive_ = 2;
+            init_source_data.index_ = index_data;
+            init_source_data.position_ = quad_pos;
+            init_source_data.normal_ = quad_normal;
+            init_source_data.tangent_ = quad_tangent;
+            init_source_data.binormal_ = quad_binormal;
+            init_source_data.texcoord_.push_back(quad_texcoord);
+            init_source_data.color_.push_back(quad_color);
+
+            // MeshData生成.
+            GenerateMeshDataProcedural(*procedural_mesh_data, &device, init_source_data);
+        }
+    */
+    void GenerateMeshDataProcedural(MeshData& out_mesh, rhi::DeviceDep* p_device, const MeshShapeInitializeSourceData& init_source_data)
+    {
+        const auto num_vtx = init_source_data.num_vertex_;
+        const auto num_primitive = init_source_data.num_primitive_;
+
+        int total_offset = 0;
+
+        int position_offset = total_offset;
+        total_offset += sizeof(*init_source_data.position_) * num_vtx;
+
+        int normal_offset = 0;
+        if(init_source_data.normal_)
+        {
+            normal_offset = total_offset;
+            total_offset += sizeof(*init_source_data.normal_) * num_vtx;
+        }
+        int tangent_offset = 0;
+        if(init_source_data.tangent_)
+        {
+            tangent_offset = total_offset;
+            total_offset += sizeof(*init_source_data.tangent_) * num_vtx;
+        }
+        int binormal_offset = 0;
+        if(init_source_data.binormal_)
+        {
+            binormal_offset = total_offset;
+            total_offset += sizeof(*init_source_data.binormal_) * num_vtx;
+        }
+        std::vector<int> color_offsets;
+        for (int ci = 0; ci < init_source_data.color_.size(); ++ci)
+        {
+            color_offsets.push_back(total_offset);
+            total_offset += sizeof(*init_source_data.color_[ci]) * num_vtx;
+        }
+        std::vector<int> texcoord_offsets;
+        for (int ci = 0; ci < init_source_data.texcoord_.size(); ++ci)
+        {
+            texcoord_offsets.push_back(total_offset);
+            total_offset += sizeof(*init_source_data.texcoord_[ci]) * num_vtx;
+        }
+
+        int index_offset = 0;
+        {
+            index_offset = total_offset;
+            total_offset += sizeof(*init_source_data.index_) * num_primitive * 3;
+        }
+
+        out_mesh.raw_data_mem_.resize(total_offset);
+
+        // out_mesh.raw_data_mem_ にコピーしたデータでマッピングして初期化.
+        MeshShapeInitializeSourceData init_source_data_copy{};
+        {
+            init_source_data_copy.num_vertex_ = num_vtx;
+            init_source_data_copy.num_primitive_ = num_primitive;
+
+            // Copy data to raw memory.
+            if (init_source_data.position_)
+            {
+                init_source_data_copy.position_ = reinterpret_cast<math::Vec3*>(&out_mesh.raw_data_mem_[position_offset]);
+                memcpy(init_source_data_copy.position_, init_source_data.position_, sizeof(*init_source_data.position_) * num_vtx);
+            }
+            if (init_source_data.normal_)
+            {
+                init_source_data_copy.normal_ = reinterpret_cast<math::Vec3*>(&out_mesh.raw_data_mem_[normal_offset]);
+                memcpy(init_source_data_copy.normal_, init_source_data.normal_, sizeof(*init_source_data.normal_) * num_vtx);
+            }
+            if (init_source_data.tangent_)
+            {
+                init_source_data_copy.tangent_ = reinterpret_cast<math::Vec3*>(&out_mesh.raw_data_mem_[tangent_offset]);
+                memcpy(init_source_data_copy.tangent_, init_source_data.tangent_, sizeof(*init_source_data.tangent_) * num_vtx);
+            }
+            if (init_source_data.binormal_)
+            {
+                init_source_data_copy.binormal_ = reinterpret_cast<math::Vec3*>(&out_mesh.raw_data_mem_[binormal_offset]);
+                memcpy(init_source_data_copy.binormal_, init_source_data.binormal_, sizeof(*init_source_data.binormal_) * num_vtx);
+            }
+            for (int ci = 0; ci < init_source_data.color_.size(); ++ci)
+            {
+                init_source_data_copy.color_.push_back(reinterpret_cast<VertexColor*>(&out_mesh.raw_data_mem_[color_offsets[ci]]));
+                memcpy(init_source_data_copy.color_.back(), init_source_data.color_[ci], sizeof(*init_source_data.color_[ci]) * num_vtx);
+            }
+            for (int ci = 0; ci < init_source_data.texcoord_.size(); ++ci)
+            {
+                init_source_data_copy.texcoord_.push_back(reinterpret_cast<math::Vec2*>(&out_mesh.raw_data_mem_[texcoord_offsets[ci]]));
+                memcpy(init_source_data_copy.texcoord_.back(), init_source_data.texcoord_[ci], sizeof(*init_source_data.texcoord_[ci]) * num_vtx);
+            }
+            if (init_source_data.index_)
+            {
+                init_source_data_copy.index_ = reinterpret_cast<uint32_t*>(&out_mesh.raw_data_mem_[index_offset]);
+                memcpy(init_source_data_copy.index_, init_source_data.index_, sizeof(*init_source_data.index_) * num_primitive * 3);
+            }
+        }
+
+        // 初期化済みのMeshShapePartをMeshDataにセット.
+        out_mesh.shape_array_.resize(1);
+        out_mesh.shape_array_[0].Initialize(p_device, init_source_data_copy);
+    }
 }
 }

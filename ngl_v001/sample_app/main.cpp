@@ -346,6 +346,68 @@ bool AppGame::Initialize()
         const float target_scene_base_scale = bistro_scale;
 #endif
 
+
+        std::shared_ptr<ngl::gfx::MeshData> procedural_mesh_data = std::make_shared<ngl::gfx::MeshData>();
+        {
+            const float mesh_scale = 10.0f;
+            ngl::math::Vec3 quad_pos[4] = {
+                ngl::math::Vec3(-1.0f, 0.0f, -1.0f) * mesh_scale,
+                ngl::math::Vec3(1.0f, 0.0f, -1.0f) * mesh_scale,
+                ngl::math::Vec3(1.0f, 0.0f, 1.0f) * mesh_scale,
+                ngl::math::Vec3(-1.0f, 0.0f, 1.0f) * mesh_scale
+            };
+            ngl::math::Vec3 quad_normal[4] = {
+                ngl::math::Vec3(0.0f, 1.0f, 0.0f),
+                ngl::math::Vec3(0.0f, 1.0f, 0.0f),
+                ngl::math::Vec3(0.0f, 1.0f, 0.0f),
+                ngl::math::Vec3(0.0f, 1.0f, 0.0f)
+            };
+            ngl::math::Vec3 quad_tangent[4] = {
+                ngl::math::Vec3(1.0f, 0.0f, 0.0f),
+                ngl::math::Vec3(1.0f, 0.0f, 0.0f),
+                ngl::math::Vec3(1.0f, 0.0f, 0.0f),
+                ngl::math::Vec3(1.0f, 0.0f, 0.0f)
+            };
+            ngl::math::Vec3 quad_binormal[4] = {
+                ngl::math::Vec3(0.0f, 0.0f, 1.0f),
+                ngl::math::Vec3(0.0f, 0.0f, 1.0f),
+                ngl::math::Vec3(0.0f, 0.0f, 1.0f),
+                ngl::math::Vec3(0.0f, 0.0f, 1.0f)
+            };
+            ngl::math::Vec2 quad_texcoord[4] = {
+                ngl::math::Vec2(0.0f, 0.0f),
+                ngl::math::Vec2(1.0f, 0.0f),
+                ngl::math::Vec2(0.0f, 1.0f),
+                ngl::math::Vec2(1.0f, 1.0f)
+            };
+            ngl::gfx::VertexColor quad_color[4] = {
+                ngl::gfx::VertexColor{255, 255, 255, 255},
+                ngl::gfx::VertexColor{255, 255, 255, 255},
+                ngl::gfx::VertexColor{255, 255, 255, 255},
+                ngl::gfx::VertexColor{255, 255, 255, 255}
+            };
+
+            ngl::u32 index_data[6] = {
+                0, 1, 2,
+                0, 2, 3
+            };
+
+            ngl::gfx::MeshShapeInitializeSourceData init_source_data{};
+            init_source_data.num_vertex_ = 4;
+            init_source_data.num_primitive_ = 2;
+            init_source_data.index_ = index_data;
+            init_source_data.position_ = quad_pos;
+            init_source_data.normal_ = quad_normal;
+            init_source_data.tangent_ = quad_tangent;
+            init_source_data.binormal_ = quad_binormal;
+            init_source_data.texcoord_.push_back(quad_texcoord);
+            init_source_data.color_.push_back(quad_color);
+
+            // MeshData生成.
+            GenerateMeshDataProcedural(*procedural_mesh_data, &device, init_source_data);
+        }
+
+
         auto& ResourceMan = ngl::res::ResourceManager::Instance();
         // SceneMesh.
         {
@@ -398,7 +460,7 @@ bool AppGame::Initialize()
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_stanford_bunny, &loaddesc));
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_stanford_bunny, &loaddesc), procedural_mesh_data);
 
                 ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
                 tr.SetDiagonal(ngl::math::Vec4(1.0f, 0.3f, 1.0f, 1.0f));  // 被均一スケールテスト.
@@ -469,12 +531,11 @@ bool AppGame::Initialize()
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), tessellation_level);
                 tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 3.0f, 1.0f));
                 #else
-                // 6に設定して分割を 0->5 に一気に変更すると不整合
-                constexpr int tessellation_level = 8;  // 3でも一気に分割すると問題発生 -> 統合時のアロケーションチェックを代表Bisectorのみにしたことで改善.
+                constexpr int tessellation_level = 8;
 
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), tessellation_level, false);
-                tr.SetDiagonal(ngl::math::Vec4(60.0f));
-                tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), procedural_mesh_data, tessellation_level);
+                //tr.SetDiagonal(ngl::math::Vec4(60.0f));
+                //tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
                 #endif
                 tr.SetColumn3(ngl::math::Vec4(-10.0f, 19.0f, -2.0f, 0.0f));
 
