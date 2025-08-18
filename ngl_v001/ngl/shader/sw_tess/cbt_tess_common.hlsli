@@ -177,8 +177,8 @@ RWStructuredBuffer<Bisector> bisector_pool_rw;
 StructuredBuffer<HalfEdge> half_edge_buffer;
 StructuredBuffer<float3> vertex_position_buffer;  // 頂点座標バッファ
 
-Buffer<int2> index_cache;
-RWBuffer<int2> index_cache_rw;
+Buffer<int> index_cache;
+RWBuffer<int> index_cache_rw;
 
 Buffer<int> alloc_counter;
 RWBuffer<int> alloc_counter_rw;

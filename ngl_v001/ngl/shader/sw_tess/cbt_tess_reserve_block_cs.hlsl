@@ -116,7 +116,7 @@ void main_cs(
     // 有効なBisector範囲外は早期リターン
     if (thread_id >= GetCBTRootValue(cbt_buffer)) return;
     // index_cacheから有効なBisectorのインデックスを取得
-    const uint bisector_index = index_cache[thread_id].x;
+    const uint bisector_index = index_cache[thread_id];
     // 処理対象のBisectorを取得
     Bisector bisector = bisector_pool_rw[bisector_index];
     uint command = bisector.command;
@@ -141,8 +141,8 @@ void main_cs(
             }
             
             // 未使用インデックスを取得（アロケーション成功時は必ず有効）
-            const int first_unused_index = index_cache[counter - nAlloc].y;
-            const int second_unused_index = index_cache[counter - nAlloc + 1].y;
+            const int first_unused_index = index_cache[bisector_pool_max_size-1 - (counter - nAlloc)];
+            const int second_unused_index = index_cache[bisector_pool_max_size-1 - (counter - nAlloc + 1)];
             
             // 割り当て先インデックスをalloc_ptrに保存
             bisector_pool_rw[bisector_index].alloc_ptr[0] = first_unused_index;
@@ -186,7 +186,7 @@ void main_cs(
                 }
                 
                 // 未使用インデックスを取得（アロケーション成功時は必ず有効）
-                const int first_parent_index = index_cache[counter - nAlloc].y;
+                const int first_parent_index = index_cache[bisector_pool_max_size-1 - (counter - nAlloc)];
                 bisector_pool_rw[bisector_index].alloc_ptr[0] = first_parent_index;
                 
                 // 境界統合の場合：統合対象bisectorに統合同意ビットを立てる
@@ -203,7 +203,7 @@ void main_cs(
                 // 内部統合の場合：もう一方のペアの代表（bs_id最小）にも同じ情報を書き込み
                 else if (command & BISECTOR_CMD_INTERIOR_MERGE)
                 {
-                    const int second_parent_index = index_cache[counter - nAlloc + 1].y;
+                    const int second_parent_index = index_cache[bisector_pool_max_size-1 - (counter - nAlloc + 1)];
                     bisector_pool_rw[bisector_index].alloc_ptr[1] = second_parent_index;
                     
                     Bisector current_bisector = bisector_pool_rw[bisector_index];

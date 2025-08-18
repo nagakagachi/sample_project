@@ -39,39 +39,22 @@ namespace ngl
 		class MeshShapeGeomBufferBase
 		{
 		public:
-			MeshShapeGeomBufferBase() {}
+			MeshShapeGeomBufferBase() 
+            {
+                rhi_buffer_ = new rhi::BufferDep();
+                rhi_srv = new rhi::ShaderResourceViewDep();
+            }
 			virtual ~MeshShapeGeomBufferBase()
 			{
 			}
-			void InitRender(rhi::DeviceDep* p_device, rhi::GraphicsCommandListDep* p_commandlist)
-			{
-				// バッファ自体が生成されていなければ終了.
-				if (!ref_upload_rhibuffer_.IsValid() || !rhi_buffer_.GetD3D12Resource())
-					return;
-
-				auto* p_d3d_commandlist = p_commandlist->GetD3D12GraphicsCommandList();
-
-				// Init Upload Buffer から DefaultHeapのBufferへコピー. StateはGeneral想定.
-				const rhi::EResourceState buffer_state = rhi_init_state_;// 生成時のロジックで指定したステート. Bufferの初期ステートはDefaultHeapの場合?はCommonでないとValidationErrorとされるようになったので注意.
-
-				p_commandlist->ResourceBarrier(&rhi_buffer_, buffer_state, rhi::EResourceState::CopyDst);
-				p_d3d_commandlist->CopyResource(rhi_buffer_.GetD3D12Resource(), ref_upload_rhibuffer_->GetD3D12Resource());
-				p_commandlist->ResourceBarrier(&rhi_buffer_, rhi::EResourceState::CopyDst, buffer_state);
-
-				// upload bufferを解放.
-				ref_upload_rhibuffer_.Reset();
-			}
-
+            
 			bool IsValid() const { return rhi_buffer_.IsValid(); }
 
-			// rhi buffer for gpu.
-			rhi::BufferDep	rhi_buffer_ = {};
 			rhi::EResourceState	rhi_init_state_ = rhi::EResourceState::Common;
+			// rhi buffer for gpu.
+			rhi::RefBufferDep	rhi_buffer_ = {};
 			// rhi srv.
-			rhi::ShaderResourceViewDep rhi_srv = {};
-
-			// 初期データバッファ. InitRenderでrhi_buffer_へコピー命令を発行した後に破棄される.
-			rhi::RhiRef<rhi::BufferDep>	ref_upload_rhibuffer_ = {};
+			rhi::RefSrvDep rhi_srv = {};
 
             // CPUアクセス用元データ.
 			void* raw_ptr_ = nullptr;
@@ -80,21 +63,27 @@ namespace ngl
 		class MeshShapeVertexDataBase : public MeshShapeGeomBufferBase
 		{
 		public:
-			MeshShapeVertexDataBase() {}
+			MeshShapeVertexDataBase() 
+            {
+                rhi_vbv_ = new rhi::VertexBufferViewDep();
+            }
 			virtual ~MeshShapeVertexDataBase() {}
 
 			// rhi vertex buffer view.
-			rhi::VertexBufferViewDep rhi_vbv_ = {};
+			rhi::RefVbvDep rhi_vbv_ = {};
 		};
 
 		class MeshShapeIndexDataBase : public MeshShapeGeomBufferBase
 		{
 		public:
-			MeshShapeIndexDataBase() {}
+			MeshShapeIndexDataBase() 
+            {
+                rhi_vbv_ = new rhi::IndexBufferViewDep();
+            }
 			virtual ~MeshShapeIndexDataBase() {}
 
 			// rhi vertex buffer view.
-			rhi::IndexBufferViewDep rhi_vbv_ = {};
+			rhi::RefIbvDep rhi_vbv_ = {};
 		};
 
 		template<typename T>
@@ -110,9 +99,6 @@ namespace ngl
 			// raw data ptr.
 			T* GetTypedRawDataPtr() { return static_cast<T*>(raw_ptr_); }
 			const T* GetTypedRawDataPtr() const { return static_cast<T*>(raw_ptr_); }
-
-			// rhi vertex buffer view.
-			//rhi::VertexBufferViewDep rhi_vbv_ = {};
 		};
 
 		template<typename T>
@@ -128,9 +114,6 @@ namespace ngl
 			// raw data ptr.
 			T* GetTypedRawDataPtr() { return static_cast<T*>(raw_ptr_); }
 			const T* GetTypedRawDataPtr() const { return static_cast<T*>(raw_ptr_); }
-
-			// rhi index buffer view.
-			//rhi::IndexBufferViewDep rhi_vbv_ = {};
 		};
         
 

@@ -29,37 +29,37 @@ namespace gfx
 
         p_mesh_geom_buffer->rhi_init_state_ = buffer_desc.initial_state;  // 初期ステート保存.
         // GPU側バッファ生成.
-        if (!p_mesh_geom_buffer->rhi_buffer_.Initialize(p_device, buffer_desc))
+        if (!p_mesh_geom_buffer->rhi_buffer_->Initialize(p_device, buffer_desc))
         {
             assert(false);
             return false;
         }
 
-        // Upload用Bufferが必要な場合は生成.
-        if (p_mesh_geom_buffer->ref_upload_rhibuffer_.IsValid())
+        // Upload用Bufferが必要な場合は一時生成.
+        rhi::RefBufferDep upload_buffer = {};
+        if (initial_data)
         {
+            upload_buffer.Reset(new rhi::BufferDep());
+
             auto upload_desc          = buffer_desc;
             upload_desc.heap_type     = ngl::rhi::EResourceHeapType::Upload;
             upload_desc.initial_state = ngl::rhi::EResourceState::General;  // UploadHeapはGenericRead.
 
-            if (!p_mesh_geom_buffer->ref_upload_rhibuffer_->Initialize(p_device, upload_desc))
+            if (!upload_buffer->Initialize(p_device, upload_desc))
             {
                 assert(false);
                 return false;
             }
 
             // 初期データのコピー.
-            if (initial_data)
+            if (void* mapped = upload_buffer->Map())
             {
-                if (void* mapped = p_mesh_geom_buffer->ref_upload_rhibuffer_->Map())
-                {
-                    memcpy(mapped, initial_data, element_size_in_byte * element_count);
-                    p_mesh_geom_buffer->ref_upload_rhibuffer_->Unmap();
-                }
+                memcpy(mapped, initial_data, element_size_in_byte * element_count);
+                upload_buffer->Unmap();
             }
         }
 
-        rhi::BufferDep* p_buffer = &p_mesh_geom_buffer->rhi_buffer_;
+        rhi::BufferDep* p_buffer = p_mesh_geom_buffer->rhi_buffer_.Get();
         // Viewの生成. 引数で生成対象ポインタを指定された要素のみ.
         bool result = true;
         if (p_out_view)
@@ -89,10 +89,30 @@ namespace gfx
             }
         }
 
-        // RenderThread初期化タスクを発行する.
-        fwk::PushCommonRenderCommand([p_mesh_geom_buffer](fwk::_CommonRenderCommandArg arg)
+        // UploadBufferからコピーするコマンドを発行. 適切に遅延破棄させるため個々のRefをコピーキャプチャ.
+        auto req_buffer = p_mesh_geom_buffer->rhi_buffer_;
+        auto req_init_state = p_mesh_geom_buffer->rhi_init_state_;
+        fwk::PushCommonRenderCommand([upload_buffer, req_buffer, req_init_state](fwk::_CommonRenderCommandArg arg)
         {
-            p_mesh_geom_buffer->InitRender(arg.command_list->GetDevice(), arg.command_list);
+            arg.command_list->GetDevice();
+            auto p_commandlist = arg.command_list;
+
+            // バッファ自体が生成されていなければ終了.
+            if (!upload_buffer.IsValid() || !req_buffer->GetD3D12Resource())
+                return;
+
+            auto* p_d3d_commandlist = p_commandlist->GetD3D12GraphicsCommandList();
+
+            // Init Upload Buffer から DefaultHeapのBufferへコピー. StateはGeneral想定.
+            // 生成時のロジックで指定したステート. Bufferの初期ステートはDefaultHeapの場合?はCommonでないとValidationErrorとされるようになったので注意.
+            const rhi::EResourceState buffer_state = req_init_state;
+
+            auto ref_buffer = req_buffer;
+            p_commandlist->ResourceBarrier(ref_buffer.Get(), buffer_state, rhi::EResourceState::CopyDst);
+            p_d3d_commandlist->CopyResource(ref_buffer->GetD3D12Resource(), upload_buffer->GetD3D12Resource());
+            p_commandlist->ResourceBarrier(ref_buffer.Get(), rhi::EResourceState::CopyDst, buffer_state);
+
+            // upload bufferは一時バッファとして作ってRefとしているので自動的に解放される.
         });
 
         return result;
@@ -111,12 +131,10 @@ namespace gfx
         {
             position_.raw_ptr_ = init_source_data.position_;
 
-            position_.ref_upload_rhibuffer_.Reset(new rhi::BufferDep());
-
             CreateShapeDataRhiBuffer(
                 &position_,
-                &position_.rhi_srv,
-                &position_.rhi_vbv_,
+                position_.rhi_srv.Get(),
+                position_.rhi_vbv_.Get(),
                 nullptr,
                 p_device, ngl::rhi::ResourceBindFlag::VertexBuffer, rhi::EResourceFormat::Format_R32G32B32_FLOAT, sizeof(ngl::math::Vec3), num_vertex_,
                 position_.raw_ptr_);
@@ -130,18 +148,16 @@ namespace gfx
         {
             normal_.raw_ptr_ = init_source_data.normal_;
 
-            normal_.ref_upload_rhibuffer_.Reset(new rhi::BufferDep());
-
             CreateShapeDataRhiBuffer(
                 &normal_,
-                &normal_.rhi_srv,
-                &normal_.rhi_vbv_,
+                normal_.rhi_srv.Get(),
+                normal_.rhi_vbv_.Get(),
                 nullptr,
                 p_device, ngl::rhi::ResourceBindFlag::VertexBuffer, rhi::EResourceFormat::Format_R32G32B32_FLOAT, sizeof(ngl::math::Vec3), num_vertex_,
                 normal_.raw_ptr_);
 
             rhi::VertexBufferViewDep::Desc vbv_desc = {};
-            normal_.rhi_vbv_.Initialize(&normal_.rhi_buffer_, vbv_desc);
+            normal_.rhi_vbv_->Initialize(normal_.rhi_buffer_.Get(), vbv_desc);
 
             // Slotマッピング.
             p_vtx_attr_mapping_[gfx::MeshVertexSemantic::SemanticSlot(gfx::EMeshVertexSemanticKind::NORMAL)] = &normal_;
@@ -151,18 +167,16 @@ namespace gfx
         {
             tangent_.raw_ptr_ = init_source_data.tangent_;
 
-            tangent_.ref_upload_rhibuffer_.Reset(new rhi::BufferDep());
-
             CreateShapeDataRhiBuffer(
                 &tangent_,
-                &tangent_.rhi_srv,
-                &tangent_.rhi_vbv_,
+                tangent_.rhi_srv.Get(),
+                tangent_.rhi_vbv_.Get(),
                 nullptr,
                 p_device, ngl::rhi::ResourceBindFlag::VertexBuffer, rhi::EResourceFormat::Format_R32G32B32_FLOAT, sizeof(ngl::math::Vec3), num_vertex_,
                 tangent_.raw_ptr_);
 
             rhi::VertexBufferViewDep::Desc vbv_desc = {};
-            tangent_.rhi_vbv_.Initialize(&tangent_.rhi_buffer_, vbv_desc);
+            tangent_.rhi_vbv_->Initialize(tangent_.rhi_buffer_.Get(), vbv_desc);
 
             // Slotマッピング.
             p_vtx_attr_mapping_[gfx::MeshVertexSemantic::SemanticSlot(gfx::EMeshVertexSemanticKind::TANGENT)] = &tangent_;
@@ -172,18 +186,16 @@ namespace gfx
         {
             binormal_.raw_ptr_ = init_source_data.binormal_;
 
-            binormal_.ref_upload_rhibuffer_.Reset(new rhi::BufferDep());
-
             CreateShapeDataRhiBuffer(
                 &binormal_,
-                &binormal_.rhi_srv,
-                &binormal_.rhi_vbv_,
+                binormal_.rhi_srv.Get(),
+                binormal_.rhi_vbv_.Get(),
                 nullptr,
                 p_device, ngl::rhi::ResourceBindFlag::VertexBuffer, rhi::EResourceFormat::Format_R32G32B32_FLOAT, sizeof(ngl::math::Vec3), num_vertex_,
                 binormal_.raw_ptr_);
 
             rhi::VertexBufferViewDep::Desc vbv_desc = {};
-            binormal_.rhi_vbv_.Initialize(&binormal_.rhi_buffer_, vbv_desc);
+            binormal_.rhi_vbv_->Initialize(binormal_.rhi_buffer_.Get(), vbv_desc);
 
             // Slotマッピング.
             p_vtx_attr_mapping_[gfx::MeshVertexSemantic::SemanticSlot(gfx::EMeshVertexSemanticKind::BINORMAL)] = &binormal_;
@@ -195,18 +207,16 @@ namespace gfx
             color_.push_back({});
             color_.back().raw_ptr_ = init_source_data.color_[ci];
 
-            color_[ci].ref_upload_rhibuffer_.Reset(new rhi::BufferDep());
-
             CreateShapeDataRhiBuffer(
                 &color_[ci],
-                &color_[ci].rhi_srv,
-                &color_[ci].rhi_vbv_,
+                color_[ci].rhi_srv.Get(),
+                color_[ci].rhi_vbv_.Get(),
                 nullptr,
                 p_device, ngl::rhi::ResourceBindFlag::VertexBuffer, rhi::EResourceFormat::Format_R8G8B8A8_UNORM, sizeof(ngl::gfx::VertexColor), num_vertex_,
                 color_[ci].raw_ptr_);
 
             rhi::VertexBufferViewDep::Desc vbv_desc = {};
-            color_[ci].rhi_vbv_.Initialize(&color_[ci].rhi_buffer_, vbv_desc);
+            color_[ci].rhi_vbv_->Initialize(color_[ci].rhi_buffer_.Get(), vbv_desc);
 
             // Slotマッピング.
             p_vtx_attr_mapping_[gfx::MeshVertexSemantic::SemanticSlot(gfx::EMeshVertexSemanticKind::COLOR, ci)] = &color_[ci];
@@ -217,18 +227,16 @@ namespace gfx
             texcoord_.push_back({});
             texcoord_.back().raw_ptr_ = init_source_data.texcoord_[ci];
 
-            texcoord_[ci].ref_upload_rhibuffer_.Reset(new rhi::BufferDep());
-
             CreateShapeDataRhiBuffer(
                 &texcoord_[ci],
-                &texcoord_[ci].rhi_srv,
-                &texcoord_[ci].rhi_vbv_,
+                texcoord_[ci].rhi_srv.Get(),
+                texcoord_[ci].rhi_vbv_.Get(),
                 nullptr,
                 p_device, ngl::rhi::ResourceBindFlag::VertexBuffer, rhi::EResourceFormat::Format_R32G32_FLOAT, sizeof(ngl::math::Vec2), num_vertex_,
                 texcoord_[ci].raw_ptr_);
 
             rhi::VertexBufferViewDep::Desc vbv_desc = {};
-            texcoord_[ci].rhi_vbv_.Initialize(&texcoord_[ci].rhi_buffer_, vbv_desc);
+            texcoord_[ci].rhi_vbv_->Initialize(texcoord_[ci].rhi_buffer_.Get(), vbv_desc);
 
             // Slotマッピング.
             p_vtx_attr_mapping_[gfx::MeshVertexSemantic::SemanticSlot(gfx::EMeshVertexSemanticKind::TEXCOORD, ci)] = &texcoord_[ci];
@@ -239,13 +247,11 @@ namespace gfx
         {
             index_.raw_ptr_ = init_source_data.index_;
 
-            index_.ref_upload_rhibuffer_.Reset(new rhi::BufferDep());
-
             CreateShapeDataRhiBuffer(
                 &index_,
-                &index_.rhi_srv,
+                index_.rhi_srv.Get(),
                 nullptr,
-                &index_.rhi_vbv_,
+                index_.rhi_vbv_.Get(),
                 p_device, ngl::rhi::ResourceBindFlag::IndexBuffer, rhi::EResourceFormat::Format_R32_UINT, sizeof(uint32_t), num_primitive_ * 3,
                 index_.raw_ptr_);
         }

@@ -124,12 +124,12 @@ namespace ngl::gfx
         for (auto vi = 0; vi < gfx::MeshVertexSemantic::SemanticSlotMaxCount(); ++vi)
         {
             if (shape->vtx_attr_mask_.mask & (1 << vi))
-                vtx_views[vi] = shape->p_vtx_attr_mapping_[vi]->rhi_vbv_.GetView();
+                vtx_views[vi] = shape->p_vtx_attr_mapping_[vi]->rhi_vbv_->GetView();
         }
         p_command_list->SetVertexBuffers(0, (u32)std::size(vtx_views), vtx_views);
 
         // Set Index and topology.
-        p_command_list->SetIndexBuffer(&shape->index_.rhi_vbv_.GetView());
+        p_command_list->SetIndexBuffer(&shape->index_.rhi_vbv_->GetView());
         p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
 
         // Draw.

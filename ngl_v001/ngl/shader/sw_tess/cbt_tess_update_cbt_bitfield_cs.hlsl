@@ -18,7 +18,7 @@ void main_cs(
     // 有効なBisector範囲外は早期リターン
     if (thread_id >= GetCBTRootValue(cbt_buffer)) return;
     // index_cacheから有効なBisectorインデックスを取得
-    int bisector_index = index_cache[thread_id].x;  // x = i番目の1ビット（使用中Bisector）
+    int bisector_index = index_cache[thread_id];  // x = i番目の1ビット（使用中Bisector）
 
     uint command = bisector_pool[bisector_index].command;
     

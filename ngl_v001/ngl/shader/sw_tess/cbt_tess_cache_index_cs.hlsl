@@ -21,17 +21,14 @@ void main_cs(
     uint max_range = max(active_bisector_count, available_slots);
     if (thread_id < max_range)
     {
-        int2 cache_value = int2(-1, -1);  // 初期値: 無効インデックス
-        
-        // x: i番目の1ビット（使用中Bisector）のインデックス
-        int bit_index_1 = FindIthBit1InCBT(cbt_buffer, thread_id);
-        cache_value.x = bit_index_1;
-        
-        // y: i番目の0ビット（未使用Bisector）のインデックス
-        int bit_index_0 = FindIthBit0InCBT(cbt_buffer, thread_id);
-        cache_value.y = bit_index_0;
-        
-        // インデックスキャッシュに書き込み
-        index_cache_rw[thread_id] = cache_value;
+        if(active_bisector_count > thread_id)
+        {
+            index_cache_rw[thread_id] = FindIthBit1InCBT(cbt_buffer, thread_id);
+        }
+
+        if(available_slots > thread_id)
+        {
+            index_cache_rw[bisector_pool_max_size-1 - thread_id] = FindIthBit0InCBT(cbt_buffer, thread_id);
+        }
     }
 }

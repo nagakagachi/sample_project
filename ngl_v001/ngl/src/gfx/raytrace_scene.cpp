@@ -48,29 +48,29 @@ namespace ngl
 					const auto vertex_ngl_format = ngl::rhi::EResourceFormat::Format_R32G32B32_FLOAT;
 					auto index_ngl_format = ngl::rhi::EResourceFormat::Format_R32_UINT;
 
-					auto& rhi_position = g.mesh_data->position_.rhi_buffer_;
-					auto& rhi_index = g.mesh_data->index_.rhi_buffer_;
+					auto rhi_position = g.mesh_data->position_.rhi_buffer_.Get();
+					auto rhi_index = g.mesh_data->index_.rhi_buffer_.Get();
 
 					geom_desc = {};
 					geom_desc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;	// Triangle Geom.
 					geom_desc.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;	// Opaque.
 					// Position Vertex BufferをBLAS Descに設定.
-					geom_desc.Triangles.VertexBuffer.StartAddress = rhi_position.GetD3D12Resource()->GetGPUVirtualAddress();
-					geom_desc.Triangles.VertexBuffer.StrideInBytes = rhi_position.GetElementByteSize();
-					geom_desc.Triangles.VertexCount = rhi_position.getElementCount();
+					geom_desc.Triangles.VertexBuffer.StartAddress = rhi_position->GetD3D12Resource()->GetGPUVirtualAddress();
+					geom_desc.Triangles.VertexBuffer.StrideInBytes = rhi_position->GetElementByteSize();
+					geom_desc.Triangles.VertexCount = rhi_position->getElementCount();
 					geom_desc.Triangles.VertexFormat = rhi::ConvertResourceFormat(vertex_ngl_format);// DXGI_FORMAT_R32G32B32_FLOAT;// vec3 データとしてはVec4のArrayでStrideでスキップしている可能性がある.
 					
 					// IndexBufferが存在すれば設定.
-					if (rhi_index.GetD3D12Resource())
+					if (rhi_index->GetD3D12Resource())
 					{
-						geom_desc.Triangles.IndexBuffer = rhi_index.GetD3D12Resource()->GetGPUVirtualAddress();
-						geom_desc.Triangles.IndexCount = rhi_index.getElementCount();
-						if (rhi_index.GetElementByteSize() == 4)
+						geom_desc.Triangles.IndexBuffer = rhi_index->GetD3D12Resource()->GetGPUVirtualAddress();
+						geom_desc.Triangles.IndexCount = rhi_index->getElementCount();
+						if (rhi_index->GetElementByteSize() == 4)
 						{
 							geom_desc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
 							index_ngl_format = ngl::rhi::EResourceFormat::Format_R32_UINT;
 						}
-						else if (rhi_index.GetElementByteSize() == 2)
+						else if (rhi_index->GetElementByteSize() == 2)
 						{
 							geom_desc.Triangles.IndexFormat = DXGI_FORMAT_R16_UINT;
 							index_ngl_format = ngl::rhi::EResourceFormat::Format_R16_UINT;
@@ -203,8 +203,8 @@ namespace ngl
 				assert(false);
 				return ret;
 			}
-			ret.vertex_srv = &geometry_desc_array_[index].mesh_data->position_.rhi_srv;
-			ret.index_srv = &geometry_desc_array_[index].mesh_data->index_.rhi_srv;
+			ret.vertex_srv = geometry_desc_array_[index].mesh_data->position_.rhi_srv.Get();
+			ret.index_srv = geometry_desc_array_[index].mesh_data->index_.rhi_srv.Get();
 			return ret;
 		}
 

@@ -68,7 +68,7 @@ float iqint2(float4 pos)
         const uint local_index = vertex_id % 3;         // Bisectorのローカル頂点インデックス（0, 1, 2）
 
         // CBTテッセレーション：index_cacheから有効なBisectorのインデックスを取得
-        const uint bisector_index = index_cache[tri_index].x;
+        const uint bisector_index = index_cache[tri_index];
         
         // 処理対象のBisectorを取得
         Bisector bisector = bisector_pool[bisector_index];

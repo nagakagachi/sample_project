@@ -460,7 +460,7 @@ bool AppGame::Initialize()
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_stanford_bunny, &loaddesc), procedural_mesh_data);
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_stanford_bunny, &loaddesc));
 
                 ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
                 tr.SetDiagonal(ngl::math::Vec4(1.0f, 0.3f, 1.0f, 1.0f));  // 被均一スケールテスト.
@@ -532,10 +532,13 @@ bool AppGame::Initialize()
                 tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 3.0f, 1.0f));
                 #else
                 constexpr int tessellation_level = 8;
-
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), procedural_mesh_data, tessellation_level);
-                //tr.SetDiagonal(ngl::math::Vec4(60.0f));
-                //tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
+                    #if 1
+                        mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), procedural_mesh_data, tessellation_level);
+                    #else
+                        mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), {}, tessellation_level);
+                        tr.SetDiagonal(ngl::math::Vec4(60.0f));
+                        tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
+                    #endif
                 #endif
                 tr.SetColumn3(ngl::math::Vec4(-10.0f, 19.0f, -2.0f, 0.0f));
 

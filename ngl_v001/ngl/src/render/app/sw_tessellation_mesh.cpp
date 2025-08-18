@@ -104,7 +104,7 @@ namespace ngl::render::app
             rhi::BufferDep::Desc desc = {};
             desc.heap_type = rhi::EResourceHeapType::Default;
             desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.element_byte_size = sizeof(int) * 2;  // int2
+            desc.element_byte_size = sizeof(int);
             desc.element_count = max_bisectors;
             if (!index_cache_buffer.InitializeAsStructured(p_device, desc)) return false;
         }
@@ -386,7 +386,7 @@ namespace ngl::render::app
 
                 // 追加でHalfEdgeバッファなどを設定.
                 pso->SetView(desc_set, "half_edge_buffer", half_edge_srv_array_[shape_index].Get());
-                pso->SetView(desc_set, "vertex_position_buffer", &(shape->position_.rhi_srv));
+                pso->SetView(desc_set, "vertex_position_buffer", shape->position_.rhi_srv.Get());
                 
                 // CBTテッセレーション用バッファを追加バインド
                 pso->SetView(desc_set, "index_cache", cbt_gpu_resources_array_[shape_index].index_cache_buffer.srv.Get());
@@ -646,7 +646,7 @@ namespace ngl::render::app
                     // Generate Commandパス用の追加リソースバインド
                     auto* shape = GetModel()->GetShape((int)shape_idx);
                     cbt_generate_command_pso_->SetView(&desc_set, "half_edge_buffer", half_edge_srv_array_[shape_idx].Get());
-                    cbt_generate_command_pso_->SetView(&desc_set, "vertex_position_buffer", &(shape->position_.rhi_srv));
+                    cbt_generate_command_pso_->SetView(&desc_set, "vertex_position_buffer", shape->position_.rhi_srv.Get());
                     
                     command_list->SetDescriptorSet(cbt_generate_command_pso_.Get(), &desc_set);
                     
