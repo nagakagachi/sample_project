@@ -358,45 +358,28 @@ void main_cs(
     float3 v1_world = mul(object_to_world, float4(v1, 1.0f)).xyz;
     float3 v2_world = mul(object_to_world, float4(v2, 1.0f)).xyz;
     
-    #if 1
-        // ワールド空間での重要座標を計算
-        // Bisectorの分割・統合評価
-        // 1. 三角形の重心座標を計算
-        float3 triangle_center = (v0_world + v1_world + v2_world) / 3.0f;
+    float3 triangle_center = (v0_world + v1_world + v2_world) / 3.0f;
 
-        // 2. 三角形の面積を計算（外積の半分）
+    #if 1
+        // 最長辺長さベース.
+        const float3 edge0 = v1_world - v0_world;
+        const float3 edge1 = v2_world - v1_world;
+        const float3 edge2 = v0_world - v2_world;
+        const float lesq = max(dot(edge0, edge0), max(dot(edge1, edge1), dot(edge2, edge2)));
+        float size_factor = sqrt(lesq);
+        //float distance_to_important = pow(length(triangle_center - important_point), 1.0);
+        float distance_to_important = length(triangle_center - important_point);
+    #else
+        // 面積ベース.
         float3 edge1 = v1_world - v0_world;
         float3 edge2 = v2_world - v0_world;
-        float area = length(cross(edge1, edge2)) * 0.5f;
-        
-        // 3. important_pointからの距離を計算
-        //float distance_to_important = length(triangle_center - important_point);
+        float size_factor = length(cross(edge1, edge2)) * 0.5f;
         float distance_to_important = pow(length(triangle_center - important_point), 1.5);
-    #else
-        const float3 obj_axis_scale = float3(length(object_to_world._m00_m01_m02), 
-                                             length(object_to_world._m10_m11_m12), 
-                                             length(object_to_world._m20_m21_m22));
-        const float obj_approx_scale = max(max(obj_axis_scale.x, obj_axis_scale.y), obj_axis_scale.z);
-
-        // オブジェクト空間での重要座標を計算
-        float3 important_point_object = mul(world_to_object, float4(important_point, 1.0f)).xyz;
-        
-        // Bisectorの分割・統合評価
-        // 1. 三角形の重心座標を計算
-        float3 triangle_center = (v0 + v1 + v2) / 3.0f;
-        
-        // 2. 三角形の面積を計算（外積の半分）
-        float3 edge1 = v1 - v0;
-        float3 edge2 = v2 - v0;
-        float area = length(cross(edge1, edge2)) * 0.5f * obj_approx_scale;
-        
-        // 3. important_pointからの距離を計算
-        float distance_to_important = length(triangle_center - important_point_object);
     #endif
-
+    
     
     // 4. 分割評価値を計算（面積を距離で重み付け）
-    float subdivision_value = area / max(distance_to_important, 0.5f); // ゼロ除算防止
+    float subdivision_value = size_factor / max(distance_to_important, 0.5f); // ゼロ除算防止
     
     // 5. 統合閾値を動的計算（分割閾値 × 統合係数）
     float merge_threshold = tessellation_split_threshold * tessellation_merge_factor;

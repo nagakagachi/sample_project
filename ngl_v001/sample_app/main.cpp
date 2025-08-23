@@ -68,12 +68,12 @@ static float dbgw_stat_primary_rtg_execute   = {};
 static int dbgw_sky_debug_mode       = {};
 static float dbgw_sky_debug_mip_bias = 0.0f;
 
-static float sw_tess_important_point_offset_in_view = 9.0;
+static float sw_tess_important_point_offset_in_view = 7.0;
 
-static int sw_tess_fixed_subdivision_level = 0; // -1で無効、0以上で固定分割レベルを指定
+static int sw_tess_fixed_subdivision_level = -1; // -1で無効、0以上で固定分割レベルを指定
 static bool sw_tess_update_tessellation = true; // trueでテッセレーション更新を有効化
 static bool sw_tess_update_tessellation_frame_toggle = false; // trueで1F毎にテッセレーション更新フラグをOFFにするデバッグ用.
-static float sw_tess_split_threshold = 0.05f; // テッセレーション分割閾値
+static float sw_tess_split_threshold = 0.5f; // テッセレーション分割閾値
 
 static int sw_tess_debug_bisector_id = -1;      // デバッグ対象BisectorID（-1で無効）
 static int sw_tess_debug_bisector_depth = -1;   // デバッグ対象BisectorDepth（-1で無効）
@@ -531,7 +531,7 @@ bool AppGame::Initialize()
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), tessellation_level);
                 tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 3.0f, 1.0f));
                 #else
-                constexpr int tessellation_level = 8;
+                constexpr int tessellation_level = 9;
                     #if 1
                         mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), procedural_mesh_data, tessellation_level);
                     #else
@@ -540,7 +540,7 @@ bool AppGame::Initialize()
                         tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
                     #endif
                 #endif
-                tr.SetColumn3(ngl::math::Vec4(-10.0f, 19.0f, -2.0f, 0.0f));
+                tr.SetColumn3(ngl::math::Vec4(-24.0f, 10.0f, 12.0f, 0.0f));
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
@@ -764,7 +764,7 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("Enable Tessellation Update", &sw_tess_update_tessellation);
             ImGui::Checkbox("Tessellation Update Frame Toggle", &sw_tess_update_tessellation_frame_toggle);
             ImGui::SliderInt("Fixed Subdivision Level", &sw_tess_fixed_subdivision_level, -1, 10);
-            ImGui::SliderFloat("Split Threshold", &sw_tess_split_threshold, 0.0001f, 0.1f, "%.4f");
+            ImGui::SliderFloat("Split Threshold", &sw_tess_split_threshold, 0.1f, 1.5f, "%.4f");
 
             if (ImGui::Button("Reset Tessellation"))
             {

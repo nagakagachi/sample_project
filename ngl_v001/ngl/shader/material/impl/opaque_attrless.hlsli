@@ -201,7 +201,7 @@ MtlPsOutput MtlPsEntryPoint(MtlPsInput input)
         const float3 bary3 = float3(input.uv0, 1.0 - input.uv0.x - input.uv0.y);
         const float min_bary = min(bary3.x, min(bary3.y, bary3.z));
 
-        mtl_base_color.xyz = (0.01 > min_bary) ? float3(1.0, 1.0, 1.0) : mtl_base_color.xyz; // 赤色で可視化
+        mtl_base_color.xyz = (0.018 > min_bary) ? float3(1.0, 1.0, 1.0) : mtl_base_color.xyz; // 赤色で可視化
     }
 
 
