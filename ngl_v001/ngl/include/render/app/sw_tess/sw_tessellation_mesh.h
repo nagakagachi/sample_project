@@ -4,33 +4,15 @@
 
 #pragma once
 
-#include "render/app/half_edge_mesh.h"
-#include "render/app/concurrent_binary_tree.h"
+#include "render/app/sw_tess/half_edge_mesh.h"
+#include "render/app/sw_tess/concurrent_binary_tree.h"
 #include "render/scene/scene_mesh.h"
 #include "rhi/constant_buffer_pool.h"
 
+#include "render/app/common/render_app_common.h"
+
 namespace ngl::render::app
 {
-    class RhiBufferSet
-    {
-    public:
-        RhiBufferSet() = default;
-        ~RhiBufferSet() = default;
-
-        bool InitializeAsStructured(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc);
-        bool InitializeAsTyped(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc, rhi::EResourceFormat format);
-
-        void ResourceBarrier(ngl::rhi::GraphicsCommandListDep* p_command_list, rhi::EResourceState next_state);
-
-    public:
-        // CBT Buffer
-        rhi::RefBufferDep buffer;
-        rhi::RefUavDep uav;
-        rhi::RefSrvDep srv;
-
-        rhi::EResourceState resource_state = rhi::EResourceState::Common;
-    };
-
     // CBT関連のGPUリソースをまとめたクラス
     class CBTGpuResources
     {

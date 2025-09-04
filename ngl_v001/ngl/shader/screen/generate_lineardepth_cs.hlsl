@@ -1,6 +1,8 @@
 
 #if 0
 
+generate_lineardepth_cs.hlsl
+
 ハードウェア深度バッファからリニア深度バッファを生成
 
 #endif

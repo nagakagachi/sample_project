@@ -3,7 +3,7 @@
     HalfEdge構造とBisector構造の実装
 */
 
-#include "render/app/half_edge_mesh.h"
+#include "render/app/sw_tess/half_edge_mesh.h"
 #include <unordered_map>
 
 namespace ngl::render::app

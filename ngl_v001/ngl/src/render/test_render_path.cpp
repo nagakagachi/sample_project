@@ -22,6 +22,8 @@
 #include "render/task/pass_async_compute_test.h"
 #include "render/task/pass_raytrace_test.h"
 
+#include "render/task/pass_after_gbuffer_injection.h"
+
 namespace ngl::test
 {
 	auto TestFrameRenderingPath(
@@ -215,6 +217,21 @@ namespace ngl::test
 					// Renderをスキップテスト.
 					task_gbuffer->is_render_skip_debug = k_force_skip_all_pass_render;
 				}
+
+                // After GBuffer Injection Pass.
+                auto* task_after_gbuffer_injection = rtg_builder.AppendTaskNode<ngl::render::task::TaskAfterGBufferInjection>();
+                {
+                    ngl::render::task::TaskAfterGBufferInjection::SetupDesc setup_desc{};
+                    {
+                        setup_desc.w = screen_w;
+                        setup_desc.h = screen_h;
+                        
+                        setup_desc.scene_cbv = scene_cb_h;
+                    }
+                    task_after_gbuffer_injection->Setup(rtg_builder, p_device, view_info, task_depth->h_depth_, setup_desc);
+                    // Renderをスキップテスト.
+                    //task_after_gbuffer_injection->is_render_skip_debug = k_force_skip_all_pass_render;
+                }
 				
 				// ----------------------------------------
 				// Skybox Pass.

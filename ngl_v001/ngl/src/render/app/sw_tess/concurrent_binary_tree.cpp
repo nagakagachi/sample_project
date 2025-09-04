@@ -3,7 +3,7 @@
     完全二分木ビットフィールドクラスの実装
 */
 
-#include "render/app/concurrent_binary_tree.h"
+#include "render/app/sw_tess/concurrent_binary_tree.h"
 #include <algorithm>
 #include <cassert>
 #include <cstring>

@@ -33,7 +33,8 @@ namespace ngl::render::app
         std::vector<HalfEdge> half_edge_;
     };
 
-    // Bisector毎の分割統合に伴うアロケーション結果の保持サイズ. シェーダ側と一致させる. 元論文では4だが, 現実装ではTwinペア分割制限により実際は2.
+    // Bisector毎の分割統合に伴うアロケーション結果の保持サイズ. cpp/シェーダ側と一致させる.
+    // 元論文では4だが, 現実装ではTwinペア分割制限により実際は2.
     #define BISECTOR_ALLOC_PTR_SIZE 4
     // Bisector構造体（テッセレーション用）
     struct Bisector

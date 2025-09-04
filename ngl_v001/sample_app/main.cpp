@@ -39,9 +39,8 @@
 // Render Path
 #include "render/test_render_path.h"
 
-
-// tessellation test.
-#include "render/app/sw_tessellation_mesh.h"
+#include "render/app/sw_tess/sw_tessellation_mesh.h"
+#include "render/app/ssvg/ssvg.h"
 
 
 // imguiのシステム処理Wrapper.
@@ -159,6 +158,8 @@ private:
     // RaytraceScene.
     ngl::gfx::RtSceneManager rt_scene_;
 
+    ngl::render::app::SsVg  ssvg_;
+
     ngl::fwk::GfxScene gfx_scene_{};
     ngl::gfx::scene::SceneSkyBox skybox_{};
 
@@ -191,24 +192,24 @@ AppGame::~AppGame()
 {
     // Graphicsフレームワークのジョブ系終了.
     gfxfw_.FinalizePrev();
-
-    // RenderParam内の各種参照をクリア.
     {
-        PushRenderParam({});
-        SyncRenderParam();
+        // RenderParam内の各種参照をクリア.
+        {
+            PushRenderParam({});
+            SyncRenderParam();
+        }
+
+        skybox_.FinalizeGfx();
+
+        rt_scene_ = {};
+
+        // リソース参照クリア.
+        mesh_entity_array_.clear();
+        sw_tessellation_mesh_array_.clear();
+
+        // Material Shader Manager.
+        ngl::gfx::MaterialShaderManager::Instance().Finalize();
     }
-
-    skybox_.FinalizeGfx();
-
-    rt_scene_ = {};
-
-    // リソース参照クリア.
-    mesh_entity_array_.clear();
-    sw_tessellation_mesh_array_.clear();
-
-    // Material Shader Manager.
-    ngl::gfx::MaterialShaderManager::Instance().Finalize();
-
     // Graphicsフレームワークのリソース系終了.
     gfxfw_.FinalizePost();
 }
@@ -554,6 +555,8 @@ bool AppGame::Initialize()
     {
         std::cout << "[ERROR] Initialize gfx::RtSceneManager" << std::endl;
     }
+
+    ssvg_.Initialize(&device);
 
     // Texture Rexource読み込みのテスト.
     ngl::gfx::ResTexture::LoadDesc tex_load_desc{};

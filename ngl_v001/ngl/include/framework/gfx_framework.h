@@ -61,6 +61,9 @@ public:
 	// Submit済みのGPUタスクのすべての完了を待機.
 	void WaitAllGpuTask();
 
+private:
+    void EmptyFrameProcessForDestroy();
+
 public:
 	struct Statistics
 	{

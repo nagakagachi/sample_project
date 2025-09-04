@@ -129,13 +129,21 @@ namespace ngl::fwk
 		return true;
 	}
 
+    void GraphicsFramework::EmptyFrameProcessForDestroy()
+    {
+        // 空回し.
+        BeginFrame();
+        SyncRender();
+        BeginFrameRender({});
+        WaitAllGpuTask();
+    }
+
 	void GraphicsFramework::FinalizePrev()
 	{
-		// RenderThread待機.
-		render_thread_.Wait();
-		
-		// Submit済みのGPUタスク終了待ち.
-		WaitAllGpuTask();
+        // 動いている場合はRenderThreadを待機.
+        SyncRender();
+        // GPUタスク待機.
+        WaitAllGpuTask();
 	}
 
 	void GraphicsFramework::FinalizePost()
@@ -148,6 +156,12 @@ namespace ngl::fwk
 
 		// リソースマネージャから全て破棄.
 		ngl::res::ResourceManager::Instance().ReleaseCacheAll();
+
+        // ガベコレを完全に完了させるための空回し.
+        for(int i = 0; i < k_gpu_work_queue_count_max; ++i)
+        {
+            EmptyFrameProcessForDestroy();
+        }
 	}
 
 	// フレームワークやCoreWindowの有効性チェック.
@@ -240,6 +254,7 @@ namespace ngl::fwk
 			// アプリケーション側のRender処理.
 			RtgFrameRenderSubmitCommandBuffer app_rtg_command_list_set{};
 			const std::chrono::system_clock::time_point begin_time_point_app_render_func = std::chrono::system_clock::now();
+            if(app_render_func)
 			{
 				app_render_func(app_rtg_command_list_set);
 			}
