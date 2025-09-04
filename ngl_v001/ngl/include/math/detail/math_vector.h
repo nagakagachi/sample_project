@@ -393,5 +393,172 @@ namespace ngl
 		{
 			return VecType(v0) / v1;
 		}
+
+
+
+
+
+
+		template<int N>
+		struct VecComponentInt
+		{
+		};
+		// Vec2 Data.
+		template<>
+		struct VecComponentInt<2>
+		{
+			// data.
+			union
+			{
+				struct
+				{
+					int x, y;
+				};
+				int data[2];
+			};
+
+			VecComponentInt() = default;
+			constexpr VecComponentInt(const VecComponentInt& v) = default;
+			explicit constexpr VecComponentInt(int v)
+				: x(v), y(v)
+			{}
+			constexpr VecComponentInt(int _x, int _y, int _dummy0, int _dummy1)
+				: x(_x), y(_y)
+			{}
+			// 要素修正付きコンストラクタ.
+			template<typename ComponentModifyFunc>
+			constexpr VecComponentInt(int _x, int _y, int _dummy0, int _dummy1, ComponentModifyFunc func)
+				: x(func(_x)), y(func(_y))
+			{}
+			// 要素修正付きコンストラクタ.
+			template<typename ComponentModifyFunc>
+			constexpr VecComponentInt(const int* _data, ComponentModifyFunc func)
+				: x(func(_data[0])), y(func(_data[1]))
+			{}
+		};
+		// Vec3 Data.
+		template<>
+		struct VecComponentInt<3>
+		{
+			// data.
+			union
+			{
+				struct
+				{
+					int x, y, z;
+				};
+				int data[3];
+			};
+
+			VecComponentInt() = default;
+			constexpr VecComponentInt(const VecComponentInt& v) = default;
+			explicit constexpr VecComponentInt(int v)
+				: x(v), y(v), z(v)
+			{}
+			constexpr VecComponentInt(int _x, int _y, int _z, int _dummy0)
+				: x(_x), y(_y), z(_z)
+			{}
+			// 要素修正付きコンストラクタ.
+			template<typename ComponentModifyFunc>
+			constexpr VecComponentInt(int _x, int _y, int _z, int _dummy0, ComponentModifyFunc func)
+				: x(func(_x)), y(func(_y)), z(func(_z))
+			{}
+			// 要素修正付きコンストラクタ.
+			template<typename ComponentModifyFunc>
+			constexpr VecComponentInt(const int* _data, ComponentModifyFunc func)
+				: x(func(_data[0])), y(func(_data[1])), z(func(_data[2]))
+			{}
+		};
+        // Vec4 Data.
+		template<>
+		struct VecComponentInt<4>
+		{
+			// data.
+			union
+			{
+				struct
+				{
+					int x, y, z, w;
+				};
+				int data[4];
+			};
+
+			VecComponentInt() = default;
+			constexpr VecComponentInt(const VecComponentInt& v) = default;
+			explicit constexpr VecComponentInt(int v)
+				: x(v), y(v), z(v), w(v)
+			{}
+			constexpr VecComponentInt(int _x, int _y, int _z, int _w)
+				: x(_x), y(_y), z(_z), w(_w)
+			{}
+			// 要素修正付きコンストラクタ.
+			template<typename ComponentModifyFunc>
+			constexpr VecComponentInt(int _x, int _y, int _z, int _w, ComponentModifyFunc func)
+				: x(func(_x)), y(func(_y)), z(func(_z)), w(func(_w))
+			{}
+			// 要素修正付きコンストラクタ.
+			template<typename ComponentModifyFunc>
+			constexpr VecComponentInt(const int* _data, ComponentModifyFunc func)
+				: x(func(_data[0])), y(func(_data[1])), z(func(_data[2])), w(func(_data[3]))
+			{}
+		};
+		// VectorN Template. N-> 2,3,4.
+		template<int N>
+		struct VecNi : public VecComponentInt<N>
+		{
+			static constexpr int DIMENSION = N;
+
+			VecNi() = default;
+			constexpr VecNi(const VecNi& v) = default;
+
+			explicit constexpr VecNi(int v)
+				: VecComponentInt<N>(v)
+			{
+			}
+			constexpr VecNi(int _x, int _y)
+				: VecComponentInt<N>(_x, _y, 0, 0)
+			{
+			}
+			constexpr VecNi(int _x, int _y, int _z)
+				: VecComponentInt<N>(_x, _y, _z, 0)
+			{
+			}
+			constexpr VecNi(int _x, int _y, int _z, int _w)
+				: VecComponentInt<N>(_x, _y, _z, _w)
+			{
+			}
+			// 要素修正付きコンストラクタ.
+			template<typename ComponentModifyFunc>
+			constexpr VecNi(int _x, int _y, int _z, int _w, ComponentModifyFunc func)
+				: VecComponentInt<N>(_x, _y, _z, _w, func)
+			{
+			}
+			// 要素修正付きコンストラクタ.
+			template<typename ComponentModifyFunc>
+			constexpr VecNi(const int* _data, ComponentModifyFunc func)
+				: VecComponentInt<N>(_data, func)
+			{
+			}
+
+			// 1次元少ないvectorで初期化.
+			constexpr VecNi(const VecComponentInt<N-1>& v, int s)
+				: VecComponentInt<N>(v, s)
+			{
+			}
+
+
+			constexpr VecNi<3> XYZ() const
+			{
+				return VecNi<3>(this->x, this->y, this->z, 0);
+			}
+			constexpr VecNi<2> XY() const
+			{
+				return VecNi<2>(this->x, this->y, 0, 0);
+			}
+        };
+		using Vec2i = VecNi<2>;
+		using Vec3i = VecNi<3>;
+		using Vec4i = VecNi<4>;
+
 	}
 }

@@ -350,7 +350,9 @@ namespace ngl::test
 							debug_gbuffer0 = task_gbuffer->h_gb0_;
 							debug_gbuffer1 = task_gbuffer->h_gb1_;
 							debug_gbuffer2 = task_gbuffer->h_gb2_;
-							debug_gbuffer3 = task_gbuffer->h_gb3_;
+							
+                            //debug_gbuffer3 = task_gbuffer->h_gb3_;
+                            debug_gbuffer3 = task_after_gbuffer_injection->h_work_;
 						}
 						rtg::RtgResourceHandle debug_dshadow = {};
 						if(render_frame_desc.debugview_dshadow)

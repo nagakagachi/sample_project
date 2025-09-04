@@ -13,7 +13,8 @@ namespace ngl::render::task
 	struct TaskAfterGBufferInjection : public rtg::IGraphicsTaskNode
 	{
 		rtg::RtgResourceHandle h_depth_{};
-;
+		rtg::RtgResourceHandle h_work_{};
+
 		rhi::RhiRef<rhi::ComputePipelineStateDep> pso_;
 
 		struct SetupDesc
@@ -35,10 +36,12 @@ namespace ngl::render::task
 			// Rtgリソースセットアップ.
 			{
 				// リソース定義.
-				rtg::RtgResourceDesc2D linear_depth_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R32_FLOAT);
+				rtg::RtgResourceDesc2D work_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R32G32B32A32_FLOAT);
 
 				// リソースアクセス定義.
 				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::access_type::SHADER_READ);
+
+                h_work_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_desc), rtg::access_type::UAV);
 			}
 
 			{
@@ -72,21 +75,41 @@ namespace ngl::render::task
 					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "SsVoxelize");
 
 					auto& global_res = gfx::GlobalRenderResource::Instance();
-						
+
+
+                    struct DispatchParam
+                    {
+                        ngl::math::Vec2i TexHardwareDepthSize;
+                    };
+                    auto cbh = gfx_commandlist->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(DispatchParam));
+                    {
+                        auto* p = cbh->buffer_.MapAs<DispatchParam>();
+
+                        p->TexHardwareDepthSize = ngl::math::Vec2i(static_cast<int>(desc_.w), static_cast<int>(desc_.h));
+
+                        cbh->buffer_.Unmap();
+                    }
+
 					// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
 					auto res_depth = builder.GetAllocatedResource(this, h_depth_);
-
+                    auto res_work = builder.GetAllocatedResource(this, h_work_);
+                    
 					assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
+                    assert(res_work.tex_.IsValid() && res_work.uav_.IsValid());
 
 					ngl::rhi::DescriptorSetDep desc_set = {};
 					pso_->SetView(&desc_set, "TexHardwareDepth", res_depth.srv_.Get());
 					pso_->SetView(&desc_set, "ngl_cb_sceneview", &desc_.scene_cbv->cbv_);
+
+                    pso_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
+
+                    pso_->SetView(&desc_set, "RWTexWork", res_work.uav_.Get());
                     
 						
 					gfx_commandlist->SetPipelineState(pso_.Get());
 					gfx_commandlist->SetDescriptorSet(pso_.Get(), &desc_set);
 
-					pso_->DispatchHelper(gfx_commandlist, 1, 1, 1);
+					pso_->DispatchHelper(gfx_commandlist, res_work.tex_->GetWidth(), res_work.tex_->GetHeight(), 1);
 				}
 			);
 		}
