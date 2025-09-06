@@ -506,7 +506,7 @@ namespace gfx
                         // TODO. option.
                     }
                     // Passに対応したCreatorで生成.
-                    ref_pso = registered_pass_pso_creator_map_[pass_name]->Create(p_device_, pso_desc);
+                    ref_pso.Reset(registered_pass_pso_creator_map_[pass_name]->Create(p_device_, pso_desc));
                     // VS要求入力マスク.
                     vs_require_input_mask = shader_set->vs_in_slot_mask;
                 }

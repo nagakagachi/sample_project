@@ -80,7 +80,7 @@ namespace ngl
 				raw_handle_ = h;
 			}
             // カウンタの誤制御を防ぐためexplicitにしたい.
-			/*explicit*/ RhiRef(RHI_CLASS* p)
+			explicit RhiRef(RHI_CLASS* p)
 			{
 				Reset(p);
 			}

@@ -79,7 +79,7 @@ namespace ngl::gfx
                 samp_desc.AddressV = ngl::rhi::ETextureAddressMode::Repeat;
                 samp_desc.AddressW = ngl::rhi::ETextureAddressMode::Repeat;
             
-                default_resource_.sampler_linear_wrap = new rhi::SamplerDep();
+                default_resource_.sampler_linear_wrap.Reset(new rhi::SamplerDep());
                 if (!default_resource_.sampler_linear_wrap->Initialize(p_device_, samp_desc))
                 {
                     std::cout << "[ERROR] Create rhi::SamplerDep" << std::endl;
@@ -95,7 +95,7 @@ namespace ngl::gfx
                 samp_desc.AddressV = ngl::rhi::ETextureAddressMode::Clamp;
                 samp_desc.AddressW = ngl::rhi::ETextureAddressMode::Clamp;
             
-                default_resource_.sampler_linear_clamp = new rhi::SamplerDep();
+                default_resource_.sampler_linear_clamp.Reset(new rhi::SamplerDep());
                 if (!default_resource_.sampler_linear_clamp->Initialize(p_device_, samp_desc))
                 {
                     std::cout << "[ERROR] Create rhi::SamplerDep" << std::endl;
@@ -118,7 +118,7 @@ namespace ngl::gfx
                 // Linear.
                 samp_desc.Filter = ngl::rhi::ETextureFilterMode::Comp_Min_Linear_Mag_Linear_Mip_Linear;
                 
-                default_resource_.sampler_shadow_linear = new rhi::SamplerDep();
+                default_resource_.sampler_shadow_linear.Reset(new rhi::SamplerDep());
                 if (!default_resource_.sampler_shadow_linear->Initialize(p_device_, samp_desc))
                 {
                     std::cout << "[ERROR] Create rhi::SamplerDep" << std::endl;
@@ -130,7 +130,7 @@ namespace ngl::gfx
                 // Point.
                 samp_desc.Filter = ngl::rhi::ETextureFilterMode::Comp_Min_Point_Mag_Point_Mip_Point;
                 
-                default_resource_.sampler_shadow_point = new rhi::SamplerDep();
+                default_resource_.sampler_shadow_point.Reset(new rhi::SamplerDep());
                 if (!default_resource_.sampler_shadow_point->Initialize(p_device_, samp_desc))
                 {
                     std::cout << "[ERROR] Create rhi::SamplerDep" << std::endl;

@@ -35,7 +35,7 @@ namespace ngl::rtg
 
             static bool Create(rhi::DeviceDep* p_device, rhi::RhiRef<GraphicsCommandListType>& out_ref)
             {
-                out_ref = new GraphicsCommandListType();
+                out_ref.Reset(new GraphicsCommandListType());
                 if (!out_ref->Initialize(p_device))
                 {
                     std::cout << "[ERROR] Graphics CommandList Initialize" << std::endl;
@@ -52,7 +52,7 @@ namespace ngl::rtg
             
             static bool Create(rhi::DeviceDep* p_device, rhi::RhiRef<ComputeCommandListType>& out_ref)
             {
-                out_ref = new ComputeCommandListType();
+                out_ref.Reset(new ComputeCommandListType());
                 if (!out_ref->Initialize(p_device))
                 {
                     std::cout << "[ERROR] Compute CommandList Initialize" << std::endl;

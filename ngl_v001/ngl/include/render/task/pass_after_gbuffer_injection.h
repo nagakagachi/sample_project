@@ -57,7 +57,7 @@ namespace ngl::render::task
 				
 				ngl::rhi::ComputePipelineStateDep::Desc pso_desc = {};
 				pso_desc.cs = &res_shader->data_;
-				pso_ = new rhi::ComputePipelineStateDep();
+				pso_.Reset(new rhi::ComputePipelineStateDep());
 				if (!pso_->Initialize(p_device, pso_desc))
 				{
 					assert(false);

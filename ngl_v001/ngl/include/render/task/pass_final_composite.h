@@ -128,7 +128,7 @@ namespace ngl::render::task
 				desc.blend_state.target_blend_states[0].blend_enable = false;
 				desc.blend_state.target_blend_states[0].write_mask = ~ngl::u8(0);
 
-				pso_ = new rhi::GraphicsPipelineStateDep();
+				pso_.Reset(new rhi::GraphicsPipelineStateDep());
 				if (!pso_->Initialize(p_device, desc))
 				{
 					assert(false);

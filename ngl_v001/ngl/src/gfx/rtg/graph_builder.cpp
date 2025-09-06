@@ -1204,7 +1204,8 @@ namespace ngl
 						}
 						if(!sync_fences[e.fence_id].IsValid())
 						{
-							ngl::rhi::RhiRef<ngl::rhi::FenceDep> fence = new ngl::rhi::FenceDep();
+							ngl::rhi::RhiRef<ngl::rhi::FenceDep> fence;
+							fence.Reset(new ngl::rhi::FenceDep());
 							fence->Initialize(p_compiled_manager_->p_device_);
 
 							fence->IncrementHelperFenceValue();// Fence値を加算してWaitが即完了しないようにする.
@@ -1264,7 +1265,8 @@ namespace ngl
 								// さらにこのGraphicsComamndをComputeが待機する必要があるためFence追加.
 								{
 									// 現状ではFenceはその場で生成して使い捨て.
-									ngl::rhi::RhiRef<ngl::rhi::FenceDep> fence = new ngl::rhi::FenceDep();
+									ngl::rhi::RhiRef<ngl::rhi::FenceDep> fence;
+									fence.Reset(new ngl::rhi::FenceDep());
 									fence->Initialize(p_compiled_manager_->p_device_);
 
 									const u64 state_transition_fenec_value = fence->GetHelperFenceValue() + 1;//現在の値+1
@@ -1699,7 +1701,7 @@ namespace ngl
 				rhi::RefSrvDep new_srv = {};
 
 				// Texture.
-				new_tex = new rhi::TextureDep();
+				new_tex.Reset(new rhi::TextureDep());
 				if (!new_tex->Initialize(p_device_, desc))
 				{
 					assert(false);
@@ -1708,7 +1710,7 @@ namespace ngl
 				// Rtv.
 				if(key.usage_ & access_type_mask::RENDER_TARGET)
 				{
-					new_rtv = new rhi::RenderTargetViewDep();
+					new_rtv.Reset(new rhi::RenderTargetViewDep());
 					if (!new_rtv->Initialize(p_device_, new_tex.Get(), 0, 0, 1))
 					{
 						assert(false);
@@ -1718,7 +1720,7 @@ namespace ngl
 				// Dsv.
 				if(key.usage_ & access_type_mask::DEPTH_TARGET)
 				{
-					new_dsv = new rhi::DepthStencilViewDep();
+					new_dsv.Reset(new rhi::DepthStencilViewDep());
 					if (!new_dsv->Initialize(p_device_, new_tex.Get(), 0, 0, 1))
 					{
 						assert(false);
@@ -1728,7 +1730,7 @@ namespace ngl
 				// Uav.
 				if(key.usage_ & access_type_mask::UAV)
 				{
-					new_uav = new rhi::UnorderedAccessViewDep();
+					new_uav.Reset(new rhi::UnorderedAccessViewDep());
 					if (!new_uav->InitializeRwTexture(p_device_, new_tex.Get(), 0, 0, 1))
 					{
 						assert(false);
@@ -1738,7 +1740,7 @@ namespace ngl
 				// Srv.
 				if(key.usage_ & access_type_mask::SHADER_READ)
 				{
-					new_srv = new rhi::ShaderResourceViewDep();
+					new_srv.Reset(new rhi::ShaderResourceViewDep());
 					if (!new_srv->InitializeAsTexture(p_device_, new_tex.Get(), 0, 1, 0, 1))
 					{
 						assert(false);

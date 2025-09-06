@@ -220,7 +220,7 @@ namespace ngl::render::app
         for (int i = 0; i < half_edge_mesh_array_.size(); ++i)
         {
             // Shape単位.
-            half_edge_buffer_array_[i] = new rhi::BufferDep();
+            half_edge_buffer_array_[i].Reset(new rhi::BufferDep());
             {
                 rhi::BufferDep::Desc desc = {};
                 desc.heap_type            = rhi::EResourceHeapType::Upload;
@@ -237,7 +237,7 @@ namespace ngl::render::app
                     half_edge_buffer_array_[i]->Unmap();
                 }
             }
-            half_edge_srv_array_[i] = new rhi::ShaderResourceViewDep();
+            half_edge_srv_array_[i].Reset(new rhi::ShaderResourceViewDep());
             {
                 if (!half_edge_srv_array_[i]->InitializeAsStructured(p_device, half_edge_buffer_array_[i].Get(), sizeof(HalfEdge), 0, static_cast<u32>(half_edge_mesh_array_[i].half_edge_.size())))
                 {

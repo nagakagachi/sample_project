@@ -168,7 +168,8 @@ namespace res
 		auto lock = std::lock_guard<std::mutex>(res_upload_buffer_mutex_);
 		
 		// Upload一時Buffer生成. 現状は要求1つにつき新規にBufferを生成しているが, プール化と1つのバッファ上にAlignを考慮して配置することで効率化できる.
-		rhi::RefBufferDep temporal_upload_buffer = new rhi::BufferDep();
+		rhi::RefBufferDep temporal_upload_buffer;
+		temporal_upload_buffer.Reset(new rhi::BufferDep());
 		{
 			rhi::BufferDep::Desc upload_buffer_desc = {};
 			{

@@ -282,19 +282,19 @@ bool AppGame::Initialize()
         desc.height        = scree_h;
         desc.initial_state = ngl::rhi::EResourceState::ShaderRead;
 
-        tex_rw_ = new ngl::rhi::TextureDep();
+        tex_rw_.Reset(new ngl::rhi::TextureDep());
         if (!tex_rw_->Initialize(&device, desc))
         {
             std::cout << "[ERROR] Create RW Texture Initialize" << std::endl;
             assert(false);
         }
-        tex_rw_srv_ = new ngl::rhi::ShaderResourceViewDep();
+        tex_rw_srv_.Reset(new ngl::rhi::ShaderResourceViewDep());
         if (!tex_rw_srv_->InitializeAsTexture(&device, tex_rw_.Get(), 0, 1, 0, 1))
         {
             std::cout << "[ERROR] Create RW SRV" << std::endl;
             assert(false);
         }
-        tex_rw_uav_ = new ngl::rhi::UnorderedAccessViewDep();
+        tex_rw_uav_.Reset(new ngl::rhi::UnorderedAccessViewDep());
         if (!tex_rw_uav_->InitializeRwTexture(&device, tex_rw_.Get(), 0, 0, 1))
         {
             std::cout << "[ERROR] Create RW UAV" << std::endl;
@@ -809,6 +809,9 @@ bool AppGame::ExecuteApp()
         for (int i = 0; i < test_move_mesh_entity_array_.size(); ++i)
         {
             auto* e               = test_move_mesh_entity_array_[i];
+            if (nullptr == e)
+                continue;
+
             float move_range      = (i % 10) / 10.0f;
             const float sin_curve = sinf((float)app_sec_ * 2.0f * ngl::math::k_pi_f * 0.1f * (move_range + 1.0f));
 
@@ -848,6 +851,9 @@ bool AppGame::ExecuteApp()
     {
         for (auto& e : mesh_entity_array_)
         {
+            if(nullptr == e.get())
+                continue;
+
             // Render更新.
             e->UpdateForRender();
 

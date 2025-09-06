@@ -245,8 +245,8 @@ namespace res
 
 		
 		// resにオブジェクト生成.
-		p_res->ref_texture_ = new rhi::TextureDep();
-		p_res->ref_view_ = new rhi::ShaderResourceViewDep();
+		p_res->ref_texture_.Reset(new rhi::TextureDep());
+		p_res->ref_view_.Reset(new rhi::ShaderResourceViewDep());
 		{
 			rhi::TextureDep::Desc create_tex_desc = load_img_desc;// ベースコピー.
 			// heap設定等上書き.

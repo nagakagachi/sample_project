@@ -952,7 +952,7 @@ namespace ngl
 			attribute_byte_size_ = attribute_byte_size;
 			max_trace_recursion_ = max_trace_recursion;
 
-			ref_shader_object_set_ = new RtDxrObjectHolder();
+			ref_shader_object_set_.Reset(new RtDxrObjectHolder());
 			ref_shader_object_set_->Initialize(p_device);
 
 			std::unordered_map<const rhi::ShaderDep*, int> shader_map;

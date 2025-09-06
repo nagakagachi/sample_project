@@ -110,7 +110,7 @@ namespace ngl::render::task
 						desc.render_target_formats[0] = builder.GetResourceHandleDesc(h_light_).desc.format;//light_desc.desc.format;
 					}
 				}
-				pso_ = new rhi::GraphicsPipelineStateDep();
+				pso_.Reset(new rhi::GraphicsPipelineStateDep());
 				if (!pso_->Initialize(p_device, desc))
 				{
 					assert(false);

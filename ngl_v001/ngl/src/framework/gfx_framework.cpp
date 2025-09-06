@@ -82,7 +82,7 @@ namespace ngl::fwk
 		{
 			ngl::rhi::SwapChainDep::Desc swap_chain_desc;
 			swap_chain_desc.format = ngl::rhi::EResourceFormat::Format_R10G10B10A2_UNORM;
-			swapchain_ = new ngl::rhi::SwapChainDep();
+			swapchain_.Reset(new ngl::rhi::SwapChainDep());
 			if (!swapchain_->Initialize(&device_, &graphics_queue_, swap_chain_desc))
 			{
 				std::cout << "[ERROR] Initialize SwapChain" << std::endl;
@@ -95,7 +95,7 @@ namespace ngl::fwk
 			swapchain_rtvs_.resize(swapchain_->NumResource());
 			for (auto i = 0u; i < swapchain_->NumResource(); ++i)
 			{
-				swapchain_rtvs_[i] = new ngl::rhi::RenderTargetViewDep();
+				swapchain_rtvs_[i].Reset(new ngl::rhi::RenderTargetViewDep());
 				swapchain_rtvs_[i]->Initialize(&device_, swapchain_.Get(), i);
 			}
 		}

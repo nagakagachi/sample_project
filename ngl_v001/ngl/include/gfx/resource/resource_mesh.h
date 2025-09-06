@@ -41,8 +41,8 @@ namespace ngl
 		public:
 			MeshShapeGeomBufferBase() 
             {
-                rhi_buffer_ = new rhi::BufferDep();
-                rhi_srv = new rhi::ShaderResourceViewDep();
+                rhi_buffer_.Reset(new rhi::BufferDep());
+                rhi_srv.Reset(new rhi::ShaderResourceViewDep());
             }
 			virtual ~MeshShapeGeomBufferBase()
 			{
@@ -65,7 +65,7 @@ namespace ngl
 		public:
 			MeshShapeVertexDataBase() 
             {
-                rhi_vbv_ = new rhi::VertexBufferViewDep();
+                rhi_vbv_.Reset(new rhi::VertexBufferViewDep());
             }
 			virtual ~MeshShapeVertexDataBase() {}
 
@@ -78,7 +78,7 @@ namespace ngl
 		public:
 			MeshShapeIndexDataBase() 
             {
-                rhi_vbv_ = new rhi::IndexBufferViewDep();
+                rhi_vbv_.Reset(new rhi::IndexBufferViewDep());
             }
 			virtual ~MeshShapeIndexDataBase() {}
 

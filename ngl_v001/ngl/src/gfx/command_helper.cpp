@@ -56,12 +56,12 @@ namespace gfx
                 u32 mip_target_height = std::max(cubemap->GetHeight() >> gen_mip_index, 1u);
 
                 // Mip読み込み用のSrvを使い捨てで生成. mipは一つ上.
-                rhi::RefSrvDep mip_parent_srv = new rhi::ShaderResourceViewDep();
+                rhi::RefSrvDep mip_parent_srv(new rhi::ShaderResourceViewDep());
                 if (!mip_parent_srv->InitializeAsTexture(p_command_list->GetDevice(), cubemap, gen_mip_index-1, 1, 0, k_cubemap_plane_count))
                     assert(false);
 
                 // Mip書き込み用のUavを使い捨てで生成.
-                rhi::RefUavDep mip_uav = new rhi::UnorderedAccessViewDep();
+                rhi::RefUavDep mip_uav(new rhi::UnorderedAccessViewDep());
                 if (!mip_uav->InitializeRwTexture(p_command_list->GetDevice(), cubemap, gen_mip_index, 0, k_cubemap_plane_count))
                     assert(false);
 
@@ -85,7 +85,7 @@ namespace gfx
 			assert(start_mip_index+generate_mip_count <= p_texture->GetMipCount());
 
 			// Mip生成用Compute PSO.
-        	rhi::RhiRef<rhi::ComputePipelineStateDep> pso_gen_cube_mip_ = new rhi::ComputePipelineStateDep();
+        	rhi::RhiRef<rhi::ComputePipelineStateDep> pso_gen_cube_mip_(new rhi::ComputePipelineStateDep());
 	        {
             	gfx::ResShader::LoadDesc loaddesc{};
 	            {

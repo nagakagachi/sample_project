@@ -18,17 +18,17 @@ namespace ngl::render::app
     {
         resource_state = desc.initial_state;
 
-        buffer = new rhi::BufferDep();
+        buffer.Reset(new rhi::BufferDep());
         if (!buffer->Initialize(p_device, desc)) return false;
 
         if (desc.bind_flag & rhi::ResourceBindFlag::UnorderedAccess)
         {
-            uav = new rhi::UnorderedAccessViewDep();
+            uav.Reset(new rhi::UnorderedAccessViewDep());
             if (!uav->InitializeAsStructured(p_device, buffer.Get(), desc.element_byte_size, 0, desc.element_count)) return false;
         }
         if (desc.bind_flag & rhi::ResourceBindFlag::ShaderResource)
         {
-            srv = new rhi::ShaderResourceViewDep();
+            srv.Reset(new rhi::ShaderResourceViewDep());
             if (!srv->InitializeAsStructured(p_device, buffer.Get(), desc.element_byte_size, 0, desc.element_count)) return false;
         }
 
@@ -38,17 +38,17 @@ namespace ngl::render::app
     {
         resource_state = desc.initial_state;
 
-        buffer = new rhi::BufferDep();
+        buffer.Reset(new rhi::BufferDep());
         if (!buffer->Initialize(p_device, desc)) return false;
 
         if (desc.bind_flag & rhi::ResourceBindFlag::UnorderedAccess)
         {
-            uav = new rhi::UnorderedAccessViewDep();
+            uav.Reset(new rhi::UnorderedAccessViewDep());
             if (!uav->InitializeAsTyped(p_device, buffer.Get(), format, 0, desc.element_count)) return false;
         }
         if (desc.bind_flag & rhi::ResourceBindFlag::ShaderResource)
         {
-            srv = new rhi::ShaderResourceViewDep();
+            srv.Reset(new rhi::ShaderResourceViewDep());
             if (!srv->InitializeAsTyped(p_device, buffer.Get(), format, 0, desc.element_count)) return false;
         }
 
