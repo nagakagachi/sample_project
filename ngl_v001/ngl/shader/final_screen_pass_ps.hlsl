@@ -21,18 +21,21 @@ struct CbFinalScreenPass
 	int enable_raytrace_result;
 	int enable_gbuffer;
 	int enable_dshadow;
+
+	int enable_ssvg;
 };
 ConstantBuffer<CbFinalScreenPass> cb_final_screen_pass;
 
 Texture2D tex_light;
 
 Texture2D tex_rt;// テクスチャデバッグ.
-Texture2D tex_res_data;// テクスチャデバッグ.
 Texture2D tex_gbuffer0;// テクスチャデバッグ.
 Texture2D tex_gbuffer1;// テクスチャデバッグ.
 Texture2D tex_gbuffer2;// テクスチャデバッグ.
 Texture2D tex_gbuffer3;// テクスチャデバッグ.
 Texture2D tex_dshadow;// テクスチャデバッグ.
+Texture2D tex_res_data;// テクスチャデバッグ.
+Texture2D tex_ssvg;// テクスチャデバッグ.
 
 SamplerState samp;
 
@@ -152,6 +155,18 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 				float sample_shadow = tex_dshadow.SampleLevel(samp, area_rate, 0).x;
 				sample_shadow = sample_shadow*sample_shadow*sample_shadow;
 				return sample_shadow*2.0;
+			}
+		}
+		if(cb_final_screen_pass.enable_ssvg)
+		{
+    		const float k_ssvg_debug_height = 0.49;
+			const float2 debug_area_size = float2(k_ssvg_debug_height, k_ssvg_debug_height);
+			const float2 debug_area_lt = float2(0.0, 0.5);
+			const float2 debug_area_br = debug_area_lt + debug_area_size;
+			if (all(debug_area_lt <= input.uv) && all(debug_area_br >= input.uv))
+			{
+				float4 sample_color = tex_ssvg.SampleLevel(samp, (input.uv-debug_area_lt) / debug_area_size, 0);
+				return sample_color;
 			}
 		}
 		

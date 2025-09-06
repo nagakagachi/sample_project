@@ -38,7 +38,7 @@ void main_cs(
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
 
     uint2 read_voxel_xz = dtid.xy / 16;
-    if(all(read_voxel_xz < cb_dispatch_param.BaseResolution.xy))
+    if(all(read_voxel_xz < cb_dispatch_param.BaseResolution.xz))
     {
         float write_data = 0.0;
         for(int yi = 0; yi < cb_dispatch_param.BaseResolution.y; ++yi)

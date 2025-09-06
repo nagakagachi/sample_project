@@ -31,7 +31,8 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_depth_read_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_debug_visualize_ = {};
 
-        math::Vec3u base_resolution_ = math::Vec3u(16 * 2);
+        math::Vec3u base_resolution_ = math::Vec3u(64, 32, 64);
+        float   cell_size_ = 0.5f;
         RhiBufferSet work_buffer_ = {};
     };
 

@@ -17,7 +17,8 @@ namespace ngl::render::task
 
 		rtg::RtgResourceHandle h_other_rtg_out_{};// 先行する別rtgがPropagateしたハンドルをそのフレームの後段のrtgで使用するテスト.
 		rtg::RtgResourceHandle h_rt_result_{};
-		
+		rtg::RtgResourceHandle h_ssvg_debug_{};
+
 		rtg::RtgResourceHandle h_gbuffer0_{};// Debug View用
 		rtg::RtgResourceHandle h_gbuffer1_{};// Debug View用
 		rtg::RtgResourceHandle h_gbuffer2_{};// Debug View用
@@ -52,6 +53,8 @@ namespace ngl::render::task
 			rtg::RtgResourceHandle h_gbuffer0, rtg::RtgResourceHandle h_gbuffer1, rtg::RtgResourceHandle h_gbuffer2, rtg::RtgResourceHandle h_gbuffer3,
 			rtg::RtgResourceHandle h_dshadow,
 
+			rtg::RtgResourceHandle h_ssvg_debug,
+
 			ngl::rhi::RefSrvDep ref_test_tex,
 
 			const SetupDesc& desc)
@@ -73,6 +76,10 @@ namespace ngl::render::task
 				if(!h_other_rtg_out.IsInvalid())
 				{
 					h_other_rtg_out_ = builder.RecordResourceAccess(*this, h_other_rtg_out, rtg::access_type::SHADER_READ);
+				}
+				if(!h_ssvg_debug.IsInvalid())
+				{
+					h_ssvg_debug_ = builder.RecordResourceAccess(*this, h_ssvg_debug, rtg::access_type::SHADER_READ);
 				}
 
 				if(!h_gbuffer0.IsInvalid())
@@ -157,7 +164,8 @@ namespace ngl::render::task
 					auto res_tmp = builder.GetAllocatedResource(this, h_tmp_);
 					auto res_other_rtg_out = builder.GetAllocatedResource(this, h_other_rtg_out_);
 					auto res_rt_result = builder.GetAllocatedResource(this, h_rt_result_);
-						
+					auto res_ssvg_debug = builder.GetAllocatedResource(this, h_ssvg_debug_);
+
 					auto res_gbuffer0 = builder.GetAllocatedResource(this, h_gbuffer0_);
 					auto res_gbuffer1 = builder.GetAllocatedResource(this, h_gbuffer1_);
 					auto res_gbuffer2 = builder.GetAllocatedResource(this, h_gbuffer2_);
@@ -179,7 +187,7 @@ namespace ngl::render::task
 					{
 						ref_other_rtg_out = global_res.default_resource_.tex_red->ref_view_;
 					}
-						
+                    
 					rhi::RefSrvDep ref_rt_result{};
 					if(res_rt_result.srv_.IsValid())
 					{
@@ -188,6 +196,16 @@ namespace ngl::render::task
 					else
 					{
 						ref_rt_result = global_res.default_resource_.tex_green->ref_view_;
+					}
+
+					rhi::RefSrvDep ref_ssvg_debug{};
+					if(res_ssvg_debug.srv_.IsValid())
+					{
+						ref_ssvg_debug = res_ssvg_debug.srv_;
+					}
+					else
+					{
+						ref_ssvg_debug = global_res.default_resource_.tex_green->ref_view_;
 					}
 
 					rhi::RefSrvDep ref_gbuffer0 = (res_gbuffer0.srv_.IsValid())? res_gbuffer0.srv_ : global_res.default_resource_.tex_black->ref_view_;
@@ -204,6 +222,8 @@ namespace ngl::render::task
 						int enable_raytrace_result;
 						int enable_gbuffer;
 						int enable_dshadow;
+
+                    	int enable_ssvg;
 					};
 					auto cbh = gfx_commandlist->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(CbFinalScreenPass));
 					if(auto* p_mapped = cbh->buffer_.MapAs<CbFinalScreenPass>())
@@ -214,6 +234,7 @@ namespace ngl::render::task
 
 						p_mapped->enable_gbuffer = desc_.debugview_gbuffer;
 						p_mapped->enable_dshadow = desc_.debugview_dshadow;
+						p_mapped->enable_ssvg = desc_.debugview_gbuffer;
 
 						cbh->buffer_.Unmap();
 					}
@@ -239,6 +260,7 @@ namespace ngl::render::task
 					// テクスチャリソースを貼り付け.
 					pso_->SetView(&desc_set, "tex_res_data", ref_test_tex.Get());
 #endif
+					pso_->SetView(&desc_set, "tex_ssvg", ref_ssvg_debug.Get());
 
 					pso_->SetView(&desc_set, "tex_gbuffer0", ref_gbuffer0.Get());
 					pso_->SetView(&desc_set, "tex_gbuffer1", ref_gbuffer1.Get());

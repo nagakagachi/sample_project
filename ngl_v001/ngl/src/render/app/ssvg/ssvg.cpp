@@ -92,7 +92,7 @@ namespace ngl::render::app
             p->Flag           = 0;
 
             p->OriginPos = math::Vec3(0.0f, 0.0f, 0.0f);
-            p->CellSize  = 1.0f;
+            p->CellSize  = cell_size_;
             p->MinPos    = p->OriginPos - math::Vec3(static_cast<float>(base_resolution_.x),
                                                      static_cast<float>(base_resolution_.y),
                                                      static_cast<float>(base_resolution_.z)) *

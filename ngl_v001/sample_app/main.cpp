@@ -488,7 +488,7 @@ bool AppGame::Initialize()
 
 #if 1
             // 適当にたくさんモデル生成.
-            for (int i = 0; i < 100; ++i)
+            for (int i = 0; i < 30; ++i)
             {
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
