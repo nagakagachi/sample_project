@@ -201,11 +201,12 @@ namespace gfx
             p_vtx_attr_mapping_[gfx::MeshVertexSemantic::SemanticSlot(gfx::EMeshVertexSemanticKind::BINORMAL)] = &binormal_;
             vtx_attr_mask_.AddSlot(gfx::EMeshVertexSemanticKind::BINORMAL);
         }
+
         // SRGBかLinearで問題になるかもしれない. 現状はとりあえずLinear扱い.
+        color_.resize(init_source_data.color_.size());
         for (int ci = 0; ci < init_source_data.color_.size(); ++ci)
         {
-            color_.push_back({});
-            color_.back().raw_ptr_ = init_source_data.color_[ci];
+            color_[ci].raw_ptr_ = init_source_data.color_[ci];
 
             CreateShapeDataRhiBuffer(
                 &color_[ci],
@@ -222,10 +223,10 @@ namespace gfx
             p_vtx_attr_mapping_[gfx::MeshVertexSemantic::SemanticSlot(gfx::EMeshVertexSemanticKind::COLOR, ci)] = &color_[ci];
             vtx_attr_mask_.AddSlot(gfx::EMeshVertexSemanticKind::COLOR, ci);
         }
+        texcoord_.resize(init_source_data.texcoord_.size());
         for (int ci = 0; ci < init_source_data.texcoord_.size(); ++ci)
         {
-            texcoord_.push_back({});
-            texcoord_.back().raw_ptr_ = init_source_data.texcoord_[ci];
+            texcoord_[ci].raw_ptr_ = init_source_data.texcoord_[ci];
 
             CreateShapeDataRhiBuffer(
                 &texcoord_[ci],
