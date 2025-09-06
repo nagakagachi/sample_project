@@ -8,7 +8,7 @@ ss_voxel_debug_visualize_cs.hlsl
 #endif
 
 
-#include "ss_voxelize_util.hlsli"
+#include "ssvg_util.hlsli"
 
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
@@ -22,7 +22,7 @@ RWTexture2D<float4>	RWTexWork;
 
 
 // デバッグテクスチャに対してDispatch.
-[numthreads(8, 8, 1)]
+[numthreads(16, 16, 1)]
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,
 	uint3 gtid : SV_GroupThreadID,
@@ -37,7 +37,7 @@ void main_cs(
 	const float2 screen_size_f = float2(cb_dispatch_param.TexHardwareDepthSize.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
 
-    uint2 read_voxel_xz = dtid.xy / 16;
+    uint2 read_voxel_xz = dtid.xy / 16;// 適当なサイズで可視化.
     if(all(read_voxel_xz < cb_dispatch_param.BaseResolution.xz))
     {
         float write_data = 0.0;
@@ -49,10 +49,7 @@ void main_cs(
             uint voxel_addr = voxel_coord_to_addr(voxel_coord, cb_dispatch_param.BaseResolution);
             uint voxel_value = BufferWork[voxel_addr];
 
-            if(0 < voxel_value)
-            {
-                write_data += 1.0 / (float)cb_dispatch_param.BaseResolution.y;
-            }
+            write_data += (float(voxel_value) / 1000.0) / (float)cb_dispatch_param.BaseResolution.y;
         }
 
         RWTexWork[dtid.xy] = float4(write_data, write_data, write_data, 1.0f);

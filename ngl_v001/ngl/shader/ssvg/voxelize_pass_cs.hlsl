@@ -8,7 +8,7 @@ ss_voxelize_cs.hlsl
 #endif
 
 
-#include "ss_voxelize_util.hlsli"
+#include "ssvg_util.hlsli"
 
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
@@ -22,7 +22,7 @@ SamplerState		SmpHardwareDepth;
 RWBuffer<uint>		RWBufferWork;
 
 // DepthBufferに対してDispatch.
-[numthreads(8, 8, 1)]
+[numthreads(16, 16, 1)]
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,
 	uint3 gtid : SV_GroupThreadID,
@@ -47,7 +47,7 @@ void main_cs(
         pixel_pos_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
 	}
 
-    int3 voxel_coord = floor((pixel_pos_ws - cb_dispatch_param.MinPos) * cb_dispatch_param.CellSizeInv);
+    int3 voxel_coord = floor((pixel_pos_ws - cb_dispatch_param.GridMinPos) * cb_dispatch_param.CellSizeInv);
     if(all(voxel_coord >= 0) && all(voxel_coord < cb_dispatch_param.BaseResolution))
     {
         uint voxel_addr = voxel_coord_to_addr(voxel_coord, cb_dispatch_param.BaseResolution);
@@ -55,6 +55,6 @@ void main_cs(
         const uint view_depth_code = (uint)(view_z * 100.0f);
 
         uint origin_value;
-        InterlockedExchange(RWBufferWork[voxel_addr], view_depth_code, origin_value);
+        InterlockedAdd(RWBufferWork[voxel_addr], 1, origin_value);
     }
 }

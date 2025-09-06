@@ -41,10 +41,11 @@ namespace ngl::render::app
             return pso;
         };
         {
-            // Initialize all compute shaders
-            pso_depth_read_ = CreateComputePSO("ssvg/ss_voxelize_cs.hlsl");
+            pso_clear_voxel_  = CreateComputePSO("ssvg/clear_voxel_cs.hlsl");
+            pso_begin_update_ = CreateComputePSO("ssvg/begin_update_cs.hlsl");
+            pso_voxelize_     = CreateComputePSO("ssvg/voxelize_pass_cs.hlsl");
 
-            pso_debug_visualize_ = CreateComputePSO("ssvg/ss_voxel_debug_visualize_cs.hlsl");
+            pso_debug_visualize_ = CreateComputePSO("ssvg/voxel_debug_visualize_cs.hlsl");
         }
 
         {
@@ -61,6 +62,12 @@ namespace ngl::render::app
         return true;
     }
 
+    void SsVg::SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir)
+    {
+        important_point_ = pos;
+        important_dir_   = dir;
+    }
+
     void SsVg::Dispatch(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
                         rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
@@ -70,17 +77,40 @@ namespace ngl::render::app
 
         auto& global_res = gfx::GlobalRenderResource::Instance();
 
+        const bool is_first_dispatch = is_first_dispatch_;
+        is_first_dispatch_           = false;
+
+        {
+            grid_min_pos_prev_ = grid_min_pos_;
+            grid_min_pos_      = math::Vec3::Floor(important_point_ - base_resolution_.Cast<float>() * 0.5f * cell_size_);
+        }
+        const auto grid_min_pos_delta       = math::Vec3::Floor(grid_min_pos_ / cell_size_) - math::Vec3::Floor(grid_min_pos_prev_ / cell_size_);
+        math::Vec3i grid_min_pos_delta_cell = grid_min_pos_delta.Cast<int>();
+
+        // シフトコピーをせずにTroidalにアクセスするためのオフセット. このオフセットをした後に mod を取った位置にアクセスする. その外側はInvalidateされる.
+        grid_troidal_offset_ = (((grid_troidal_offset_ + grid_min_pos_delta_cell) % base_resolution_.Cast<int>()) + base_resolution_.Cast<int>()) % base_resolution_.Cast<int>();
+
+        std::cout << "--- " << std::endl;
+        std::cout << "grid_troidal_offset_.x " << grid_troidal_offset_.x << std::endl;
+        std::cout << "grid_troidal_offset_.y " << grid_troidal_offset_.y << std::endl;
+        std::cout << "grid_troidal_offset_.z " << grid_troidal_offset_.z << std::endl;
+
         const math::Vec2i hw_depth_size = math::Vec2i(static_cast<int>(hw_depth_tex->GetWidth()), static_cast<int>(hw_depth_tex->GetHeight()));
+
+        const u32 voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
 
         struct DispatchParam
         {
             math::Vec3i BaseResolution;
             u32 Flag;
 
-            math::Vec3 OriginPos;
+            math::Vec3 GridMinPos;
             float CellSize;
-            math::Vec3 MinPos;
+            math::Vec3 GridMinPosPrev;
             float CellSizeInv;
+
+            math::Vec3i GridTroidalOffset;
+            int Dummy;
 
             math::Vec2i TexHardwareDepthSize;
         };
@@ -91,33 +121,55 @@ namespace ngl::render::app
             p->BaseResolution = base_resolution_.Cast<int>();
             p->Flag           = 0;
 
-            p->OriginPos = math::Vec3(0.0f, 0.0f, 0.0f);
-            p->CellSize  = cell_size_;
-            p->MinPos    = p->OriginPos - math::Vec3(static_cast<float>(base_resolution_.x),
-                                                     static_cast<float>(base_resolution_.y),
-                                                     static_cast<float>(base_resolution_.z)) *
-                                           0.5f * p->CellSize;
-            p->CellSizeInv = 1.0f / p->CellSize;
+            p->GridMinPos     = grid_min_pos_;
+            p->GridMinPosPrev = grid_min_pos_prev_;
+            p->CellSize       = cell_size_;
+            p->CellSizeInv    = 1.0f / cell_size_;
+
+            p->GridTroidalOffset = grid_troidal_offset_;
 
             p->TexHardwareDepthSize = hw_depth_size;
 
             cbh->buffer_.Unmap();
         }
 
+        if (is_first_dispatch)
+        {
+            // 初回クリア.
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_clear_voxel_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
+            pso_clear_voxel_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_clear_voxel_.Get());
+            p_command_list->SetDescriptorSet(pso_clear_voxel_.Get(), &desc_set);
+            pso_clear_voxel_->DispatchHelper(p_command_list, voxel_count, 1, 1);  // Voxel Dispatch.
+
+            p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
+        }
+
         {
             ngl::rhi::DescriptorSetDep desc_set = {};
-            pso_depth_read_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
-            pso_depth_read_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+            pso_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+            pso_begin_update_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
+            pso_begin_update_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
 
-            pso_depth_read_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
+            p_command_list->SetPipelineState(pso_begin_update_.Get());
+            p_command_list->SetDescriptorSet(pso_begin_update_.Get(), &desc_set);
+            pso_begin_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);  // Screen処理でDispatch.
 
-            pso_depth_read_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
+            p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
+        }
 
-            p_command_list->SetPipelineState(pso_depth_read_.Get());
-            p_command_list->SetDescriptorSet(pso_depth_read_.Get(), &desc_set);
+        {
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_voxelize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
+            pso_voxelize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+            pso_voxelize_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
+            pso_voxelize_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
 
-            pso_depth_read_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);
-
+            p_command_list->SetPipelineState(pso_voxelize_.Get());
+            p_command_list->SetDescriptorSet(pso_voxelize_.Get(), &desc_set);
+            pso_voxelize_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);  // Screen処理でDispatch.
 
             p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
         }
@@ -127,9 +179,7 @@ namespace ngl::render::app
             ngl::rhi::DescriptorSetDep desc_set = {};
             pso_debug_visualize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
             pso_debug_visualize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-
             pso_debug_visualize_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
-
             pso_debug_visualize_->SetView(&desc_set, "BufferWork", work_buffer_.srv.Get());
             pso_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
 

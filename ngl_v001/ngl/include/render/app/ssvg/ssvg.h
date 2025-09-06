@@ -24,15 +24,28 @@ namespace ngl::render::app
             rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
             rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
 
-    private:
+        void SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir);
 
     private:
-        // CBT Tessellation Compute Shaders
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_depth_read_ = {};
+        bool is_first_dispatch_ = true;
+
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_clear_voxel_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_begin_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_voxelize_ = {};
+
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_debug_visualize_ = {};
 
-        math::Vec3u base_resolution_ = math::Vec3u(64, 32, 64);
-        float   cell_size_ = 0.5f;
+        math::Vec3 important_point_ = {0,0,0};
+        math::Vec3 important_dir_ = {0,0,1};
+
+
+        math::Vec3 grid_min_pos_ = {};
+        math::Vec3 grid_min_pos_prev_ = {};
+        math::Vec3i grid_troidal_offset_ = {};
+
+        math::Vec3u base_resolution_ = math::Vec3u(64, 40, 64);
+        float   cell_size_ = 1.25f;
+
         RhiBufferSet work_buffer_ = {};
     };
 

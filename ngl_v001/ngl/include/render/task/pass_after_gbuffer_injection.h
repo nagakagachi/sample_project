@@ -15,8 +15,6 @@ namespace ngl::render::task
 		rtg::RtgResourceHandle h_depth_{};
 		rtg::RtgResourceHandle h_work_{};
 
-		rhi::RhiRef<rhi::ComputePipelineStateDep> pso_;
-
 		struct SetupDesc
 		{
 			int w{};
@@ -46,24 +44,9 @@ namespace ngl::render::task
                 h_work_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_desc), rtg::access_type::UAV);
 			}
 
-			{
-				auto& ResourceMan = ngl::res::ResourceManager::Instance();
+            // ssvgへの情報直接設定.
+            desc_.p_ssvg->SetImportantPointInfo(view_info.camera_pos, view_info.camera_pose.GetColumn2());
 
-				ngl::gfx::ResShader::LoadDesc loaddesc = {};
-				loaddesc.entry_point_name = "main_cs";
-				loaddesc.stage = ngl::rhi::EShaderStage::Compute;
-				loaddesc.shader_model_version = k_shader_model;
-				auto res_shader = ResourceMan.LoadResource<ngl::gfx::ResShader>(p_device, NGL_RENDER_SHADER_PATH("ssvg/ss_voxelize_cs.hlsl"), &loaddesc);
-				
-				ngl::rhi::ComputePipelineStateDep::Desc pso_desc = {};
-				pso_desc.cs = &res_shader->data_;
-				pso_.Reset(new rhi::ComputePipelineStateDep());
-				if (!pso_->Initialize(p_device, pso_desc))
-				{
-					assert(false);
-				}
-			}
-			
 			// Render処理のLambdaをRTGに登録.
 			builder.RegisterTaskNodeRenderFunction(this,
 				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)

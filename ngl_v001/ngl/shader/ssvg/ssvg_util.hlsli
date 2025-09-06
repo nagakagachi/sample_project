@@ -13,10 +13,13 @@ struct DispatchParam
     int3 BaseResolution;
     uint Flag;
 
-    float3 OriginPos;
+    float3 GridMinPos;
     float CellSize;
-    float3 MinPos;
+    float3 GridMinPosPrev;
     float CellSizeInv;
+    
+    int3 GridTroidalOffset;
+    int Dummy;
 
     int2 TexHardwareDepthSize;
 };
