@@ -21,14 +21,18 @@ namespace ngl::render::app
 
         void Dispatch(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
-            rhi::RefSrvDep hw_depth_srv,
+            rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
             rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
 
     private:
 
     private:
         // CBT Tessellation Compute Shaders
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_depth_read_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_debug_visualize_ = {};
+
+        math::Vec3u base_resolution_ = math::Vec3u(16 * 2);
+        RhiBufferSet work_buffer_ = {};
     };
 
 }  // namespace ngl::render::app

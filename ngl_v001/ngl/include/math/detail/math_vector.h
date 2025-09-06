@@ -399,166 +399,199 @@ namespace ngl
 
 
 
-		template<int N>
+		template<typename INT_TYPE, int N>
 		struct VecComponentInt
 		{
 		};
 		// Vec2 Data.
-		template<>
-		struct VecComponentInt<2>
+		template<typename INT_TYPE>
+		struct VecComponentInt<INT_TYPE, 2>
 		{
+            static constexpr int DIMENSION = 2;
 			// data.
 			union
 			{
 				struct
 				{
-					int x, y;
+					INT_TYPE x, y;
 				};
-				int data[2];
+				INT_TYPE data[DIMENSION];
 			};
 
 			VecComponentInt() = default;
 			constexpr VecComponentInt(const VecComponentInt& v) = default;
-			explicit constexpr VecComponentInt(int v)
+			explicit constexpr VecComponentInt(INT_TYPE v)
 				: x(v), y(v)
 			{}
-			constexpr VecComponentInt(int _x, int _y, int _dummy0, int _dummy1)
+			constexpr VecComponentInt(INT_TYPE _x, INT_TYPE _y, INT_TYPE _dummy0, INT_TYPE _dummy1)
 				: x(_x), y(_y)
 			{}
 			// 要素修正付きコンストラクタ.
 			template<typename ComponentModifyFunc>
-			constexpr VecComponentInt(int _x, int _y, int _dummy0, int _dummy1, ComponentModifyFunc func)
+			constexpr VecComponentInt(INT_TYPE _x, INT_TYPE _y, INT_TYPE _dummy0, INT_TYPE _dummy1, ComponentModifyFunc func)
 				: x(func(_x)), y(func(_y))
 			{}
 			// 要素修正付きコンストラクタ.
 			template<typename ComponentModifyFunc>
-			constexpr VecComponentInt(const int* _data, ComponentModifyFunc func)
+			constexpr VecComponentInt(const INT_TYPE* _data, ComponentModifyFunc func)
 				: x(func(_data[0])), y(func(_data[1]))
 			{}
+            
+           // 別のINT_TYPEへキャスト
+           template<typename TO_INT_TYPE>
+           constexpr VecComponentInt<TO_INT_TYPE, DIMENSION> Cast() const
+           {
+               return VecComponentInt<TO_INT_TYPE, DIMENSION>(static_cast<TO_INT_TYPE>(x), static_cast<TO_INT_TYPE>(y), {}, {});
+           }
 		};
 		// Vec3 Data.
-		template<>
-		struct VecComponentInt<3>
+		template<typename INT_TYPE>
+		struct VecComponentInt<INT_TYPE, 3>
 		{
+            static constexpr int DIMENSION = 3;
 			// data.
 			union
 			{
 				struct
 				{
-					int x, y, z;
+					INT_TYPE x, y, z;
 				};
-				int data[3];
+				INT_TYPE data[DIMENSION];
 			};
 
 			VecComponentInt() = default;
 			constexpr VecComponentInt(const VecComponentInt& v) = default;
-			explicit constexpr VecComponentInt(int v)
+			explicit constexpr VecComponentInt(INT_TYPE v)
 				: x(v), y(v), z(v)
 			{}
-			constexpr VecComponentInt(int _x, int _y, int _z, int _dummy0)
+			constexpr VecComponentInt(INT_TYPE _x, INT_TYPE _y, INT_TYPE _z, INT_TYPE _dummy0)
 				: x(_x), y(_y), z(_z)
 			{}
 			// 要素修正付きコンストラクタ.
 			template<typename ComponentModifyFunc>
-			constexpr VecComponentInt(int _x, int _y, int _z, int _dummy0, ComponentModifyFunc func)
+			constexpr VecComponentInt(INT_TYPE _x, INT_TYPE _y, INT_TYPE _z, INT_TYPE _dummy0, ComponentModifyFunc func)
 				: x(func(_x)), y(func(_y)), z(func(_z))
 			{}
 			// 要素修正付きコンストラクタ.
 			template<typename ComponentModifyFunc>
-			constexpr VecComponentInt(const int* _data, ComponentModifyFunc func)
+			constexpr VecComponentInt(const INT_TYPE* _data, ComponentModifyFunc func)
 				: x(func(_data[0])), y(func(_data[1])), z(func(_data[2]))
 			{}
+            
+           // 別のINT_TYPEへキャスト
+           template<typename TO_INT_TYPE>
+           constexpr VecComponentInt<TO_INT_TYPE, DIMENSION> Cast() const
+           {
+               return VecComponentInt<TO_INT_TYPE, DIMENSION>(static_cast<TO_INT_TYPE>(x), static_cast<TO_INT_TYPE>(y), static_cast<TO_INT_TYPE>(z), {});
+           }
 		};
         // Vec4 Data.
-		template<>
-		struct VecComponentInt<4>
+		template<typename INT_TYPE>
+		struct VecComponentInt<INT_TYPE, 4>
 		{
+            static constexpr int DIMENSION = 4;
 			// data.
 			union
 			{
 				struct
 				{
-					int x, y, z, w;
+					INT_TYPE x, y, z, w;
 				};
-				int data[4];
+				INT_TYPE data[4];
 			};
 
 			VecComponentInt() = default;
 			constexpr VecComponentInt(const VecComponentInt& v) = default;
-			explicit constexpr VecComponentInt(int v)
+			explicit constexpr VecComponentInt(INT_TYPE v)
 				: x(v), y(v), z(v), w(v)
 			{}
-			constexpr VecComponentInt(int _x, int _y, int _z, int _w)
+			constexpr VecComponentInt(INT_TYPE _x, INT_TYPE _y, INT_TYPE _z, INT_TYPE _w)
 				: x(_x), y(_y), z(_z), w(_w)
 			{}
 			// 要素修正付きコンストラクタ.
 			template<typename ComponentModifyFunc>
-			constexpr VecComponentInt(int _x, int _y, int _z, int _w, ComponentModifyFunc func)
+			constexpr VecComponentInt(INT_TYPE _x, INT_TYPE _y, INT_TYPE _z, INT_TYPE _w, ComponentModifyFunc func)
 				: x(func(_x)), y(func(_y)), z(func(_z)), w(func(_w))
 			{}
 			// 要素修正付きコンストラクタ.
 			template<typename ComponentModifyFunc>
-			constexpr VecComponentInt(const int* _data, ComponentModifyFunc func)
+			constexpr VecComponentInt(const INT_TYPE* _data, ComponentModifyFunc func)
 				: x(func(_data[0])), y(func(_data[1])), z(func(_data[2])), w(func(_data[3]))
 			{}
+
+           // 別のINT_TYPEへキャスト
+           template<typename TO_INT_TYPE>
+           constexpr VecComponentInt<TO_INT_TYPE, DIMENSION> Cast() const
+           {
+               return VecComponentInt<TO_INT_TYPE, DIMENSION>(static_cast<TO_INT_TYPE>(x), static_cast<TO_INT_TYPE>(y), static_cast<TO_INT_TYPE>(z), static_cast<TO_INT_TYPE>(w));
+           }
 		};
 		// VectorN Template. N-> 2,3,4.
-		template<int N>
-		struct VecNi : public VecComponentInt<N>
+		template<typename INT_TYPE, int N>
+		struct VecN_Int_Type : public VecComponentInt<INT_TYPE, N>
 		{
 			static constexpr int DIMENSION = N;
 
-			VecNi() = default;
-			constexpr VecNi(const VecNi& v) = default;
+			VecN_Int_Type() = default;
+			constexpr VecN_Int_Type(const VecN_Int_Type& v) = default;
 
-			explicit constexpr VecNi(int v)
-				: VecComponentInt<N>(v)
+			explicit constexpr VecN_Int_Type(INT_TYPE v)
+				: VecComponentInt<INT_TYPE, N>(v)
 			{
 			}
-			constexpr VecNi(int _x, int _y)
-				: VecComponentInt<N>(_x, _y, 0, 0)
+			constexpr VecN_Int_Type(INT_TYPE _x, INT_TYPE _y)
+				: VecComponentInt<INT_TYPE, N>(_x, _y, 0, 0)
 			{
 			}
-			constexpr VecNi(int _x, int _y, int _z)
-				: VecComponentInt<N>(_x, _y, _z, 0)
+			constexpr VecN_Int_Type(INT_TYPE _x, INT_TYPE _y, INT_TYPE _z)
+				: VecComponentInt<INT_TYPE, N>(_x, _y, _z, 0)
 			{
 			}
-			constexpr VecNi(int _x, int _y, int _z, int _w)
-				: VecComponentInt<N>(_x, _y, _z, _w)
+			constexpr VecN_Int_Type(INT_TYPE _x, INT_TYPE _y, INT_TYPE _z, INT_TYPE _w)
+				: VecComponentInt<INT_TYPE, N>(_x, _y, _z, _w)
+			{
+			}
+
+			constexpr VecN_Int_Type(const VecComponentInt<INT_TYPE, N>& v)
+				: VecComponentInt<INT_TYPE, N>(v)
+			{
+			}
+
+			// 要素修正付きコンストラクタ.
+			template<typename ComponentModifyFunc>
+			constexpr VecN_Int_Type(INT_TYPE _x, INT_TYPE _y, INT_TYPE _z, INT_TYPE _w, ComponentModifyFunc func)
+				: VecComponentInt<INT_TYPE, N>(_x, _y, _z, _w, func)
 			{
 			}
 			// 要素修正付きコンストラクタ.
 			template<typename ComponentModifyFunc>
-			constexpr VecNi(int _x, int _y, int _z, int _w, ComponentModifyFunc func)
-				: VecComponentInt<N>(_x, _y, _z, _w, func)
-			{
-			}
-			// 要素修正付きコンストラクタ.
-			template<typename ComponentModifyFunc>
-			constexpr VecNi(const int* _data, ComponentModifyFunc func)
-				: VecComponentInt<N>(_data, func)
+			constexpr VecN_Int_Type(const INT_TYPE* _data, ComponentModifyFunc func)
+				: VecComponentInt<INT_TYPE, N>(_data, func)
 			{
 			}
 
 			// 1次元少ないvectorで初期化.
-			constexpr VecNi(const VecComponentInt<N-1>& v, int s)
-				: VecComponentInt<N>(v, s)
+			constexpr VecN_Int_Type(const VecComponentInt<INT_TYPE,  N-1>& v, INT_TYPE s)
+				: VecComponentInt<INT_TYPE, N>(v, s)
 			{
 			}
 
-
-			constexpr VecNi<3> XYZ() const
+			constexpr VecN_Int_Type<INT_TYPE, 3> XYZ() const
 			{
-				return VecNi<3>(this->x, this->y, this->z, 0);
+				return VecN_Int_Type<INT_TYPE, 3>(this->x, this->y, this->z, 0);
 			}
-			constexpr VecNi<2> XY() const
+			constexpr VecN_Int_Type<INT_TYPE, 2> XY() const
 			{
-				return VecNi<2>(this->x, this->y, 0, 0);
+				return VecN_Int_Type<INT_TYPE, 2>(this->x, this->y, 0, 0);
 			}
         };
-		using Vec2i = VecNi<2>;
-		using Vec3i = VecNi<3>;
-		using Vec4i = VecNi<4>;
+		using Vec2i = VecN_Int_Type<int, 2>;
+		using Vec3i = VecN_Int_Type<int, 3>;
+		using Vec4i = VecN_Int_Type<int, 4>;
+
+		using Vec2u = VecN_Int_Type<unsigned int, 2>;
+		using Vec3u = VecN_Int_Type<unsigned int, 3>;
+		using Vec4u = VecN_Int_Type<unsigned int, 4>;
 
 	}
 }

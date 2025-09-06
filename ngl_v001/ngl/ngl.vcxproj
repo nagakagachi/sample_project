@@ -55,7 +55,7 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>.\include;.\external\assimp\include;.\external\DirectXTex;.\external\imgui;.\external\tinyxml2;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ForcedIncludeFiles>pch.h</ForcedIncludeFiles>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -83,7 +83,7 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>.\include;.\external\assimp\include;.\external\DirectXTex;.\external\imgui;.\external\tinyxml2;</AdditionalIncludeDirectories>
       <ForcedIncludeFiles>pch.h</ForcedIncludeFiles>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>

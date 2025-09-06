@@ -34,7 +34,7 @@ namespace ngl::render::app
 
         return true;
     }
-    bool RhiBufferSet::InitializeAsTyped(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc, rhi::EResourceFormat format)
+    bool RhiBufferSet::InitializeAsTyped(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc, rhi::EResourceFormat view_format)
     {
         resource_state = desc.initial_state;
 
@@ -44,12 +44,12 @@ namespace ngl::render::app
         if (desc.bind_flag & rhi::ResourceBindFlag::UnorderedAccess)
         {
             uav.Reset(new rhi::UnorderedAccessViewDep());
-            if (!uav->InitializeAsTyped(p_device, buffer.Get(), format, 0, desc.element_count)) return false;
+            if (!uav->InitializeAsTyped(p_device, buffer.Get(), view_format, 0, desc.element_count)) return false;
         }
         if (desc.bind_flag & rhi::ResourceBindFlag::ShaderResource)
         {
             srv.Reset(new rhi::ShaderResourceViewDep());
-            if (!srv->InitializeAsTyped(p_device, buffer.Get(), format, 0, desc.element_count)) return false;
+            if (!srv->InitializeAsTyped(p_device, buffer.Get(), view_format, 0, desc.element_count)) return false;
         }
 
         return true;

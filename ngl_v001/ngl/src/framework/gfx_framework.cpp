@@ -37,7 +37,7 @@ namespace ngl::fwk
 
 	bool GraphicsFramework::Initialize(platform::CoreWindow* p_window)
 	{
-		assert(p_window && u8"無効Window");
+		assert(p_window && "無効Window");
 		
 		p_window_ = p_window;
 		
@@ -167,7 +167,7 @@ namespace ngl::fwk
 	// フレームワークやCoreWindowの有効性チェック.
 	bool GraphicsFramework::IsValid() const
 	{
-		assert(p_window_ && u8"無効Window");
+		assert(p_window_ && "無効Window");
 		return p_window_->IsValid();
 	}
 

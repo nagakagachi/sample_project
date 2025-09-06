@@ -1,0 +1,60 @@
+
+#if 0
+
+ss_voxel_debug_visualize_cs.hlsl
+
+デバッグ可視化.
+
+#endif
+
+
+#include "ss_voxelize_util.hlsli"
+
+// SceneView定数バッファ構造定義.
+#include "../include/scene_view_struct.hlsli"
+
+ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
+ConstantBuffer<DispatchParam> cb_dispatch_param;
+
+Buffer<uint>		BufferWork;
+
+RWTexture2D<float4>	RWTexWork;
+
+
+// デバッグテクスチャに対してDispatch.
+[numthreads(8, 8, 1)]
+void main_cs(
+	uint3 dtid	: SV_DispatchThreadID,
+	uint3 gtid : SV_GroupThreadID,
+	uint3 gid : SV_GroupID,
+	uint gindex : SV_GroupIndex
+)
+{
+	const float3 camera_dir = normalize(ngl_cb_sceneview.cb_view_inv_mtx._m02_m12_m22);// InvShadowViewMtxから向きベクトルを取得.
+	const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
+
+	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
+	const float2 screen_size_f = float2(cb_dispatch_param.TexHardwareDepthSize.xy);
+	const float2 screen_uv = (screen_pos_f / screen_size_f);
+
+    uint2 read_voxel_xz = dtid.xy / 16;
+    if(all(read_voxel_xz < cb_dispatch_param.BaseResolution.xy))
+    {
+        float write_data = 0.0;
+        for(int yi = 0; yi < cb_dispatch_param.BaseResolution.y; ++yi)
+        {
+            // VoxelBufferから高さ方向に操作して総和を計算
+            uint3 voxel_coord = int3(read_voxel_xz.x, yi, read_voxel_xz.y);
+
+            uint voxel_addr = voxel_coord_to_addr(voxel_coord, cb_dispatch_param.BaseResolution);
+            uint voxel_value = BufferWork[voxel_addr];
+
+            if(0 < voxel_value)
+            {
+                write_data += 1.0 / (float)cb_dispatch_param.BaseResolution.y;
+            }
+        }
+
+        RWTexWork[dtid.xy] = float4(write_data, write_data, write_data, 1.0f);
+    }
+}

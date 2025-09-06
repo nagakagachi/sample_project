@@ -28,7 +28,7 @@ namespace ngl::fwk
         */
         template<typename ENTITY_TYPE, typename DUMMY = void>
         GfxSceneProxyBuffer<ENTITY_TYPE>* GetEntityProxyBuffer(){
-            assert(false && u8"not implemented"); return {};
+            assert(false && "not implemented"); return {};
         }
 
         

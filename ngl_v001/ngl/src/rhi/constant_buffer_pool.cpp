@@ -145,7 +145,7 @@ namespace ngl::rhi
         }
         void Initialize(rhi::DeviceDep* p_device)
         {
-            assert(p_device != nullptr && u8"p_device_未設定");
+            assert(p_device != nullptr && "p_device_未設定");
             p_device_ = p_device;
 
 
@@ -154,13 +154,13 @@ namespace ngl::rhi
                 const int log2_size = i + log2_bucket_log2_min_;
                 const int cb_size = 1 << log2_size;
                 
-                assert(CalcMatchBacketIndex(cb_size) == i && u8"バケットインデックス計算が不正.");
+                assert(CalcMatchBacketIndex(cb_size) == i && "バケットインデックス計算が不正.");
                 bucket_[i].Initialize(log2_size);
             }
         }
         void Finalize()
         {
-            assert(p_device_ != nullptr && u8"p_device_未設定");
+            assert(p_device_ != nullptr && "p_device_未設定");
             p_device_ = nullptr;
         }
 
@@ -177,7 +177,7 @@ namespace ngl::rhi
                 for(auto* item : frame_return_list_[frame_return_index_].list_)
                 {
                     const int bucket_index = CalcMatchBacketIndex(item->buffer_.GetElementByteSize());
-                    assert( 0 <= bucket_index && u8"バケットインデックス計算が不正.");
+                    assert( 0 <= bucket_index && "バケットインデックス計算が不正.");
                     if(bucket_.size() > bucket_index)
                     {
                         // Poolから確保しているサイズであればPoolに返却.
@@ -198,7 +198,7 @@ namespace ngl::rhi
         // ConstantBufferPooledHandleを生成.
         ConstantBufferPooledHandle Alloc(int byte_size)
         {
-            assert(0 < byte_size && u8"ConstantBufferPool::Alloc: サイズが不正.");
+            assert(0 < byte_size && "ConstantBufferPool::Alloc: サイズが不正.");
 
             // 指定サイズ以上の最小の二の冪数.
             const u32 pooled_byte_size = CalcMatchBacketElementSize(byte_size);
@@ -208,7 +208,7 @@ namespace ngl::rhi
             ConstantBufferPoolItem* item{};
             if(bucket_.size() > bucket_index)
             {
-                assert(bucket_[bucket_index].element_byte_size_ == pooled_byte_size && u8"Bucketの担当サイズと不一致");
+                assert(bucket_[bucket_index].element_byte_size_ == pooled_byte_size && "Bucketの担当サイズと不一致");
                 // Poolから確保しているサイズであればPoolに返却.
                 item = bucket_[bucket_index].Alloc(p_device_);
             }
@@ -226,7 +226,7 @@ namespace ngl::rhi
             // SharedPtrの破棄で呼び出し.
             void DeleterFunc(ConstantBufferPoolItem* item)
             {
-                assert(nullptr != item && u8"不正なポインタ");
+                assert(nullptr != item && "不正なポインタ");
                 
                 {
                     // シンプルにロック.
@@ -259,17 +259,17 @@ namespace ngl::rhi
     ConstantBufferPooledHandleDeleter::ConstantBufferPooledHandleDeleter(ConstantBufferPoolImpl* parent)
     : parent_(parent)
     {
-        assert(parent_ != nullptr && u8"ConstantBufferPooledHandleDeleter::parent_未設定");
+        assert(parent_ != nullptr && "ConstantBufferPooledHandleDeleter::parent_未設定");
     }
     ConstantBufferPooledHandleDeleter::~ConstantBufferPooledHandleDeleter()
     {
-        assert(parent_ != nullptr && u8"ConstantBufferPooledHandleDeleter::parent_未設定");
+        assert(parent_ != nullptr && "ConstantBufferPooledHandleDeleter::parent_未設定");
     }
 
     inline void ConstantBufferPooledHandleDeleter::operator()(ConstantBufferPoolItem* item)
     {
-        assert(parent_ != nullptr && u8"ConstantBufferPooledHandleDeleter::parent_未設定");
-        assert(item != nullptr && u8"ConstantBufferPooledHandleDeleter::operator(): 不正なポインタ.");
+        assert(parent_ != nullptr && "ConstantBufferPooledHandleDeleter::parent_未設定");
+        assert(item != nullptr && "ConstantBufferPooledHandleDeleter::operator(): 不正なポインタ.");
         // Parentに破棄処理を依頼.
         parent_->DeleterFunc(item);
     }
@@ -287,7 +287,7 @@ namespace ngl::rhi
 
     void ConstantBufferPool::Initialize(rhi::DeviceDep* p_device)
     {
-        assert(impl_ != nullptr && u8"初期化時にimplが確保されていない");
+        assert(impl_ != nullptr && "初期化時にimplが確保されていない");
 
         impl_->Initialize(p_device);
     }
@@ -303,13 +303,13 @@ namespace ngl::rhi
     
     void ConstantBufferPool::ReadyToNewFrame()
     {
-        assert(impl_ != nullptr && u8"初期化時にimplが確保されていない");
+        assert(impl_ != nullptr && "初期化時にimplが確保されていない");
         impl_->ReadyToNewFrame();
     }
 
     ConstantBufferPooledHandle ConstantBufferPool::Alloc(int byte_size)
     {
-        assert(impl_ != nullptr && u8"初期化時にimplが確保されていない");
+        assert(impl_ != nullptr && "初期化時にimplが確保されていない");
         return impl_->Alloc(byte_size);
     }
 }

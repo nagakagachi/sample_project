@@ -85,7 +85,7 @@ namespace ngl::render::task
 
                     if (desc_.p_ssvg)
                     {
-                        desc_.p_ssvg->Dispatch(gfx_commandlist, desc_.scene_cbv, res_depth.srv_, res_work.tex_, res_work.uav_);
+                        desc_.p_ssvg->Dispatch(gfx_commandlist, desc_.scene_cbv, res_depth.tex_, res_depth.srv_, res_work.tex_, res_work.uav_);
                     }
 				}
 			);
