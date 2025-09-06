@@ -19,6 +19,11 @@ namespace ngl::render::app
         // 初期化
         bool Initialize(ngl::rhi::DeviceDep* p_device);
 
+        void Dispatch(rhi::GraphicsCommandListDep* p_command_list,
+            rhi::ConstantBufferPooledHandle scene_cbv, 
+            rhi::RefSrvDep hw_depth_srv,
+            rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
+
     private:
 
     private:

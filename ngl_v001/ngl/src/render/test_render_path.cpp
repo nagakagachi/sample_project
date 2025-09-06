@@ -17,12 +17,13 @@
 #include "render/task/pass_directional_light_deferred.h"
 #include "render/task/pass_final_composite.h"
 
+#include "render/task/pass_after_gbuffer_injection.h"
+
 #include "render/task/pass_skybox.h"
 
 #include "render/task/pass_async_compute_test.h"
 #include "render/task/pass_raytrace_test.h"
 
-#include "render/task/pass_after_gbuffer_injection.h"
 
 namespace ngl::test
 {
@@ -227,6 +228,8 @@ namespace ngl::test
                         setup_desc.h = screen_h;
                         
                         setup_desc.scene_cbv = scene_cb_h;
+
+                        setup_desc.p_ssvg = render_frame_desc.p_ssvg;
                     }
                     task_after_gbuffer_injection->Setup(rtg_builder, p_device, view_info, task_depth->h_depth_, setup_desc);
                     // Renderをスキップテスト.

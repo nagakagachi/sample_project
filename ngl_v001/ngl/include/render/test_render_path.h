@@ -5,10 +5,24 @@
 #include "gfx/command_helper.h"
 
 
-namespace ngl::gfx
+namespace ngl
+{
+namespace gfx
 {
 	class SceneRepresentation;
 	class RtSceneManager;
+}
+}
+
+namespace ngl
+{
+namespace render
+{
+    namespace app
+    {
+        class SsVg;
+    }
+}
 }
 
 namespace ngl::test
@@ -38,6 +52,8 @@ namespace ngl::test
 
     	// RaytraceScene.
     	gfx::RtSceneManager* p_rt_scene = {};
+
+        render::app::SsVg* p_ssvg = {};
 
         ngl::rhi::RefSrvDep ref_test_tex_srv = {};
 

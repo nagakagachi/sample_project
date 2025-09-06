@@ -23,6 +23,8 @@ namespace ngl::render::task
 			int h{};
 			
 			rhi::ConstantBufferPooledHandle scene_cbv{};
+
+            render::app::SsVg* p_ssvg = {};
 		};
 		SetupDesc desc_{};
 		bool is_render_skip_debug{};
@@ -72,23 +74,7 @@ namespace ngl::render::task
 					}
 					command_list_allocator.Alloc(1);
 					auto gfx_commandlist = command_list_allocator.GetOrCreate(0);
-					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "SsVoxelize");
-
-					auto& global_res = gfx::GlobalRenderResource::Instance();
-
-
-                    struct DispatchParam
-                    {
-                        ngl::math::Vec2i TexHardwareDepthSize;
-                    };
-                    auto cbh = gfx_commandlist->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(DispatchParam));
-                    {
-                        auto* p = cbh->buffer_.MapAs<DispatchParam>();
-
-                        p->TexHardwareDepthSize = ngl::math::Vec2i(static_cast<int>(desc_.w), static_cast<int>(desc_.h));
-
-                        cbh->buffer_.Unmap();
-                    }
+					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "TaskAfterGBufferInjection");
 
 					// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
 					auto res_depth = builder.GetAllocatedResource(this, h_depth_);
@@ -97,19 +83,10 @@ namespace ngl::render::task
 					assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
                     assert(res_work.tex_.IsValid() && res_work.uav_.IsValid());
 
-					ngl::rhi::DescriptorSetDep desc_set = {};
-					pso_->SetView(&desc_set, "TexHardwareDepth", res_depth.srv_.Get());
-					pso_->SetView(&desc_set, "ngl_cb_sceneview", &desc_.scene_cbv->cbv_);
-
-                    pso_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
-
-                    pso_->SetView(&desc_set, "RWTexWork", res_work.uav_.Get());
-                    
-						
-					gfx_commandlist->SetPipelineState(pso_.Get());
-					gfx_commandlist->SetDescriptorSet(pso_.Get(), &desc_set);
-
-					pso_->DispatchHelper(gfx_commandlist, res_work.tex_->GetWidth(), res_work.tex_->GetHeight(), 1);
+                    if (desc_.p_ssvg)
+                    {
+                        desc_.p_ssvg->Dispatch(gfx_commandlist, desc_.scene_cbv, res_depth.srv_, res_work.tex_, res_work.uav_);
+                    }
 				}
 			);
 		}

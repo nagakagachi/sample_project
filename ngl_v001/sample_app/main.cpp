@@ -202,6 +202,7 @@ AppGame::~AppGame()
         skybox_.FinalizeGfx();
 
         rt_scene_ = {};
+        ssvg_ = {};
 
         // リソース参照クリア.
         mesh_entity_array_.clear();
@@ -556,7 +557,9 @@ bool AppGame::Initialize()
         std::cout << "[ERROR] Initialize gfx::RtSceneManager" << std::endl;
     }
 
+    
     ssvg_.Initialize(&device);
+
 
     // Texture Rexource読み込みのテスト.
     ngl::gfx::ResTexture::LoadDesc tex_load_desc{};
@@ -978,6 +981,9 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
                 // デバッグメニューからRaytracePassの有無切り替え.
                 render_frame_desc.p_rt_scene = &rt_scene_;
             }
+
+            render_frame_desc.p_ssvg = &ssvg_;
+
             render_frame_desc.ref_test_tex_srv      = res_texture_->ref_view_;
             render_frame_desc.h_prev_lit            = h_prev_light;  // MainViewはヒストリ有効.
             render_frame_desc.h_other_graph_out_tex = subview_render_frame_out.h_propagate_lit;
