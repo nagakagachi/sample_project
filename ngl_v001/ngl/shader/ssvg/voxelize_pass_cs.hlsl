@@ -50,11 +50,14 @@ void main_cs(
     int3 voxel_coord = floor((pixel_pos_ws - cb_dispatch_param.GridMinPos) * cb_dispatch_param.CellSizeInv);
     if(all(voxel_coord >= 0) && all(voxel_coord < cb_dispatch_param.BaseResolution))
     {
-        uint voxel_addr = voxel_coord_to_addr(voxel_coord, cb_dispatch_param.BaseResolution);
-        
+        // Toroidalマッピング.
+        int3 voxel_coord_toroidal = (voxel_coord + cb_dispatch_param.GridToroidalOffset) % cb_dispatch_param.BaseResolution;
+
+        uint voxel_addr = voxel_coord_to_addr(voxel_coord_toroidal, cb_dispatch_param.BaseResolution);
+
         const uint view_depth_code = (uint)(view_z * 100.0f);
 
         uint origin_value;
-        InterlockedAdd(RWBufferWork[voxel_addr], 1, origin_value);
+        InterlockedAdd(RWBufferWork[voxel_addr], 50, origin_value);
     }
 }

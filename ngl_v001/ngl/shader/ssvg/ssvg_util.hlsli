@@ -15,11 +15,14 @@ struct DispatchParam
 
     float3 GridMinPos;
     float CellSize;
-    float3 GridMinPosPrev;
+    int3 GridToroidalOffset;
     float CellSizeInv;
+
+    int3 GridToroidalOffsetPrev;
+    int Dummy0;
     
-    int3 GridTroidalOffset;
-    int Dummy;
+    int3 GridCellDelta;// Toroidalではなくワールド空間Cellでのフレーム移動量.
+    int Dummy1;
 
     int2 TexHardwareDepthSize;
 };
@@ -32,14 +35,14 @@ uint voxel_coord_to_addr_linear(int3 coord, int3 resolution)
     return coord.x + coord.y * resolution.x + coord.z * resolution.x * resolution.y;
 }
 // アドレスからCoord計算(リニア).
-uint3 addr_to_voxel_coord_linear(uint addr, int3 resolution)
+int3 addr_to_voxel_coord_linear(uint addr, int3 resolution)
 {
-    uint z = addr / (resolution.x * resolution.y);
+    int z = addr / (resolution.x * resolution.y);
     addr -= z * (resolution.x * resolution.y);
-    uint y = addr / resolution.x;
+    int y = addr / resolution.x;
     addr -= y * resolution.x;
-    uint x = addr;
-    return uint3(x, y, z);
+    int x = addr;
+    return int3(x, y, z);
 }
 
 // Coordからアドレス計算.
@@ -50,14 +53,15 @@ uint voxel_coord_to_addr(int3 coord, int3 resolution)
     #endif
 }
 // アドレスからCoord計算.
-uint3 addr_to_voxel_coord(uint addr, int3 resolution)
+int3 addr_to_voxel_coord(uint addr, int3 resolution)
 {
     #if 0 == VOXEL_ADDR_MODE
-        uint z = addr / (resolution.x * resolution.y);
+        int z = addr / (resolution.x * resolution.y);
         addr -= z * (resolution.x * resolution.y);
-        uint y = addr / resolution.x;
+        int y = addr / resolution.x;
         addr -= y * resolution.x;
-        uint x = addr;
+        int x = addr;
     #endif
-    return uint3(x, y, z);
+    return int3(x, y, z);
 }
+

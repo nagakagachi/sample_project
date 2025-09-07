@@ -41,10 +41,12 @@ namespace ngl::render::app
 
         math::Vec3 grid_min_pos_ = {};
         math::Vec3 grid_min_pos_prev_ = {};
-        math::Vec3i grid_troidal_offset_ = {};
 
-        math::Vec3u base_resolution_ = math::Vec3u(64, 40, 64);
-        float   cell_size_ = 1.25f;
+        math::Vec3i grid_toroidal_offset_ = {};
+        math::Vec3i grid_toroidal_offset_prev_ = {};
+
+        math::Vec3u base_resolution_ = math::Vec3u(128, 64, 128);
+        float   cell_size_ = 1.5f;
 
         RhiBufferSet work_buffer_ = {};
     };

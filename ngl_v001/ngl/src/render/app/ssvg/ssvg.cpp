@@ -80,20 +80,31 @@ namespace ngl::render::app
         const bool is_first_dispatch = is_first_dispatch_;
         is_first_dispatch_           = false;
 
+
+        // 重視位置を若干補正.
+        #if 1
+            const math::Vec3 modified_important_point = important_point_ + important_dir_ * 5.0f;
+        #else
+            const math::Vec3 modified_important_point = important_point_;
+        #endif
         {
             grid_min_pos_prev_ = grid_min_pos_;
-            grid_min_pos_      = math::Vec3::Floor(important_point_ - base_resolution_.Cast<float>() * 0.5f * cell_size_);
+            grid_min_pos_      = math::Vec3::Floor(modified_important_point - base_resolution_.Cast<float>() * 0.5f * cell_size_);
         }
         const auto grid_min_pos_delta       = math::Vec3::Floor(grid_min_pos_ / cell_size_) - math::Vec3::Floor(grid_min_pos_prev_ / cell_size_);
         math::Vec3i grid_min_pos_delta_cell = grid_min_pos_delta.Cast<int>();
 
-        // シフトコピーをせずにTroidalにアクセスするためのオフセット. このオフセットをした後に mod を取った位置にアクセスする. その外側はInvalidateされる.
-        grid_troidal_offset_ = (((grid_troidal_offset_ + grid_min_pos_delta_cell) % base_resolution_.Cast<int>()) + base_resolution_.Cast<int>()) % base_resolution_.Cast<int>();
+        grid_toroidal_offset_prev_ = grid_toroidal_offset_;
+        // シフトコピーをせずにToroidalにアクセスするためのオフセット. このオフセットをした後に mod を取った位置にアクセスする. その外側はInvalidateされる.
+        grid_toroidal_offset_ = (((grid_toroidal_offset_ + grid_min_pos_delta_cell) % base_resolution_.Cast<int>()) + base_resolution_.Cast<int>()) % base_resolution_.Cast<int>();
 
-        std::cout << "--- " << std::endl;
-        std::cout << "grid_troidal_offset_.x " << grid_troidal_offset_.x << std::endl;
-        std::cout << "grid_troidal_offset_.y " << grid_troidal_offset_.y << std::endl;
-        std::cout << "grid_troidal_offset_.z " << grid_troidal_offset_.z << std::endl;
+        if(grid_toroidal_offset_prev_ != grid_toroidal_offset_)
+        {
+            std::cout << "--- " << std::endl;
+            std::cout << "grid_toroidal_offset_.x " << grid_toroidal_offset_.x << std::endl;
+            std::cout << "grid_toroidal_offset_.y " << grid_toroidal_offset_.y << std::endl;
+            std::cout << "grid_toroidal_offset_.z " << grid_toroidal_offset_.z << std::endl;
+        }
 
         const math::Vec2i hw_depth_size = math::Vec2i(static_cast<int>(hw_depth_tex->GetWidth()), static_cast<int>(hw_depth_tex->GetHeight()));
 
@@ -106,11 +117,14 @@ namespace ngl::render::app
 
             math::Vec3 GridMinPos;
             float CellSize;
-            math::Vec3 GridMinPosPrev;
+            math::Vec3i GridToroidalOffset;
             float CellSizeInv;
 
-            math::Vec3i GridTroidalOffset;
-            int Dummy;
+            math::Vec3i GridToroidalOffsetPrev;
+            int Dummy0;
+            
+            math::Vec3i GridCellDelta;// Toroidalではなくワールド空間Cellでのフレーム移動量.
+            int Dummy1;
 
             math::Vec2i TexHardwareDepthSize;
         };
@@ -122,11 +136,13 @@ namespace ngl::render::app
             p->Flag           = 0;
 
             p->GridMinPos     = grid_min_pos_;
-            p->GridMinPosPrev = grid_min_pos_prev_;
+            p->GridToroidalOffset = grid_toroidal_offset_;
+            p->GridToroidalOffsetPrev = grid_toroidal_offset_prev_;
+
+            p->GridCellDelta = grid_min_pos_delta_cell;
+
             p->CellSize       = cell_size_;
             p->CellSizeInv    = 1.0f / cell_size_;
-
-            p->GridTroidalOffset = grid_troidal_offset_;
 
             p->TexHardwareDepthSize = hw_depth_size;
 
