@@ -11,6 +11,7 @@ clear_voxel_cs.hlsl
 ConstantBuffer<DispatchParam> cb_dispatch_param;
 
 RWBuffer<uint>		RWBufferWork;
+RWBuffer<uint>		RWVoxelOccupancyBitmask;
 
 // DepthBufferに対してDispatch.
 [numthreads(128, 1, 1)]
@@ -26,5 +27,10 @@ void main_cs(
     if(dtid.x < voxel_count)
     {
         RWBufferWork[dtid.x] = 0;
+
+        for(int i = 0; i < PerVoxelOccupancyU32Count; ++i)
+        {
+            RWVoxelOccupancyBitmask[dtid.x * PerVoxelOccupancyU32Count + i] = 0;
+        }
     }
 }

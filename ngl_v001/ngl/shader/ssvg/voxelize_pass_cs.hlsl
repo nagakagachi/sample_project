@@ -20,9 +20,12 @@ Texture2D			TexHardwareDepth;
 SamplerState		SmpHardwareDepth;
 
 RWBuffer<uint>		RWBufferWork;
+RWBuffer<uint>		RWVoxelOccupancyBitmask;
+
+#define TILE_WIDTH 16
 
 // DepthBufferに対してDispatch.
-[numthreads(16, 16, 1)]
+[numthreads(TILE_WIDTH, TILE_WIDTH, 1)]
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,
 	uint3 gtid : SV_GroupThreadID,
@@ -40,22 +43,36 @@ void main_cs(
     float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
     float view_z = ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.x / (d * ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.y + ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.z);
 
-
-    float3 pixel_pos_ws;
-	{
-		float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, ngl_cb_sceneview.cb_proj_mtx);
-        pixel_pos_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
-	}
-
-    int3 voxel_coord = floor((pixel_pos_ws - cb_dispatch_param.GridMinPos) * cb_dispatch_param.CellSizeInv);
-    if(all(voxel_coord >= 0) && all(voxel_coord < cb_dispatch_param.BaseResolution))
+    // Skyチェック.
+    if(65535.0 > abs(view_z))
     {
-        int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.GridToroidalOffset, cb_dispatch_param.BaseResolution);
-        uint voxel_addr = voxel_coord_to_addr(voxel_coord_toroidal, cb_dispatch_param.BaseResolution);
+        // 深度->PixelWorldPosition
+        const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, ngl_cb_sceneview.cb_proj_mtx);
+        const float3 pixel_pos_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
 
-        const uint view_depth_code = (uint)(view_z * 100.0f);
+        // PixelWorldPosition->VoxelCoord
+        const float3 voxel_coordf = (pixel_pos_ws - cb_dispatch_param.GridMinPos) * cb_dispatch_param.CellSizeInv;
+        const int3 voxel_coord = floor(voxel_coordf);
+        if(all(voxel_coord >= 0) && all(voxel_coord < cb_dispatch_param.BaseResolution))
+        {
+            int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.GridToroidalOffset, cb_dispatch_param.BaseResolution);
+            uint voxel_addr = voxel_coord_to_addr(voxel_coord_toroidal, cb_dispatch_param.BaseResolution);
 
-        uint origin_value;
-        InterlockedAdd(RWBufferWork[voxel_addr], 50, origin_value);
+            // Voxelの占有数カウンタ(仮)
+            uint origin_value;
+            InterlockedAdd(RWBufferWork[voxel_addr], 1, origin_value);
+
+            // 占有ビットマスク.
+            const float3 voxel_coord_frac = saturate(voxel_coordf - voxel_coord);
+            const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * VoxelOccupancyBitmaskReso);
+            const uint bitmask_pos_x = (voxel_coord_bitmask_pos.x&VoxelOccupancyBitmaskAxisMask);
+            const uint bitmask_pos_y = (voxel_coord_bitmask_pos.y&VoxelOccupancyBitmaskAxisMask);
+            const uint bitmask_pos_z = (voxel_coord_bitmask_pos.z&VoxelOccupancyBitmaskAxisMask);
+            const uint bitmask_bit_pos = bitmask_pos_x + (bitmask_pos_y * VoxelOccupancyBitmaskReso) + (bitmask_pos_z * (VoxelOccupancyBitmaskReso*VoxelOccupancyBitmaskReso));
+            const uint bitmask_u32_index = bitmask_bit_pos / 32;
+            const uint bitmask_u32_bit_pos = bitmask_bit_pos - (bitmask_u32_index * 32);
+            const uint bitmask_append = (1 << bitmask_u32_bit_pos);
+            InterlockedOr(RWVoxelOccupancyBitmask[voxel_addr * PerVoxelOccupancyU32Count + bitmask_u32_index], bitmask_append);
+        }
     }
 }

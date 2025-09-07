@@ -17,6 +17,7 @@ ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 ConstantBuffer<DispatchParam> cb_dispatch_param;
 
 Buffer<uint>		BufferWork;
+Buffer<uint>		VoxelOccupancyBitmask;
 
 RWTexture2D<float4>	RWTexWork;
 
@@ -37,7 +38,7 @@ void main_cs(
 	const float2 screen_size_f = float2(cb_dispatch_param.TexHardwareDepthSize.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
 
-    uint2 read_voxel_xz = dtid.xy / 10;// 適当なサイズで可視化.
+    uint2 read_voxel_xz = dtid.xy / 16;// 適当なサイズで可視化.
     if(all(read_voxel_xz < cb_dispatch_param.BaseResolution.xz))
     {
         float write_data = 0.0;
@@ -46,11 +47,25 @@ void main_cs(
             // VoxelBufferから高さ方向に操作して総和を計算(表示用にY(Z)反転)
             int3 voxel_coord = int3(read_voxel_xz.x, yi, (cb_dispatch_param.BaseResolution.z - 1) - read_voxel_xz.y);
             int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.GridToroidalOffset, cb_dispatch_param.BaseResolution);
-
             uint voxel_addr = voxel_coord_to_addr(voxel_coord_toroidal, cb_dispatch_param.BaseResolution);
-            uint voxel_value = BufferWork[voxel_addr];
 
-            write_data += clamp(float(voxel_value) / 100.0, 0.0, 3.0) / (float)cb_dispatch_param.BaseResolution.y;
+            #if 0
+                uint voxel_value = BufferWork[voxel_addr];
+
+                write_data += clamp(float(voxel_value) / 100.0, 0.0, 3.0) / (float)cb_dispatch_param.BaseResolution.y;
+            #else
+                // 占有ビットマスクから可視化.
+                float occupancy = 0.0;
+                for(int obi = 0; obi < PerVoxelOccupancyU32Count; ++obi)
+                {
+                    uint bitmask_value = VoxelOccupancyBitmask[voxel_addr * PerVoxelOccupancyU32Count + obi];
+                    // ビット数を数える.
+                    occupancy += (float(countbits(bitmask_value)) / float(PerVoxelOccupancyBitCount-1));
+                }
+                occupancy /= (float)cb_dispatch_param.BaseResolution.y;
+
+                write_data += occupancy;;
+            #endif
         }
 
         RWTexWork[dtid.xy] = float4(write_data, write_data, write_data, 1.0f);

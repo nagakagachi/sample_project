@@ -5,8 +5,15 @@ ss_voxelize_util.hlsli
 
 #endif
 
-
 #include "../include/math_util.hlsli"
+
+// Cpp側と一致させる.
+// Voxelの占有度合いをビットマスク近似する際の1軸の解像度. 2の冪乗.
+#define VoxelOccupancyBitmaskResoLog2 (2)
+#define VoxelOccupancyBitmaskReso (1 << VoxelOccupancyBitmaskResoLog2)
+#define PerVoxelOccupancyBitCount (VoxelOccupancyBitmaskReso*VoxelOccupancyBitmaskReso*VoxelOccupancyBitmaskReso)
+#define PerVoxelOccupancyU32Count ((PerVoxelOccupancyBitCount + 31) / 32)
+#define VoxelOccupancyBitmaskAxisMask ((1 << (VoxelOccupancyBitmaskResoLog2 + 1)) - 1)
 
 struct DispatchParam
 {

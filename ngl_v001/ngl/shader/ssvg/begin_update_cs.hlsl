@@ -15,6 +15,7 @@ ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 ConstantBuffer<DispatchParam> cb_dispatch_param;
 
 RWBuffer<uint>		RWBufferWork;
+RWBuffer<uint>		RWVoxelOccupancyBitmask;
 
 // DepthBufferに対してDispatch.
 [numthreads(128, 1, 1)]
@@ -38,13 +39,24 @@ void main_cs(
         // 範囲外の領域に進行した場合はその領域をInvalidate.
         bool is_invalidate_area = any(voxel_coord_toroidal_curr <= 0) || any(voxel_coord_toroidal_curr >= (cb_dispatch_param.BaseResolution-1));
 
-
-        int next_value = RWBufferWork[dtid.x] - 1;
         if(is_invalidate_area)
         {
-            next_value = 0; // Invalidate領域は即座に0.
-        }
+            // 移動によってシフトしてきた無効領域.
+            RWBufferWork[dtid.x] = 0;
 
-        RWBufferWork[dtid.x] = clamp(next_value, 0, 5000);
+            for(int i = 0; i < PerVoxelOccupancyU32Count; ++i)
+            {
+                RWVoxelOccupancyBitmask[dtid.x * PerVoxelOccupancyU32Count + i] = 0;
+            }
+            
+            return;
+        }
+        else
+        {
+            const int update_work_value = int(RWBufferWork[dtid.x]) - 1;
+            RWBufferWork[dtid.x] = clamp(update_work_value, 0, 5000);
+
+            return;
+        }
     }
 }
