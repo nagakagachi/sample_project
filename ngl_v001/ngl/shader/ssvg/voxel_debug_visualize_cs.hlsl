@@ -45,9 +45,7 @@ void main_cs(
         {
             // VoxelBufferから高さ方向に操作して総和を計算(表示用にY(Z)反転)
             int3 voxel_coord = int3(read_voxel_xz.x, yi, (cb_dispatch_param.BaseResolution.z - 1) - read_voxel_xz.y);
-            // Toroidalマッピング.
-            int3 voxel_coord_toroidal = (voxel_coord + cb_dispatch_param.GridToroidalOffset) % cb_dispatch_param.BaseResolution;
-            //int3 voxel_coord_toroidal = voxel_coord;// デバッグ用でToroidalマッピングなし.
+            int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.GridToroidalOffset, cb_dispatch_param.BaseResolution);
 
             uint voxel_addr = voxel_coord_to_addr(voxel_coord_toroidal, cb_dispatch_param.BaseResolution);
             uint voxel_value = BufferWork[voxel_addr];

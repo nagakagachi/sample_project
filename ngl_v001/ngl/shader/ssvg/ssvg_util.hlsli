@@ -65,3 +65,9 @@ int3 addr_to_voxel_coord(uint addr, int3 resolution)
     return int3(x, y, z);
 }
 
+
+// リニアなVoxel座標をループするToroidalマッピングに変換する.
+int3 voxel_coord_toroidal_mapping(int3 voxel_coord, int3 toroidal_offset, int3 resolution)
+{
+    return (voxel_coord + toroidal_offset) % resolution;
+}
