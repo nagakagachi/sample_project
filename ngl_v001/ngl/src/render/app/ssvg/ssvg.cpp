@@ -16,11 +16,11 @@
 namespace ngl::render::app
 {
     // シェーダ側と一致させる.
-    static constexpr u32 per_voxel_occupancy_reso_log2 = 2;// 1Voxelの占有度合いをビットマスク近似する際の1軸の解像度.
-    static constexpr u32 per_voxel_occupancy_reso = (1 << per_voxel_occupancy_reso_log2);// 1Voxelの占有度合いをビットマスク近似する際の1軸の解像度.
+    // Voxelの占有度合いをビットマスク近似する際の1軸の解像度. 2の冪でなくても良い.
+    static constexpr u32 per_voxel_occupancy_reso = (8);// 1Voxelの占有度合いをビットマスク近似する際の1軸の解像度.
     static constexpr u32 per_voxel_occupancy_bit_count = per_voxel_occupancy_reso*per_voxel_occupancy_reso*per_voxel_occupancy_reso;
     static constexpr u32 per_voxel_occupancy_bit_u32_count = (per_voxel_occupancy_bit_count + 31) / 32;
-    static constexpr u32 per_voxel_occupancy_bitmask_axis_mask = ((1 << (per_voxel_occupancy_reso_log2 + 1)) - 1);// 1Voxelの占有度合いをビットマスク近似する際の1軸の解像度.
+    static constexpr u32 per_voxel_occupancy_bitmask_axis_mask = ((1 << (per_voxel_occupancy_reso + 1)) - 1);// 1Voxelの占有度合いをビットマスク近似する際の1軸の解像度.
 
     SsVg::~SsVg()
     {

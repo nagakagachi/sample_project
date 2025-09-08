@@ -8,12 +8,12 @@ ss_voxelize_util.hlsli
 #include "../include/math_util.hlsli"
 
 // Cpp側と一致させる.
-// Voxelの占有度合いをビットマスク近似する際の1軸の解像度. 2の冪乗.
-#define VoxelOccupancyBitmaskResoLog2 (2)
-#define VoxelOccupancyBitmaskReso (1 << VoxelOccupancyBitmaskResoLog2)
+// Voxelの占有度合いをビットマスク近似する際の1軸の解像度. 2の冪でなくても良い.
+#define VoxelOccupancyBitmaskReso (8)
 #define PerVoxelOccupancyBitCount (VoxelOccupancyBitmaskReso*VoxelOccupancyBitmaskReso*VoxelOccupancyBitmaskReso)
 #define PerVoxelOccupancyU32Count ((PerVoxelOccupancyBitCount + 31) / 32)
-#define VoxelOccupancyBitmaskAxisMask ((1 << (VoxelOccupancyBitmaskResoLog2 + 1)) - 1)
+#define VoxelOccupancyBitmaskAxisMask ((1 << (VoxelOccupancyBitmaskReso + 1)) - 1)
+
 
 struct DispatchParam
 {
@@ -78,3 +78,13 @@ int3 voxel_coord_toroidal_mapping(int3 voxel_coord, int3 toroidal_offset, int3 r
 {
     return (voxel_coord + toroidal_offset) % resolution;
 }
+
+// Bitmask Voxel内の座標を元にBit要素を読み取るための情報を計算.
+void calc_bitmask_voxel_offset_and_bitlocation(out uint out_u32_offset, out uint out_bit_location, uint3 bit_position_in_voxel)
+{
+    const uint3 bit_pos = (bit_position_in_voxel);
+    const uint bit_linear_pos = bit_pos.x + (bit_pos.y * VoxelOccupancyBitmaskReso) + (bit_pos.z * (VoxelOccupancyBitmaskReso * VoxelOccupancyBitmaskReso));
+    out_u32_offset = bit_linear_pos / 32;
+    out_bit_location = bit_linear_pos - (out_u32_offset * 32);
+}
+

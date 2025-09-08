@@ -65,14 +65,13 @@ void main_cs(
             // 占有ビットマスク.
             const float3 voxel_coord_frac = saturate(voxel_coordf - voxel_coord);
             const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * VoxelOccupancyBitmaskReso);
-            const uint bitmask_pos_x = (voxel_coord_bitmask_pos.x&VoxelOccupancyBitmaskAxisMask);
-            const uint bitmask_pos_y = (voxel_coord_bitmask_pos.y&VoxelOccupancyBitmaskAxisMask);
-            const uint bitmask_pos_z = (voxel_coord_bitmask_pos.z&VoxelOccupancyBitmaskAxisMask);
-            const uint bitmask_bit_pos = bitmask_pos_x + (bitmask_pos_y * VoxelOccupancyBitmaskReso) + (bitmask_pos_z * (VoxelOccupancyBitmaskReso*VoxelOccupancyBitmaskReso));
-            const uint bitmask_u32_index = bitmask_bit_pos / 32;
-            const uint bitmask_u32_bit_pos = bitmask_bit_pos - (bitmask_u32_index * 32);
+            
+            uint bitmask_u32_offset;
+            uint bitmask_u32_bit_pos;
+            calc_bitmask_voxel_offset_and_bitlocation(bitmask_u32_offset, bitmask_u32_bit_pos, voxel_coord_bitmask_pos);
             const uint bitmask_append = (1 << bitmask_u32_bit_pos);
-            InterlockedOr(RWVoxelOccupancyBitmask[voxel_addr * PerVoxelOccupancyU32Count + bitmask_u32_index], bitmask_append);
+
+            InterlockedOr(RWVoxelOccupancyBitmask[voxel_addr * PerVoxelOccupancyU32Count + bitmask_u32_offset], bitmask_append);
         }
     }
 }

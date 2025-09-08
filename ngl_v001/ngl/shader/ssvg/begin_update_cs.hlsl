@@ -56,6 +56,12 @@ void main_cs(
             const int update_work_value = int(RWBufferWork[dtid.x]) - 1;
             RWBufferWork[dtid.x] = clamp(update_work_value, 0, 5000);
 
+            // bitmask voxelは検証のため毎フレクリア.
+            for(int i = 0; i < PerVoxelOccupancyU32Count; ++i)
+            {
+                RWVoxelOccupancyBitmask[dtid.x * PerVoxelOccupancyU32Count + i] = 0;
+            }
+
             return;
         }
     }
