@@ -20,7 +20,6 @@ namespace ngl::render::app
     static constexpr u32 per_voxel_occupancy_reso = (8);// 1Voxelの占有度合いをビットマスク近似する際の1軸の解像度.
     static constexpr u32 per_voxel_occupancy_bit_count = per_voxel_occupancy_reso*per_voxel_occupancy_reso*per_voxel_occupancy_reso;
     static constexpr u32 per_voxel_occupancy_bit_u32_count = (per_voxel_occupancy_bit_count + 31) / 32;
-    static constexpr u32 per_voxel_occupancy_bitmask_axis_mask = ((1 << (per_voxel_occupancy_reso + 1)) - 1);// 1Voxelの占有度合いをビットマスク近似する際の1軸の解像度.
 
     SsVg::~SsVg()
     {
@@ -99,28 +98,39 @@ namespace ngl::render::app
 
 
         // 重視位置を若干補正.
-        #if 1
+        #if 0
             const math::Vec3 modified_important_point = important_point_ + important_dir_ * 5.0f;
         #else
             const math::Vec3 modified_important_point = important_point_;
         #endif
         {
-            grid_min_pos_prev_ = grid_min_pos_;
-            grid_min_pos_      = math::Vec3::Floor(modified_important_point - base_resolution_.Cast<float>() * 0.5f * cell_size_);
+            // 中心を離散CELLIDで保持.
+            grid_center_cell_id_prev_ = grid_center_cell_id_;
+            grid_center_cell_id_      = (modified_important_point / cell_size_).Cast<int>();
+
+            // 離散CELLIDからGridMin情報を復元.
+            grid_min_pos_prev_ = grid_center_cell_id_prev_.Cast<float>() * cell_size_ - base_resolution_.Cast<float>() * 0.5f * cell_size_;
+            grid_min_pos_      = grid_center_cell_id_.Cast<float>() * cell_size_ - base_resolution_.Cast<float>() * 0.5f * cell_size_;
         }
-        const auto grid_min_pos_delta       = math::Vec3::Floor(grid_min_pos_ / cell_size_) - math::Vec3::Floor(grid_min_pos_prev_ / cell_size_);
-        math::Vec3i grid_min_pos_delta_cell = grid_min_pos_delta.Cast<int>();
+        math::Vec3i grid_min_pos_delta_cell = grid_center_cell_id_ - grid_center_cell_id_prev_;
+
 
         grid_toroidal_offset_prev_ = grid_toroidal_offset_;
         // シフトコピーをせずにToroidalにアクセスするためのオフセット. このオフセットをした後に mod を取った位置にアクセスする. その外側はInvalidateされる.
         grid_toroidal_offset_ = (((grid_toroidal_offset_ + grid_min_pos_delta_cell) % base_resolution_.Cast<int>()) + base_resolution_.Cast<int>()) % base_resolution_.Cast<int>();
 
-        if(grid_toroidal_offset_prev_ != grid_toroidal_offset_ && false)
+        if(grid_toroidal_offset_prev_ != grid_toroidal_offset_)
         {
             std::cout << "--- " << std::endl;
             std::cout << "grid_toroidal_offset_.x " << grid_toroidal_offset_.x << std::endl;
             std::cout << "grid_toroidal_offset_.y " << grid_toroidal_offset_.y << std::endl;
             std::cout << "grid_toroidal_offset_.z " << grid_toroidal_offset_.z << std::endl;
+
+            std::cout << "grid_min_pos_.x " << grid_min_pos_.x << std::endl;
+            std::cout << "grid_min_pos_.y " << grid_min_pos_.y << std::endl;
+            std::cout << "grid_min_pos_.z " << grid_min_pos_.z << std::endl;
+            
+            std::cout << std::endl;
         }
 
         const math::Vec2i hw_depth_size = math::Vec2i(static_cast<int>(hw_depth_tex->GetWidth()), static_cast<int>(hw_depth_tex->GetHeight()));
@@ -153,6 +163,7 @@ namespace ngl::render::app
             p->Flag           = 0;
 
             p->GridMinPos     = grid_min_pos_;
+            
             p->GridToroidalOffset = grid_toroidal_offset_;
             p->GridToroidalOffsetPrev = grid_toroidal_offset_prev_;
 

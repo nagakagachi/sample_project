@@ -59,6 +59,7 @@ static bool dbgw_view_gbuffer                     = false;
 static bool dbgw_view_dshadow                     = false;
 static float dbgw_dlit_angle_v                    = 0.4f;
 static float dbgw_dlit_angle_h                    = 4.1f;
+static float dbgw_camera_speed                    = 10.0f;
 
 static float dbgw_stat_primary_rtg_construct = {};
 static float dbgw_stat_primary_rtg_compile   = {};
@@ -428,7 +429,7 @@ bool AppGame::Initialize()
             }
 
             // その他モデル.
-            if (true)
+            if (false)
             {
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
@@ -486,7 +487,7 @@ bool AppGame::Initialize()
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
 
-#if 1
+#if 0
             // 適当にたくさんモデル生成.
             for (int i = 0; i < 50; ++i)
             {
@@ -514,7 +515,7 @@ bool AppGame::Initialize()
                 test_move_mesh_entity_array_.push_back(mc.get());
             }
 #endif
-            if (true)
+            if (false)
             {
                 // SwTessellationのテスト.
                 auto mc = std::make_shared<ngl::render::app::SwTessellationMesh>();
@@ -682,6 +683,8 @@ bool AppGame::ExecuteApp()
         {
             ImGui::Text("Camera Dir:			%.3f, %.3f, %.3f", camera_pose_.GetColumn2().x, camera_pose_.GetColumn2().y, camera_pose_.GetColumn2().z);
             ImGui::Text("Camera Pos:			%.3f, %.3f, %.3f", camera_pos_.x, camera_pos_.y, camera_pos_.z );
+
+            ImGui::SliderFloat("Camera Speed", &dbgw_camera_speed, 0.5f, 100.0f);
         }
 
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
@@ -1029,7 +1032,7 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
 
 void PlayerController::UpdateFrame(ngl::platform::CoreWindow& window, float delta_sec, const ngl::math::Mat33& prev_camera_pose, const ngl::math::Vec3& prev_camera_pos)
 {
-    float camera_translate_speed = 10.0f;
+    float camera_translate_speed = dbgw_camera_speed;
 
     const auto mouse_pos       = window.Dep().GetMousePosition();
     const auto mouse_pos_delta = window.Dep().GetMousePositionDelta();

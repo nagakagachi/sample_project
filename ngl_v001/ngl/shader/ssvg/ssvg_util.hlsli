@@ -12,7 +12,6 @@ ss_voxelize_util.hlsli
 #define VoxelOccupancyBitmaskReso (8)
 #define PerVoxelOccupancyBitCount (VoxelOccupancyBitmaskReso*VoxelOccupancyBitmaskReso*VoxelOccupancyBitmaskReso)
 #define PerVoxelOccupancyU32Count ((PerVoxelOccupancyBitCount + 31) / 32)
-#define VoxelOccupancyBitmaskAxisMask ((1 << (VoxelOccupancyBitmaskReso + 1)) - 1)
 
 
 struct DispatchParam

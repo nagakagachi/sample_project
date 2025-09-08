@@ -38,6 +38,10 @@ namespace ngl::render::app
         math::Vec3 important_point_ = {0,0,0};
         math::Vec3 important_dir_ = {0,0,1};
 
+        
+        math::Vec3i grid_center_cell_id_ = {};
+        math::Vec3i grid_center_cell_id_prev_ = {};
+
 
         math::Vec3 grid_min_pos_ = {};
         math::Vec3 grid_min_pos_prev_ = {};
@@ -45,7 +49,7 @@ namespace ngl::render::app
         math::Vec3i grid_toroidal_offset_ = {};
         math::Vec3i grid_toroidal_offset_prev_ = {};
 
-        math::Vec3u base_resolution_ = math::Vec3u(32, 32, 32);
+        math::Vec3u base_resolution_ = math::Vec3u(32);
         float   cell_size_ = 6.0f;
 
         RhiBufferSet work_buffer_ = {};

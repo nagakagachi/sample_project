@@ -56,7 +56,7 @@ void main_cs(
                     uint voxel_value = BufferWork[voxel_addr];
 
                     write_data += clamp(float(voxel_value) / 100.0, 0.0, 3.0) / (float)cb_dispatch_param.BaseResolution.y;
-                #elif 1
+                #else
                     // 占有ビットマスクから密度計算.
                     float occupancy = 0.0;
                     for(int obi = 0; obi < PerVoxelOccupancyU32Count; ++obi)
@@ -103,7 +103,7 @@ void main_cs(
                 float occupancy = float(occupancy_bit);
                 occupancy /= (float)bv_full_reso.y;
 
-                write_data += occupancy * 10.0;
+                write_data += occupancy * 8.0;
             }
 
             RWTexWork[dtid.xy] = float4(write_data, write_data, write_data, 1.0f);

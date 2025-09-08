@@ -62,8 +62,9 @@ void main_cs(
             uint origin_value;
             InterlockedAdd(RWBufferWork[voxel_addr], 1, origin_value);
 
+
             // 占有ビットマスク.
-            const float3 voxel_coord_frac = saturate(voxel_coordf - voxel_coord);
+            const float3 voxel_coord_frac = frac(voxel_coordf);
             const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * VoxelOccupancyBitmaskReso);
             
             uint bitmask_u32_offset;
