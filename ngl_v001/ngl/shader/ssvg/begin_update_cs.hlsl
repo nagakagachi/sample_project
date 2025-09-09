@@ -15,7 +15,7 @@ ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 ConstantBuffer<DispatchParam> cb_dispatch_param;
 
 RWBuffer<uint>		RWBufferWork;
-RWBuffer<uint>		RWVoxelOccupancyBitmask;
+RWBuffer<uint>		RWOccupancyBitmaskVoxel;
 
 // DepthBufferに対してDispatch.
 [numthreads(128, 1, 1)]
@@ -33,20 +33,20 @@ void main_cs(
         int3 voxel_coord = addr_to_voxel_coord(dtid.x, cb_dispatch_param.BaseResolution);
 
         // 移動によるInvalidateチェック. 1ボクセル分だけ反対側に入り込んでしまうが, 条件調査が難しいため暫定とする.
-        // バッファ上のVoxelアドレスをToroidalマッピング前の座標に変換.
+        // バッファ上のVoxelアドレスをToroidalマッピング前の座標に変換. 修正版.
         int3 linear_voxel_coord = (voxel_coord - cb_dispatch_param.GridToroidalOffsetPrev + cb_dispatch_param.BaseResolution) % cb_dispatch_param.BaseResolution;
-        int3 voxel_coord_toroidal_curr = linear_voxel_coord + cb_dispatch_param.GridCellDelta;
-        // 範囲外の領域に進行した場合はその領域をInvalidate.
-        bool is_invalidate_area = any(voxel_coord_toroidal_curr <= 0) || any(voxel_coord_toroidal_curr >= (cb_dispatch_param.BaseResolution-1));
+        int3 voxel_coord_toroidal_curr = linear_voxel_coord - cb_dispatch_param.GridCellDelta;
+        bool is_invalidate_area = any(voxel_coord_toroidal_curr < 0) || any(voxel_coord_toroidal_curr >= (cb_dispatch_param.BaseResolution));// 範囲外の領域に進行した場合はその領域をInvalidate.
 
         if(is_invalidate_area)
         {
             // 移動によってシフトしてきた無効領域.
             RWBufferWork[dtid.x] = 0;
 
-            for(int i = 0; i < PerVoxelOccupancyU32Count; ++i)
+            // obvoxelも無効領域をクリア.
+            for(int i = 0; i < k_per_voxel_occupancy_u32_count; ++i)
             {
-                RWVoxelOccupancyBitmask[dtid.x * PerVoxelOccupancyU32Count + i] = 0;
+                RWOccupancyBitmaskVoxel[dtid.x * k_per_voxel_occupancy_u32_count + i] = 0;
             }
             
             return;
@@ -55,14 +55,6 @@ void main_cs(
         {
             const int update_work_value = int(RWBufferWork[dtid.x]) - 1;
             RWBufferWork[dtid.x] = clamp(update_work_value, 0, 5000);
-
-            #if 0
-                // bitmask voxelは検証のため毎フレクリア.
-                for(int i = 0; i < PerVoxelOccupancyU32Count; ++i)
-                {
-                    RWVoxelOccupancyBitmask[dtid.x * PerVoxelOccupancyU32Count + i] = 0;
-                }
-            #endif
 
             return;
         }

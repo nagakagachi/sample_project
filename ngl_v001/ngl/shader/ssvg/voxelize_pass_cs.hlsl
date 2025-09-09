@@ -20,7 +20,7 @@ Texture2D			TexHardwareDepth;
 SamplerState		SmpHardwareDepth;
 
 RWBuffer<uint>		RWBufferWork;
-RWBuffer<uint>		RWVoxelOccupancyBitmask;
+RWBuffer<uint>		RWOccupancyBitmaskVoxel;
 
 #define TILE_WIDTH 16
 
@@ -65,14 +65,14 @@ void main_cs(
 
             // 占有ビットマスク.
             const float3 voxel_coord_frac = frac(voxel_coordf);
-            const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * VoxelOccupancyBitmaskReso);
+            const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_per_voxel_occupancy_reso);
             
             uint bitmask_u32_offset;
             uint bitmask_u32_bit_pos;
-            calc_bitmask_voxel_offset_and_bitlocation(bitmask_u32_offset, bitmask_u32_bit_pos, voxel_coord_bitmask_pos);
+            calc_occupancy_bitmask_voxel_inner_bit_info(bitmask_u32_offset, bitmask_u32_bit_pos, voxel_coord_bitmask_pos);
             const uint bitmask_append = (1 << bitmask_u32_bit_pos);
 
-            InterlockedOr(RWVoxelOccupancyBitmask[voxel_addr * PerVoxelOccupancyU32Count + bitmask_u32_offset], bitmask_append);
+            InterlockedOr(RWOccupancyBitmaskVoxel[voxel_addr * k_per_voxel_occupancy_u32_count + bitmask_u32_offset], bitmask_append);
         }
     }
 }

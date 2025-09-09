@@ -17,9 +17,9 @@ namespace ngl::render::app
 {
     // シェーダ側と一致させる.
     // Voxelの占有度合いをビットマスク近似する際の1軸の解像度. 2の冪でなくても良い.
-    static constexpr u32 per_voxel_occupancy_reso = (8);// 1Voxelの占有度合いをビットマスク近似する際の1軸の解像度.
-    static constexpr u32 per_voxel_occupancy_bit_count = per_voxel_occupancy_reso*per_voxel_occupancy_reso*per_voxel_occupancy_reso;
-    static constexpr u32 per_voxel_occupancy_bit_u32_count = (per_voxel_occupancy_bit_count + 31) / 32;
+    static constexpr u32 k_per_voxel_occupancy_reso = (8);// 1Voxelの占有度合いをビットマスク近似する際の1軸の解像度.
+    static constexpr u32 k_per_voxel_occupancy_bit_count = k_per_voxel_occupancy_reso*k_per_voxel_occupancy_reso*k_per_voxel_occupancy_reso;
+    static constexpr u32 k_per_voxel_occupancy_u32_count = (k_per_voxel_occupancy_bit_count + 31) / 32;
 
     SsVg::~SsVg()
     {
@@ -65,10 +65,10 @@ namespace ngl::render::app
         }
         {
             const u32 voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
-            voxel_occupancy_bitmask_.InitializeAsTyped(p_device,
+            occupancy_bitmask_voxel_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = 4,
-                                               .element_count     = voxel_count * per_voxel_occupancy_bit_u32_count,
+                                               .element_count     = voxel_count * k_per_voxel_occupancy_u32_count,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
@@ -183,14 +183,14 @@ namespace ngl::render::app
             ngl::rhi::DescriptorSetDep desc_set = {};
             pso_clear_voxel_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
             pso_clear_voxel_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
-            pso_clear_voxel_->SetView(&desc_set, "RWVoxelOccupancyBitmask", voxel_occupancy_bitmask_.uav.Get());
+            pso_clear_voxel_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
 
             p_command_list->SetPipelineState(pso_clear_voxel_.Get());
             p_command_list->SetDescriptorSet(pso_clear_voxel_.Get(), &desc_set);
             pso_clear_voxel_->DispatchHelper(p_command_list, voxel_count, 1, 1);  // Voxel Dispatch.
 
             p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
-            p_command_list->ResourceUavBarrier(voxel_occupancy_bitmask_.buffer.Get());
+            p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
         }
 
         {
@@ -198,14 +198,14 @@ namespace ngl::render::app
             pso_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
             pso_begin_update_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
             pso_begin_update_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
-            pso_begin_update_->SetView(&desc_set, "RWVoxelOccupancyBitmask", voxel_occupancy_bitmask_.uav.Get());
+            pso_begin_update_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
 
             p_command_list->SetPipelineState(pso_begin_update_.Get());
             p_command_list->SetDescriptorSet(pso_begin_update_.Get(), &desc_set);
             pso_begin_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);  // Screen処理でDispatch.
 
             p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
-            p_command_list->ResourceUavBarrier(voxel_occupancy_bitmask_.buffer.Get());
+            p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
         }
 
         {
@@ -214,14 +214,14 @@ namespace ngl::render::app
             pso_voxelize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
             pso_voxelize_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
             pso_voxelize_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
-            pso_voxelize_->SetView(&desc_set, "RWVoxelOccupancyBitmask", voxel_occupancy_bitmask_.uav.Get());
+            pso_voxelize_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
 
             p_command_list->SetPipelineState(pso_voxelize_.Get());
             p_command_list->SetDescriptorSet(pso_voxelize_.Get(), &desc_set);
             pso_voxelize_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);  // Screen処理でDispatch.
 
             p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
-            p_command_list->ResourceUavBarrier(voxel_occupancy_bitmask_.buffer.Get());
+            p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
         }
         {
             const math::Vec2i work_tex_size = math::Vec2i(static_cast<int>(work_tex->GetWidth()), static_cast<int>(work_tex->GetHeight()));
@@ -231,7 +231,7 @@ namespace ngl::render::app
             pso_debug_visualize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
             pso_debug_visualize_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
             pso_debug_visualize_->SetView(&desc_set, "BufferWork", work_buffer_.srv.Get());
-            pso_debug_visualize_->SetView(&desc_set, "VoxelOccupancyBitmask", voxel_occupancy_bitmask_.srv.Get());
+            pso_debug_visualize_->SetView(&desc_set, "VoxelOccupancyBitmask", occupancy_bitmask_voxel_.srv.Get());
             pso_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
 
             p_command_list->SetPipelineState(pso_debug_visualize_.Get());
