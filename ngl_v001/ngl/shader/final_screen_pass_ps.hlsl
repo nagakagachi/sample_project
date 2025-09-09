@@ -159,7 +159,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		}
 		if(cb_final_screen_pass.enable_ssvg)
 		{
-    		const float k_ssvg_debug_height = 0.51;
+    		const float k_ssvg_debug_height = 0.54;
 			const float2 debug_area_size = float2(k_ssvg_debug_height, k_ssvg_debug_height);
 			const float2 debug_area_lt = float2(0.0, 1.0 - k_ssvg_debug_height);
 			const float2 debug_area_br = debug_area_lt + debug_area_size;
