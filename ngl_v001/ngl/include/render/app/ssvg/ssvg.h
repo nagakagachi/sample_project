@@ -49,8 +49,8 @@ namespace ngl::render::app
         math::Vec3i grid_toroidal_offset_ = {};
         math::Vec3i grid_toroidal_offset_prev_ = {};
 
-        math::Vec3u base_resolution_ = math::Vec3u(16);
-        float   cell_size_ = 4.0f;
+        math::Vec3u base_resolution_ = math::Vec3u(64, 64, 64);
+        float   cell_size_ = 0.5f;
 
         RhiBufferSet work_buffer_ = {};
         RhiBufferSet occupancy_bitmask_voxel_ = {};

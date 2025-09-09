@@ -42,6 +42,7 @@ namespace ngl::render::task
 			
 			bool debugview_gbuffer = false;
 			bool debugview_dshadow = false;
+			bool debugview_ssvg = false;
 		};
 		SetupDesc desc_{};
 		bool is_render_skip_debug{};
@@ -234,7 +235,7 @@ namespace ngl::render::task
 
 						p_mapped->enable_gbuffer = desc_.debugview_gbuffer;
 						p_mapped->enable_dshadow = desc_.debugview_dshadow;
-						p_mapped->enable_ssvg = desc_.debugview_gbuffer;
+						p_mapped->enable_ssvg = desc_.debugview_ssvg;
 
 						cbh->buffer_.Unmap();
 					}

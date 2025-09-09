@@ -231,7 +231,7 @@ namespace ngl::render::app
             pso_debug_visualize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
             pso_debug_visualize_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
             pso_debug_visualize_->SetView(&desc_set, "BufferWork", work_buffer_.srv.Get());
-            pso_debug_visualize_->SetView(&desc_set, "VoxelOccupancyBitmask", occupancy_bitmask_voxel_.srv.Get());
+            pso_debug_visualize_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
             pso_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
 
             p_command_list->SetPipelineState(pso_debug_visualize_.Get());

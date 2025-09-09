@@ -374,6 +374,7 @@ namespace ngl::test
 
 							setup_desc.debugview_gbuffer = render_frame_desc.debugview_gbuffer;
 							setup_desc.debugview_dshadow = render_frame_desc.debugview_dshadow;
+                            setup_desc.debugview_ssvg = render_frame_desc.debugview_ssvg;
 						}
 						
 						task_final->Setup(rtg_builder, p_device, view_info, h_swapchain,

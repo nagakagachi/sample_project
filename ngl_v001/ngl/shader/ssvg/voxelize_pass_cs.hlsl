@@ -40,6 +40,9 @@ void main_cs(
 	const float2 screen_size_f = float2(cb_dispatch_param.TexHardwareDepthSize.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
 
+
+    // Tile単位で処理やAtomic書き出しをまとめることで効率化可能なはず.
+
     float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
     float view_z = ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.x / (d * ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.y + ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.z);
 

@@ -57,6 +57,7 @@ static bool dbgw_enable_raytrace_pass             = false;
 static bool dbgw_view_half_dot_gray               = false;
 static bool dbgw_view_gbuffer                     = false;
 static bool dbgw_view_dshadow                     = false;
+static bool dbgw_view_ssvg                        = false;
 static float dbgw_dlit_angle_v                    = 0.4f;
 static float dbgw_dlit_angle_h                    = 4.1f;
 static float dbgw_camera_speed                    = 10.0f;
@@ -727,6 +728,7 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("View GBuffer", &dbgw_view_gbuffer);
             ImGui::Checkbox("View Directional Shadow Atlas", &dbgw_view_dshadow);
             ImGui::Checkbox("View Half Dot Gray", &dbgw_view_half_dot_gray);
+            ImGui::Checkbox("View SSVG", &dbgw_view_ssvg);
         }
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Directional Light"))
@@ -1008,6 +1010,7 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
 
                 render_frame_desc.debugview_gbuffer = dbgw_view_gbuffer;
                 render_frame_desc.debugview_dshadow = dbgw_view_dshadow;
+                render_frame_desc.debugview_ssvg = dbgw_view_ssvg;
             }
         }
 

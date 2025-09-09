@@ -32,7 +32,7 @@ void main_cs(
     {
         int3 voxel_coord = addr_to_voxel_coord(dtid.x, cb_dispatch_param.BaseResolution);
 
-        // 移動によるInvalidateチェック. 1ボクセル分だけ反対側に入り込んでしまうが, 条件調査が難しいため暫定とする.
+        // 移動によるInvalidateチェック..
         // バッファ上のVoxelアドレスをToroidalマッピング前の座標に変換. 修正版.
         int3 linear_voxel_coord = (voxel_coord - cb_dispatch_param.GridToroidalOffsetPrev + cb_dispatch_param.BaseResolution) % cb_dispatch_param.BaseResolution;
         int3 voxel_coord_toroidal_curr = linear_voxel_coord - cb_dispatch_param.GridCellDelta;
