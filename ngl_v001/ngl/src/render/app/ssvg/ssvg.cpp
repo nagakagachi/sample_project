@@ -114,29 +114,13 @@ namespace ngl::render::app
         }
         math::Vec3i grid_min_pos_delta_cell = grid_center_cell_id_ - grid_center_cell_id_prev_;
 
-
         grid_toroidal_offset_prev_ = grid_toroidal_offset_;
         // シフトコピーをせずにToroidalにアクセスするためのオフセット. このオフセットをした後に mod を取った位置にアクセスする. その外側はInvalidateされる.
         grid_toroidal_offset_ = (((grid_toroidal_offset_ + grid_min_pos_delta_cell) % base_resolution_.Cast<int>()) + base_resolution_.Cast<int>()) % base_resolution_.Cast<int>();
 
-        if(grid_toroidal_offset_prev_ != grid_toroidal_offset_)
-        {
-            std::cout << "--- " << std::endl;
-            std::cout << "grid_toroidal_offset_.x " << grid_toroidal_offset_.x << std::endl;
-            std::cout << "grid_toroidal_offset_.y " << grid_toroidal_offset_.y << std::endl;
-            std::cout << "grid_toroidal_offset_.z " << grid_toroidal_offset_.z << std::endl;
-
-            std::cout << "grid_min_pos_.x " << grid_min_pos_.x << std::endl;
-            std::cout << "grid_min_pos_.y " << grid_min_pos_.y << std::endl;
-            std::cout << "grid_min_pos_.z " << grid_min_pos_.z << std::endl;
-            
-            std::cout << std::endl;
-        }
-
         const math::Vec2i hw_depth_size = math::Vec2i(static_cast<int>(hw_depth_tex->GetWidth()), static_cast<int>(hw_depth_tex->GetHeight()));
 
         const u32 voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
-
         struct DispatchParam
         {
             math::Vec3i BaseResolution;
@@ -192,7 +176,7 @@ namespace ngl::render::app
             p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
             p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
         }
-
+        // Begin Update Pass.
         {
             ngl::rhi::DescriptorSetDep desc_set = {};
             pso_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
@@ -207,7 +191,7 @@ namespace ngl::render::app
             p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
             p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
         }
-
+        // Voxelization Pass.
         {
             ngl::rhi::DescriptorSetDep desc_set = {};
             pso_voxelize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
@@ -223,6 +207,8 @@ namespace ngl::render::app
             p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
             p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
         }
+
+        // デバッグ描画.
         {
             const math::Vec2i work_tex_size = math::Vec2i(static_cast<int>(work_tex->GetWidth()), static_cast<int>(work_tex->GetHeight()));
 
