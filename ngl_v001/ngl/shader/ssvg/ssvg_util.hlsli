@@ -123,32 +123,31 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
 };
 
 
-float trace_ray_bitmask_voxel_inner(
+// 単一の bitmask voxel 内をトレースする. 内部ビットセルは走査せずに非ゼロのビットがあればボクセルとヒットしたものとする簡易版.
+//  return : [0.0, 1.0] (ヒット無しの場合は元の curr_ray_t を返す).
+float trace_ray_bitmask_voxel_inner_simple(
     Buffer<uint> occupancy_bitmask_voxel, uint voxel_addr,
     float3 cell_delta_accum, float cell_ray_length_inv,
     float curr_ray_t
 )
 {
     // 1Voxelを構成するビットマスク情報を走査.
-    for(int i = 0; i < k_per_voxel_occupancy_u32_count; ++i)
+    int i = 0;
+    for(; i < k_per_voxel_occupancy_u32_count; ++i)
     {
         const uint voxel_elem_bitmask = occupancy_bitmask_voxel[voxel_addr * k_per_voxel_occupancy_u32_count + i];
         // 非0ビット要素を見つける場でスキップ, 内部ビットまでは確認しない簡易版.
-        if(0 == voxel_elem_bitmask)
-            continue;
-
-        // ひとつでも1のビットがあればヒットしたものとしてtを計算して終了.   
-        const float cur_cell_delta = min(cell_delta_accum.x, min(cell_delta_accum.y, cell_delta_accum.z));
-        // ヒット判定処理パラメータ構築. このトレースではcur_cell_deltaが直接レイ上の位置になるため, レイの長さで正規化した値を渡す.
-        const float ray_t = cur_cell_delta * cell_ray_length_inv;
-        if (curr_ray_t > ray_t)
-        {
-            curr_ray_t = ray_t;// 最近接 t を更新.
-            break;
-        }
+        if(0 != voxel_elem_bitmask) break;
     }
 
-    return curr_ray_t;
+    if(i >= k_per_voxel_occupancy_u32_count)
+        return curr_ray_t; // ヒット無し.
+
+    // 最小コンポーネント値.
+    const float cur_cell_delta = min(cell_delta_accum.x, min(cell_delta_accum.y, cell_delta_accum.z));
+    // cur_cell_deltaはCell単位空間の値であるため, レイの長さで正規化したt値を計算.
+    const float ray_t = cur_cell_delta * cell_ray_length_inv;
+    return min(curr_ray_t, ray_t);
 }
 
 
@@ -206,7 +205,7 @@ float trace_ray_vs_occupancy_bitmask_voxel(
         // 読み取り用のマッピングをして読み取り.
         const uint voxel_addr = voxel_coord_to_addr(voxel_coord_toroidal_mapping(trace_cell_id, grid_toroidal_offset, grid_resolution), grid_resolution);
 
-        curr_ray_t = trace_ray_bitmask_voxel_inner(
+        curr_ray_t = trace_ray_bitmask_voxel_inner_simple(
             occupancy_bitmask_voxel, voxel_addr,
             cell_delta_accum, ray_d_c_len_inv,
             curr_ray_t
@@ -214,10 +213,10 @@ float trace_ray_vs_occupancy_bitmask_voxel(
 
         // 次のCellへ移動.
         {
-            cell_delta_accum = cell_delta_offset + float3(total_cell_step) * cell_delta;
+            cell_delta_accum = cell_delta_offset + float3(total_cell_step) * cell_delta;// 整数セルで進行しながら誤差を回避しつつ毎回総移動量ベクトルを計算.
 
             // xyzで最小値コンポーネントを探す.
-            int3 prev_cell_step = select(cell_delta_accum <= min(float3(cell_delta_accum.y, cell_delta_accum.z, cell_delta_accum.x), float3(cell_delta_accum.z, cell_delta_accum.x, cell_delta_accum.y)), int3(1,1,1), int3(0,0,0));
+            int3 prev_cell_step = select(cell_delta_accum <= min(cell_delta_accum.yzx, cell_delta_accum.zxy), int3(1,1,1), int3(0,0,0));
             if (true)
             {
                 // 精密化処理(オプション).
