@@ -102,6 +102,7 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
     // Inv Dir.
     const float k_nearly_zero_threshold = 1e-7;
     const float k_float_max = 1e20;
+    // Safety Inverse Dir.
     out_ray_dir_inv = select( k_nearly_zero_threshold > abs(ray_dir_c), float3(k_float_max, k_float_max, k_float_max), 1.0f / ray_dir_c);
 
     const float3 t_to_min = (aabb_min - ray_origin) * out_ray_dir_inv;
@@ -112,14 +113,44 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
     const float t_far = min(t_far_v3.x, min(t_far_v3.y, t_far_v3.z));
 
     // GridBoxとの交点が存在しなければ早期終了. t_farが負-> 遠方点から外向きで外れ, t_farよりt_nearのほうが大きい->直線が交差していない, t_nearがレイの長さより大きい->届いていない.
-    if (0.0f > t_far || t_near >= t_far || ray_len_c < t_near)
+    if (t_far < 0.0 || t_far <= t_near || ray_len_c < t_near)
         return false;
 
     // 結果を返す. このt値で origin + dir * t を計算すればそれぞれ始点と終点がAABB空間内にクランプされた座標になる.
-    out_aabb_clamped_origin_t = (0.0 > t_near) ? 0.0 : t_near;
-    out_aabb_clamped_end_t = (ray_len_c < t_far) ? ray_len_c : t_far;
+    out_aabb_clamped_origin_t = max(0.0, t_near);
+    out_aabb_clamped_end_t = min(ray_len_c, t_far);
     return true;
 };
+
+
+float trace_ray_bitmask_voxel_inner(
+    Buffer<uint> occupancy_bitmask_voxel, uint voxel_addr,
+    float3 cell_delta_accum, float cell_ray_length_inv,
+    float curr_ray_t
+)
+{
+    // 1Voxelを構成するビットマスク情報を走査.
+    for(int i = 0; i < k_per_voxel_occupancy_u32_count; ++i)
+    {
+        const uint voxel_elem_bitmask = occupancy_bitmask_voxel[voxel_addr * k_per_voxel_occupancy_u32_count + i];
+        // 非0ビット要素を見つける場でスキップ, 内部ビットまでは確認しない簡易版.
+        if(0 == voxel_elem_bitmask)
+            continue;
+
+        // ひとつでも1のビットがあればヒットしたものとしてtを計算して終了.   
+        const float cur_cell_delta = min(cell_delta_accum.x, min(cell_delta_accum.y, cell_delta_accum.z));
+        // ヒット判定処理パラメータ構築. このトレースではcur_cell_deltaが直接レイ上の位置になるため, レイの長さで正規化した値を渡す.
+        const float ray_t = cur_cell_delta * cell_ray_length_inv;
+        if (curr_ray_t > ray_t)
+        {
+            curr_ray_t = ray_t;// 最近接 t を更新.
+            break;
+        }
+    }
+
+    return curr_ray_t;
+}
+
 
 // トレース実行.
 //  return : [0.0, t_of_world_space) (ヒット無しの場合は負数).
@@ -153,8 +184,8 @@ float trace_ray_vs_occupancy_bitmask_voxel(
     const float3 cell_delta = dir_sign * ray_dir_inv_c;
 
     // Grid内にクランプしたトレース始点終点.
-    float3 ray_p0_clamped_c = ray_begin_c + ray_begin_t * ray_dir_ws;
-    float3 ray_p1_clamped_c = ray_begin_c + ray_end_t * ray_dir_ws;
+    const float3 ray_p0_clamped_c = ray_begin_c + ray_begin_t * ray_dir_ws;
+    const float3 ray_p1_clamped_c = ray_begin_c + ray_end_t * ray_dir_ws;
 
     // 0ベースでのトラバースCell範囲.
     const int3 trace_begin_cell = min(floor(ray_p0_clamped_c), grid_box_cell_max);
@@ -170,27 +201,16 @@ float trace_ray_vs_occupancy_bitmask_voxel(
     // DDAのトラバースであるため, 有効ヒットがあれば即座に最近接として終了.
     for (;1.0 <= curr_ray_t;)
     {
-        const float cur_cell_delta = min(cell_delta_accum.x, min(cell_delta_accum.y, cell_delta_accum.z));
-
         // 到達Cell
         const int3 trace_cell_id = trace_begin_cell + int3(dir_sign) * total_cell_step;
         // 読み取り用のマッピングをして読み取り.
         const uint voxel_addr = voxel_coord_to_addr(voxel_coord_toroidal_mapping(trace_cell_id, grid_toroidal_offset, grid_resolution), grid_resolution);
 
-        // 1Voxelを構成するビットマスク情報を走査.
-        for(int i = 0; i < k_per_voxel_occupancy_u32_count; ++i)
-        {
-            const uint voxel_elem_bitmask = occupancy_bitmask_voxel[voxel_addr * k_per_voxel_occupancy_u32_count + i];
-            // 現状は内部ビットまでは確認せずに内部に非ゼロビットがひとつでもあればヒット扱い.
-            if(0 == voxel_elem_bitmask)
-                continue;
-            
-            // ヒット判定処理パラメータ構築. このトレースではcur_cell_deltaが直接レイ上の位置になるため, レイの長さで正規化した値を渡す.
-            const float ray_t = cur_cell_delta * ray_d_c_len_inv;
-            // CellId範囲チェックとは別にt値のチェック. CellID範囲チェックだけでは広いルート階層換算での終了判定なので実際には線分の範囲外になっても継続してしまうため.
-            if (1.0f > ray_t && curr_ray_t > ray_t)
-                curr_ray_t = ray_t;// 最近接 t を更新.
-        }
+        curr_ray_t = trace_ray_bitmask_voxel_inner(
+            occupancy_bitmask_voxel, voxel_addr,
+            cell_delta_accum, ray_d_c_len_inv,
+            curr_ray_t
+        );
 
         // 次のCellへ移動.
         {
@@ -201,8 +221,7 @@ float trace_ray_vs_occupancy_bitmask_voxel(
             if (true)
             {
                 // 精密化処理(オプション).
-                // 厳密にセルを巡回するために最小コンポーネントが複数あった場合に一つに制限する(XYZの順で優先.). 
-                // この処理をしない場合は (0,0,0)の中心からズレたラインで(1,0,0)などを経由せずに(1,1,1)に移動する.
+                // 厳密にセルを巡回するために最小コンポーネントが複数あった場合に一つに制限する(XYZの順で優先). この処理をしない場合は (0,0,0)の中心からズレたラインで(1,0,0)などを経由せずに(1,1,1)に移動する.
                 int tmp = prev_cell_step.x;
                 prev_cell_step.y = (0 < tmp) ? 0 : prev_cell_step.y;
                 tmp += prev_cell_step.y;
