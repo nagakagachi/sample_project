@@ -356,9 +356,9 @@ bool AppGame::Initialize()
             const float mesh_scale = 10.0f;
             ngl::math::Vec3 quad_pos[4] = {
                 ngl::math::Vec3(-1.0f, 0.0f, -1.0f) * mesh_scale,
-                ngl::math::Vec3(1.0f, 0.0f, -1.0f) * mesh_scale,
+                ngl::math::Vec3(-1.0f, 0.0f, 1.0f) * mesh_scale,
                 ngl::math::Vec3(1.0f, 0.0f, 1.0f) * mesh_scale,
-                ngl::math::Vec3(-1.0f, 0.0f, 1.0f) * mesh_scale
+                ngl::math::Vec3(1.0f, 0.0f, -1.0f) * mesh_scale
             };
             ngl::math::Vec3 quad_normal[4] = {
                 ngl::math::Vec3(0.0f, 1.0f, 0.0f),
@@ -415,9 +415,10 @@ bool AppGame::Initialize()
         auto& ResourceMan = ngl::res::ResourceManager::Instance();
         // SceneMesh.
         {
-            // 基本シーンモデル読み込み.
+#if 0
             if (true)
             {
+                // メイン背景.
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
 
@@ -430,8 +431,9 @@ bool AppGame::Initialize()
             }
 
             // その他モデル.
-            if (false)
+            if (true)
             {
+                // クモ
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
@@ -447,6 +449,7 @@ bool AppGame::Initialize()
 
             if (true)
             {
+                // ウサギ
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
@@ -461,6 +464,7 @@ bool AppGame::Initialize()
             }
             if (true)
             {
+                // ウサギ
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
@@ -475,6 +479,7 @@ bool AppGame::Initialize()
             }
             if (true)
             {
+                // ウサギ
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
@@ -487,6 +492,7 @@ bool AppGame::Initialize()
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
+#endif
 
 #if 0
             // 適当にたくさんモデル生成.
@@ -516,9 +522,10 @@ bool AppGame::Initialize()
                 test_move_mesh_entity_array_.push_back(mc.get());
             }
 #endif
+
+            // SwTessellationのテスト.
             if (false)
             {
-                // SwTessellationのテスト.
                 auto mc = std::make_shared<ngl::render::app::SwTessellationMesh>();
                 mesh_entity_array_.push_back(mc);
                 
@@ -532,7 +539,7 @@ bool AppGame::Initialize()
                 #if 0
                 // 蜘蛛
                 constexpr int tessellation_level = 4;  // 0で無効、1以上で有効.
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), tessellation_level);
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), {}, tessellation_level);
                 tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 3.0f, 1.0f));
                 #else
                 constexpr int tessellation_level = 9;
@@ -548,6 +555,24 @@ bool AppGame::Initialize()
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
+
+            // 単純形状テスト.
+            if(true)
+            {
+                auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
+                mesh_entity_array_.push_back(mc);
+                
+                ngl::gfx::ResMeshData::LoadDesc loaddesc{};
+                
+                ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
+                
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), procedural_mesh_data);
+                //tr.SetDiagonal(ngl::math::Vec4(1.0f));
+                tr.SetColumn3(ngl::math::Vec4(0.0f, 10.0f, 0.0f, 0.0f));
+                mc->SetTransform(ngl::math::Mat34(tr));
+            }
+
+
         }
     }
 
