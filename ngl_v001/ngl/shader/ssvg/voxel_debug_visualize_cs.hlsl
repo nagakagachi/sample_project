@@ -47,7 +47,7 @@ void main_cs(
         const float trace_distance = 10000.0;
           
         float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
-            camera_pos + camera_dir, ray_dir_ws, trace_distance, 
+            camera_pos, ray_dir_ws, trace_distance, 
             cb_dispatch_param.GridMinPos, cb_dispatch_param.CellSize, cb_dispatch_param.BaseResolution,
             cb_dispatch_param.GridToroidalOffset, OccupancyBitmaskVoxel);
         #if 0
@@ -55,7 +55,7 @@ void main_cs(
         #else
             float3 hit_normal = curr_ray_t_ws.yzw;
             hit_normal = any(isnan(hit_normal)) ? float3(1,1,0) : hit_normal;
-            RWTexWork[dtid.xy] = (0.0 <= curr_ray_t_ws.x) ? float4( lerp(abs(hit_normal), float3(1.0,1.0,1.0), saturate(curr_ray_t_ws.x/100.0)), 1) : float4(0, 0, 1, 0);
+            RWTexWork[dtid.xy] = (0.0 <= curr_ray_t_ws.x) ? float4( lerp(abs(hit_normal), float3(1.0,1.0,1.0), saturate(curr_ray_t_ws.x/100.0)), 1) : float4(0, 0, 0.3, 0);
         #endif
         
     #else
