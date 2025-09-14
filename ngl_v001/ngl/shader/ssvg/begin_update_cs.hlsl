@@ -12,7 +12,6 @@ begin_update_cs.hlsl
 #include "../include/scene_view_struct.hlsli"
 
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
-ConstantBuffer<DispatchParam> cb_dispatch_param;
 
 RWBuffer<uint>		RWBufferWork;
 RWBuffer<uint>		RWOccupancyBitmaskVoxel;

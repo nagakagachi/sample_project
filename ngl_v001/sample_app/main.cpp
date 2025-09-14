@@ -60,7 +60,7 @@ static bool dbgw_view_dshadow                     = false;
 static bool dbgw_view_ssvg                        = true;
 static float dbgw_dlit_angle_v                    = 0.4f;
 static float dbgw_dlit_angle_h                    = 4.1f;
-static float dbgw_camera_speed                    = 10.0f;
+static float dbgw_camera_speed                    = 5.0f;//10.0f;
 
 static float dbgw_stat_primary_rtg_construct = {};
 static float dbgw_stat_primary_rtg_compile   = {};
@@ -118,7 +118,7 @@ private:
 private:
     struct RenderParam
     {
-        ngl::math::Vec3 camera_pos   = {0.0f, 2.0f, -1.0f};
+        ngl::math::Vec3 camera_pos   = {0.0f, 0.0f, 0.0f};
         ngl::math::Mat33 camera_pose = ngl::math::Mat33::Identity();
         float camera_fov_y           = ngl::math::Deg2Rad(60.0f);  // not half fov.
 
@@ -145,8 +145,9 @@ private:
     ngl::fwk::GraphicsFramework gfxfw_{};
     std::vector<ngl::rhi::EResourceState> swapchain_resource_state_;
 
-    ngl::math::Vec3 camera_pos_   = {-9.0f, 15.0f, -5.0f};
-    ngl::math::Mat33 camera_pose_ = ngl::math::Mat33::Identity();
+    //ngl::math::Vec3 camera_pos_   = {0.368f, 1.237f, 0.453f};//{0.0f, 2.0f, -5.0f};
+    ngl::math::Vec3 camera_pos_   = {1.871f, 1.347f, 1.399f};//{0.0f, 2.0f, -5.0f};
+    ngl::math::Mat33 camera_pose_ = ngl::math::Mat33::RotAxisY(ngl::math::Deg2Rad(-90.0f));// ngl::math::Mat33::Identity();
     float camera_fov_y            = ngl::math::Deg2Rad(60.0f);  // not half fov.
     PlayerController player_controller{};
 
@@ -415,7 +416,7 @@ bool AppGame::Initialize()
         auto& ResourceMan = ngl::res::ResourceManager::Instance();
         // SceneMesh.
         {
-#if 0
+#if 1
             if (true)
             {
                 // メイン背景.
@@ -431,7 +432,7 @@ bool AppGame::Initialize()
             }
 
             // その他モデル.
-            if (true)
+            if (0)
             {
                 // クモ
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
@@ -447,7 +448,7 @@ bool AppGame::Initialize()
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
 
-            if (true)
+            if (0)
             {
                 // ウサギ
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
@@ -462,7 +463,7 @@ bool AppGame::Initialize()
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
-            if (true)
+            if (0)
             {
                 // ウサギ
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
@@ -477,7 +478,7 @@ bool AppGame::Initialize()
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
-            if (true)
+            if (0)
             {
                 // ウサギ
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
@@ -524,7 +525,7 @@ bool AppGame::Initialize()
 #endif
 
             // SwTessellationのテスト.
-            if (false)
+            if (0)
             {
                 auto mc = std::make_shared<ngl::render::app::SwTessellationMesh>();
                 mesh_entity_array_.push_back(mc);
@@ -557,7 +558,7 @@ bool AppGame::Initialize()
             }
 
             // 単純形状テスト.
-            if(true)
+            if(0)
             {
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
@@ -567,8 +568,10 @@ bool AppGame::Initialize()
                 ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
                 
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), procedural_mesh_data);
-                //tr.SetDiagonal(ngl::math::Vec4(1.0f));
-                tr.SetColumn3(ngl::math::Vec4(0.0f, 10.0f, 0.0f, 0.0f));
+
+                //tr.SetColumn3(ngl::math::Vec4(0.0f, 0.0f, 0.0f, 0.0f));
+                //tr.SetColumn3(ngl::math::Vec4(0.0f, 0.5f, 0.5f, 0.0f));
+                
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
 
@@ -794,6 +797,8 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("Enable SubView Render", &dbgw_enable_sub_view_path);
         }
 
+
+        
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("SwTessellation Mesh"))
         {
@@ -826,7 +831,12 @@ bool AppGame::ExecuteApp()
                 sw_tess_debug_bisector_depth = -1;
                 sw_tess_debug_bisector_neighbor = -1;
             }
-            
+        }
+
+        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
+        if (ImGui::CollapsingHeader("Ssvg"))
+        {
+            ImGui::InputInt("fine step max", &ngl::render::app::SsVg::debug_fine_step_max);
         }
 
         ImGui::End();

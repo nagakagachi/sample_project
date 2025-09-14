@@ -144,4 +144,33 @@ void GetCubemapPlaneAxis(int cube_plane_index, out float3 out_front, out float3 
     out_right = plane_axis_right[cube_plane_index];
 }
 
+
+
+
+
+// 最大の値を取る軸の軸ベクトルを返す(正のみ).
+int3 calc_principal_axis(float3 v)
+{
+    if(v.x >= v.y && v.x >= v.z) return int3(1,0,0);
+    if(v.y >= v.x && v.y >= v.z) return int3(0,1,0);
+    return int3(0,0,1);
+}
+
+// ノイズ
+uint noise_iqint32_orig(uint2 p)  
+{  
+    p *= uint2(73333, 7777);  
+    p ^= uint2(3333777777, 3333777777) >> (p >> 28);  
+    uint n = p.x * p.y;  
+    return n ^ n >> 15;  
+}  
+  
+float noise_iqint32(float4 pos)  
+{  
+    uint value = noise_iqint32_orig(pos.xy) + noise_iqint32_orig(pos.zw);  
+    return value * 2.3283064365386962890625e-10;  
+}
+
+
+
 #endif

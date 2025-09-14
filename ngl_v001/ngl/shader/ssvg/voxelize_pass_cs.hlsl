@@ -14,7 +14,6 @@ ss_voxelize_cs.hlsl
 #include "../include/scene_view_struct.hlsli"
 
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
-ConstantBuffer<DispatchParam> cb_dispatch_param;
 
 Texture2D			TexHardwareDepth;
 SamplerState		SmpHardwareDepth;

@@ -21,6 +21,10 @@ namespace ngl::render::app
     static constexpr u32 k_per_voxel_occupancy_bit_count = k_per_voxel_occupancy_reso*k_per_voxel_occupancy_reso*k_per_voxel_occupancy_reso;
     static constexpr u32 k_per_voxel_occupancy_u32_count = (k_per_voxel_occupancy_bit_count + 31) / 32;
 
+
+    int SsVg::debug_fine_step_max = 2;
+
+
     SsVg::~SsVg()
     {
     }
@@ -138,6 +142,9 @@ namespace ngl::render::app
             int Dummy1;
 
             math::Vec2i TexHardwareDepthSize;
+
+            int debug_fine_step_max;
+
         };
         auto cbh = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(DispatchParam));
         {
@@ -157,6 +164,8 @@ namespace ngl::render::app
             p->CellSizeInv    = 1.0f / cell_size_;
 
             p->TexHardwareDepthSize = hw_depth_size;
+
+            p->debug_fine_step_max = debug_fine_step_max;
 
             cbh->buffer_.Unmap();
         }

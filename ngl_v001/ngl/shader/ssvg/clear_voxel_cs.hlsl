@@ -8,7 +8,6 @@ clear_voxel_cs.hlsl
 
 #include "ssvg_util.hlsli"
 
-ConstantBuffer<DispatchParam> cb_dispatch_param;
 
 RWBuffer<uint>		RWBufferWork;
 RWBuffer<uint>		RWOccupancyBitmaskVoxel;
