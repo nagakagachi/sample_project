@@ -13,6 +13,9 @@ namespace ngl::render::app
     class SsVg
     {
     public:
+        static int debug_fine_step_max;
+
+    public:
         SsVg() = default;
         ~SsVg();
 
@@ -50,7 +53,7 @@ namespace ngl::render::app
         math::Vec3i grid_toroidal_offset_prev_ = {};
 
         math::Vec3u base_resolution_ = math::Vec3u(64, 64, 64);
-        float   cell_size_ = 4.0f;
+        float   cell_size_ = 3.0f;
 
         RhiBufferSet work_buffer_ = {};
         RhiBufferSet occupancy_bitmask_voxel_ = {};

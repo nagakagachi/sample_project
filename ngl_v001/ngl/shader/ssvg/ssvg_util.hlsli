@@ -31,7 +31,10 @@ struct DispatchParam
     int Dummy1;
 
     int2 TexHardwareDepthSize;
+
+    int debug_fine_step_max;
 };
+ConstantBuffer<DispatchParam> cb_dispatch_param;
 
 
 #define VOXEL_ADDR_MODE 0
@@ -88,12 +91,38 @@ void calc_occupancy_bitmask_voxel_inner_bit_info(out uint out_u32_offset, out ui
 }
 
 
-int3 calc_principal_axis(float3 v)
+
+
+
+
+// ワールド座標からOBVをの値を読み取る.
+uint read_occupancy_bitmask_voxel_from_world_pos(Buffer<uint> occupancy_bitmask_voxel, int3 grid_resolution, int3 grid_toroidal_offset, float3 grid_min_pos_world, float cell_size_inv, float3 pos_world)
 {
-    if(v.x >= v.y && v.x >= v.z) return int3(1,0,0);
-    if(v.y >= v.x && v.y >= v.z) return int3(0,1,0);
-    return int3(0,0,1);
+    // WorldPosからVoxelCoordを計算.
+    const float3 voxel_coordf = (pos_world - grid_min_pos_world) * cell_size_inv;
+    const int3 voxel_coord = floor(voxel_coordf);
+    if(all(voxel_coord >= 0) && all(voxel_coord < grid_resolution))
+    {
+        int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, grid_toroidal_offset, grid_resolution);
+        uint voxel_addr = voxel_coord_to_addr(voxel_coord_toroidal, grid_resolution);
+
+        // 占有ビットマスク.
+        const float3 voxel_coord_frac = frac(voxel_coordf);
+        const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_per_voxel_occupancy_reso);
+        
+        uint bitmask_u32_offset;
+        uint bitmask_u32_bit_pos;
+        calc_occupancy_bitmask_voxel_inner_bit_info(bitmask_u32_offset, bitmask_u32_bit_pos, voxel_coord_bitmask_pos);
+        const uint bitmask_append = (1 << bitmask_u32_bit_pos);
+
+        return (occupancy_bitmask_voxel[voxel_addr * k_per_voxel_occupancy_u32_count + bitmask_u32_offset] & bitmask_append) ? 1 : 0;
+    }
+
+    return 0;
 }
+
+
+
 
 
 
@@ -107,7 +136,6 @@ int3 FineCellStep(int3 cell_step)
     cell_step.z = (0 < tmp) ? 0 : cell_step.z;
     return cell_step;
 }
-
 // 第一象限(すべて正)のDDA中の現在のトレース時刻から次のセル移動を計算.
 int3 calc_trace_cell_step_dir_abs(float3 curr_trace_time_abs)
 {
@@ -173,17 +201,17 @@ float trace_ray_bitmask_voxel_inner_simple(
 }
 
 
-#define ENABLE_FINE_CELL_STEP_TRACE 0
-
-
-// 詳細トレース実行.
+// 詳細トレース実行. 粗いトレースとほぼ同じコードが二重化しており無駄が多いので整理対象. 粗いVoxel境界で不正ヒットのノイズが若干ある不具合も存在.
 //  return : [0.0, world_space_t) (ヒット無しの場合は負数).
 //  voxel_addr : 内部ビットセルまで参照する精密トレースを行う場合にそのVoxelアドレスを指定..
-float4 trace_ray_vs_occupancy_bitmask_voxel_detail(
+float4 trace_ray_vs_occupancy_bitmask_voxel_fine(
     float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws, 
     float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
-    int3 prev_parent_cell_step,
-    Buffer<uint> occupancy_bitmask_voxel, uint voxel_addr)
+    Buffer<uint> occupancy_bitmask_voxel, uint voxel_addr
+
+    
+    ,int3 parent_trace_cell_id
+    )
 {
     const float3 grid_box_min = float3(0.0, 0.0, 0.0);
     const float3 grid_box_max = float3(grid_resolution);
@@ -218,7 +246,12 @@ float4 trace_ray_vs_occupancy_bitmask_voxel_detail(
     // 始点からの最初のステップt.
     const float3 trace_time_start_offset = abs((floor(ray_trace_begin_grid) + max(dir_sign, float3(0,0,0)) - ray_trace_begin_grid) * ray_dir_inv_grid);
 
-    float curr_ray_t = ray_trace_len;// 初期値は最大長.
+
+    // デバッグ.
+    float3 fine_trace_optional_return = float3(0,0,0);
+    int debug_step_count = 0;
+
+    float curr_ray_t = 1e20;//ray_trace_len;// 初期値は最大長.
     int3 total_cell_step = int3(0,0,0);
     float3 trace_time_total = float3(0,0,0);
     int3 prev_cell_step = int3(0,0,0);
@@ -228,13 +261,19 @@ float4 trace_ray_vs_occupancy_bitmask_voxel_detail(
     {
         // 到達Cell
         const int3 trace_cell_id = trace_begin_cell + int3(dir_sign) * total_cell_step;
-        uint bitmask_u32_offset;
-        uint bitmask_u32_bit_pos;
+        uint bitmask_u32_offset, bitmask_u32_bit_pos;
         calc_occupancy_bitmask_voxel_inner_bit_info(bitmask_u32_offset, bitmask_u32_bit_pos, trace_cell_id);
-        if((occupancy_bitmask_voxel[voxel_addr * k_per_voxel_occupancy_u32_count + bitmask_u32_offset] & (1 << bitmask_u32_bit_pos)))
+        
+        bool is_hit = occupancy_bitmask_voxel[voxel_addr * k_per_voxel_occupancy_u32_count + bitmask_u32_offset] & (1 << bitmask_u32_bit_pos);
+        
+        if(is_hit)
         {
+            const float prev_ray_t = curr_ray_t;
+
             const float trace_time_step = min(trace_time_total.x, min(trace_time_total.y, trace_time_total.z));
             curr_ray_t = min(curr_ray_t, trace_time_step);
+
+            fine_trace_optional_return = trace_time_total;//float3(curr_ray_t, trace_time_step, curr_ray_t);
         }
      
         // 次のCellへ移動.
@@ -250,13 +289,20 @@ float4 trace_ray_vs_occupancy_bitmask_voxel_detail(
             total_cell_step += curr_cell_step;
 
             if(any(trance_cell_step_max < total_cell_step))
+            {
                 break;
+            }
         }
     }
-    // ヒットがあればワールド空間のt値, なければヒット無しとして負数-1.0を返す.
-    const float ret_t = (ray_trace_len > curr_ray_t) ? (curr_ray_t + ray_trace_begin_t_offset) * cell_width_ws : -1.0;
+    
     const float3 hit_normal = prev_cell_step * dir_sign;
-    return float4(ret_t, hit_normal.x, hit_normal.y, hit_normal.z);
+
+    const float t_ws = (curr_ray_t + ray_trace_begin_t_offset) * cell_width_ws;
+    const float ret_t = (ray_trace_len > curr_ray_t) ? t_ws : -1.0;
+
+    const float3 optional_return = fine_trace_optional_return;
+
+    return float4(ret_t, ray_trace_len, curr_ray_t, ret_t);
 }
 
 
@@ -300,7 +346,12 @@ float4 trace_ray_vs_occupancy_bitmask_voxel(
     // 始点からの最初のステップt.
     const float3 trace_time_start_offset = abs((floor(ray_trace_begin_grid) + max(dir_sign, float3(0,0,0)) - ray_trace_begin_grid) * ray_dir_inv_grid);
 
-    float curr_ray_t = ray_trace_len;// 初期値は最大長.
+
+    // デバッグ
+    float3 fine_trace_optional_return = float3(0,0,0);
+    int debug_step_count = 0;
+
+    float curr_ray_t = 1e20;//ray_trace_len;// 初期値は最大長.
     int3 total_cell_step = int3(0,0,0);
     float3 trace_time_total = float3(0,0,0);
     int3 prev_cell_step = int3(0,0,0);
@@ -313,27 +364,30 @@ float4 trace_ray_vs_occupancy_bitmask_voxel(
         // 読み取り用のマッピングをして読み取り.
         const uint voxel_addr = voxel_coord_to_addr(voxel_coord_toroidal_mapping(trace_cell_id, grid_toroidal_offset, grid_resolution), grid_resolution);
 
+        
         #if 1
             // 内部ビットセルまで参照する精密トレース.
-            // 最小コンポーネントからt値を取得.
-            const float k_fine_step_start_t_offset = 1e-4;// 内部セルの境界での誤差回避のために微小値を加算.
             const float detail_cell_size = 1.0 / float(k_per_voxel_occupancy_reso);
+            const float k_fine_step_start_t_offset = 1e-5;// 内部セルの境界での誤差回避のために微小値を加算.
 
+            // 最小コンポーネントからt値を取得.
             const float trace_time_step = min(trace_time_total.x, min(trace_time_total.y, trace_time_total.z));
             const float3 cur_pos_grid = ray_dir_ws * (trace_time_step + k_fine_step_start_t_offset) + ray_trace_begin_grid;
             const float3 cur_voxel_min = float3(trace_cell_id);
-            // 処理対象Voxelのアドレスを指定して詳細トレース呼び出し.
-            // ネスト深すぎるため粗いVoxelでのスキップなども含めてもっと浅くする予定.
-            const float4 detail_t = trace_ray_vs_occupancy_bitmask_voxel_detail(
+            // 処理対象Voxelのアドレスを指定して詳細トレース呼び出し. ネスト深すぎるため粗いVoxelでのスキップなども含めてもっと浅くする予定.
+            const float4 fine_t = trace_ray_vs_occupancy_bitmask_voxel_fine(
                 cur_pos_grid, ray_dir_ws, ray_trace_len - trace_time_step,
                 cur_voxel_min, detail_cell_size, int3(k_per_voxel_occupancy_reso, k_per_voxel_occupancy_reso, k_per_voxel_occupancy_reso),
-                prev_cell_step,
                 occupancy_bitmask_voxel, voxel_addr
+                
+                ,trace_cell_id
             );
-            if(0.0 <= detail_t.x)
+            if(0.0 <= fine_t.x)
             {
-                curr_ray_t = min(curr_ray_t, trace_time_step + detail_t.x);// ヒット.
-                curr_cell_step = detail_t.yzw;// 法線.
+                curr_ray_t = min(curr_ray_t, trace_time_step + fine_t.x);// ヒット.
+                curr_cell_step = fine_t.yzw;// 法線.
+
+                fine_trace_optional_return = fine_t.yzw;// デバッグ用.
             }
         #else
             // Voxel単位の粗いトレース.
@@ -341,8 +395,13 @@ float4 trace_ray_vs_occupancy_bitmask_voxel(
                 occupancy_bitmask_voxel, voxel_addr,
                 trace_time_total, curr_ray_t
             );
+            if(0.0 <= curr_ray_t)
+            {
+                curr_cell_step = prev_cell_step;// 法線.
+                fine_trace_optional_return = prev_cell_step;// デバッグ用.
+            }
         #endif
-
+        
         // 次のCellへ移動.
         {
             prev_cell_step = curr_cell_step;
@@ -358,11 +417,17 @@ float4 trace_ray_vs_occupancy_bitmask_voxel(
             if(any(trance_cell_step_max < total_cell_step))
                 break;
         }
+        
+        ++debug_step_count;
     }
     // ヒットがあればワールド空間のt値, なければヒット無しとして負数-1.0を返す.
     const float ret_t = (ray_trace_len > curr_ray_t) ? (curr_ray_t + ray_trace_begin_t_offset) * cell_width_ws : -1.0;
     const float3 hit_normal = normalize(prev_cell_step * dir_sign);
-    return float4(ret_t, hit_normal.x, hit_normal.y, hit_normal.z);
+
+    //const float3 optional_return = hit_normal;
+    const float3 optional_return = fine_trace_optional_return;
+
+    return float4(ret_t, optional_return.x, optional_return.y, optional_return.z);
 }
 
 
