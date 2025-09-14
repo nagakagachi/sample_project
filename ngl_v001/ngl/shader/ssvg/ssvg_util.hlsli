@@ -387,7 +387,7 @@ float4 trace_ray_vs_occupancy_bitmask_voxel(
                 curr_ray_t = min(curr_ray_t, trace_time_step + fine_t.x);// ヒット.
                 curr_cell_step = fine_t.yzw;// 法線.
 
-                fine_trace_optional_return = fine_t.yzw;// デバッグ用.
+                fine_trace_optional_return = float3(voxel_addr, 0, 0);// デバッグ用.
             }
         #else
             // Voxel単位の粗いトレース.

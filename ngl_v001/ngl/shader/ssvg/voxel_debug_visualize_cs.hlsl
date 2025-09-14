@@ -49,7 +49,14 @@ void main_cs(
             cb_dispatch_param.GridMinPos, cb_dispatch_param.CellSize, cb_dispatch_param.BaseResolution,
             cb_dispatch_param.GridToroidalOffset, OccupancyBitmaskVoxel);
 
-        float4 debug_color = (0.0 <= curr_ray_t_ws.x) ? float4(curr_ray_t_ws.xxx, 1)/20.0 : float4(0, 0, 1, 0);
+        //float4 debug_color = (0.0 <= curr_ray_t_ws.x) ? float4(curr_ray_t_ws.xxx, 1)/20.0 : float4(0, 0, 1, 0);
+        float4 debug_color = float4(0, 0, 1, 0);
+        if(0.0 <= curr_ray_t_ws.x)
+        {
+            debug_color.xyz = float4(noise_iqint32(curr_ray_t_ws.yzww), noise_iqint32(curr_ray_t_ws.zwyy), noise_iqint32(curr_ray_t_ws.wyzz), 1);
+            debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate(curr_ray_t_ws.x/50.0), 1.0/1.2));
+            debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), saturate((curr_ray_t_ws.x/100.0)));
+        }
         RWTexWork[dtid.xy] = debug_color;
     #else
         // 上面図X-Ray表示.
