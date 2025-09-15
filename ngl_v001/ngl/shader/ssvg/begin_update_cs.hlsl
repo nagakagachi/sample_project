@@ -27,6 +27,17 @@ void main_cs(
 {
     // 全Voxelをクリア.
     uint voxel_count = cb_dispatch_param.BaseResolution.x * cb_dispatch_param.BaseResolution.y * cb_dispatch_param.BaseResolution.z;
+
+    /*
+        coarse_voxel_update_cs.hlsl と同様に一端coord化してからtoroidalマッピングを考慮してインデックス化するように統一したほうがよいかも.
+
+        // toroidalマッピング考慮
+        const int3 voxel_coord = index_to_voxel_coord(dtid.x, cb_dispatch_param.BaseResolution);
+        const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.GridToroidalOffset, cb_dispatch_param.BaseResolution);
+        const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_dispatch_param.BaseResolution);
+    */
+
+
     if(dtid.x < voxel_count)
     {
         int3 voxel_coord = index_to_voxel_coord(dtid.x, cb_dispatch_param.BaseResolution);
@@ -47,7 +58,6 @@ void main_cs(
         }
         else
         {
-            RWBufferWork[dtid.x] = clamp(int(RWBufferWork[dtid.x]) - 1, 0, 5000);
         }
     }
 }

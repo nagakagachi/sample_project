@@ -171,7 +171,9 @@ int3 calc_principal_axis(float3 v)
     return int3(0,0,1);
 }
 
-// ノイズ
+
+//--------------------------------------------------------------------------------
+// ランダム
 uint noise_iqint32_orig(uint2 p)  
 {  
     p *= uint2(73333, 7777);  
@@ -186,6 +188,16 @@ float noise_iqint32(float4 pos)
     return value * 2.3283064365386962890625e-10;  
 }
 
+float3 random_unit_vector3(float2 seed)
+{
+    const float angleY = noise_iqint32(seed.xyxy) * NGL_2PI;
+    const float angleX = asin(noise_iqint32(seed.yyxx)*2.0 - 1.0);
+    float3 sample_ray_dir;
+    sample_ray_dir.y = sin(angleX);
+    sample_ray_dir.x = cos(angleX) * cos(angleY);
+    sample_ray_dir.z = cos(angleX) * sin(angleY);
+    return sample_ray_dir;
+}
 
 
 #endif

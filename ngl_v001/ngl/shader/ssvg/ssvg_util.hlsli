@@ -100,6 +100,7 @@ struct DispatchParam
     int Dummy1;
 
     int2 TexHardwareDepthSize;
+    uint FrameCount;
 };
 ConstantBuffer<DispatchParam> cb_dispatch_param;
 

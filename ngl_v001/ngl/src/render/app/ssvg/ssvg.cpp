@@ -101,6 +101,7 @@ namespace ngl::render::app
 
         const bool is_first_dispatch = is_first_dispatch_;
         is_first_dispatch_           = false;
+        ++frame_count_;
 
 
         // 重視位置を若干補正.
@@ -129,21 +130,22 @@ namespace ngl::render::app
         const u32 voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
         struct DispatchParam
         {
-            math::Vec3i BaseResolution;
-            u32 Flag;
+            math::Vec3i BaseResolution{};
+            u32 Flag{};
 
-            math::Vec3 GridMinPos;
-            float CellSize;
-            math::Vec3i GridToroidalOffset;
-            float CellSizeInv;
+            math::Vec3 GridMinPos{};
+            float CellSize{};
+            math::Vec3i GridToroidalOffset{};
+            float CellSizeInv{};
 
-            math::Vec3i GridToroidalOffsetPrev;
-            int Dummy0;
+            math::Vec3i GridToroidalOffsetPrev{};
+            int Dummy0{};
             
-            math::Vec3i GridCellDelta;// Toroidalではなくワールド空間Cellでのフレーム移動量.
-            int Dummy1;
+            math::Vec3i GridCellDelta{};// Toroidalではなくワールド空間Cellでのフレーム移動量.
+            int Dummy1{};
 
-            math::Vec2i TexHardwareDepthSize;
+            math::Vec2i TexHardwareDepthSize{};
+            u32 FrameCount{};
 
         };
         auto cbh = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(DispatchParam));
@@ -165,69 +167,80 @@ namespace ngl::render::app
 
             p->TexHardwareDepthSize = hw_depth_size;
 
+            p->FrameCount = frame_count_;
+
             cbh->buffer_.Unmap();
         }
 
-        if (is_first_dispatch)
         {
-            // 初回クリア.
-            ngl::rhi::DescriptorSetDep desc_set = {};
-            pso_clear_voxel_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
-            pso_clear_voxel_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
-            pso_clear_voxel_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Main");
 
-            p_command_list->SetPipelineState(pso_clear_voxel_.Get());
-            p_command_list->SetDescriptorSet(pso_clear_voxel_.Get(), &desc_set);
-            pso_clear_voxel_->DispatchHelper(p_command_list, voxel_count, 1, 1);  // Voxel Dispatch.
+            if (is_first_dispatch)
+            {
+                // 初回クリア.
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_clear_voxel_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
+                pso_clear_voxel_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
+                pso_clear_voxel_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
 
-            p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
-            p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
-        }
-        // Begin Update Pass.
-        {
-            ngl::rhi::DescriptorSetDep desc_set = {};
-            pso_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-            pso_begin_update_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
-            pso_begin_update_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
-            pso_begin_update_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
+                p_command_list->SetPipelineState(pso_clear_voxel_.Get());
+                p_command_list->SetDescriptorSet(pso_clear_voxel_.Get(), &desc_set);
+                pso_clear_voxel_->DispatchHelper(p_command_list, voxel_count, 1, 1);  // Voxel Dispatch.
 
-            p_command_list->SetPipelineState(pso_begin_update_.Get());
-            p_command_list->SetDescriptorSet(pso_begin_update_.Get(), &desc_set);
-            pso_begin_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);  // Screen処理でDispatch.
+                p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
+            }
+            // Begin Update Pass.
+            {
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                pso_begin_update_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
+                pso_begin_update_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
+                pso_begin_update_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
 
-            p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
-            p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
-        }
-        // Voxelization Pass.
-        {
-            ngl::rhi::DescriptorSetDep desc_set = {};
-            pso_voxelize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
-            pso_voxelize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-            pso_voxelize_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
-            pso_voxelize_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
+                p_command_list->SetPipelineState(pso_begin_update_.Get());
+                p_command_list->SetDescriptorSet(pso_begin_update_.Get(), &desc_set);
+                pso_begin_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);  // Screen処理でDispatch.
 
-            p_command_list->SetPipelineState(pso_voxelize_.Get());
-            p_command_list->SetDescriptorSet(pso_voxelize_.Get(), &desc_set);
-            pso_voxelize_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);  // Screen処理でDispatch.
+                p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
+            }
+            // Voxelization Pass.
+            {
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_voxelize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
+                pso_voxelize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                pso_voxelize_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
+                pso_voxelize_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
 
-            p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
-        }
-        // Coarse Voxel Update Pass.
-        {
-            ngl::rhi::DescriptorSetDep desc_set = {};
-            pso_coarse_voxel_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-            pso_coarse_voxel_update_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
-            pso_coarse_voxel_update_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
+                p_command_list->SetPipelineState(pso_voxelize_.Get());
+                p_command_list->SetDescriptorSet(pso_voxelize_.Get(), &desc_set);
+                pso_voxelize_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);  // Screen処理でDispatch.
 
-            p_command_list->SetPipelineState(pso_coarse_voxel_update_.Get());
-            p_command_list->SetDescriptorSet(pso_coarse_voxel_update_.Get(), &desc_set);
-            pso_coarse_voxel_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);  // Screen処理でDispatch.
+                p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
+            }
+            // Coarse Voxel Update Pass.
+            {
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_coarse_voxel_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                pso_coarse_voxel_update_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
+                pso_coarse_voxel_update_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
+                pso_coarse_voxel_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
+                pso_coarse_voxel_update_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
 
-            p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
+                p_command_list->SetPipelineState(pso_coarse_voxel_update_.Get());
+                p_command_list->SetDescriptorSet(pso_coarse_voxel_update_.Get(), &desc_set);
+                pso_coarse_voxel_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);  // Screen処理でDispatch.
+
+                p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
+                p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
+            }
         }
 
         // デバッグ描画.
         {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Debug");
+
             const math::Vec2i work_tex_size = math::Vec2i(static_cast<int>(work_tex->GetWidth()), static_cast<int>(work_tex->GetHeight()));
 
             ngl::rhi::DescriptorSetDep desc_set = {};

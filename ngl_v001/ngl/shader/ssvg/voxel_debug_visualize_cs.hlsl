@@ -58,15 +58,25 @@ void main_cs(
             const uint unique_data_addr = voxel_unique_data_addr(hit_voxel_index);
             const uint occupancy_count = OccupancyBitmaskVoxel[unique_data_addr];
             const float occupancy_f = float(occupancy_count) / float(k_per_voxel_occupancy_bit_count);
+            
+            
+            const uint voxel_gi_data = BufferWork[hit_voxel_index];
+            const uint voxel_gi_sample_count = voxel_gi_data & 0xFFFF;
+            const uint voxel_gi_accumulated = (voxel_gi_data >> 16) & 0xFFFF;
+            const float voxel_gi_average = (0 < voxel_gi_sample_count) ? float(voxel_gi_accumulated) / float(voxel_gi_sample_count) : 0.0;
 
             // 占有度合いを可視化.
             //debug_color.xyz = float4(occupancy_f, occupancy_f, occupancy_f, 1);
             // CoarseVoxelIDを可視化.
-            debug_color.xyz = float4(noise_iqint32(curr_ray_t_ws.yzww), noise_iqint32(curr_ray_t_ws.zwyy), noise_iqint32(curr_ray_t_ws.wyzz), 1);
+            //debug_color.xyz = float4(noise_iqint32(curr_ray_t_ws.yzww), noise_iqint32(curr_ray_t_ws.zwyy), noise_iqint32(curr_ray_t_ws.wyzz), 1);
+            // GIサンプル数を可視化.
+            debug_color.xyz = float4(voxel_gi_average, voxel_gi_average, voxel_gi_average, 1);
+
+
 
             // 簡易フォグ.
-            debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate(curr_ray_t_ws.x/50.0), 1.0/1.2));
-            debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), saturate((curr_ray_t_ws.x/100.0)));
+            //debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate(curr_ray_t_ws.x/50.0), 1.0/1.2));
+            //debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), saturate((curr_ray_t_ws.x/100.0)));
         }
         RWTexWork[dtid.xy] = debug_color;
     #else
