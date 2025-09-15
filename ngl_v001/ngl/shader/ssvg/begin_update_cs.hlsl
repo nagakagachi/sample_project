@@ -29,7 +29,7 @@ void main_cs(
     uint voxel_count = cb_dispatch_param.BaseResolution.x * cb_dispatch_param.BaseResolution.y * cb_dispatch_param.BaseResolution.z;
     if(dtid.x < voxel_count)
     {
-        int3 voxel_coord = addr_to_voxel_coord(dtid.x, cb_dispatch_param.BaseResolution);
+        int3 voxel_coord = index_to_voxel_coord(dtid.x, cb_dispatch_param.BaseResolution);
 
         // 移動によるInvalidateチェック..
         // バッファ上のVoxelアドレスをToroidalマッピング前の座標に変換. 修正版.
@@ -42,11 +42,8 @@ void main_cs(
             // 移動によってシフトしてきた無効領域.
             RWBufferWork[dtid.x] = 0;
 
-            // obvoxelも無効領域をクリア.
-            for(int i = 0; i < k_per_voxel_occupancy_u32_count; ++i)
-            {
-                RWOccupancyBitmaskVoxel[dtid.x * k_per_voxel_occupancy_u32_count + i] = 0;
-            }
+            // クリア.
+            clear_voxel_data(RWOccupancyBitmaskVoxel, dtid.x);
             
             return;
         }

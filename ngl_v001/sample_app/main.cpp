@@ -579,15 +579,17 @@ bool AppGame::Initialize()
         }
     }
 
-    // Raytrace.
-    //	TLAS構築時にShaderTableの最大Hitgroup数が必要な設計であるため初期化時に最大数指定する. PrimayとShadowの2種であれば 2.
-    constexpr int k_system_hitgroup_count_max = 3;
-    if (!rt_scene_.Initialize(&device, k_system_hitgroup_count_max))
-    {
-        std::cout << "[ERROR] Initialize gfx::RtSceneManager" << std::endl;
-    }
-
+    #if 0
+        // Raytrace. 初期化しなければ描画パスでも処理されなくなる.
+        //	TLAS構築時にShaderTableの最大Hitgroup数が必要な設計であるため初期化時に最大数指定する. PrimayとShadowの2種であれば 2.
+        constexpr int k_system_hitgroup_count_max = 3;
+        if (!rt_scene_.Initialize(&device, k_system_hitgroup_count_max))
+        {
+            std::cout << "[ERROR] Initialize gfx::RtSceneManager" << std::endl;
+        }
+    #endif
     
+    // SSVG.
     ssvg_.Initialize(&device);
 
 

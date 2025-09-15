@@ -27,9 +27,6 @@ void main_cs(
     {
         RWBufferWork[dtid.x] = 0;
 
-        for(int i = 0; i < k_per_voxel_occupancy_u32_count; ++i)
-        {
-            RWOccupancyBitmaskVoxel[dtid.x * k_per_voxel_occupancy_u32_count + i] = 0;
-        }
+        clear_voxel_data(RWOccupancyBitmaskVoxel, dtid.x);
     }
 }

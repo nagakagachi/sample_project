@@ -16,14 +16,18 @@
 namespace ngl::render::app
 {
     // シェーダ側と一致させる.
-    // Voxelの占有度合いをビットマスク近似する際の1軸の解像度. 2の冪でなくても良い.
-    static constexpr u32 k_per_voxel_occupancy_reso = (8);// 1Voxelの占有度合いをビットマスク近似する際の1軸の解像度.
-    static constexpr u32 k_per_voxel_occupancy_bit_count = k_per_voxel_occupancy_reso*k_per_voxel_occupancy_reso*k_per_voxel_occupancy_reso;
-    static constexpr u32 k_per_voxel_occupancy_u32_count = (k_per_voxel_occupancy_bit_count + 31) / 32;
+    // CoarseVoxel単位の固有データ部のu32単位数.ジオメトリを表現する占有ビットマスクとは別に荒い単位で保持するデータ. レイアウトの簡易化のためビット単位ではなくu32単位.
+    #define k_per_voxel_data_u32_count (1)
+    // CoarseVoxel単位の占有ビットマスク解像度. 2の冪でなくても良い.
+    #define k_per_voxel_occupancy_reso (8)
+    #define k_per_voxel_occupancy_bit_count (k_per_voxel_occupancy_reso*k_per_voxel_occupancy_reso*k_per_voxel_occupancy_reso)
+    #define k_per_voxel_occupancy_u32_count ((k_per_voxel_occupancy_bit_count + 31) / 32)
+
+    // CoarseVoxel単位のデータサイズ(u32単位)
+    #define k_per_voxel_u32_count (k_per_voxel_occupancy_u32_count + k_per_voxel_data_u32_count)
 
 
     int SsVg::debug_fine_step_max = 2;
-
 
     SsVg::~SsVg()
     {
@@ -72,7 +76,7 @@ namespace ngl::render::app
             occupancy_bitmask_voxel_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = 4,
-                                               .element_count     = voxel_count * k_per_voxel_occupancy_u32_count,
+                                               .element_count     = voxel_count * k_per_voxel_u32_count,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},

@@ -58,23 +58,31 @@ void main_cs(
         if(all(voxel_coord >= 0) && all(voxel_coord < cb_dispatch_param.BaseResolution))
         {
             int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.GridToroidalOffset, cb_dispatch_param.BaseResolution);
-            uint voxel_addr = voxel_coord_to_addr(voxel_coord_toroidal, cb_dispatch_param.BaseResolution);
+            uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_dispatch_param.BaseResolution);
 
             // Voxelの占有数カウンタ(仮)
             uint origin_value;
-            InterlockedAdd(RWBufferWork[voxel_addr], 1, origin_value);
+            InterlockedAdd(RWBufferWork[voxel_index], 1, origin_value);
 
+            {
+                const uint unique_data_addr = voxel_unique_data_addr(voxel_index);
+                const uint obm_addr = voxel_occupancy_bitmask_data_addr(voxel_index);
 
-            // 占有ビットマスク.
-            const float3 voxel_coord_frac = frac(voxel_coordf);
-            const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_per_voxel_occupancy_reso);
-            
-            uint bitmask_u32_offset;
-            uint bitmask_u32_bit_pos;
-            calc_occupancy_bitmask_voxel_inner_bit_info(bitmask_u32_offset, bitmask_u32_bit_pos, voxel_coord_bitmask_pos);
-            const uint bitmask_append = (1 << bitmask_u32_bit_pos);
+                // 占有ビットマスク.
+                const float3 voxel_coord_frac = frac(voxel_coordf);
+                const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_per_voxel_occupancy_reso);
+                
+                uint bitmask_u32_offset;
+                uint bitmask_u32_bit_pos;
+                calc_occupancy_bitmask_voxel_inner_bit_info(bitmask_u32_offset, bitmask_u32_bit_pos, voxel_coord_bitmask_pos);
+                const uint bitmask_append = (1 << bitmask_u32_bit_pos);
 
-            InterlockedOr(RWOccupancyBitmaskVoxel[voxel_addr * k_per_voxel_occupancy_u32_count + bitmask_u32_offset], bitmask_append);
+                // 詳細ジオメトリを占有ビット書き込み.
+                InterlockedOr(RWOccupancyBitmaskVoxel[obm_addr + bitmask_u32_offset], bitmask_append);
+
+                // 粗いジオメトリを固有データ部書き込み.
+                InterlockedOr(RWOccupancyBitmaskVoxel[unique_data_addr], 1);
+            }
         }
     }
 }
