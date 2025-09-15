@@ -13,9 +13,6 @@ namespace ngl::render::app
     class SsVg
     {
     public:
-        static int debug_fine_step_max;
-
-    public:
         SsVg() = default;
         ~SsVg();
 

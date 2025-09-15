@@ -100,8 +100,6 @@ struct DispatchParam
     int Dummy1;
 
     int2 TexHardwareDepthSize;
-
-    int debug_fine_step_max;
 };
 ConstantBuffer<DispatchParam> cb_dispatch_param;
 

@@ -838,7 +838,8 @@ bool AppGame::ExecuteApp()
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Ssvg"))
         {
-            ImGui::InputInt("fine step max", &ngl::render::app::SsVg::debug_fine_step_max);
+            int dummy = 0;
+            ImGui::InputInt("dummy", &dummy);
         }
 
         ImGui::End();

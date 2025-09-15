@@ -26,9 +26,6 @@ namespace ngl::render::app
     // CoarseVoxel単位のデータサイズ(u32単位)
     #define k_per_voxel_u32_count (k_per_voxel_occupancy_u32_count + k_per_voxel_data_u32_count)
 
-
-    int SsVg::debug_fine_step_max = 2;
-
     SsVg::~SsVg()
     {
     }
@@ -147,8 +144,6 @@ namespace ngl::render::app
 
             math::Vec2i TexHardwareDepthSize;
 
-            int debug_fine_step_max;
-
         };
         auto cbh = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(DispatchParam));
         {
@@ -168,8 +163,6 @@ namespace ngl::render::app
             p->CellSizeInv    = 1.0f / cell_size_;
 
             p->TexHardwareDepthSize = hw_depth_size;
-
-            p->debug_fine_step_max = debug_fine_step_max;
 
             cbh->buffer_.Unmap();
         }
