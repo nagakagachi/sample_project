@@ -208,25 +208,6 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
 };
 
 
-// 単一の bitmask voxel 内をトレースする. 内部ビットセルは走査せずに非ゼロのビットがあればボクセルとヒットしたものとする簡易版.
-//  return : [0.0, grid_space_t] (ヒット無しの場合は元の curr_ray_t を返す).
-float trace_ray_bitmask_voxel_inner_simple(
-    Buffer<uint> occupancy_bitmask_voxel, uint voxel_index,
-    float3 trace_time_total, float curr_ray_t
-)
-{
-    // 固有データ部のCoarseVoxelデータで判定.
-    const uint unique_data_addr = voxel_unique_data_addr(voxel_index);
-    if(0 != (occupancy_bitmask_voxel[unique_data_addr] & 1))
-    {
-        // ヒットtを返却.
-        const float trace_time_step = min(trace_time_total.x, min(trace_time_total.y, trace_time_total.z));
-        return min(curr_ray_t, trace_time_step);
-    }
-    return curr_ray_t; // ヒット無し.
-}
-
-
 // 詳細トレース実行. 粗いトレースとほぼ同じコードが二重化しており無駄が多いので整理対象. 粗いVoxel境界で不正ヒットのノイズが若干ある不具合も存在.
 //  return : [0.0, world_space_t) (ヒット無しの場合は負数).
 //  voxel_index : 内部ビットセルまで参照する精密トレースを行う場合にそのVoxelIndexを指定..
@@ -337,6 +318,8 @@ float4 trace_ray_vs_occupancy_bitmask_voxel_fine(
 // トレース実行.
 //  return : [0.0, world_space_t) (ヒット無しの場合は負数).
 float4 trace_ray_vs_occupancy_bitmask_voxel(
+    out int out_hit_voxel_index,
+
     float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws, 
     float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
     int3 grid_toroidal_offset, Buffer<uint> occupancy_bitmask_voxel)
@@ -394,7 +377,7 @@ float4 trace_ray_vs_occupancy_bitmask_voxel(
 
         // CoarseVoxelで簡易判定.
         const uint unique_data_addr = voxel_unique_data_addr(voxel_index);
-        if(0 != (occupancy_bitmask_voxel[unique_data_addr] & 1))
+        if(0 != (occupancy_bitmask_voxel[unique_data_addr]))
         {
             // CoarseVoxelが有効ならば詳細トレース.
 
@@ -420,6 +403,8 @@ float4 trace_ray_vs_occupancy_bitmask_voxel(
                     curr_cell_step = fine_t.yzw;// 法線.
 
                     fine_trace_optional_return = float3(voxel_index, 0, 0);// デバッグ用.
+                    
+                    out_hit_voxel_index = voxel_index;// ヒットVoxelIndexを返却.
                 }
             #else
                 // CoarseVoxelでヒットしているならそのままヒット扱い.
@@ -427,6 +412,8 @@ float4 trace_ray_vs_occupancy_bitmask_voxel(
                 curr_ray_t = min(curr_ray_t, trace_time_step);
                 curr_cell_step = prev_cell_step;// 法線.
                 fine_trace_optional_return = float3(voxel_index, 0, 0);// デバッグ用.
+
+                out_hit_voxel_index = voxel_index;// ヒットVoxelIndexを返却.
             #endif
         }
 

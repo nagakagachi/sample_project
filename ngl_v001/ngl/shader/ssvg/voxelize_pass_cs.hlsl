@@ -18,7 +18,6 @@ ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 Texture2D			TexHardwareDepth;
 SamplerState		SmpHardwareDepth;
 
-RWBuffer<uint>		RWBufferWork;
 RWBuffer<uint>		RWOccupancyBitmaskVoxel;
 
 #define TILE_WIDTH 16
@@ -60,10 +59,6 @@ void main_cs(
             int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.GridToroidalOffset, cb_dispatch_param.BaseResolution);
             uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_dispatch_param.BaseResolution);
 
-            // Voxelの占有数カウンタ(仮)
-            uint origin_value;
-            InterlockedAdd(RWBufferWork[voxel_index], 1, origin_value);
-
             {
                 const uint unique_data_addr = voxel_unique_data_addr(voxel_index);
                 const uint obm_addr = voxel_occupancy_bitmask_data_addr(voxel_index);
@@ -80,8 +75,7 @@ void main_cs(
                 // 詳細ジオメトリを占有ビット書き込み.
                 InterlockedOr(RWOccupancyBitmaskVoxel[obm_addr + bitmask_u32_offset], bitmask_append);
 
-                // 粗いジオメトリを固有データ部書き込み.
-                InterlockedOr(RWOccupancyBitmaskVoxel[unique_data_addr], 1);
+                // 別のパスでVoxel毎の占有度カウントして固有データに書き込む.
             }
         }
     }

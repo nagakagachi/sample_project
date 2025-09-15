@@ -552,7 +552,7 @@ bool AppGame::Initialize()
                         tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
                     #endif
                 #endif
-                tr.SetColumn3(ngl::math::Vec4(0.0f, 1.0f, 0.0f, 0.0f));
+                tr.SetColumn3(ngl::math::Vec4(0.0f, 10.0f, 0.0f, 0.0f));
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }

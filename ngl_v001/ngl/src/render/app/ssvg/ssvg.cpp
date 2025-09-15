@@ -54,6 +54,7 @@ namespace ngl::render::app
             pso_clear_voxel_  = CreateComputePSO("ssvg/clear_voxel_cs.hlsl");
             pso_begin_update_ = CreateComputePSO("ssvg/begin_update_cs.hlsl");
             pso_voxelize_     = CreateComputePSO("ssvg/voxelize_pass_cs.hlsl");
+            pso_coarse_voxel_update_ = CreateComputePSO("ssvg/coarse_voxel_update_cs.hlsl");
 
             pso_debug_visualize_ = CreateComputePSO("ssvg/voxel_debug_visualize_cs.hlsl");
         }
@@ -203,14 +204,25 @@ namespace ngl::render::app
             pso_voxelize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
             pso_voxelize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
             pso_voxelize_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
-            pso_voxelize_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
             pso_voxelize_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
 
             p_command_list->SetPipelineState(pso_voxelize_.Get());
             p_command_list->SetDescriptorSet(pso_voxelize_.Get(), &desc_set);
             pso_voxelize_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);  // Screen処理でDispatch.
 
-            p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
+            p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
+        }
+        // Coarse Voxel Update Pass.
+        {
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_coarse_voxel_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+            pso_coarse_voxel_update_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
+            pso_coarse_voxel_update_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_coarse_voxel_update_.Get());
+            p_command_list->SetDescriptorSet(pso_coarse_voxel_update_.Get(), &desc_set);
+            pso_coarse_voxel_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);  // Screen処理でDispatch.
+
             p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
         }
 

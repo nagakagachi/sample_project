@@ -44,15 +44,10 @@ void main_cs(
 
             // クリア.
             clear_voxel_data(RWOccupancyBitmaskVoxel, dtid.x);
-            
-            return;
         }
         else
         {
-            const int update_work_value = int(RWBufferWork[dtid.x]) - 1;
-            RWBufferWork[dtid.x] = clamp(update_work_value, 0, 5000);
-
-            return;
+            RWBufferWork[dtid.x] = clamp(int(RWBufferWork[dtid.x]) - 1, 0, 5000);
         }
     }
 }

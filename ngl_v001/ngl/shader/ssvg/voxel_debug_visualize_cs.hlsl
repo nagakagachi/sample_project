@@ -44,7 +44,9 @@ void main_cs(
 
         const float trace_distance = 10000.0;
           
+        int hit_voxel_index = -1;
         float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
+            hit_voxel_index,
             camera_pos, ray_dir_ws, trace_distance, 
             cb_dispatch_param.GridMinPos, cb_dispatch_param.CellSize, cb_dispatch_param.BaseResolution,
             cb_dispatch_param.GridToroidalOffset, OccupancyBitmaskVoxel);
@@ -53,7 +55,16 @@ void main_cs(
         float4 debug_color = float4(0, 0, 1, 0);
         if(0.0 <= curr_ray_t_ws.x)
         {
+            const uint unique_data_addr = voxel_unique_data_addr(hit_voxel_index);
+            const uint occupancy_count = OccupancyBitmaskVoxel[unique_data_addr];
+            const float occupancy_f = float(occupancy_count) / float(k_per_voxel_occupancy_bit_count);
+
+            // 占有度合いを可視化.
+            //debug_color.xyz = float4(occupancy_f, occupancy_f, occupancy_f, 1);
+            // CoarseVoxelIDを可視化.
             debug_color.xyz = float4(noise_iqint32(curr_ray_t_ws.yzww), noise_iqint32(curr_ray_t_ws.zwyy), noise_iqint32(curr_ray_t_ws.wyzz), 1);
+
+            // 簡易フォグ.
             debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate(curr_ray_t_ws.x/50.0), 1.0/1.2));
             debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), saturate((curr_ray_t_ws.x/100.0)));
         }
