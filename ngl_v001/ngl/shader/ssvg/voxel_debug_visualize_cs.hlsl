@@ -72,8 +72,6 @@ void main_cs(
             // GIサンプル数を可視化.
             debug_color.xyz = float4(voxel_gi_average, voxel_gi_average, voxel_gi_average, 1);
 
-
-
             // 簡易フォグ.
             //debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate(curr_ray_t_ws.x/50.0), 1.0/1.2));
             //debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), saturate((curr_ray_t_ws.x/100.0)));
@@ -84,7 +82,7 @@ void main_cs(
         const int3 bv_full_reso = cb_dispatch_param.BaseResolution * k_per_voxel_occupancy_reso;
         
         const float visualize_scale = 0.5;
-        float3 read_pos_world_base = float3(dtid.x, 0.0, cb_dispatch_param.TexHardwareDepthSize.y-1 - dtid.y) * visualize_scale * cb_dispatch_param.CellSize/k_per_voxel_occupancy_reso;
+        float3 read_pos_world_base = (float3(dtid.x, 0.0, cb_dispatch_param.TexHardwareDepthSize.y-1 - dtid.y) + 0.5) * visualize_scale * cb_dispatch_param.CellSize/k_per_voxel_occupancy_reso;
         read_pos_world_base += cb_dispatch_param.GridMinPos;
 
         float write_data = 0.0;
