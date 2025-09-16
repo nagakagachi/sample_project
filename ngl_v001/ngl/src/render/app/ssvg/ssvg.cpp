@@ -224,7 +224,6 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_coarse_voxel_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                 pso_coarse_voxel_update_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
-                pso_coarse_voxel_update_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
                 pso_coarse_voxel_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
                 pso_coarse_voxel_update_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
 

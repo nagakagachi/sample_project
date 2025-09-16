@@ -13,7 +13,6 @@ coarse_voxel_update_cs.hlsl
 
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 
-RWBuffer<uint>		RWOccupancyBitmaskVoxel;
 Buffer<uint>		OccupancyBitmaskVoxel;
 RWBuffer<uint>		RWBufferWork;
 
@@ -40,15 +39,6 @@ void main_cs(
     {
         const uint unique_data_addr = voxel_unique_data_addr(voxel_index);
         const uint obm_addr = voxel_occupancy_bitmask_data_addr(voxel_index);
-
-        uint obm_count = 0;
-        for(uint i = 0; i < voxel_occupancy_bitmask_uint_count(); i++)
-        {
-            obm_count += CountBits32(OccupancyBitmaskVoxel[obm_addr + i]);
-        }
-        RWOccupancyBitmaskVoxel[unique_data_addr] = obm_count;// ユニークデータ部に占有ビット総数書き込み.
-
-
 
         // AOテスト.    
         const float3 voxel_pos_ws = (float3(voxel_coord) + 0.5) * cb_dispatch_param.CellSize + cb_dispatch_param.GridMinPos;

@@ -75,7 +75,9 @@ void main_cs(
                 // 詳細ジオメトリを占有ビット書き込み.
                 InterlockedOr(RWOccupancyBitmaskVoxel[obm_addr + bitmask_u32_offset], bitmask_append);
 
-                // 別のパスでVoxel毎の占有度カウントして固有データに書き込む.
+                // 占有されていることを示すビットをCoarseVoxelに書き込みしてCoarseTraceで参照できるようにする.
+                // TODO. こちらもTileベースでなるべくAtomic操作数を減らしたい.
+                InterlockedOr(RWOccupancyBitmaskVoxel[unique_data_addr], 1);
             }
         }
     }
