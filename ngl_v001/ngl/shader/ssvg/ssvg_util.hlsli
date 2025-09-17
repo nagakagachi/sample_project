@@ -69,10 +69,19 @@ uint voxel_occupancy_bitmask_uint_count()
 // Occupancy Bitmask Voxelの内部座標を元にバッファの該当Voxelブロック内のオフセットと読み取りビット位置を計算.
 void calc_occupancy_bitmask_voxel_inner_bit_info(out uint out_u32_offset, out uint out_bit_location, uint3 bit_position_in_voxel)
 {
+    // 現状はX,Y,Z順のリニアレイアウト.
     const uint3 bit_pos = bit_position_in_voxel;
     const uint bit_linear_pos = bit_pos.x + (bit_pos.y * k_per_voxel_occupancy_reso) + (bit_pos.z * (k_per_voxel_occupancy_reso * k_per_voxel_occupancy_reso));
     out_u32_offset = bit_linear_pos / 32;
     out_bit_location = bit_linear_pos - (out_u32_offset * 32);
+}
+// Occupancy Bitmask Voxelのビットセルインデックスからk_per_voxel_occupancy_reso^3 ボクセル内位置を計算.
+// bit_index : 0 〜 k_per_voxel_occupancy_bit_count-1
+uint3 calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(uint bit_index)
+{
+    // 現状はX,Y,Z順のリニアレイアウト.
+    const uint3 bit_pos = uint3(bit_index % k_per_voxel_occupancy_reso, (bit_index / k_per_voxel_occupancy_reso) % k_per_voxel_occupancy_reso, bit_index / (k_per_voxel_occupancy_reso * k_per_voxel_occupancy_reso));
+    return bit_pos;
 }
 
 // リニアなVoxel座標をループするToroidalマッピングに変換する.
@@ -134,7 +143,6 @@ uint read_occupancy_bitmask_voxel_from_world_pos(Buffer<uint> occupancy_bitmask_
     {
         int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, grid_toroidal_offset, grid_resolution);
         uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, grid_resolution);
-
 
         const uint voxel_obm_addr = voxel_occupancy_bitmask_data_addr(voxel_index);
         // 占有ビットマスクの座標.
