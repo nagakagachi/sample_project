@@ -23,6 +23,7 @@ struct CbFinalScreenPass
 	int enable_dshadow;
 
 	int enable_ssvg;
+    float ssvg_voxel_rate;
 };
 ConstantBuffer<CbFinalScreenPass> cb_final_screen_pass;
 
@@ -159,15 +160,12 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		}
 		if(cb_final_screen_pass.enable_ssvg)
 		{
-    		const float k_ssvg_debug_height = 0.6;
-			const float2 debug_area_size = float2(k_ssvg_debug_height, k_ssvg_debug_height);
-			const float2 debug_area_lt = float2(1.0 - k_ssvg_debug_height, 1.0 - k_ssvg_debug_height);
-			const float2 debug_area_br = debug_area_lt + debug_area_size;
-			if (all(debug_area_lt <= input.uv) && all(debug_area_br >= input.uv))
-			{
-				float4 sample_color = tex_ssvg.SampleLevel(samp, (input.uv-debug_area_lt) / debug_area_size, 0);
-				return sample_color;
-			}
+            // スライダで画面全体をボクセル可視化に切り替え.
+			float4 ssvg_voxel_vis = tex_ssvg.SampleLevel(samp, input.uv, 0);
+            if(input.uv.x <= cb_final_screen_pass.ssvg_voxel_rate)
+            {
+                color.rgb = lerp(color.rgb, ssvg_voxel_vis.rgb, 1.0);
+            }
 		}
 		
 	}

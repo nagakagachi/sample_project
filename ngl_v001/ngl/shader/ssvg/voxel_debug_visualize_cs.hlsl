@@ -51,30 +51,46 @@ void main_cs(
             cb_dispatch_param.GridMinPos, cb_dispatch_param.CellSize, cb_dispatch_param.BaseResolution,
             cb_dispatch_param.GridToroidalOffset, OccupancyBitmaskVoxel);
 
-        //float4 debug_color = (0.0 <= curr_ray_t_ws.x) ? float4(curr_ray_t_ws.xxx, 1)/20.0 : float4(0, 0, 1, 0);
         float4 debug_color = float4(0, 0, 1, 0);
         if(0.0 <= curr_ray_t_ws.x)
         {
             const uint unique_data_addr = voxel_unique_data_addr(hit_voxel_index);
-            const uint occupancy_count = OccupancyBitmaskVoxel[unique_data_addr];
-            const float occupancy_f = float(occupancy_count) / float(k_per_voxel_occupancy_bit_count);
             
-            
-            const uint voxel_gi_data = BufferWork[hit_voxel_index];
-            const uint voxel_gi_sample_count = voxel_gi_data & 0xFFFF;
-            const uint voxel_gi_accumulated = (voxel_gi_data >> 16) & 0xFFFF;
-            const float voxel_gi_average = (0 < voxel_gi_sample_count) ? float(voxel_gi_accumulated) / float(voxel_gi_sample_count) : 0.0;
+            // デバッグ用テクスチャにモード別描画.
+            if(1 == cb_dispatch_param.debug_view_mode)
+            {
+                // VoxelIDを可視化.
+                debug_color.xyz = float4(noise_iqint32(hit_voxel_index), noise_iqint32(hit_voxel_index*2), noise_iqint32(hit_voxel_index*3), 1);
+                
+                // 簡易フォグ.
+                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate(curr_ray_t_ws.x/50.0), 1.0/1.2));
+                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), saturate((curr_ray_t_ws.x/100.0)));
+            }
+            else if(2 == cb_dispatch_param.debug_view_mode)
+            {
+                // レイ距離を可視化.
+                debug_color.xyz = float4(saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), 1);
+            }
+            else if(3 == cb_dispatch_param.debug_view_mode)
+            {
+                // GIサンプル数を可視化.
+                const uint voxel_gi_data = BufferWork[hit_voxel_index];
+                const uint voxel_gi_sample_count = voxel_gi_data & 0xFFFF;
+                const uint voxel_gi_accumulated = (voxel_gi_data >> 16) & 0xFFFF;
+                const float voxel_gi_average = (0 < voxel_gi_sample_count) ? float(voxel_gi_accumulated) / float(voxel_gi_sample_count) : 0.0;
 
-            // 占有度合いを可視化.
-            //debug_color.xyz = float4(occupancy_f, occupancy_f, occupancy_f, 1);
-            // CoarseVoxelIDを可視化.
-            //debug_color.xyz = float4(noise_iqint32(curr_ray_t_ws.yzww), noise_iqint32(curr_ray_t_ws.zwyy), noise_iqint32(curr_ray_t_ws.wyzz), 1);
-            // GIサンプル数を可視化.
-            debug_color.xyz = float4(voxel_gi_average, voxel_gi_average, voxel_gi_average, 1);
-
-            // 簡易フォグ.
-            //debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate(curr_ray_t_ws.x/50.0), 1.0/1.2));
-            //debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), saturate((curr_ray_t_ws.x/100.0)));
+                debug_color.xyz = float4(voxel_gi_average, voxel_gi_average, voxel_gi_average, 1);
+            }
+            else
+            {
+                // obmセル可視化
+                const float3 obm_cell_id = floor((camera_pos + ray_dir_ws*curr_ray_t_ws.x) * (cb_dispatch_param.CellSizeInv*float(k_per_voxel_occupancy_reso)) + 0.5);
+                debug_color.xyz = float4(noise_iqint32(obm_cell_id.xyzz), noise_iqint32(obm_cell_id.xzyy), noise_iqint32(obm_cell_id.xyzx), 1);
+                
+                // 簡易フォグ.
+                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate(curr_ray_t_ws.x/50.0), 1.0/1.2));
+                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), saturate((curr_ray_t_ws.x/100.0)));
+            }
         }
         RWTexWork[dtid.xy] = debug_color;
     #else

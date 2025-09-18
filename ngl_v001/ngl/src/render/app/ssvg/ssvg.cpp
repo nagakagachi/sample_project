@@ -26,6 +26,10 @@ namespace ngl::render::app
     // CoarseVoxel単位のデータサイズ(u32単位)
     #define k_per_voxel_u32_count (k_per_voxel_occupancy_u32_count + k_per_voxel_data_u32_count)
 
+
+    int SsVg::dbg_view_mode_ = 0;
+    
+
     SsVg::~SsVg()
     {
     }
@@ -147,6 +151,7 @@ namespace ngl::render::app
             math::Vec2i TexHardwareDepthSize{};
             u32 FrameCount{};
 
+            u32 debug_view_mode{};
         };
         auto cbh = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(DispatchParam));
         {
@@ -168,6 +173,8 @@ namespace ngl::render::app
             p->TexHardwareDepthSize = hw_depth_size;
 
             p->FrameCount = frame_count_;
+
+            p->debug_view_mode = SsVg::dbg_view_mode_;
 
             cbh->buffer_.Unmap();
         }

@@ -184,7 +184,7 @@ uint noise_iqint32_orig(uint2 p)
   
 float noise_iqint32(float4 pos)  
 {  
-    uint value = noise_iqint32_orig(pos.xy) + noise_iqint32_orig(pos.zw);  
+    uint value = noise_iqint32_orig(asuint(pos.xy)) + noise_iqint32_orig(asuint(pos.zw));  
     return value * 2.3283064365386962890625e-10;  
 }
 

@@ -13,6 +13,9 @@ namespace ngl::render::app
     class SsVg
     {
     public:
+        static int dbg_view_mode_;
+
+    public:
         SsVg() = default;
         ~SsVg();
 
@@ -40,7 +43,7 @@ namespace ngl::render::app
         math::Vec3 important_dir_ = {0,0,1};
 
         u32 frame_count_{};
-        
+
         math::Vec3i grid_center_cell_id_ = {};
         math::Vec3i grid_center_cell_id_prev_ = {};
 

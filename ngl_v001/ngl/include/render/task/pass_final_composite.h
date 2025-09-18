@@ -42,7 +42,9 @@ namespace ngl::render::task
 			
 			bool debugview_gbuffer = false;
 			bool debugview_dshadow = false;
-			bool debugview_ssvg = false;
+
+			bool debugview_ssvg_voxel = false;
+            float debugview_ssvg_voxel_rate = 0.5f;
 		};
 		SetupDesc desc_{};
 		bool is_render_skip_debug{};
@@ -225,6 +227,8 @@ namespace ngl::render::task
 						int enable_dshadow;
 
                     	int enable_ssvg;
+                        float ssvg_voxel_rate;
+                        float pad2[2];
 					};
 					auto cbh = gfx_commandlist->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(CbFinalScreenPass));
 					if(auto* p_mapped = cbh->buffer_.MapAs<CbFinalScreenPass>())
@@ -235,7 +239,8 @@ namespace ngl::render::task
 
 						p_mapped->enable_gbuffer = desc_.debugview_gbuffer;
 						p_mapped->enable_dshadow = desc_.debugview_dshadow;
-						p_mapped->enable_ssvg = desc_.debugview_ssvg;
+						p_mapped->enable_ssvg = desc_.debugview_ssvg_voxel;
+                        p_mapped->ssvg_voxel_rate = desc_.debugview_ssvg_voxel_rate;
 
 						cbh->buffer_.Unmap();
 					}

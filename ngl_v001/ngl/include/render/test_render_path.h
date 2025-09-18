@@ -71,7 +71,9 @@ namespace ngl::test
     	bool debugview_raytrace_result = false;
     	bool debugview_gbuffer = false;
     	bool debugview_dshadow = false;
-        bool debugview_ssvg = false;
+
+        bool debugview_ssvg_voxel = false;
+        float debugview_ssvg_voxel_rate = 0.5f;
     };
 	// RenderPathが生成した出力リソース.
 	//	このRenderPathとは異なるRtgや次フレームのRtgでアクセス可能.
