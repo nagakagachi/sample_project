@@ -13,9 +13,6 @@ begin_update_cs.hlsl
 
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 
-RWBuffer<uint>		RWBufferWork;
-RWBuffer<uint>		RWOccupancyBitmaskVoxel;
-
 // DepthBufferに対してDispatch.
 [numthreads(128, 1, 1)]
 void main_cs(
@@ -41,7 +38,7 @@ void main_cs(
             if(is_invalidate_area)
             {
                 // 移動によってシフトしてきた無効領域.
-                RWBufferWork[voxel_index] = 0;
+                RWCoarseVoxelBuffer[voxel_index] = empty_coarse_voxel_data();
 
                 // クリア.
                 clear_voxel_data(RWOccupancyBitmaskVoxel, voxel_index);
@@ -61,7 +58,7 @@ void main_cs(
             if(is_invalidate_area)
             {
                 // 移動によってシフトしてきた無効領域.
-                RWBufferWork[dtid.x] = 0;
+                RWCoarseVoxelBuffer[dtid.x] = empty_coarse_voxel_data();
 
                 // クリア.
                 clear_voxel_data(RWOccupancyBitmaskVoxel, dtid.x);

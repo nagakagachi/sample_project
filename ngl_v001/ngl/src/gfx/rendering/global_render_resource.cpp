@@ -109,7 +109,7 @@ namespace ngl::gfx
             // Comparison Sampler for Shadow.
             ngl::rhi::SamplerDep::Desc samp_desc = {};
             samp_desc.Filter = ngl::rhi::ETextureFilterMode::Comp_Min_Linear_Mag_Linear_Mip_Linear;
-            samp_desc.ComparisonFunc = rhi::ECompFunc::GreaterEqual;
+            samp_desc.ComparisonFunc = rhi::ECompFunc::Greater;
             samp_desc.AddressU = ngl::rhi::ETextureAddressMode::Clamp;
             samp_desc.AddressV = ngl::rhi::ETextureAddressMode::Clamp;
             samp_desc.AddressW = ngl::rhi::ETextureAddressMode::Clamp;

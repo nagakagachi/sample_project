@@ -338,7 +338,7 @@ bool AppGame::Initialize()
         const char* mesh_file_box = "K:\\GitHub\\sample_projct_lib\\ngl_v001\\ngl\\external\\assimp\\test\\models\\FBX\\box.fbx";
 
         // シーンモデル.
-#if 0
+#if 1
         // Sponza.
         const char* mesh_file_sponza = "../ngl/data/model/sponza_gltf/glTF/Sponza.gltf";
         const float sponza_scale     = 1.0f;
@@ -840,9 +840,11 @@ bool AppGame::ExecuteApp()
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Ssvg"))
         {
-            ImGui::Checkbox("View SSVG", &dbgw_view_ssvg_voxel);
-            ImGui::SliderInt("SSVG ViewMode", &ngl::render::app::SsVg::dbg_view_mode_, 0, 5);
-            ImGui::SliderFloat("SSVG Voxel Rate", &dbgw_view_ssvg_voxel_rate, 0.0f, 1.0f);
+            ImGui::Checkbox("Enable", &dbgw_view_ssvg_voxel);
+            ImGui::SliderInt("Voxel Debug", &ngl::render::app::SsVg::dbg_view_mode_, 0, 5);
+            ImGui::SliderFloat("Visualize Screen Rate", &dbgw_view_ssvg_voxel_rate, 0.0f, 1.0f);
+
+            ImGui::SliderInt("Probe Debug", &ngl::render::app::SsVg::dbg_probe_debug_view_mode_, -1, 1);
         }
 
         ImGui::End();

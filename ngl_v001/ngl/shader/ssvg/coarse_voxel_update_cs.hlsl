@@ -13,9 +13,6 @@ coarse_voxel_update_cs.hlsl
 
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 
-Buffer<uint>		OccupancyBitmaskVoxel;
-RWBuffer<uint>		RWBufferWork;
-
 // DepthBufferに対してDispatch.
 [numthreads(128, 1, 1)]
 void main_cs(
@@ -37,15 +34,15 @@ void main_cs(
 
     if(voxel_index < voxel_count)
     {
-        const uint unique_data_addr = voxel_unique_data_addr(voxel_index);
-        const uint obm_addr = voxel_occupancy_bitmask_data_addr(voxel_index);
+        const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
+        const uint obm_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
 
         #if 1
             // 占有度が0のセルのうちで最も適切なものを選ぶ.条件は色々検討.
-            int nearest_bit_cell_index = -1;
-            float nearest_bit_cell_dist_sq = 1e20;
-            const float3 camera_pos_in_bit_cell_space = ((camera_pos - cb_dispatch_param.GridMinPos) * cb_dispatch_param.CellSizeInv - float3(voxel_coord)) * float(k_per_voxel_occupancy_reso);
-            for(int i = 0; i < voxel_occupancy_bitmask_uint_count(); ++i)
+            int candidate_probe_pos_bit_cell_index = -1;
+            float candidate_probe_pos_dist_sq = 1e20;
+            const float3 camera_pos_in_bit_cell_space = ((camera_pos - cb_dispatch_param.GridMinPos) * cb_dispatch_param.CellSizeInv - float3(voxel_coord)) * float(k_obm_per_voxel_resolution);
+            for(int i = 0; i < obm_voxel_occupancy_bitmask_uint_count(); ++i)
             {
                 uint bit_block = (~OccupancyBitmaskVoxel[obm_addr + i]);
 
@@ -58,15 +55,15 @@ void main_cs(
                         const uint3 bit_pos_in_voxel = calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(bit_index);
                         
                         // カメラに一番近い空のセル.
-                        const float3 score_vec = float3(bit_pos_in_voxel) - camera_pos_in_bit_cell_space;
+                        //const float3 score_vec = float3(bit_pos_in_voxel) - camera_pos_in_bit_cell_space;
                         // CoarseVoxel中心に近い空のセル.
-                        //const float3 score_vec = float3(bit_pos_in_voxel) - (float3(k_per_voxel_occupancy_reso, k_per_voxel_occupancy_reso, k_per_voxel_occupancy_reso) * 0.5);
+                        const float3 score_vec = float3(bit_pos_in_voxel) - (float3(k_obm_per_voxel_resolution, k_obm_per_voxel_resolution, k_obm_per_voxel_resolution) * 0.5);
 
                         const float dist_sq = dot(score_vec, score_vec);
-                        if(dist_sq < nearest_bit_cell_dist_sq)
+                        if(dist_sq < candidate_probe_pos_dist_sq)
                         {
-                            nearest_bit_cell_dist_sq = dist_sq;
-                            nearest_bit_cell_index = bit_index;
+                            candidate_probe_pos_dist_sq = dist_sq;
+                            candidate_probe_pos_bit_cell_index = bit_index;
                         }
                     }
                     bit_block >>= 1;
@@ -74,38 +71,36 @@ void main_cs(
             }
             // VoxelのMin位置.
             float3 probe_sample_pos_ws = float3(voxel_coord) * cb_dispatch_param.CellSize + cb_dispatch_param.GridMinPos;
-            if(0 <= nearest_bit_cell_index)
+            if(0 <= candidate_probe_pos_bit_cell_index)
             {
-                probe_sample_pos_ws += (float3(calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(nearest_bit_cell_index)) + 0.5) * (cb_dispatch_param.CellSize / float(k_per_voxel_occupancy_reso));
+                probe_sample_pos_ws += (float3(calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(candidate_probe_pos_bit_cell_index)) + 0.5) * (cb_dispatch_param.CellSize / float(k_obm_per_voxel_resolution));
             }
             else
             {
                 // 占有されているセルが全て埋まっている場合はVoxel中心をプローブ位置にする.
                 probe_sample_pos_ws += cb_dispatch_param.CellSize * 0.5;
             }
-                #if 1
-                // デバッグ.
-                // Voxel単位の色の見栄えのために高負荷だがカメラからレイを飛ばして遮蔽されている場合は外側にプローブを配置する.
-                {
-                    const float3 camera_to_probe = probe_sample_pos_ws - camera_pos;
-                    const float3 ray_dir_ws = normalize(camera_to_probe);
-                    // Voxelサイズの短距離トレースでカメラ遮蔽を確認.
-                    int hit_voxel_index = -1;
-                    float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
-                        hit_voxel_index,
-                        camera_pos, ray_dir_ws, dot(camera_to_probe, ray_dir_ws),
-                        cb_dispatch_param.GridMinPos, cb_dispatch_param.CellSize, cb_dispatch_param.BaseResolution,
-                        cb_dispatch_param.GridToroidalOffset, OccupancyBitmaskVoxel);
-
-                    if(0.0 <= curr_ray_t_ws.x)
+                    
+                    /*
+                    // Voxel単位の色の見栄えのために高負荷だがカメラからレイを飛ばして遮蔽されている場合は外側にプローブを配置する.
                     {
-                        // カメラに遮蔽されているカメラレイのヒット位置まで引き出す(距離があると遮蔽部がカメラに入ったときに明るい状態になるのでやり過ぎ).
-                        probe_sample_pos_ws = camera_pos + ray_dir_ws * (curr_ray_t_ws.x - cb_dispatch_param.CellSize * 0.2);
-                        // セル側からオフセット.
-                        //probe_sample_pos_ws = probe_sample_pos_ws + ray_dir_ws * ( -cb_dispatch_param.CellSize * 4.0);
+                        const float3 camera_to_probe = probe_sample_pos_ws - camera_pos;
+                        const float3 ray_dir_ws = normalize(camera_to_probe);
+                        // Voxelサイズの短距離トレースでカメラ遮蔽を確認.
+                        int hit_voxel_index = -1;
+                        float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
+                            hit_voxel_index,
+                            camera_pos, ray_dir_ws, dot(camera_to_probe, ray_dir_ws),
+                            cb_dispatch_param.GridMinPos, cb_dispatch_param.CellSize, cb_dispatch_param.BaseResolution,
+                            cb_dispatch_param.GridToroidalOffset, OccupancyBitmaskVoxel);
+
+                        if(0.0 <= curr_ray_t_ws.x)
+                        {
+                            // カメラに遮蔽されているカメラレイのヒット位置まで引き出す(距離があると遮蔽部がカメラに入ったときに明るい状態になるのでやり過ぎ).
+                            probe_sample_pos_ws = camera_pos + ray_dir_ws * (curr_ray_t_ws.x - cb_dispatch_param.CellSize * 0.2);
+                        }
                     }
-                }
-                #endif
+                    */
 
 
             float3 sample_ray_dir = random_unit_vector3(float2(probe_sample_pos_ws.x+probe_sample_pos_ws.y+probe_sample_pos_ws.z, (cb_dispatch_param.FrameCount)));
@@ -128,25 +123,29 @@ void main_cs(
             cb_dispatch_param.GridMinPos, cb_dispatch_param.CellSize, cb_dispatch_param.BaseResolution,
             cb_dispatch_param.GridToroidalOffset, OccupancyBitmaskVoxel);
 
-        // CoarseVoxelの固有データ読み取り.
-        const uint voxel_gi_data = RWBufferWork[voxel_index];
-        uint voxel_gi_sample_count = voxel_gi_data & 0xFFFF;
-        uint voxel_gi_accumulated = (voxel_gi_data >> 16) & 0xFFFF;
-        // SkyVisibilityをAccum.
-        if(512 <= voxel_gi_sample_count)
+        // CoarseVoxelの固有データ読み取り. 更新
         {
-            voxel_gi_sample_count = voxel_gi_sample_count/3;
-            voxel_gi_accumulated = voxel_gi_accumulated/3;
-        }
-        voxel_gi_sample_count += 1;
-        if(0.0 > curr_ray_t_ws.x)
-        {
-            voxel_gi_accumulated += 1;
-        }
+            const uint2 coarse_voxel_data_code = RWCoarseVoxelBuffer[voxel_index];
+            CoarseVoxelData coarse_voxel_data;
+            coarse_voxel_decode(coarse_voxel_data, coarse_voxel_data_code);
 
-        // CoarseVoxelの固有データ書き込み.
-        const uint new_voxel_gi_data = (clamp(voxel_gi_accumulated, 0, 65535) << 16) | clamp(voxel_gi_sample_count, 0, 65535);
-        RWBufferWork[voxel_index] = new_voxel_gi_data;
-        
+            // SkyVisibilityをAccum.
+            if(512 <= coarse_voxel_data.sample_count)
+            {
+                coarse_voxel_data.sample_count = coarse_voxel_data.sample_count/4;
+                coarse_voxel_data.accumulated = coarse_voxel_data.accumulated/4;
+            }
+            coarse_voxel_data.sample_count += 1;
+            if(0.0 > curr_ray_t_ws.x)
+            {
+                coarse_voxel_data.accumulated += 1;
+            }
+
+            // 0が無効値であるようにして +1 のbit cell index書き込み.
+            coarse_voxel_data.probe_pos_index = (0 <= candidate_probe_pos_bit_cell_index) ? candidate_probe_pos_bit_cell_index+1 : 0;
+
+            // CoarseVoxelの固有データ書き込み.
+            RWCoarseVoxelBuffer[voxel_index] = coarse_voxel_encode(coarse_voxel_data);
+        }
     }
 }

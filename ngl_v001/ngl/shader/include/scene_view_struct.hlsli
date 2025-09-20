@@ -1,3 +1,8 @@
+/*
+    scene_view_struct.hlsli
+    SceneView定数バッファ構造定義.
+*/
+
 #ifndef NGL_SHADER_SCENE_VIEW_STRUCT_H
 #define NGL_SHADER_SCENE_VIEW_STRUCT_H
 

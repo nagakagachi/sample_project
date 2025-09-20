@@ -15,19 +15,19 @@
 
 namespace ngl::render::app
 {
-    // シェーダ側と一致させる.
-    // CoarseVoxel単位の固有データ部のu32単位数.ジオメトリを表現する占有ビットマスクとは別に荒い単位で保持するデータ. レイアウトの簡易化のためビット単位ではなくu32単位.
-    #define k_per_voxel_data_u32_count (1)
-    // CoarseVoxel単位の占有ビットマスク解像度. 2の冪でなくても良い.
-    #define k_per_voxel_occupancy_reso (8)
-    #define k_per_voxel_occupancy_bit_count (k_per_voxel_occupancy_reso*k_per_voxel_occupancy_reso*k_per_voxel_occupancy_reso)
-    #define k_per_voxel_occupancy_u32_count ((k_per_voxel_occupancy_bit_count + 31) / 32)
-
-    // CoarseVoxel単位のデータサイズ(u32単位)
-    #define k_per_voxel_u32_count (k_per_voxel_occupancy_u32_count + k_per_voxel_data_u32_count)
+    // シェーダとCppで一致させる.
+    // ObmVoxel単位の固有データ部のu32単位数.ジオメトリを表現する占有ビットマスクとは別に荒い単位で保持するデータ. レイアウトの簡易化のためビット単位ではなくu32単位.
+    #define k_obm_common_data_u32_count (1)
+    // ObmVoxel単位の占有ビットマスク解像度. 2の冪でなくても良い.
+    #define k_obm_per_voxel_resolution (8)
+    #define k_obm_per_voxel_bitmask_bit_count (k_obm_per_voxel_resolution*k_obm_per_voxel_resolution*k_obm_per_voxel_resolution)
+    #define k_obm_per_voxel_occupancy_bitmask_u32_count ((k_obm_per_voxel_bitmask_bit_count + 31) / 32)
+    // ObmVoxel単位のデータサイズ(u32単位)
+    #define k_obm_per_voxel_u32_count (k_obm_per_voxel_occupancy_bitmask_u32_count + k_obm_common_data_u32_count)
 
 
     int SsVg::dbg_view_mode_ = 0;
+    int SsVg::dbg_probe_debug_view_mode_ = -1;
     
 
     SsVg::~SsVg()
@@ -60,25 +60,62 @@ namespace ngl::render::app
             pso_voxelize_     = CreateComputePSO("ssvg/voxelize_pass_cs.hlsl");
             pso_coarse_voxel_update_ = CreateComputePSO("ssvg/coarse_voxel_update_cs.hlsl");
 
-            pso_debug_visualize_ = CreateComputePSO("ssvg/voxel_debug_visualize_cs.hlsl");
+            pso_debug_visualize_ = CreateComputePSO("ssvg/debug/voxel_debug_visualize_cs.hlsl");
+            
+            {
+                pso_debug_obm_voxel_ = ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep>(new ngl::rhi::GraphicsPipelineStateDep());
+                ngl::rhi::GraphicsPipelineStateDep::Desc gpso_desc = {};
+                {
+                    ngl::gfx::ResShader::LoadDesc vs_load_desc = {};
+                    vs_load_desc.stage                         = ngl::rhi::EShaderStage::Vertex;
+                    vs_load_desc.shader_model_version          = k_shader_model;
+                    vs_load_desc.entry_point_name              = "main_vs";
+                    auto vs_load_handle                        = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
+                        p_device, NGL_RENDER_SHADER_PATH("ssvg/debug/obm_voxel_debug_vs.hlsl"), &vs_load_desc);
+                    gpso_desc.vs = &vs_load_handle->data_;
+                }
+                {
+                    ngl::gfx::ResShader::LoadDesc ps_load_desc = {};
+                    ps_load_desc.stage                         = ngl::rhi::EShaderStage::Pixel;
+                    ps_load_desc.shader_model_version          = k_shader_model;
+                    ps_load_desc.entry_point_name              = "main_ps";
+                    auto ps_load_handle                        = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
+                        p_device, NGL_RENDER_SHADER_PATH("ssvg/debug/obm_voxel_debug_ps.hlsl"), &ps_load_desc);
+                    gpso_desc.ps = &ps_load_handle->data_;
+                }
+
+                gpso_desc.num_render_targets = 1;
+                gpso_desc.render_target_formats[0] = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
+
+                gpso_desc.depth_stencil_state.depth_enable = true;
+                gpso_desc.depth_stencil_state.depth_func = ngl::rhi::ECompFunc::Greater; // ReverseZ.
+                gpso_desc.depth_stencil_state.depth_write_enable = true;
+                gpso_desc.depth_stencil_state.stencil_enable = false;
+                gpso_desc.depth_stencil_format = rhi::EResourceFormat::Format_D32_FLOAT;
+                
+                if(!pso_debug_obm_voxel_->Initialize(p_device, gpso_desc))
+                {
+                    return false;
+                }
+            }
         }
 
         {
-            work_buffer_.InitializeAsTyped(p_device,
+            coarse_voxel_data_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
-                                               .element_byte_size = 4,
+                                               .element_byte_size = 4*2,
                                                .element_count     = base_resolution_.x * base_resolution_.y * base_resolution_.z,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
-                                           rhi::EResourceFormat::Format_R32_UINT);
+                                           rhi::EResourceFormat::Format_R32G32_UINT);
         }
         {
             const u32 voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
             occupancy_bitmask_voxel_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = 4,
-                                               .element_count     = voxel_count * k_per_voxel_u32_count,
+                                               .element_count     = voxel_count * k_obm_per_voxel_u32_count,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
@@ -153,9 +190,10 @@ namespace ngl::render::app
 
             u32 debug_view_mode{};
         };
-        auto cbh = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(DispatchParam));
+
+        cbh_dispatch_ = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(DispatchParam));
         {
-            auto* p = cbh->buffer_.MapAs<DispatchParam>();
+            auto* p = cbh_dispatch_->buffer_.MapAs<DispatchParam>();
 
             p->BaseResolution = base_resolution_.Cast<int>();
             p->Flag           = 0;
@@ -176,7 +214,7 @@ namespace ngl::render::app
 
             p->debug_view_mode = SsVg::dbg_view_mode_;
 
-            cbh->buffer_.Unmap();
+            cbh_dispatch_->buffer_.Unmap();
         }
 
         {
@@ -186,30 +224,30 @@ namespace ngl::render::app
             {
                 // 初回クリア.
                 ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_clear_voxel_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
-                pso_clear_voxel_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
+                pso_clear_voxel_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
+                pso_clear_voxel_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
                 pso_clear_voxel_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_clear_voxel_.Get());
                 p_command_list->SetDescriptorSet(pso_clear_voxel_.Get(), &desc_set);
                 pso_clear_voxel_->DispatchHelper(p_command_list, voxel_count, 1, 1);  // Voxel Dispatch.
 
-                p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
                 p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
             }
             // Begin Update Pass.
             {
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-                pso_begin_update_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
-                pso_begin_update_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
+                pso_begin_update_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
+                pso_begin_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
                 pso_begin_update_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_begin_update_.Get());
                 p_command_list->SetDescriptorSet(pso_begin_update_.Get(), &desc_set);
                 pso_begin_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);  // Screen処理でDispatch.
 
-                p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
                 p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
             }
             // Voxelization Pass.
@@ -217,7 +255,7 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_voxelize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
                 pso_voxelize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-                pso_voxelize_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
+                pso_voxelize_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
                 pso_voxelize_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_voxelize_.Get());
@@ -230,16 +268,16 @@ namespace ngl::render::app
             {
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_coarse_voxel_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-                pso_coarse_voxel_update_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
+                pso_coarse_voxel_update_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
                 pso_coarse_voxel_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
-                pso_coarse_voxel_update_->SetView(&desc_set, "RWBufferWork", work_buffer_.uav.Get());
+                pso_coarse_voxel_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_coarse_voxel_update_.Get());
                 p_command_list->SetDescriptorSet(pso_coarse_voxel_update_.Get(), &desc_set);
                 pso_coarse_voxel_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);  // Screen処理でDispatch.
 
                 p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
-                p_command_list->ResourceUavBarrier(work_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
             }
         }
 
@@ -252,8 +290,8 @@ namespace ngl::render::app
             ngl::rhi::DescriptorSetDep desc_set = {};
             pso_debug_visualize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
             pso_debug_visualize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-            pso_debug_visualize_->SetView(&desc_set, "cb_dispatch_param", &cbh->cbv_);
-            pso_debug_visualize_->SetView(&desc_set, "BufferWork", work_buffer_.srv.Get());
+            pso_debug_visualize_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
+            pso_debug_visualize_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
             pso_debug_visualize_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
             pso_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
 
@@ -262,6 +300,48 @@ namespace ngl::render::app
 
             pso_debug_visualize_->DispatchHelper(p_command_list, work_tex_size.x, work_tex_size.y, 1);
         }
+    }
+
+    void SsVg::DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
+        rhi::ConstantBufferPooledHandle scene_cbv, 
+        rhi::RefTextureDep hw_depth_tex, rhi::RefDsvDep hw_depth_dsv,
+        rhi::RefTextureDep lighting_tex, rhi::RefRtvDep lighting_rtv)
+    {
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Debug");
+
+        
+        // Viewport.
+        gfx::helper::SetFullscreenViewportAndScissor(p_command_list, lighting_tex->GetWidth(), lighting_tex->GetHeight());
+
+        // Rtv, Dsv セット.
+        {
+            const auto* p_rtv = lighting_rtv.Get();
+            p_command_list->SetRenderTargets(&p_rtv, 1, hw_depth_dsv.Get());
+        }
+
+        if (0 <= SsVg::dbg_probe_debug_view_mode_)
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ProbeDebug");
+
+            const int coarse_voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
+
+            p_command_list->SetPipelineState(pso_debug_obm_voxel_.Get());
+            ngl::rhi::DescriptorSetDep desc_set = {};
+
+            pso_debug_obm_voxel_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+            pso_debug_obm_voxel_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
+            
+            pso_debug_obm_voxel_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
+            pso_debug_obm_voxel_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
+            pso_debug_obm_voxel_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
+
+
+            p_command_list->SetDescriptorSet(pso_debug_obm_voxel_.Get(), &desc_set);
+
+            p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
+            p_command_list->DrawInstanced(6 * coarse_voxel_count, 1, 0, 0);
+        }
+
     }
 
 }  // namespace ngl::render::app

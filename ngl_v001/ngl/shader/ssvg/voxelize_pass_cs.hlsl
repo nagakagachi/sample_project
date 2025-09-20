@@ -18,8 +18,6 @@ ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 Texture2D			TexHardwareDepth;
 SamplerState		SmpHardwareDepth;
 
-RWBuffer<uint>		RWOccupancyBitmaskVoxel;
-
 #define TILE_WIDTH 16
 
 // DepthBufferに対してDispatch.
@@ -60,12 +58,12 @@ void main_cs(
             uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_dispatch_param.BaseResolution);
 
             {
-                const uint unique_data_addr = voxel_unique_data_addr(voxel_index);
-                const uint obm_addr = voxel_occupancy_bitmask_data_addr(voxel_index);
+                const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
+                const uint obm_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
 
                 // 占有ビットマスク.
                 const float3 voxel_coord_frac = frac(voxel_coordf);
-                const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_per_voxel_occupancy_reso);
+                const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_obm_per_voxel_resolution);
                 
                 uint bitmask_u32_offset;
                 uint bitmask_u32_bit_pos;

@@ -9,9 +9,6 @@ clear_voxel_cs.hlsl
 #include "ssvg_util.hlsli"
 
 
-RWBuffer<uint>		RWBufferWork;
-RWBuffer<uint>		RWOccupancyBitmaskVoxel;
-
 // DepthBufferに対してDispatch.
 [numthreads(128, 1, 1)]
 void main_cs(
@@ -25,7 +22,7 @@ void main_cs(
     uint voxel_count = cb_dispatch_param.BaseResolution.x * cb_dispatch_param.BaseResolution.y * cb_dispatch_param.BaseResolution.z;
     if(dtid.x < voxel_count)
     {
-        RWBufferWork[dtid.x] = 0;
+        RWCoarseVoxelBuffer[dtid.x] = empty_coarse_voxel_data();
 
         clear_voxel_data(RWOccupancyBitmaskVoxel, dtid.x);
     }

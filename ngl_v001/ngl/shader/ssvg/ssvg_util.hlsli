@@ -1,30 +1,35 @@
+#ifndef NGL_SHADER_SSVG_UTIL_H
+#define NGL_SHADER_SSVG_UTIL_H
 
 #if 0
 
-ss_voxelize_util.hlsli
+ssvg_util.hlsli
 
 #endif
 
 #include "../include/math_util.hlsli"
 
-// Cpp側と一致させる.
-// CoarseVoxel単位の固有データ部のu32単位数.ジオメトリを表現する占有ビットマスクとは別に荒い単位で保持するデータ. レイアウトの簡易化のためビット単位ではなくu32単位.
-#define k_per_voxel_data_u32_count (1)
-// CoarseVoxel単位の占有ビットマスク解像度. 2の冪でなくても良い.
-#define k_per_voxel_occupancy_reso (8)
-#define k_per_voxel_occupancy_bit_count (k_per_voxel_occupancy_reso*k_per_voxel_occupancy_reso*k_per_voxel_occupancy_reso)
-#define k_per_voxel_occupancy_u32_count ((k_per_voxel_occupancy_bit_count + 31) / 32)
+    // シェーダとCppで一致させる.
+    // ObmVoxel単位の固有データ部のu32単位数.ジオメトリを表現する占有ビットマスクとは別に荒い単位で保持するデータ. レイアウトの簡易化のためビット単位ではなくu32単位.
+    #define k_obm_common_data_u32_count (1)
+    // ObmVoxel単位の占有ビットマスク解像度. 2の冪でなくても良い.
+    #define k_obm_per_voxel_resolution (8)
+    #define k_obm_per_voxel_bitmask_bit_count (k_obm_per_voxel_resolution*k_obm_per_voxel_resolution*k_obm_per_voxel_resolution)
+    #define k_obm_per_voxel_occupancy_bitmask_u32_count ((k_obm_per_voxel_bitmask_bit_count + 31) / 32)
+    // ObmVoxel単位のデータサイズ(u32単位)
+    #define k_obm_per_voxel_u32_count (k_obm_per_voxel_occupancy_bitmask_u32_count + k_obm_common_data_u32_count)
 
-// CoarseVoxel単位のデータサイズ(u32単位)
-#define k_per_voxel_u32_count (k_per_voxel_occupancy_u32_count + k_per_voxel_data_u32_count)
 
-/*
-    Voxel Data
+//----------------------------------------------------------------------------------------------------
+// OccupancyBitmaskVoxel本体. ObmVoxel.
+Buffer<uint>		OccupancyBitmaskVoxel;
+RWBuffer<uint>		RWOccupancyBitmaskVoxel;
 
-    unique data (u32*1), occupancy bitmask (u32*k_per_voxel_occupancy_u32_count)
 
-*/
-
+// CoarseVoxelバッファ. ObmVoxel一つ毎の外部データ.
+Buffer<uint2>		CoarseVoxelBuffer;
+RWBuffer<uint2>		RWCoarseVoxelBuffer;
+//----------------------------------------------------------------------------------------------------
 
 
 // Voxel座標からVoxelIndex計算.
@@ -33,37 +38,43 @@ uint voxel_coord_to_index(int3 coord, int3 resolution)
     return coord.x + coord.y * resolution.x + coord.z * resolution.x * resolution.y;
 }
 // VoxelIndexからVoxel座標計算.
-int3 index_to_voxel_coord(uint addr, int3 resolution)
+int3 index_to_voxel_coord(uint index, int3 resolution)
 {
-    int z = addr / (resolution.x * resolution.y);
-    addr -= z * (resolution.x * resolution.y);
-    int y = addr / resolution.x;
-    addr -= y * resolution.x;
-    int x = addr;
+    int z = index / (resolution.x * resolution.y);
+    index -= z * (resolution.x * resolution.y);
+    int y = index / resolution.x;
+    index -= y * resolution.x;
+    int x = index;
     return int3(x, y, z);
 }
-
-
-// VoxelIndexからアドレス計算. Buffer上の該当Voxelデータの先頭アドレスを返す.
-uint voxel_index_to_addr(uint voxel_index)
+// リニアなVoxel座標をループするToroidalマッピングに変換する.
+int3 voxel_coord_toroidal_mapping(int3 voxel_coord, int3 toroidal_offset, int3 resolution)
 {
-    return voxel_index * k_per_voxel_u32_count;
+    return (voxel_coord + toroidal_offset) % resolution;
+}
+
+// ObmVoxelの取り扱い.
+//----------------------------------------------------------------------------------------------------
+// VoxelIndexからアドレス計算. Buffer上の該当Voxelデータの先頭アドレスを返す.
+uint obm_voxel_index_to_addr(uint voxel_index)
+{
+    return voxel_index * k_obm_per_voxel_u32_count;
 }
 // Voxel毎のデータ部の固有データ先頭アドレス計算.
-uint voxel_unique_data_addr(uint voxel_index)
+uint obm_voxel_unique_data_addr(uint voxel_index)
 {
-    return voxel_index_to_addr(voxel_index) + 0;
+    return obm_voxel_index_to_addr(voxel_index) + 0;
 }
 // Voxel毎のデータ部の占有ビットマスクデータ先頭アドレス計算.
-uint voxel_occupancy_bitmask_data_addr(uint voxel_index)
+uint obm_voxel_occupancy_bitmask_data_addr(uint voxel_index)
 {
     // Voxel毎のデータ部の先頭はVoxel固有データ, 占有ビットマスク の順にレイアウト.
-    return voxel_index_to_addr(voxel_index) + k_per_voxel_data_u32_count;
+    return obm_voxel_index_to_addr(voxel_index) + k_obm_common_data_u32_count;
 }
 // Voxel毎の占有ビットマスクのu32単位数.
-uint voxel_occupancy_bitmask_uint_count()
+uint obm_voxel_occupancy_bitmask_uint_count()
 {
-    return k_per_voxel_occupancy_u32_count;
+    return k_obm_per_voxel_occupancy_bitmask_u32_count;
 }
 
 // Occupancy Bitmask Voxelの内部座標を元にバッファの該当Voxelブロック内のオフセットと読み取りビット位置を計算.
@@ -71,27 +82,56 @@ void calc_occupancy_bitmask_voxel_inner_bit_info(out uint out_u32_offset, out ui
 {
     // 現状はX,Y,Z順のリニアレイアウト.
     const uint3 bit_pos = bit_position_in_voxel;
-    const uint bit_linear_pos = bit_pos.x + (bit_pos.y * k_per_voxel_occupancy_reso) + (bit_pos.z * (k_per_voxel_occupancy_reso * k_per_voxel_occupancy_reso));
+    const uint bit_linear_pos = bit_pos.x + (bit_pos.y * k_obm_per_voxel_resolution) + (bit_pos.z * (k_obm_per_voxel_resolution * k_obm_per_voxel_resolution));
     out_u32_offset = bit_linear_pos / 32;
     out_bit_location = bit_linear_pos - (out_u32_offset * 32);
 }
 // Occupancy Bitmask Voxelのビットセルインデックスからk_per_voxel_occupancy_reso^3 ボクセル内位置を計算.
-// bit_index : 0 〜 k_per_voxel_occupancy_bit_count-1
+// bit_index : 0 〜 k_obm_per_voxel_bitmask_bit_count-1
 uint3 calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(uint bit_index)
 {
     // 現状はX,Y,Z順のリニアレイアウト.
-    const uint3 bit_pos = uint3(bit_index % k_per_voxel_occupancy_reso, (bit_index / k_per_voxel_occupancy_reso) % k_per_voxel_occupancy_reso, bit_index / (k_per_voxel_occupancy_reso * k_per_voxel_occupancy_reso));
+    const uint3 bit_pos = uint3(bit_index % k_obm_per_voxel_resolution, (bit_index / k_obm_per_voxel_resolution) % k_obm_per_voxel_resolution, bit_index / (k_obm_per_voxel_resolution * k_obm_per_voxel_resolution));
     return bit_pos;
 }
 
-// リニアなVoxel座標をループするToroidalマッピングに変換する.
-int3 voxel_coord_toroidal_mapping(int3 voxel_coord, int3 toroidal_offset, int3 resolution)
+//----------------------------------------------------------------------------------------------------
+
+// CoarseVoxelバッファの取り扱い.
+//----------------------------------------------------------------------------------------------------
+struct CoarseVoxelData
 {
-    return (voxel_coord + toroidal_offset) % resolution;
+    uint sample_count;      // サンプル数.
+    uint accumulated;       // 蓄積値.
+    uint probe_pos_index;   // プローブ位置インデックス. 0は無効, probe_pos_index-1 が実際のインデックス.
+    uint reserved;          // 予備.
+};
+void coarse_voxel_decode(out CoarseVoxelData data, uint2 voxel_data)
+{
+    // x : 蓄積値 , サンプル数
+    data.sample_count = voxel_data.x & 0xFFFF;
+    data.accumulated = (voxel_data.x >> 16) & 0xFFFF;
+    // y : 予備 , プローブ位置インデックス(16bit割り当てているが, 実際には0~511の範囲)
+    data.probe_pos_index = voxel_data.y & 0xFFFF;
 }
+uint2 coarse_voxel_encode(CoarseVoxelData data)
+{
+    uint2 code;
+    code.x = (data.accumulated << 16) | (data.sample_count & 0xFFFF);
+    code.y = data.probe_pos_index & 0xFFFF;
+    return code;
+}
+uint2 empty_coarse_voxel_data()
+{
+    return uint2(0, 0);
+}
+//----------------------------------------------------------------------------------------------------
 
 
 
+
+
+// Dispatchパラメータ.
 struct DispatchParam
 {
     int3 BaseResolution;
@@ -117,25 +157,25 @@ ConstantBuffer<DispatchParam> cb_dispatch_param;
 
 
 // Voxelデータクリア.
-void clear_voxel_data(RWBuffer<uint> voxel_buffer, uint voxel_index)
+void clear_voxel_data(RWBuffer<uint> occupancy_bitmask_voxel, uint voxel_index)
 {
-    const uint unique_data_addr = voxel_unique_data_addr(voxel_index);
+    const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
     // 固有データクリア.
-    for(int i = 0; i < k_per_voxel_data_u32_count; ++i)
+    for(int i = 0; i < k_obm_common_data_u32_count; ++i)
     {
-        voxel_buffer[unique_data_addr + i] = 0;
+        occupancy_bitmask_voxel[unique_data_addr + i] = 0;
     }
 
     // 占有ビットマスククリア.
-    const uint obm_addr = voxel_occupancy_bitmask_data_addr(voxel_index);
-    for(int i = 0; i < voxel_occupancy_bitmask_uint_count(); ++i)
+    const uint obm_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
+    for(int i = 0; i < obm_voxel_occupancy_bitmask_uint_count(); ++i)
     {
-        voxel_buffer[obm_addr + i] = 0;
+        occupancy_bitmask_voxel[obm_addr + i] = 0;
     }
 }
 
 
-// ワールド座標からOBVをの値を読み取る.
+// ワールド座標からOBVの値を読み取る.
 uint read_occupancy_bitmask_voxel_from_world_pos(Buffer<uint> occupancy_bitmask_voxel, int3 grid_resolution, int3 grid_toroidal_offset, float3 grid_min_pos_world, float cell_size_inv, float3 pos_world)
 {
     // WorldPosからVoxelCoordを計算.
@@ -146,10 +186,10 @@ uint read_occupancy_bitmask_voxel_from_world_pos(Buffer<uint> occupancy_bitmask_
         int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, grid_toroidal_offset, grid_resolution);
         uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, grid_resolution);
 
-        const uint voxel_obm_addr = voxel_occupancy_bitmask_data_addr(voxel_index);
+        const uint voxel_obm_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
         // 占有ビットマスクの座標.
         const float3 voxel_coord_frac = frac(voxel_coordf);
-        const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_per_voxel_occupancy_reso);
+        const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_obm_per_voxel_resolution);
         // 占有ビットマスクのデータ部情報.
         uint bitmask_u32_offset;
         uint bitmask_u32_bit_pos;
@@ -248,7 +288,7 @@ float4 trace_ray_vs_occupancy_bitmask_voxel_fine(
         return float4(-1.0, -1.0, -1.0, -1.0);// ヒット無し.
     }
 
-    const uint voxel_obm_addr = voxel_occupancy_bitmask_data_addr(voxel_index);
+    const uint voxel_obm_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
 
     const float ray_trace_len = ray_trace_end_t_offset - ray_trace_begin_t_offset;// トレース範囲の距離.
     const float3 dir_sign = sign(ray_dir_ws);// +1 : positive component or zero, -1 : negative component.
@@ -387,14 +427,14 @@ float4 trace_ray_vs_occupancy_bitmask_voxel(
         const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(trace_cell_id, grid_toroidal_offset, grid_resolution), grid_resolution);
 
         // CoarseVoxelで簡易判定.
-        const uint unique_data_addr = voxel_unique_data_addr(voxel_index);
+        const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
         if(0 != (occupancy_bitmask_voxel[unique_data_addr]))
         {
             // CoarseVoxelが有効ならば詳細トレース.
 
             #if 1
                 // 占有ビットマスクまで参照する精密トレース.
-                const float detail_cell_size = 1.0 / float(k_per_voxel_occupancy_reso);
+                const float detail_cell_size = 1.0 / float(k_obm_per_voxel_resolution);
                 const float k_fine_step_start_t_offset = 1e-5;// 内部セルの境界での誤差回避のために微小値を加算.
 
                 // 最小コンポーネントからt値を取得.
@@ -404,7 +444,7 @@ float4 trace_ray_vs_occupancy_bitmask_voxel(
                 // 処理対象Voxelのアドレスを指定して詳細トレース呼び出し. ネスト深すぎるため粗いVoxelでのスキップなども含めてもっと浅くする予定.
                 const float4 fine_t = trace_ray_vs_occupancy_bitmask_voxel_fine(
                     cur_pos_grid, ray_dir_ws, ray_trace_len - trace_time_step,
-                    cur_voxel_min, detail_cell_size, int3(k_per_voxel_occupancy_reso, k_per_voxel_occupancy_reso, k_per_voxel_occupancy_reso),
+                    cur_voxel_min, detail_cell_size, int3(k_obm_per_voxel_resolution, k_obm_per_voxel_resolution, k_obm_per_voxel_resolution),
                     occupancy_bitmask_voxel, voxel_index
                     ,trace_cell_id
                 );
@@ -457,3 +497,4 @@ float4 trace_ray_vs_occupancy_bitmask_voxel(
 }
 
 
+#endif // NGL_SHADER_SSVG_UTIL_H

@@ -15,6 +15,7 @@
 #include "render/task/pass_cascade_shadow.h"
 #include "render/task/pass_linear_depth.h"
 #include "render/task/pass_directional_light_deferred.h"
+#include "render/task/pass_after_lighting.h"
 #include "render/task/pass_final_composite.h"
 
 #include "render/task/pass_after_gbuffer_injection.h"
@@ -334,6 +335,26 @@ namespace ngl::test
 						setup_desc);
 					// Renderをスキップテスト.
 					task_light->is_render_skip_debug = k_force_skip_all_pass_render;
+				}
+
+				// ----------------------------------------
+				// After Lighting Pass.
+				auto* task_after_light = rtg_builder.AppendTaskNode<ngl::render::task::TaskAfterLightPass>();
+				{
+					ngl::render::task::TaskAfterLightPass::SetupDesc setup_desc{};
+					{
+						setup_desc.w = screen_w;
+						setup_desc.h = screen_h;
+						
+						setup_desc.scene_cbv = scene_cb_h;
+
+                        setup_desc.p_ssvg = render_frame_desc.p_ssvg;
+					}
+					task_after_light->Setup(rtg_builder, p_device, view_info,
+					task_light->h_light_, task_depth->h_depth_,
+						setup_desc);
+					// Renderをスキップテスト.
+					task_after_light->is_render_skip_debug = k_force_skip_all_pass_render;
 				}
 
 				// ----------------------------------------

@@ -5,7 +5,7 @@
 #pragma once
 
 #include "rhi/d3d12/shader.d3d12.h"
-
+#include "rhi/constant_buffer_pool.h"
 #include "render/app/common/render_app_common.h"
 
 namespace ngl::render::app
@@ -14,6 +14,7 @@ namespace ngl::render::app
     {
     public:
         static int dbg_view_mode_;
+        static int dbg_probe_debug_view_mode_;
 
     public:
         SsVg() = default;
@@ -27,6 +28,12 @@ namespace ngl::render::app
             rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
             rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
 
+        void DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
+            rhi::ConstantBufferPooledHandle scene_cbv, 
+            rhi::RefTextureDep hw_depth_tex, rhi::RefDsvDep hw_depth_dsv,
+            rhi::RefTextureDep lighting_tex, rhi::RefRtvDep lighting_rtv);
+
+
         void SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir);
 
     private:
@@ -38,6 +45,7 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_coarse_voxel_update_ = {};
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_debug_visualize_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_debug_obm_voxel_ = {};
 
         math::Vec3 important_point_ = {0,0,0};
         math::Vec3 important_dir_ = {0,0,1};
@@ -57,8 +65,10 @@ namespace ngl::render::app
         math::Vec3u base_resolution_ = math::Vec3u(64, 64, 64);
         float   cell_size_ = 3.0f;
 
-        RhiBufferSet work_buffer_ = {};
+        RhiBufferSet coarse_voxel_data_ = {};
         RhiBufferSet occupancy_bitmask_voxel_ = {};
+
+        ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
     };
 
 }  // namespace ngl::render::app
