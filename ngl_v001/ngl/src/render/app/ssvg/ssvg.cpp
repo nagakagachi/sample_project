@@ -246,6 +246,8 @@ namespace ngl::render::app
             if (is_first_dispatch)
             {
                 // 初回クリア.
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "InitClear");
+
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_clear_voxel_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
                 pso_clear_voxel_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
@@ -260,6 +262,8 @@ namespace ngl::render::app
             }
             // Begin Update Pass.
             {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BeginUpdate");
+
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                 pso_begin_update_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
@@ -275,6 +279,8 @@ namespace ngl::render::app
             }
             // Voxelization Pass.
             {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ObmGeneration");
+
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_voxelize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
                 pso_voxelize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
@@ -289,6 +295,8 @@ namespace ngl::render::app
             }
             // Coarse Voxel Update Pass.
             {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "CoarseUpdate");
+
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_coarse_voxel_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                 pso_coarse_voxel_update_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
