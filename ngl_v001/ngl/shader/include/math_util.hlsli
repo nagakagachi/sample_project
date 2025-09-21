@@ -163,12 +163,19 @@ uint CountBits32(uint value)
 
 
 //--------------------------------------------------------------------------------
-// 最大の値を取る軸の軸ベクトルを返す(正のみ).
+// 最大の値を取る軸の軸ベクトルを返す(入力ベクトルは正のみ).
 int3 calc_principal_axis(float3 v)
 {
     if(v.x >= v.y && v.x >= v.z) return int3(1,0,0);
     if(v.y >= v.x && v.y >= v.z) return int3(0,1,0);
     return int3(0,0,1);
+}
+// 最大の値を取る軸のComponentIndexを返す(入力ベクトルは正のみ).
+int calc_principal_axis_component_index(float3 v)
+{
+    if(v.x >= v.y && v.x >= v.z) return 0;
+    if(v.y >= v.x && v.y >= v.z) return 1;
+    return 2;
 }
 
 

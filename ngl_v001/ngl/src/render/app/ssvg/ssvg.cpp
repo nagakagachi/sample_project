@@ -25,7 +25,18 @@ namespace ngl::render::app
     // ObmVoxel単位のデータサイズ(u32単位)
     #define k_obm_per_voxel_u32_count (k_obm_per_voxel_occupancy_bitmask_u32_count + k_obm_common_data_u32_count)
 
+    
+    // CoarseVoxelバッファ. ObmVoxel一つ毎の外部データ.
+    struct CoarseVoxelData
+    {
+        float sky_visibility_dir_avg[6];
 
+        u32 probe_pos_index;   // ObmVoxel内部でのプローブ位置インデックス. 0は無効, probe_pos_index-1 が実際のインデックス. 値域は 0,k_obm_per_voxel_bitmask_bit_count.
+        u32 reserved;          // 予備.
+    };
+    static constexpr size_t k_sizeof_CoarseVoxelData = sizeof(CoarseVoxelData);
+
+    // デバッグ.
     int SsVg::dbg_view_mode_ = 0;
     int SsVg::dbg_probe_debug_view_mode_ = -1;
     
@@ -101,6 +112,7 @@ namespace ngl::render::app
         }
 
         {
+            /*
             coarse_voxel_data_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = 4*2,
@@ -109,6 +121,14 @@ namespace ngl::render::app
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
                                            rhi::EResourceFormat::Format_R32G32_UINT);
+            */
+            coarse_voxel_data_.InitializeAsStructured(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(CoarseVoxelData),
+                                               .element_count     = base_resolution_.x * base_resolution_.y * base_resolution_.z,
+
+                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default});
         }
         {
             const u32 voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
@@ -189,25 +209,8 @@ namespace ngl::render::app
             math::Vec2i tex_hw_depth_size;
             u32 frame_count;
 
-            u32 debug_view_mode;
-
-            /*
-            math::Vec3 grid_min_pos{};
-            float CellSize{};
-            math::Vec3i GridToroidalOffset{};
-            float CellSizeInv{};
-
-            math::Vec3i GridToroidalOffsetPrev{};
-            int Dummy0{};
-            
-            math::Vec3i GridCellDelta{};// Toroidalではなくワールド空間Cellでのフレーム移動量.
-            int Dummy1{};
-
-            math::Vec2i TexHardwareDepthSize{};
-            u32 FrameCount{};
-
-            u32 debug_view_mode{};
-            */
+            int debug_view_mode;
+            int debug_probe_mode;
         };
 
         cbh_dispatch_ = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(DispatchParam));
@@ -232,6 +235,7 @@ namespace ngl::render::app
             p->frame_count = frame_count_;
 
             p->debug_view_mode = SsVg::dbg_view_mode_;
+            p->debug_probe_mode = SsVg::dbg_probe_debug_view_mode_;
 
             cbh_dispatch_->buffer_.Unmap();
         }

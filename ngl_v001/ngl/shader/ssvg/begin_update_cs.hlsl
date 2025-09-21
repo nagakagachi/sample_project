@@ -38,7 +38,7 @@ void main_cs(
             if(is_invalidate_area)
             {
                 // 移動によってシフトしてきた無効領域.
-                RWCoarseVoxelBuffer[dtid.x] = empty_coarse_voxel_data();
+                RWCoarseVoxelBuffer[dtid.x] = (CoarseVoxelData)0; //empty_coarse_voxel_data();
                 clear_voxel_data(RWOccupancyBitmaskVoxel, dtid.x);
             }
         }
@@ -56,7 +56,7 @@ void main_cs(
             if(is_invalidate_area)
             {
                 // 移動によってシフトしてきた無効領域.
-                RWCoarseVoxelBuffer[voxel_index] = empty_coarse_voxel_data();
+                RWCoarseVoxelBuffer[voxel_index] = (CoarseVoxelData)0; //empty_coarse_voxel_data();
                 clear_voxel_data(RWOccupancyBitmaskVoxel, voxel_index);
             }
         }

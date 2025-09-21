@@ -68,16 +68,6 @@ void main_cs(
                 // OBMセルの深度を可視化.
                 debug_color.xyz = float4(saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), 1);
             }
-            else if(3 == cb_dispatch_param.debug_view_mode)
-            {
-                // GI情報を可視化.
-                const uint2 coarse_voxel_data_code = CoarseVoxelBuffer[hit_voxel_index];
-                CoarseVoxelData coarse_voxel_data;
-                coarse_voxel_decode(coarse_voxel_data, coarse_voxel_data_code);
-                const float voxel_gi_average = (0 < coarse_voxel_data.sample_count) ? float(coarse_voxel_data.accumulated) / float(coarse_voxel_data.sample_count) : 0.0;
-
-                debug_color.xyz = float4(voxel_gi_average, voxel_gi_average, voxel_gi_average, 1);
-            }
             else
             {
                 // obmセル可視化

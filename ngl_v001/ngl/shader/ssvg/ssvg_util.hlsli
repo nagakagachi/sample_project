@@ -20,15 +20,25 @@ ssvg_util.hlsli
     #define k_obm_per_voxel_u32_count (k_obm_per_voxel_occupancy_bitmask_u32_count + k_obm_common_data_u32_count)
 
 
+    // シェーダとCppで一致させる.
+    // CoarseVoxelバッファ. ObmVoxel一つ毎の外部データ.
+    // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.
+    struct CoarseVoxelData
+    {
+        float sky_visibility_dir_avg[6];
+
+        uint probe_pos_index;   // ObmVoxel内部でのプローブ位置インデックス. 0は無効, probe_pos_index-1 が実際のインデックス. 値域は 0,k_obm_per_voxel_bitmask_bit_count.
+        uint reserved;          // 予備.
+    };
+
 //----------------------------------------------------------------------------------------------------
 // OccupancyBitmaskVoxel本体. ObmVoxel.
 Buffer<uint>		OccupancyBitmaskVoxel;
 RWBuffer<uint>		RWOccupancyBitmaskVoxel;
 
 
-// CoarseVoxelバッファ. ObmVoxel一つ毎の外部データ.
-Buffer<uint2>		CoarseVoxelBuffer;
-RWBuffer<uint2>		RWCoarseVoxelBuffer;
+StructuredBuffer<CoarseVoxelData>		CoarseVoxelBuffer;
+RWStructuredBuffer<CoarseVoxelData>		RWCoarseVoxelBuffer;
 //----------------------------------------------------------------------------------------------------
 
 
@@ -95,38 +105,6 @@ uint3 calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(uint bit_inde
     return bit_pos;
 }
 
-//----------------------------------------------------------------------------------------------------
-
-// CoarseVoxelバッファの取り扱い.
-//----------------------------------------------------------------------------------------------------
-struct CoarseVoxelData
-{
-    uint sample_count;      // サンプル数.
-    uint accumulated;       // 蓄積値.
-    uint probe_pos_index;   // プローブ位置インデックス. 0は無効, probe_pos_index-1 が実際のインデックス.
-    uint reserved;          // 予備.
-};
-void coarse_voxel_decode(out CoarseVoxelData data, uint2 voxel_data)
-{
-    // x : 蓄積値 , サンプル数
-    data.sample_count = voxel_data.x & 0xFFFF;
-    data.accumulated = (voxel_data.x >> 16) & 0xFFFF;
-    // y : 予備 , プローブ位置インデックス(16bit割り当てているが, 実際には0~511の範囲)
-    data.probe_pos_index = voxel_data.y & 0xFFFF;
-}
-uint2 coarse_voxel_encode(CoarseVoxelData data)
-{
-    uint2 code;
-    code.x = (data.accumulated << 16) | (data.sample_count & 0xFFFF);
-    code.y = data.probe_pos_index & 0xFFFF;
-    return code;
-}
-uint2 empty_coarse_voxel_data()
-{
-    return uint2(0, 0);
-}
-//----------------------------------------------------------------------------------------------------
-
 
 
 
@@ -151,7 +129,8 @@ struct DispatchParam
     int2 tex_hw_depth_size;
     uint frame_count;
 
-    uint debug_view_mode;
+    int debug_view_mode;
+    int debug_probe_mode;
 };
 ConstantBuffer<DispatchParam> cb_dispatch_param;
 

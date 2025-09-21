@@ -98,27 +98,40 @@ void main_cs(
 
         // CoarseVoxelの固有データ読み取り. 更新
         {
-            const uint2 coarse_voxel_data_code = RWCoarseVoxelBuffer[voxel_index];
-            CoarseVoxelData coarse_voxel_data;
-            coarse_voxel_decode(coarse_voxel_data, coarse_voxel_data_code);
+            CoarseVoxelData coarse_voxel_data = RWCoarseVoxelBuffer[voxel_index];
 
-            // SkyVisibilityをAccum.
-            if(256 <= coarse_voxel_data.sample_count)
             {
-                coarse_voxel_data.sample_count = coarse_voxel_data.sample_count/4;
-                coarse_voxel_data.accumulated = coarse_voxel_data.accumulated/4;
-            }
-            coarse_voxel_data.sample_count += 1;
-            if(0.0 > curr_ray_t_ws.x)
+                // Probe配置位置をObmCellインデックスとして書き込み, 0が無効値であるようにして +1.
+                coarse_voxel_data.probe_pos_index = (0 <= candidate_probe_pos_bit_cell_index) ? candidate_probe_pos_bit_cell_index+1 : 0;
+            }   
+            
             {
-                coarse_voxel_data.accumulated += 1;
+                // SkyVisibilityの方向平均を更新.
+                const float sky_visibility = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
+                const float3 dir_vec = abs(sample_ray_dir);
+                const int principal_axis = calc_principal_axis_component_index(dir_vec);
+                int component_index = 0;
+                if(0 == principal_axis)
+                {
+                    component_index = (0 < sample_ray_dir.x) ? 0 : 1;
+                }
+                else if(1 == principal_axis)
+                {
+                    component_index = (0 < sample_ray_dir.y) ? 2 : 3;
+                }
+                else
+                {
+                    component_index = (0 < sample_ray_dir.z) ? 4 : 5;
+                }
+                float next_avg = lerp(coarse_voxel_data.sky_visibility_dir_avg[component_index], sky_visibility, 1.0/64.0);
+                // 安全な値にクランプ.
+                next_avg = clamp(next_avg, 0.0, 1.0);
+                coarse_voxel_data.sky_visibility_dir_avg[component_index] = next_avg;
             }
 
-            // 0が無効値であるようにして +1 のbit cell index書き込み.
-            coarse_voxel_data.probe_pos_index = (0 <= candidate_probe_pos_bit_cell_index) ? candidate_probe_pos_bit_cell_index+1 : 0;
 
             // CoarseVoxelの固有データ書き込み.
-            RWCoarseVoxelBuffer[voxel_index] = coarse_voxel_encode(coarse_voxel_data);
+            RWCoarseVoxelBuffer[voxel_index] = coarse_voxel_data;
         }
     }
 }

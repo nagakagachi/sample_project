@@ -82,9 +82,7 @@ VS_OUTPUT main_vs(VS_INPUT input)
     }
     */
     
-    const uint2 coarse_voxel_data_code = CoarseVoxelBuffer[voxel_index];
-    CoarseVoxelData coarse_voxel_data;
-    coarse_voxel_decode(coarse_voxel_data, coarse_voxel_data_code);
+    const CoarseVoxelData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
     const bool is_invalid_probe_local_pos = (0 == coarse_voxel_data.probe_pos_index);
     const int3 probe_coord_in_voxel = (is_invalid_probe_local_pos) ? int3(0,0,0) : calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(coarse_voxel_data.probe_pos_index-1);
     const float3 probe_pos_ws = (float3(voxel_coord) + (float3(probe_coord_in_voxel) + 0.5) / float(k_obm_per_voxel_resolution)) * cb_dispatch_param.cell_size + cb_dispatch_param.grid_min_pos;
@@ -149,14 +147,44 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     normal_ws = (normal_ws.x * quad_pose_side + normal_ws.y * quad_pose_up + normal_ws.z * dir_to_camera);
     normal_ws = normalize(normal_ws);
 
-        // GI情報を可視化.
-        const uint2 coarse_voxel_data_code = CoarseVoxelBuffer[voxel_index];
-        CoarseVoxelData coarse_voxel_data;
-        coarse_voxel_decode(coarse_voxel_data, coarse_voxel_data_code);
-        const float voxel_gi_average = (0 < coarse_voxel_data.sample_count) ? float(coarse_voxel_data.accumulated) / float(coarse_voxel_data.sample_count) : 0.0;
+
     
-        float4 color = float4(pow(voxel_gi_average, 1.5).xxx, 1.0);
-        
+    float4 color = float4(normal_ws * 0.5 + 0.5, 1.0);// デフォルトでは法線を仮表示.
+
+        const int normal_principal_axis = calc_principal_axis_component_index(abs(normal_ws));
+        int component_index = 0;
+        if(0 == normal_principal_axis)
+        {
+            component_index = (0 < normal_ws.x) ? 0 : 1;
+        }
+        else if(1 == normal_principal_axis)
+        {
+            component_index = (0 < normal_ws.y) ? 2 : 3;
+        }
+        else
+        {
+            component_index = (0 < normal_ws.z) ? 4 : 5;
+        }
+
+    
+        // GI情報を可視化.
+        const CoarseVoxelData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
+        if(0 == cb_dispatch_param.debug_probe_mode)
+        {
+            // 指向性
+            const float voxel_gi_average = coarse_voxel_data.sky_visibility_dir_avg[component_index];
+            color.xyz = float4(voxel_gi_average, voxel_gi_average, voxel_gi_average, 1);
+        }
+        else if(1 == cb_dispatch_param.debug_probe_mode)
+        {
+            // 全方向平均.
+            const float voxel_gi_average = 
+            (coarse_voxel_data.sky_visibility_dir_avg[0] + coarse_voxel_data.sky_visibility_dir_avg[1]
+            + coarse_voxel_data.sky_visibility_dir_avg[2] + coarse_voxel_data.sky_visibility_dir_avg[3]
+            + coarse_voxel_data.sky_visibility_dir_avg[4] + coarse_voxel_data.sky_visibility_dir_avg[5]) / 6.0;
+            color.xyz = float4(voxel_gi_average, voxel_gi_average, voxel_gi_average, 1);
+        }
+
 
     //float4 color = float4(saturate(dot(normal_ws, -float3(0.0, -1.0, 0.0)).xxx), 1.0);
     //const float4 rand_seed = float4(voxel_index, voxel_index+1, voxel_index*2, voxel_index*3);
