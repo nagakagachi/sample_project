@@ -134,22 +134,22 @@ uint2 empty_coarse_voxel_data()
 // Dispatchパラメータ.
 struct DispatchParam
 {
-    int3 BaseResolution;
-    uint Flag;
+    int3 base_grid_resolution;
+    uint flag;
 
-    float3 GridMinPos;
-    float CellSize;
-    int3 GridToroidalOffset;
-    float CellSizeInv;
+    float3 grid_min_pos;
+    float cell_size;
+    int3 grid_toroidal_offset;
+    float cell_size_inv;
 
-    int3 GridToroidalOffsetPrev;
-    int Dummy0;
+    int3 grid_toroidal_offset_prev;
+    int dummy0;
     
-    int3 GridCellDelta;// Toroidalではなくワールド空間Cellでのフレーム移動量.
-    int Dummy1;
+    int3 grid_move_cell_delta;// Toroidalではなくワールド空間Cellでのフレーム移動量.
+    int dummy1;
 
-    int2 TexHardwareDepthSize;
-    uint FrameCount;
+    int2 tex_hw_depth_size;
+    uint frame_count;
 
     uint debug_view_mode;
 };

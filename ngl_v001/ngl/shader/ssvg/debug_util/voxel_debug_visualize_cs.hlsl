@@ -28,7 +28,7 @@ void main_cs(
 {
 
 	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
-	const float2 screen_size_f = float2(cb_dispatch_param.TexHardwareDepthSize.xy);
+	const float2 screen_size_f = float2(cb_dispatch_param.tex_hw_depth_size.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
     
     #if 1
@@ -45,8 +45,8 @@ void main_cs(
         float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
             hit_voxel_index,
             camera_pos, ray_dir_ws, trace_distance, 
-            cb_dispatch_param.GridMinPos, cb_dispatch_param.CellSize, cb_dispatch_param.BaseResolution,
-            cb_dispatch_param.GridToroidalOffset, OccupancyBitmaskVoxel);
+            cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size, cb_dispatch_param.base_grid_resolution,
+            cb_dispatch_param.grid_toroidal_offset, OccupancyBitmaskVoxel);
 
         float4 debug_color = float4(0, 0, 1, 0);
         if(0.0 <= curr_ray_t_ws.x)
@@ -81,7 +81,7 @@ void main_cs(
             else
             {
                 // obmセル可視化
-                const float3 obm_cell_id = floor((camera_pos + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_dispatch_param.CellSizeInv*float(k_obm_per_voxel_resolution)));
+                const float3 obm_cell_id = floor((camera_pos + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_dispatch_param.cell_size_inv*float(k_obm_per_voxel_resolution)));
                 debug_color.xyz = float4(noise_iqint32(obm_cell_id.xyzz), noise_iqint32(obm_cell_id.xzyy), noise_iqint32(obm_cell_id.xyzx), 1);
                 
                 // 簡易フォグ.
@@ -92,18 +92,18 @@ void main_cs(
         RWTexWork[dtid.xy] = debug_color;
     #else
         // 上面図X-Ray表示.
-        const int3 bv_full_reso = cb_dispatch_param.BaseResolution * k_obm_per_voxel_resolution;
+        const int3 bv_full_reso = cb_dispatch_param.base_grid_resolution * k_obm_per_voxel_resolution;
         
         const float visualize_scale = 0.5;
-        float3 read_pos_world_base = (float3(dtid.x, 0.0, cb_dispatch_param.TexHardwareDepthSize.y-1 - dtid.y) + 0.5) * visualize_scale * cb_dispatch_param.CellSize/k_obm_per_voxel_resolution;
-        read_pos_world_base += cb_dispatch_param.GridMinPos;
+        float3 read_pos_world_base = (float3(dtid.x, 0.0, cb_dispatch_param.tex_hw_depth_size.y-1 - dtid.y) + 0.5) * visualize_scale * cb_dispatch_param.cell_size/k_obm_per_voxel_resolution;
+        read_pos_world_base += cb_dispatch_param.grid_min_pos;
 
         float write_data = 0.0;
         for(int yi = 0; yi < bv_full_reso.y; ++yi)
         {
-            const float3 read_pos_world = read_pos_world_base + float3(0.0, yi, 0.0) * (cb_dispatch_param.CellSize/k_obm_per_voxel_resolution);
+            const float3 read_pos_world = read_pos_world_base + float3(0.0, yi, 0.0) * (cb_dispatch_param.cell_size/k_obm_per_voxel_resolution);
 
-            const uint bit_value = read_occupancy_bitmask_voxel_from_world_pos(OccupancyBitmaskVoxel, cb_dispatch_param.BaseResolution, cb_dispatch_param.GridToroidalOffset, cb_dispatch_param.GridMinPos, cb_dispatch_param.CellSizeInv, read_pos_world);
+            const uint bit_value = read_occupancy_bitmask_voxel_from_world_pos(OccupancyBitmaskVoxel, cb_dispatch_param.base_grid_resolution, cb_dispatch_param.grid_toroidal_offset, cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size_inv, read_pos_world);
 
             float occupancy = float(bit_value);
             occupancy /= (float)bv_full_reso.y;

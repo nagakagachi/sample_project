@@ -33,7 +33,7 @@ void main_cs(
 	const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
 
 	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
-	const float2 screen_size_f = float2(cb_dispatch_param.TexHardwareDepthSize.xy);
+	const float2 screen_size_f = float2(cb_dispatch_param.tex_hw_depth_size.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
 
 
@@ -50,12 +50,12 @@ void main_cs(
         const float3 pixel_pos_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
 
         // PixelWorldPosition->VoxelCoord
-        const float3 voxel_coordf = (pixel_pos_ws - cb_dispatch_param.GridMinPos) * cb_dispatch_param.CellSizeInv;
+        const float3 voxel_coordf = (pixel_pos_ws - cb_dispatch_param.grid_min_pos) * cb_dispatch_param.cell_size_inv;
         const int3 voxel_coord = floor(voxel_coordf);
-        if(all(voxel_coord >= 0) && all(voxel_coord < cb_dispatch_param.BaseResolution))
+        if(all(voxel_coord >= 0) && all(voxel_coord < cb_dispatch_param.base_grid_resolution))
         {
-            int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.GridToroidalOffset, cb_dispatch_param.BaseResolution);
-            uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_dispatch_param.BaseResolution);
+            int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.grid_toroidal_offset, cb_dispatch_param.base_grid_resolution);
+            uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_dispatch_param.base_grid_resolution);
 
             {
                 const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);

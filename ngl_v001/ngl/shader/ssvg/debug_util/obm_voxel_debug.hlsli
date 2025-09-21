@@ -1,5 +1,7 @@
 /*
     obm_voxel_debug_vs.hlsl
+
+    Voxel Probeデバッグ描画.
 */
 
 
@@ -22,6 +24,14 @@ struct VS_OUTPUT
     float3 voxel_probe_pos_ws : VOXELPROBEPOSWS0;
     int voxel_index : VOXELINDEX0;
 };
+
+
+
+
+
+
+
+
 
 VS_OUTPUT main_vs(VS_INPUT input)
 {
@@ -57,8 +67,8 @@ VS_OUTPUT main_vs(VS_INPUT input)
     const uint instance_vtx_id = input.vertex_id % 6;
 
 
-    const int3 voxel_coord = index_to_voxel_coord(instance_id, cb_dispatch_param.BaseResolution);
-    const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.GridToroidalOffset, cb_dispatch_param.BaseResolution), cb_dispatch_param.BaseResolution);
+    const int3 voxel_coord = index_to_voxel_coord(instance_id, cb_dispatch_param.base_grid_resolution);
+    const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.grid_toroidal_offset, cb_dispatch_param.base_grid_resolution), cb_dispatch_param.base_grid_resolution);
     const uint voxel_unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
 
     const uint obm_voxel_unique_data = OccupancyBitmaskVoxel[voxel_unique_data_addr];
@@ -77,18 +87,18 @@ VS_OUTPUT main_vs(VS_INPUT input)
     coarse_voxel_decode(coarse_voxel_data, coarse_voxel_data_code);
     const bool is_invalid_probe_local_pos = (0 == coarse_voxel_data.probe_pos_index);
     const int3 probe_coord_in_voxel = (is_invalid_probe_local_pos) ? int3(0,0,0) : calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(coarse_voxel_data.probe_pos_index-1);
-    const float3 probe_pos_ws = (float3(voxel_coord) + (float3(probe_coord_in_voxel) + 0.5) / float(k_obm_per_voxel_resolution)) * cb_dispatch_param.CellSize + cb_dispatch_param.GridMinPos;
+    const float3 probe_pos_ws = (float3(voxel_coord) + (float3(probe_coord_in_voxel) + 0.5) / float(k_obm_per_voxel_resolution)) * cb_dispatch_param.cell_size + cb_dispatch_param.grid_min_pos;
 
 
     float4 color = float4(1,1,1,1);
 
     // 表示位置.
     const float3 instance_pos = probe_pos_ws;
-    float draw_scale = cb_dispatch_param.CellSize * 0.75 / k_obm_per_voxel_resolution;
+    float draw_scale = cb_dispatch_param.cell_size * 0.75 / k_obm_per_voxel_resolution;
     if(is_obm_empty)
     {
         // ジオメトリのないVoxelは小さく表示.
-        draw_scale *= 0.5;
+        draw_scale *= 0.3;
     }
     if(is_invalid_probe_local_pos)
     {
@@ -139,15 +149,14 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     normal_ws = (normal_ws.x * quad_pose_side + normal_ws.y * quad_pose_up + normal_ws.z * dir_to_camera);
     normal_ws = normalize(normal_ws);
 
-
-    
         // GI情報を可視化.
         const uint2 coarse_voxel_data_code = CoarseVoxelBuffer[voxel_index];
         CoarseVoxelData coarse_voxel_data;
         coarse_voxel_decode(coarse_voxel_data, coarse_voxel_data_code);
         const float voxel_gi_average = (0 < coarse_voxel_data.sample_count) ? float(coarse_voxel_data.accumulated) / float(coarse_voxel_data.sample_count) : 0.0;
-
-    float4 color = float4(pow(voxel_gi_average, 2.2).xxx, 1.0);
+    
+        float4 color = float4(pow(voxel_gi_average, 1.5).xxx, 1.0);
+        
 
     //float4 color = float4(saturate(dot(normal_ws, -float3(0.0, -1.0, 0.0)).xxx), 1.0);
     //const float4 rand_seed = float4(voxel_index, voxel_index+1, voxel_index*2, voxel_index*3);

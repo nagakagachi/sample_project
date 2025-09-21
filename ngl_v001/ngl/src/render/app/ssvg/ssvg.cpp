@@ -171,10 +171,28 @@ namespace ngl::render::app
         const u32 voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
         struct DispatchParam
         {
-            math::Vec3i BaseResolution{};
-            u32 Flag{};
+            math::Vec3i base_grid_resolution{};
+            u32 flag{};
 
-            math::Vec3 GridMinPos{};
+
+            math::Vec3 grid_min_pos;
+            float cell_size;
+            math::Vec3i grid_toroidal_offset;
+            float cell_size_inv;
+
+            math::Vec3i grid_toroidal_offset_prev;
+            int dummy0;
+            
+            math::Vec3i grid_move_cell_delta;// Toroidalではなくワールド空間Cellでのフレーム移動量.
+            int dummy1;
+
+            math::Vec2i tex_hw_depth_size;
+            u32 frame_count;
+
+            u32 debug_view_mode;
+
+            /*
+            math::Vec3 grid_min_pos{};
             float CellSize{};
             math::Vec3i GridToroidalOffset{};
             float CellSizeInv{};
@@ -189,28 +207,29 @@ namespace ngl::render::app
             u32 FrameCount{};
 
             u32 debug_view_mode{};
+            */
         };
 
         cbh_dispatch_ = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(DispatchParam));
         {
             auto* p = cbh_dispatch_->buffer_.MapAs<DispatchParam>();
 
-            p->BaseResolution = base_resolution_.Cast<int>();
-            p->Flag           = 0;
+            p->base_grid_resolution = base_resolution_.Cast<int>();
+            p->flag           = 0;
 
-            p->GridMinPos     = grid_min_pos_;
-            
-            p->GridToroidalOffset = grid_toroidal_offset_;
-            p->GridToroidalOffsetPrev = grid_toroidal_offset_prev_;
+            p->grid_min_pos     = grid_min_pos_;
 
-            p->GridCellDelta = grid_min_pos_delta_cell;
+            p->grid_toroidal_offset = grid_toroidal_offset_;
+            p->grid_toroidal_offset_prev = grid_toroidal_offset_prev_;
 
-            p->CellSize       = cell_size_;
-            p->CellSizeInv    = 1.0f / cell_size_;
+            p->grid_move_cell_delta = grid_min_pos_delta_cell;
 
-            p->TexHardwareDepthSize = hw_depth_size;
+            p->cell_size       = cell_size_;
+            p->cell_size_inv    = 1.0f / cell_size_;
 
-            p->FrameCount = frame_count_;
+            p->tex_hw_depth_size = hw_depth_size;
+
+            p->frame_count = frame_count_;
 
             p->debug_view_mode = SsVg::dbg_view_mode_;
 

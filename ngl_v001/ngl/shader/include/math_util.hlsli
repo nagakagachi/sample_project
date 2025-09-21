@@ -199,5 +199,21 @@ float3 random_unit_vector3(float2 seed)
     return sample_ray_dir;
 }
 
+// Fibonacci球面分布方向を取得.
+// indexのmoduloは呼び出し側の責任とする.
+float3 fibonacci_sphere_point(uint index, uint sample_count_max)
+{
+    const float phi = 3.14159265359 * (3.0 - sqrt(5.0)); // 黄金角
+    const float y = 1.0 - (index / float(sample_count_max - 1)) * 2.0;
+    const float horizontal_radius = sqrt(1.0 - y * y);
+    const float theta = phi * index;
+
+    const float x = cos(theta) * horizontal_radius;
+    const float z = sin(theta) * horizontal_radius;
+
+    return float3(x, y, z);
+}
+
+
 
 #endif
