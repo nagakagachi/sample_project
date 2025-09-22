@@ -19,6 +19,8 @@ ssvg_util.hlsli
     // ObmVoxel単位のデータサイズ(u32単位)
     #define k_obm_per_voxel_u32_count (k_obm_per_voxel_occupancy_bitmask_u32_count + k_obm_common_data_u32_count)
 
+    #define k_obm_per_voxel_resolution_inv (1.0 / float(k_obm_per_voxel_resolution))
+    #define k_obm_per_voxel_resolution_vec3i int3(k_obm_per_voxel_resolution, k_obm_per_voxel_resolution, k_obm_per_voxel_resolution)
 
     // シェーダとCppで一致させる.
     // CoarseVoxelバッファ. ObmVoxel一つ毎の外部データ.
@@ -91,8 +93,7 @@ uint obm_voxel_occupancy_bitmask_uint_count()
 void calc_occupancy_bitmask_voxel_inner_bit_info(out uint out_u32_offset, out uint out_bit_location, uint3 bit_position_in_voxel)
 {
     // 現状はX,Y,Z順のリニアレイアウト.
-    const uint3 bit_pos = bit_position_in_voxel;
-    const uint bit_linear_pos = bit_pos.x + (bit_pos.y * k_obm_per_voxel_resolution) + (bit_pos.z * (k_obm_per_voxel_resolution * k_obm_per_voxel_resolution));
+    const uint bit_linear_pos = bit_position_in_voxel.x + (bit_position_in_voxel.y * k_obm_per_voxel_resolution) + (bit_position_in_voxel.z * (k_obm_per_voxel_resolution * k_obm_per_voxel_resolution));
     out_u32_offset = bit_linear_pos / 32;
     out_bit_location = bit_linear_pos - (out_u32_offset * 32);
 }
@@ -413,7 +414,7 @@ float4 trace_ray_vs_occupancy_bitmask_voxel(
 
             #if 1
                 // 占有ビットマスクまで参照する精密トレース.
-                const float detail_cell_size = 1.0 / float(k_obm_per_voxel_resolution);
+                const float detail_cell_size = k_obm_per_voxel_resolution_inv;
                 const float k_fine_step_start_t_offset = 1e-5;// 内部セルの境界での誤差回避のために微小値を加算.
 
                 // 最小コンポーネントからt値を取得.
@@ -473,6 +474,147 @@ float4 trace_ray_vs_occupancy_bitmask_voxel(
     const float3 optional_return = fine_trace_optional_return;
 
     return float4(ret_t, optional_return.x, optional_return.y, optional_return.z);
+}
+
+// 呼び出し側で引数の符号なし uint3 pos に符号付きint3を渡すことでオーバーフローして最大値になるため, 0 <= pos < size の範囲内にあるかをチェックとなる.
+bool check_grid_bound(uint3 pos, uint sizeX, uint sizeY, uint sizeZ) {
+    return pos.x < sizeX && pos.y < sizeY && pos.z < sizeZ;
+}
+float3 calc_inverse_ray_direction(float3 ray_dir)
+{
+    const float k_nearly_zero_threshold = 1e-7;
+    const float k_float_max = 1e20;
+    // Safety Inverse Dir.
+    return select( k_nearly_zero_threshold > abs(ray_dir), float3(k_float_max, k_float_max, k_float_max), 1.0 / ray_dir);
+}
+
+// https://github.com/dubiousconst282/VoxelRT
+float3 calc_dda_trace_ray_side_distance(float3 ray_pos, float3 ray_dir)
+{
+    float3 inv_dir = calc_inverse_ray_direction(ray_dir);
+    float3 ray_side_distance = ((floor(ray_pos) - ray_pos) + step(0.0, ray_dir)) * inv_dir;
+    return ray_side_distance;
+}
+
+// ray dir の逆数による次の境界への距離からdda用のステップ用軸選択boolマスクを計算.
+bool3 calc_dda_trace_step_mask(float3 ray_side_distance) {
+    bool3 mask;
+    mask.x = ray_side_distance.x < ray_side_distance.y && ray_side_distance.x < ray_side_distance.z;
+    mask.y = !mask.x && ray_side_distance.y < ray_side_distance.z;
+    mask.z = !mask.x && !mask.y;
+    return mask;
+}
+
+// https://github.com/dubiousconst282/VoxelRT
+int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, inout bool3 stepMask, 
+        Buffer<uint> occupancy_bitmask_voxel, uint voxel_index) 
+{
+    rayPos = clamp(rayPos, 0.0001, float(k_obm_per_voxel_resolution)-0.0001);
+
+    float3 invDir = 1.0 / rayDir;
+    float3 sideDist = ((floor(rayPos) - rayPos) + step(0.0, rayDir)) * invDir;
+    int3 mapPos = int3(floor(rayPos));
+    int3 raySign = sign(rayDir);
+    #if 1
+        const uint obm_bitmask_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
+        do {
+            uint bitmask_u32_offset, bitmask_u32_bit_pos;
+            calc_occupancy_bitmask_voxel_inner_bit_info(bitmask_u32_offset, bitmask_u32_bit_pos, mapPos);
+            bool is_hit = occupancy_bitmask_voxel[obm_bitmask_addr + bitmask_u32_offset] & (1 << bitmask_u32_bit_pos);
+            if(is_hit)
+            {
+                return mapPos;
+            }
+
+            stepMask = calc_dda_trace_step_mask(sideDist);
+            mapPos += select(stepMask, raySign, 0);
+            sideDist += select(stepMask, abs(invDir), 0);
+        } while (all(uint3(mapPos) < k_obm_per_voxel_resolution));
+
+        return -1;
+    #else
+        // デバッグ用に即時ヒット扱い.
+        return mapPos;
+    #endif
+}
+
+float4 trace_ray_vs_obm_voxel_grid(
+    out int out_hit_voxel_index,
+
+    float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws, 
+    float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
+    int3 grid_toroidal_offset, Buffer<uint> occupancy_bitmask_voxel)
+{
+    const float3 grid_box_min = float3(0.0, 0.0, 0.0);
+    const float3 grid_box_max = float3(grid_resolution);
+    const int3 grid_box_cell_max = int3(grid_resolution - 1);
+
+    float3 ray_pos = ray_origin_ws - grid_min_ws;
+    ray_pos /= cell_width_ws;
+
+    float ray_trace_begin_t_offset;
+    float ray_trace_end_t_offset;
+    float3 inv_dir;
+    if(!calc_ray_t_offset_for_aabb(ray_trace_begin_t_offset, ray_trace_end_t_offset, inv_dir, grid_box_min, grid_box_max, ray_pos, (ray_pos + ray_dir_ws * (trace_distance_ws * (1.0 / cell_width_ws)))))
+    {
+        return float4(-1.0, -1.0, -1.0, -1.0);// ヒット無し.
+    }
+
+    float3 startPos = floor(ray_pos + ray_dir_ws * ray_trace_begin_t_offset);
+    float3 sideDist = ((startPos - ray_pos) + step(0.0, ray_dir_ws)) * inv_dir;
+    int3 mapPos = int3(startPos);
+    int3 raySign = sign(ray_dir_ws);
+    bool3 stepMask = calc_dda_trace_step_mask(sideDist);
+
+    float hit_t = -1.0;
+    // Safety Loop.
+    for (int i = 0; i < 1024; i++)
+    {
+        if(!check_grid_bound(mapPos, grid_resolution.x, grid_resolution.y, grid_resolution.z))
+            break;
+
+        // 読み取り用のマッピングをして読み取り.
+        const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(mapPos, grid_toroidal_offset, grid_resolution), grid_resolution);
+        // CoarseVoxelで簡易判定.
+        const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
+        
+        if(0 != (occupancy_bitmask_voxel[unique_data_addr]))
+        {
+            // TODO. WaveActiveCountBitsを使用して一定数以上(８割以上~等)のLaneが到達するまでcontinueすることで発散対策をすることも検討.
+            float3 mini = ((mapPos-ray_pos) + 0.5 - 0.5*float3(raySign)) * inv_dir;
+            float d = max(mini.x, max(mini.y, mini.z));
+            float3 intersect = ray_pos + ray_dir_ws*d;
+            float3 uv3d = intersect - mapPos;
+
+            // レイ始点がBrick内部に入っている場合の対応.
+            if (all(mapPos == floor(ray_pos)))
+                uv3d = ray_pos - mapPos;
+
+            int3 subp = trace_bitmask_brick(uv3d*k_obm_per_voxel_resolution, ray_dir_ws, stepMask, occupancy_bitmask_voxel, voxel_index);
+            // obm bitmaskヒット.
+            if (subp.x >= 0) 
+            {
+                float3 finalPos = mapPos*k_obm_per_voxel_resolution+subp;
+                float3 startPos = ray_pos*k_obm_per_voxel_resolution;
+                float3 mini = ((finalPos-startPos) + 0.5 - 0.5*float3(raySign)) * inv_dir;
+                float d = max(mini.x, max(mini.y, mini.z));
+                hit_t = d/k_obm_per_voxel_resolution;
+                break;
+            }
+        }
+        stepMask = calc_dda_trace_step_mask(sideDist);
+        mapPos += select(stepMask, raySign, 0);
+        sideDist += select(stepMask, abs(inv_dir), 0);
+    }
+    if(0.0 <= hit_t)
+    {
+        out_hit_voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(mapPos, grid_toroidal_offset, grid_resolution), grid_resolution);
+        const float3 hit_normal = select(stepMask, -sign(ray_dir_ws), 0.0);
+        const float hit_t_ws = (hit_t + ray_trace_begin_t_offset) * cell_width_ws;
+        
+        return float4(hit_t_ws, hit_normal.x, hit_normal.y, hit_normal.z);
+    }
+    return float4(-1.0, -1.0, -1.0, -1.0);
 }
 
 

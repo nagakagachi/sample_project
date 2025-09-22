@@ -42,11 +42,20 @@ void main_cs(
         const float trace_distance = 10000.0;
           
         int hit_voxel_index = -1;
-        float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
-            hit_voxel_index,
-            camera_pos, ray_dir_ws, trace_distance, 
-            cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size, cb_dispatch_param.base_grid_resolution,
-            cb_dispatch_param.grid_toroidal_offset, OccupancyBitmaskVoxel);
+        #if 1
+            // Trace最適化検証.
+            float4 curr_ray_t_ws = trace_ray_vs_obm_voxel_grid(
+                hit_voxel_index,
+                camera_pos, ray_dir_ws, trace_distance, 
+                cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size, cb_dispatch_param.base_grid_resolution,
+                cb_dispatch_param.grid_toroidal_offset, OccupancyBitmaskVoxel);
+        #else
+            float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
+                hit_voxel_index,
+                camera_pos, ray_dir_ws, trace_distance, 
+                cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size, cb_dispatch_param.base_grid_resolution,
+                cb_dispatch_param.grid_toroidal_offset, OccupancyBitmaskVoxel);
+        #endif
 
         float4 debug_color = float4(0, 0, 1, 0);
         if(0.0 <= curr_ray_t_ws.x)
@@ -67,6 +76,16 @@ void main_cs(
             {
                 // OBMセルの深度を可視化.
                 debug_color.xyz = float4(saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), 1);
+            }
+            else if(3 == cb_dispatch_param.debug_view_mode)
+            {
+                // OBMセルのヒット法線可視化.
+                const float3 obm_cell_id = floor((camera_pos + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_dispatch_param.cell_size_inv*float(k_obm_per_voxel_resolution)));
+                debug_color.xyz = abs(curr_ray_t_ws.yzw);
+                
+                // 簡易フォグ.
+                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate(curr_ray_t_ws.x/50.0), 1.0/1.2));
+                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), saturate((curr_ray_t_ws.x/100.0)));
             }
             else
             {

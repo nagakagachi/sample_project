@@ -90,11 +90,20 @@ void main_cs(
         // SkyVisibility raycast.
         const float trace_distance = 10000.0;
         int hit_voxel_index = -1;
-        float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
-            hit_voxel_index,
-            sample_ray_origin, sample_ray_dir, trace_distance, 
-            cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size, cb_dispatch_param.base_grid_resolution,
-            cb_dispatch_param.grid_toroidal_offset, OccupancyBitmaskVoxel);
+        #if 1
+            // Trace最適化検証.
+            float4 curr_ray_t_ws = trace_ray_vs_obm_voxel_grid(
+                hit_voxel_index,
+                sample_ray_origin, sample_ray_dir, trace_distance, 
+                cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size, cb_dispatch_param.base_grid_resolution,
+                cb_dispatch_param.grid_toroidal_offset, OccupancyBitmaskVoxel);
+        #else
+            float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
+                hit_voxel_index,
+                sample_ray_origin, sample_ray_dir, trace_distance, 
+                cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size, cb_dispatch_param.base_grid_resolution,
+                cb_dispatch_param.grid_toroidal_offset, OccupancyBitmaskVoxel);
+        #endif
 
         // CoarseVoxelの固有データ読み取り. 更新
         {
