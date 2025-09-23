@@ -476,6 +476,10 @@ float4 trace_ray_vs_occupancy_bitmask_voxel(
     return float4(ret_t, optional_return.x, optional_return.y, optional_return.z);
 }
 
+
+
+
+
 // 呼び出し側で引数の符号なし uint3 pos に符号付きint3を渡すことでオーバーフローして最大値になるため, 0 <= pos < size の範囲内にあるかをチェックとなる.
 bool check_grid_bound(uint3 pos, uint sizeX, uint sizeY, uint sizeZ) {
     return pos.x < sizeX && pos.y < sizeY && pos.z < sizeZ;
@@ -505,6 +509,7 @@ bool3 calc_dda_trace_step_mask(float3 ray_side_distance) {
     return mask;
 }
 
+// OccupancyBitmaskVoxel内部のビットセル単位でのレイトレース.
 // https://github.com/dubiousconst282/VoxelRT
 int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, inout bool3 stepMask, 
         Buffer<uint> occupancy_bitmask_voxel, uint voxel_index) 
@@ -521,13 +526,14 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, inout bool3 stepMask,
             uint bitmask_u32_offset, bitmask_u32_bit_pos;
             calc_occupancy_bitmask_voxel_inner_bit_info(bitmask_u32_offset, bitmask_u32_bit_pos, mapPos);
             bool is_hit = occupancy_bitmask_voxel[obm_bitmask_addr + bitmask_u32_offset] & (1 << bitmask_u32_bit_pos);
-            if(is_hit)
-            {
-                return mapPos;
-            }
+            
+            if(is_hit) { return mapPos; }
 
             stepMask = calc_dda_trace_step_mask(sideDist);
-            mapPos += select(stepMask, raySign, 0);
+            const int3 mapPosDelta = select(stepMask, raySign, 0);
+            if(all(mapPosDelta == 0)) {break;}// ここがゼロになって無限ループになる場合がある???  ため安全break.
+            
+            mapPos += mapPosDelta;
             sideDist += select(stepMask, abs(invDir), 0);
         } while (all(uint3(mapPos) < k_obm_per_voxel_resolution));
 
@@ -538,6 +544,7 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, inout bool3 stepMask,
     #endif
 }
 
+// OccupancyBitmaskVoxelレイトレース.
 float4 trace_ray_vs_obm_voxel_grid(
     out int out_hit_voxel_index,
 
@@ -548,70 +555,72 @@ float4 trace_ray_vs_obm_voxel_grid(
     const float3 grid_box_min = float3(0.0, 0.0, 0.0);
     const float3 grid_box_max = float3(grid_resolution);
     const int3 grid_box_cell_max = int3(grid_resolution - 1);
+    const float cell_width_ws_inv = 1.0 / cell_width_ws;
 
-    float3 ray_pos = ray_origin_ws - grid_min_ws;
-    ray_pos /= cell_width_ws;
+    float3 ray_pos = (ray_origin_ws - grid_min_ws) * cell_width_ws_inv;
 
     float ray_trace_begin_t_offset;
     float ray_trace_end_t_offset;
     float3 inv_dir;
-    if(!calc_ray_t_offset_for_aabb(ray_trace_begin_t_offset, ray_trace_end_t_offset, inv_dir, grid_box_min, grid_box_max, ray_pos, (ray_pos + ray_dir_ws * (trace_distance_ws * (1.0 / cell_width_ws)))))
+    if(!calc_ray_t_offset_for_aabb(ray_trace_begin_t_offset, ray_trace_end_t_offset, inv_dir, grid_box_min, grid_box_max, ray_pos, (ray_pos + ray_dir_ws * (trace_distance_ws * cell_width_ws_inv))))
     {
         return float4(-1.0, -1.0, -1.0, -1.0);// ヒット無し.
     }
 
-    float3 startPos = floor(ray_pos + ray_dir_ws * ray_trace_begin_t_offset);
+    const int3 raySign = sign(ray_dir_ws);
+    const float3 startPos = floor(ray_pos + ray_dir_ws * ray_trace_begin_t_offset);
     float3 sideDist = ((startPos - ray_pos) + step(0.0, ray_dir_ws)) * inv_dir;
     int3 mapPos = int3(startPos);
-    int3 raySign = sign(ray_dir_ws);
     bool3 stepMask = calc_dda_trace_step_mask(sideDist);
 
     float hit_t = -1.0;
-    // Safety Loop.
-    for (int i = 0; i < 1024; i++)
+    for(;;)
     {
-        if(!check_grid_bound(mapPos, grid_resolution.x, grid_resolution.y, grid_resolution.z))
-            break;
-
         // 読み取り用のマッピングをして読み取り.
         const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(mapPos, grid_toroidal_offset, grid_resolution), grid_resolution);
-        // CoarseVoxelで簡易判定.
         const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
         
+        // CoarseVoxelで簡易判定.
         if(0 != (occupancy_bitmask_voxel[unique_data_addr]))
         {
             // TODO. WaveActiveCountBitsを使用して一定数以上(８割以上~等)のLaneが到達するまでcontinueすることで発散対策をすることも検討.
-            float3 mini = ((mapPos-ray_pos) + 0.5 - 0.5*float3(raySign)) * inv_dir;
-            float d = max(mini.x, max(mini.y, mini.z));
-            float3 intersect = ray_pos + ray_dir_ws*d;
+            const float3 mini = ((mapPos-ray_pos) + 0.5 - 0.5*float3(raySign)) * inv_dir;
+            const float d = max(mini.x, max(mini.y, mini.z));
+            const float3 intersect = ray_pos + ray_dir_ws*d;
             float3 uv3d = intersect - mapPos;
 
             // レイ始点がBrick内部に入っている場合の対応.
             if (all(mapPos == floor(ray_pos)))
                 uv3d = ray_pos - mapPos;
 
-            int3 subp = trace_bitmask_brick(uv3d*k_obm_per_voxel_resolution, ray_dir_ws, stepMask, occupancy_bitmask_voxel, voxel_index);
+            const int3 subp = trace_bitmask_brick(uv3d*k_obm_per_voxel_resolution, ray_dir_ws, stepMask, occupancy_bitmask_voxel, voxel_index);
             // obm bitmaskヒット.
             if (subp.x >= 0) 
             {
-                float3 finalPos = mapPos*k_obm_per_voxel_resolution+subp;
-                float3 startPos = ray_pos*k_obm_per_voxel_resolution;
-                float3 mini = ((finalPos-startPos) + 0.5 - 0.5*float3(raySign)) * inv_dir;
-                float d = max(mini.x, max(mini.y, mini.z));
+                const float3 finalPos = mapPos*k_obm_per_voxel_resolution+subp;
+                const float3 startPos = ray_pos*k_obm_per_voxel_resolution;
+                const float3 mini = ((finalPos-startPos) + 0.5 - 0.5*float3(raySign)) * inv_dir;
+                const float d = max(mini.x, max(mini.y, mini.z));
                 hit_t = d/k_obm_per_voxel_resolution;
                 break;
             }
         }
+
         stepMask = calc_dda_trace_step_mask(sideDist);
-        mapPos += select(stepMask, raySign, 0);
         sideDist += select(stepMask, abs(inv_dir), 0);
+        const int3 mapPosDelta = select(stepMask, raySign, 0);
+        // ここがゼロになって無限ループになる場合があるため安全break.
+        if(all(mapPosDelta == 0)) {break;}
+        mapPos += mapPosDelta;
+
+        // 範囲外.
+        if(!check_grid_bound(mapPos, grid_resolution.x, grid_resolution.y, grid_resolution.z)) {break;}
     }
     if(0.0 <= hit_t)
     {
         out_hit_voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(mapPos, grid_toroidal_offset, grid_resolution), grid_resolution);
         const float3 hit_normal = select(stepMask, -sign(ray_dir_ws), 0.0);
         const float hit_t_ws = (hit_t + ray_trace_begin_t_offset) * cell_width_ws;
-        
         return float4(hit_t_ws, hit_normal.x, hit_normal.y, hit_normal.z);
     }
     return float4(-1.0, -1.0, -1.0, -1.0);

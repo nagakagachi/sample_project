@@ -17,6 +17,7 @@ ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 
 RWTexture2D<float4>	RWTexWork;
 
+
 // デバッグテクスチャに対してDispatch.
 [numthreads(16, 16, 1)]
 void main_cs(
@@ -26,7 +27,6 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
-
 	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
 	const float2 screen_size_f = float2(cb_dispatch_param.tex_hw_depth_size.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
@@ -60,8 +60,10 @@ void main_cs(
         float4 debug_color = float4(0, 0, 1, 0);
         if(0.0 <= curr_ray_t_ws.x)
         {
+            const float fog_rate0 = pow(saturate((curr_ray_t_ws.x - 20.0)/100.0), 1.0/1.2);
+            const float fog_rate1 = saturate((curr_ray_t_ws.x - 70.0)/500.0);
+
             const uint unique_data_addr = obm_voxel_unique_data_addr(hit_voxel_index);
-            
             // デバッグ用テクスチャにモード別描画.
             if(1 == cb_dispatch_param.debug_view_mode)
             {
@@ -69,8 +71,8 @@ void main_cs(
                 debug_color.xyz = float4(noise_iqint32(hit_voxel_index), noise_iqint32(hit_voxel_index*2), noise_iqint32(hit_voxel_index*3), 1);
                 
                 // 簡易フォグ.
-                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate(curr_ray_t_ws.x/50.0), 1.0/1.2));
-                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), saturate((curr_ray_t_ws.x/100.0)));
+                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
+                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
             }
             else if(2 == cb_dispatch_param.debug_view_mode)
             {
@@ -84,8 +86,8 @@ void main_cs(
                 debug_color.xyz = abs(curr_ray_t_ws.yzw);
                 
                 // 簡易フォグ.
-                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate(curr_ray_t_ws.x/50.0), 1.0/1.2));
-                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), saturate((curr_ray_t_ws.x/100.0)));
+                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
+                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
             }
             else
             {
@@ -94,8 +96,8 @@ void main_cs(
                 debug_color.xyz = float4(noise_iqint32(obm_cell_id.xyzz), noise_iqint32(obm_cell_id.xzyy), noise_iqint32(obm_cell_id.xyzx), 1);
                 
                 // 簡易フォグ.
-                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate(curr_ray_t_ws.x/50.0), 1.0/1.2));
-                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), saturate((curr_ray_t_ws.x/100.0)));
+                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
+                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
             }
         }
         RWTexWork[dtid.xy] = debug_color;

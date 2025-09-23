@@ -58,7 +58,7 @@ static bool dbgw_view_half_dot_gray               = false;
 static bool dbgw_view_gbuffer                     = false;
 static bool dbgw_view_dshadow                     = false;
 
-static bool dbgw_view_ssvg_voxel                  = true;
+//static bool dbgw_view_ssvg_voxel                  = true;
 static float dbgw_view_ssvg_voxel_rate            = 0.5f;
 
 static float dbgw_dlit_angle_v                    = 0.4f;
@@ -594,6 +594,8 @@ bool AppGame::Initialize()
     
     // SSVG.
     ssvg_.Initialize(&device);
+    ngl::render::app::SsVg::dbg_view_enable_ = false;
+
 
 
     // Texture Rexource読み込みのテスト.
@@ -840,11 +842,11 @@ bool AppGame::ExecuteApp()
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Ssvg"))
         {
-            ImGui::Checkbox("Enable", &dbgw_view_ssvg_voxel);
+            ImGui::Checkbox("Enable", &ngl::render::app::SsVg::dbg_view_enable_);
             ImGui::SliderInt("Voxel Debug", &ngl::render::app::SsVg::dbg_view_mode_, 0, 5);
             ImGui::SliderFloat("Visualize Screen Rate", &dbgw_view_ssvg_voxel_rate, 0.0f, 1.0f);
-
             ImGui::SliderInt("Probe Debug", &ngl::render::app::SsVg::dbg_probe_debug_view_mode_, -1, 1);
+            ImGui::SliderInt("Raytrace Version", &ngl::render::app::SsVg::dbg_raytrace_version_, 0, 1);
         }
 
         ImGui::End();
@@ -1053,7 +1055,7 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
 
                 render_frame_desc.debugview_gbuffer = dbgw_view_gbuffer;
                 render_frame_desc.debugview_dshadow = dbgw_view_dshadow;
-                render_frame_desc.debugview_ssvg_voxel = dbgw_view_ssvg_voxel;
+                render_frame_desc.debugview_ssvg_voxel = ngl::render::app::SsVg::dbg_view_enable_;
                 render_frame_desc.debugview_ssvg_voxel_rate = dbgw_view_ssvg_voxel_rate;
             }
         }

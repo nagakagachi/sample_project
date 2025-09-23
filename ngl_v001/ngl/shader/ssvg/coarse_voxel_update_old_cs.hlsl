@@ -1,7 +1,9 @@
 
 #if 0
 
-coarse_voxel_update_cs.hlsl
+coarse_voxel_update_old_cs.hlsl
+
+以前のレイトレース処理版を比較用に残している.
 
 #endif
 
@@ -90,21 +92,13 @@ void main_cs(
         // SkyVisibility raycast.
         const float trace_distance = 10000.0;
         int hit_voxel_index = -1;
-        #if 1
-            // リファクタリング版.
-            float4 curr_ray_t_ws = trace_ray_vs_obm_voxel_grid(
-                hit_voxel_index,
-                sample_ray_origin, sample_ray_dir, trace_distance, 
-                cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size, cb_dispatch_param.base_grid_resolution,
-                cb_dispatch_param.grid_toroidal_offset, OccupancyBitmaskVoxel);
-        #else
-            // 旧バージョン..
-            float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
-                hit_voxel_index,
-                sample_ray_origin, sample_ray_dir, trace_distance, 
-                cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size, cb_dispatch_param.base_grid_resolution,
-                cb_dispatch_param.grid_toroidal_offset, OccupancyBitmaskVoxel);
-        #endif
+        
+        // 古いバージョンを残している.
+        float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
+            hit_voxel_index,
+            sample_ray_origin, sample_ray_dir, trace_distance, 
+            cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size, cb_dispatch_param.base_grid_resolution,
+            cb_dispatch_param.grid_toroidal_offset, OccupancyBitmaskVoxel);
 
         // CoarseVoxelの固有データ読み取り. 更新
         {

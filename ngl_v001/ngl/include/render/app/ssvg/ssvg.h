@@ -13,8 +13,10 @@ namespace ngl::render::app
     class SsVg
     {
     public:
+        static bool dbg_view_enable_;
         static int dbg_view_mode_;
         static int dbg_probe_debug_view_mode_;
+        static int dbg_raytrace_version_;
 
     public:
         SsVg() = default;
@@ -43,6 +45,7 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_begin_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_voxelize_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_coarse_voxel_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_coarse_voxel_update_old_ = {};// 旧バージョン検証.
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_debug_visualize_ = {};
         ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_debug_obm_voxel_ = {};
@@ -63,7 +66,7 @@ namespace ngl::render::app
         math::Vec3i grid_toroidal_offset_prev_ = {};
 
         math::Vec3u base_resolution_ = math::Vec3u(64, 64, 64);
-        float   cell_size_ = 3.0f;
+        float   cell_size_ = 3.0f * (1<<0);
 
         RhiBufferSet coarse_voxel_data_ = {};
         RhiBufferSet occupancy_bitmask_voxel_ = {};
