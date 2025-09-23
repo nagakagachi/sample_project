@@ -89,13 +89,25 @@ uint obm_voxel_occupancy_bitmask_uint_count()
     return k_obm_per_voxel_occupancy_bitmask_u32_count;
 }
 
+// Occupancy Bitmask Voxelの内部座標を元にリニアインデックスを計算.
+uint calc_occupancy_bitmask_cell_linear_index(uint3 bit_position_in_voxel)
+{
+    // 現状はX,Y,Z順のリニアレイアウト.
+    return bit_position_in_voxel.x + (bit_position_in_voxel.y * k_obm_per_voxel_resolution) + (bit_position_in_voxel.z * (k_obm_per_voxel_resolution * k_obm_per_voxel_resolution));
+}
+// calc_occupancy_bitmask_cell_linear_index で計算したリニアインデックスからVoxelブロック内のオフセットと読み取りビット位置を計算.
+void calc_occupancy_bitmask_voxel_inner_bit_info_from_linear_index(out uint out_u32_offset, out uint out_bit_location, uint bitmask_cell_linear_index)
+{
+    out_u32_offset = bitmask_cell_linear_index / 32;
+    out_bit_location = bitmask_cell_linear_index - (out_u32_offset * 32);
+}
 // Occupancy Bitmask Voxelの内部座標を元にバッファの該当Voxelブロック内のオフセットと読み取りビット位置を計算.
 void calc_occupancy_bitmask_voxel_inner_bit_info(out uint out_u32_offset, out uint out_bit_location, uint3 bit_position_in_voxel)
 {
     // 現状はX,Y,Z順のリニアレイアウト.
-    const uint bit_linear_pos = bit_position_in_voxel.x + (bit_position_in_voxel.y * k_obm_per_voxel_resolution) + (bit_position_in_voxel.z * (k_obm_per_voxel_resolution * k_obm_per_voxel_resolution));
-    out_u32_offset = bit_linear_pos / 32;
-    out_bit_location = bit_linear_pos - (out_u32_offset * 32);
+    const uint bit_linear_pos = calc_occupancy_bitmask_cell_linear_index(bit_position_in_voxel);
+
+    calc_occupancy_bitmask_voxel_inner_bit_info_from_linear_index(out_u32_offset, out_bit_location, bit_linear_pos);
 }
 // Occupancy Bitmask Voxelのビットセルインデックスからk_per_voxel_occupancy_reso^3 ボクセル内位置を計算.
 // bit_index : 0 〜 k_obm_per_voxel_bitmask_bit_count-1
