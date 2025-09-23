@@ -251,14 +251,14 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
 
 // OccupancyBitmaskVoxel内部のビットセル単位でのレイトレース.
 // https://github.com/dubiousconst282/VoxelRT
-int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, inout bool3 stepMask, 
+int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 invDir, inout bool3 stepMask, 
         Buffer<uint> occupancy_bitmask_voxel, uint voxel_index) 
 {
     rayPos = clamp(rayPos, 0.0001, float(k_obm_per_voxel_resolution)-0.0001);
 
-    float3 invDir = 1.0 / rayDir;
     float3 sideDist = ((floor(rayPos) - rayPos) + step(0.0, rayDir)) * invDir;
     int3 mapPos = int3(floor(rayPos));
+
     int3 raySign = sign(rayDir);
     #if 1
         const uint obm_bitmask_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
@@ -333,7 +333,7 @@ float4 trace_ray_vs_obm_voxel_grid(
             if (all(mapPos == floor(ray_pos)))
                 uv3d = ray_pos - mapPos;
 
-            const int3 subp = trace_bitmask_brick(uv3d*k_obm_per_voxel_resolution, ray_dir_ws, stepMask, occupancy_bitmask_voxel, voxel_index);
+            const int3 subp = trace_bitmask_brick(uv3d*k_obm_per_voxel_resolution, ray_dir_ws, inv_dir, stepMask, occupancy_bitmask_voxel, voxel_index);
             // obm bitmaskヒット.
             if (subp.x >= 0) 
             {

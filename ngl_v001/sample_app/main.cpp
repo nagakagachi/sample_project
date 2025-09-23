@@ -846,7 +846,7 @@ bool AppGame::ExecuteApp()
             ImGui::SliderInt("Voxel Debug", &ngl::render::app::SsVg::dbg_view_mode_, 0, 5);
             ImGui::SliderFloat("Visualize Screen Rate", &dbgw_view_ssvg_voxel_rate, 0.0f, 1.0f);
             ImGui::SliderInt("Probe Debug", &ngl::render::app::SsVg::dbg_probe_debug_view_mode_, -1, 1);
-            ImGui::SliderInt("Raytrace Version", &ngl::render::app::SsVg::dbg_raytrace_version_, 0, 1);
+            ImGui::SliderInt("Raytrace VersionCompare", &ngl::render::app::SsVg::dbg_raytrace_version_, 0, 1);
         }
 
         ImGui::End();

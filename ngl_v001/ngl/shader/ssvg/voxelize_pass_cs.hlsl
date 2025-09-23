@@ -36,6 +36,22 @@ void main_cs(
 	const float2 screen_size_f = float2(cb_dispatch_param.tex_hw_depth_size.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
 
+    #if 1
+        // 適当なTile単位処理スキップ軽量化.
+        const uint skip_tile_size = 8;// SxS個のタイルグループ毎に1Fに1タイルだけ処理するシンプル軽量化.
+        const uint tile_skip_id_x = gid.x%skip_tile_size;
+        const uint tile_skip_id_y = gid.y%skip_tile_size;
+
+        const uint skip_frame_id = cb_dispatch_param.frame_count % (skip_tile_size*skip_tile_size);
+        const uint skip_frame_id_y = skip_frame_id / (skip_tile_size);
+        const uint skip_frame_id_x = skip_frame_id % (skip_tile_size);
+
+        if((tile_skip_id_x != skip_frame_id_x) || (tile_skip_id_y != skip_frame_id_y))
+        {
+            return;
+        }
+    #endif
+
 
     // Tile単位で処理やAtomic書き出しをまとめることで効率化可能なはず.
 
@@ -43,40 +59,40 @@ void main_cs(
     float view_z = ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.x / (d * ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.y + ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.z);
 
     // Skyチェック.
-    if(65535.0 > abs(view_z))
+    if(65535.0 <= abs(view_z))
+        return;
+        
+    // 深度->PixelWorldPosition
+    const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, ngl_cb_sceneview.cb_proj_mtx);
+    const float3 pixel_pos_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
+
+    // PixelWorldPosition->VoxelCoord
+    const float3 voxel_coordf = (pixel_pos_ws - cb_dispatch_param.grid_min_pos) * cb_dispatch_param.cell_size_inv;
+    const int3 voxel_coord = floor(voxel_coordf);
+    if(all(voxel_coord >= 0) && all(voxel_coord < cb_dispatch_param.base_grid_resolution))
     {
-        // 深度->PixelWorldPosition
-        const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, ngl_cb_sceneview.cb_proj_mtx);
-        const float3 pixel_pos_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
+        int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.grid_toroidal_offset, cb_dispatch_param.base_grid_resolution);
+        uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_dispatch_param.base_grid_resolution);
 
-        // PixelWorldPosition->VoxelCoord
-        const float3 voxel_coordf = (pixel_pos_ws - cb_dispatch_param.grid_min_pos) * cb_dispatch_param.cell_size_inv;
-        const int3 voxel_coord = floor(voxel_coordf);
-        if(all(voxel_coord >= 0) && all(voxel_coord < cb_dispatch_param.base_grid_resolution))
         {
-            int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.grid_toroidal_offset, cb_dispatch_param.base_grid_resolution);
-            uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_dispatch_param.base_grid_resolution);
+            const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
+            const uint obm_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
 
-            {
-                const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
-                const uint obm_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
+            // 占有ビットマスク.
+            const float3 voxel_coord_frac = frac(voxel_coordf);
+            const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_obm_per_voxel_resolution);
+            
+            uint bitmask_u32_offset;
+            uint bitmask_u32_bit_pos;
+            calc_occupancy_bitmask_voxel_inner_bit_info(bitmask_u32_offset, bitmask_u32_bit_pos, voxel_coord_bitmask_pos);
+            const uint bitmask_append = (1 << bitmask_u32_bit_pos);
 
-                // 占有ビットマスク.
-                const float3 voxel_coord_frac = frac(voxel_coordf);
-                const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_obm_per_voxel_resolution);
-                
-                uint bitmask_u32_offset;
-                uint bitmask_u32_bit_pos;
-                calc_occupancy_bitmask_voxel_inner_bit_info(bitmask_u32_offset, bitmask_u32_bit_pos, voxel_coord_bitmask_pos);
-                const uint bitmask_append = (1 << bitmask_u32_bit_pos);
+            // 詳細ジオメトリを占有ビット書き込み.
+            InterlockedOr(RWOccupancyBitmaskVoxel[obm_addr + bitmask_u32_offset], bitmask_append);
 
-                // 詳細ジオメトリを占有ビット書き込み.
-                InterlockedOr(RWOccupancyBitmaskVoxel[obm_addr + bitmask_u32_offset], bitmask_append);
-
-                // 占有されていることを示すビットをCoarseVoxelに書き込みしてCoarseTraceで参照できるようにする.
-                // TODO. こちらもTileベースでなるべくAtomic操作数を減らしたい.
-                InterlockedOr(RWOccupancyBitmaskVoxel[unique_data_addr], 1);
-            }
+            // 占有されていることを示すビットをCoarseVoxelに書き込みしてCoarseTraceで参照できるようにする.
+            // TODO. こちらもTileベースでなるべくAtomic操作数を減らしたい.
+            InterlockedOr(RWOccupancyBitmaskVoxel[unique_data_addr], 1);
         }
     }
 }
