@@ -11,6 +11,13 @@ coarse_voxel_update_cs.hlsl
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
 
+
+#define RAY_SAMPLE_COUNT_PER_VOXEL 1
+
+// Voxel更新のフレーム毎のスキップパラメータ. 1フレームに1/NのThreadGroupのVoxelだけを更新する.
+#define FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT 8
+
+
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 
 // DepthBufferに対してDispatch.
@@ -31,90 +38,103 @@ void main_cs(
     const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.grid_toroidal_offset, cb_dispatch_param.base_grid_resolution);
     const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_dispatch_param.base_grid_resolution);
 
+    if(voxel_count <= voxel_index)
+        return;
 
-    if(voxel_index < voxel_count)
+
+    #if 1 < FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT
+    // フレーム毎の処理Voxelスキップ.
+    if((gid.x % FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT) != (cb_dispatch_param.frame_count % FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT))
+        return;
+    #endif
+
+
+    const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
+    const uint obm_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
+
+    // Probeの埋まり回避のための位置探索.
+    // Obmセルを参照して空のセルから選択する.
+    int candidate_probe_pos_bit_cell_index = -1;
+    float candidate_probe_pos_dist_sq = 1e20;
+    const float3 camera_pos_in_bit_cell_space = ((camera_pos - cb_dispatch_param.grid_min_pos) * cb_dispatch_param.cell_size_inv - float3(voxel_coord)) * float(k_obm_per_voxel_resolution);
+    for(int i = 0; i < obm_voxel_occupancy_bitmask_uint_count(); ++i)
     {
-        const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
-        const uint obm_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
+        uint bit_block = (~OccupancyBitmaskVoxel[obm_addr + i]);
 
-        // Probeの埋まり回避のための位置探索.
-        // Obmセルを参照して空のセルから選択する.
-        int candidate_probe_pos_bit_cell_index = -1;
-        float candidate_probe_pos_dist_sq = 1e20;
-        const float3 camera_pos_in_bit_cell_space = ((camera_pos - cb_dispatch_param.grid_min_pos) * cb_dispatch_param.cell_size_inv - float3(voxel_coord)) * float(k_obm_per_voxel_resolution);
-        for(int i = 0; i < obm_voxel_occupancy_bitmask_uint_count(); ++i)
+        for(int bi = 0; bi < 32 && 0 != bit_block; ++bi)
         {
-            uint bit_block = (~OccupancyBitmaskVoxel[obm_addr + i]);
-
-            for(int bi = 0; bi < 32 && 0 != bit_block; ++bi)
+            if(bit_block & 1)
             {
-                if(bit_block & 1)
+                const uint bit_index = i * 32 + bi;
+                const uint3 bit_pos_in_voxel = calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(bit_index);
+                
+                // Voxel中心に近いセルを選択.
+                const float3 score_vec = float3(bit_pos_in_voxel) - (float3(k_obm_per_voxel_resolution, k_obm_per_voxel_resolution, k_obm_per_voxel_resolution) * 0.5);
+                // カメラに一番近いセルを選択.
+                //const float3 score_vec = float3(bit_pos_in_voxel) - camera_pos_in_bit_cell_space;
+
+                const float dist_sq = dot(score_vec, score_vec);
+                if(dist_sq < candidate_probe_pos_dist_sq)
                 {
-                    const uint bit_index = i * 32 + bi;
-                    const uint3 bit_pos_in_voxel = calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(bit_index);
-                    
-                    // Voxel中心に近いセルを選択.
-                    const float3 score_vec = float3(bit_pos_in_voxel) - (float3(k_obm_per_voxel_resolution, k_obm_per_voxel_resolution, k_obm_per_voxel_resolution) * 0.5);
-                    // カメラに一番近いセルを選択.
-                    //const float3 score_vec = float3(bit_pos_in_voxel) - camera_pos_in_bit_cell_space;
-
-                    const float dist_sq = dot(score_vec, score_vec);
-                    if(dist_sq < candidate_probe_pos_dist_sq)
-                    {
-                        candidate_probe_pos_dist_sq = dist_sq;
-                        candidate_probe_pos_bit_cell_index = bit_index;
-                    }
+                    candidate_probe_pos_dist_sq = dist_sq;
+                    candidate_probe_pos_bit_cell_index = bit_index;
                 }
-                bit_block >>= 1;
             }
+            bit_block >>= 1;
         }
-        // VoxelのMin位置.
-        float3 probe_sample_pos_ws = float3(voxel_coord) * cb_dispatch_param.cell_size + cb_dispatch_param.grid_min_pos;
-        if(0 <= candidate_probe_pos_bit_cell_index)
-        {
-            probe_sample_pos_ws += (float3(calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(candidate_probe_pos_bit_cell_index)) + 0.5) * (cb_dispatch_param.cell_size / float(k_obm_per_voxel_resolution));
-        }
-        else
-        {
-            // 占有されているセルが全て埋まっている場合はVoxel中心をプローブ位置にする.
-            probe_sample_pos_ws += cb_dispatch_param.cell_size * 0.5;
-        }
-            
+    }
+    // VoxelのMin位置.
+    float3 probe_sample_pos_ws = float3(voxel_coord) * cb_dispatch_param.cell_size + cb_dispatch_param.grid_min_pos;
+    if(0 <= candidate_probe_pos_bit_cell_index)
+    {
+        probe_sample_pos_ws += (float3(calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(candidate_probe_pos_bit_cell_index)) + 0.5) * (cb_dispatch_param.cell_size / float(k_obm_per_voxel_resolution));
+    }
+    else
+    {
+        // 占有されているセルが全て埋まっている場合はVoxel中心をプローブ位置にする.
+        probe_sample_pos_ws += cb_dispatch_param.cell_size * 0.5;
+    }
+        
 
-        // 球面Fibonacciシーケンス分布上でランダムな方向をサンプリング
-        const int num_fibonacci_point_max = 256;
-        const uint sample_rand = noise_iqint32_orig(uint2(voxel_index, cb_dispatch_param.frame_count));
-        float3 sample_ray_dir = fibonacci_sphere_point(sample_rand%num_fibonacci_point_max, num_fibonacci_point_max);
-        const float3 sample_ray_origin = probe_sample_pos_ws;
-           
-        // SkyVisibility raycast.
-        const float trace_distance = 10000.0;
-        int hit_voxel_index = -1;
-        #if 1
-            // リファクタリング版.
-            float4 curr_ray_t_ws = trace_ray_vs_obm_voxel_grid(
-                hit_voxel_index,
-                sample_ray_origin, sample_ray_dir, trace_distance, 
-                cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size, cb_dispatch_param.base_grid_resolution,
-                cb_dispatch_param.grid_toroidal_offset, OccupancyBitmaskVoxel);
-        #else
-            // 旧バージョン..
-            float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
-                hit_voxel_index,
-                sample_ray_origin, sample_ray_dir, trace_distance, 
-                cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size, cb_dispatch_param.base_grid_resolution,
-                cb_dispatch_param.grid_toroidal_offset, OccupancyBitmaskVoxel);
-        #endif
+    
+    // CoarseVoxelの固有データ読み取り. 更新
+    CoarseVoxelData coarse_voxel_data = RWCoarseVoxelBuffer[voxel_index];
 
-        // CoarseVoxelの固有データ読み取り. 更新
+    // Probe配置位置をObmCellインデックスとして書き込み, 0が無効値であるようにして +1.
+    coarse_voxel_data.probe_pos_index = (0 <= candidate_probe_pos_bit_cell_index) ? candidate_probe_pos_bit_cell_index+1 : 0;
+
+    {
+    #if 1 < RAY_SAMPLE_COUNT_PER_VOXEL
+        for(int sample_index = 0; sample_index < RAY_SAMPLE_COUNT_PER_VOXEL; ++sample_index)
+    #else
+        const int sample_index = 0;
+    #endif
         {
-            CoarseVoxelData coarse_voxel_data = RWCoarseVoxelBuffer[voxel_index];
+            // 球面Fibonacciシーケンス分布上でランダムな方向をサンプリング
+            const int num_fibonacci_point_max = 512;
+            const uint sample_rand = noise_iqint32_orig(uint2(voxel_index, cb_dispatch_param.frame_count)) + sample_index;
+            float3 sample_ray_dir = fibonacci_sphere_point(sample_rand%num_fibonacci_point_max, num_fibonacci_point_max);
+            const float3 sample_ray_origin = probe_sample_pos_ws;
+                
+            // SkyVisibility raycast.
+            const float trace_distance = 10000.0;
+            int hit_voxel_index = -1;
+            #if 1
+                // リファクタリング版.
+                float4 curr_ray_t_ws = trace_ray_vs_obm_voxel_grid(
+                    hit_voxel_index,
+                    sample_ray_origin, sample_ray_dir, trace_distance, 
+                    cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size, cb_dispatch_param.base_grid_resolution,
+                    cb_dispatch_param.grid_toroidal_offset, OccupancyBitmaskVoxel);
+            #else
+                // 旧バージョン..
+                float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
+                    hit_voxel_index,
+                    sample_ray_origin, sample_ray_dir, trace_distance, 
+                    cb_dispatch_param.grid_min_pos, cb_dispatch_param.cell_size, cb_dispatch_param.base_grid_resolution,
+                    cb_dispatch_param.grid_toroidal_offset, OccupancyBitmaskVoxel);
+            #endif
 
-            {
-                // Probe配置位置をObmCellインデックスとして書き込み, 0が無効値であるようにして +1.
-                coarse_voxel_data.probe_pos_index = (0 <= candidate_probe_pos_bit_cell_index) ? candidate_probe_pos_bit_cell_index+1 : 0;
-            }   
-            
             {
                 // SkyVisibilityの方向平均を更新.
                 const float sky_visibility = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
@@ -133,15 +153,14 @@ void main_cs(
                 {
                     component_index = (0 < sample_ray_dir.z) ? 4 : 5;
                 }
-                float next_avg = lerp(coarse_voxel_data.sky_visibility_dir_avg[component_index], sky_visibility, 1.0/64.0);
+                float next_avg = lerp(coarse_voxel_data.sky_visibility_dir_avg[component_index], sky_visibility, 1.0/30.0);
                 // 安全な値にクランプ.
                 next_avg = clamp(next_avg, 0.0, 1.0);
                 coarse_voxel_data.sky_visibility_dir_avg[component_index] = next_avg;
             }
-
-
-            // CoarseVoxelの固有データ書き込み.
-            RWCoarseVoxelBuffer[voxel_index] = coarse_voxel_data;
         }
     }
+
+    // CoarseVoxelの固有データ書き込み.
+    RWCoarseVoxelBuffer[voxel_index] = coarse_voxel_data;
 }
