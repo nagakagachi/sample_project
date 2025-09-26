@@ -22,10 +22,15 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
-    // 全Voxelをクリア.
     uint voxel_count = cb_dispatch_param.base_grid_resolution.x * cb_dispatch_param.base_grid_resolution.y * cb_dispatch_param.base_grid_resolution.z;
 
     #if 1
+        if(all(cb_dispatch_param.grid_move_cell_delta == int3(0,0,0)))
+        {
+            // 移動無しなら何もしない.
+            return;
+        }
+        
         if(dtid.x < voxel_count)
         {
             int3 voxel_coord = index_to_voxel_coord(dtid.x, cb_dispatch_param.base_grid_resolution);
