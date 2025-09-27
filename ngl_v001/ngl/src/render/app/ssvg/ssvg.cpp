@@ -234,7 +234,7 @@ namespace ngl::render::app
             p->debug_view_mode = SsVg::dbg_view_mode_;
             p->debug_probe_mode = SsVg::dbg_probe_debug_view_mode_;
 
-            p->debug_probe_radius = SsVg::dbg_probe_scale_ * cell_size_ / k_obm_per_voxel_resolution;
+            p->debug_probe_radius = SsVg::dbg_probe_scale_ * 0.5f * cell_size_ / k_obm_per_voxel_resolution;
             p->debug_probe_near_geom_scale = SsVg::dbg_probe_near_geom_scale_;
 
             cbh_dispatch_->buffer_.Unmap();
