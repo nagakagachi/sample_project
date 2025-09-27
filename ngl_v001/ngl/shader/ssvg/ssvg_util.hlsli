@@ -21,6 +21,10 @@ ssvg_util.hlsli
 
     #define k_obm_per_voxel_resolution_inv (1.0 / float(k_obm_per_voxel_resolution))
     #define k_obm_per_voxel_resolution_vec3i int3(k_obm_per_voxel_resolution, k_obm_per_voxel_resolution, k_obm_per_voxel_resolution)
+    // probeあたりのOctMap解像度.
+    #define k_probe_octmap_width (7)
+    // それぞれのOctMapの+側境界に1テクセルボーダーを追加することで全方向に1テクセルのマージンを確保する.
+    #define k_probe_octmap_width_with_border (k_probe_octmap_width+1)
 
     // シェーダとCppで一致させる.
     // CoarseVoxelバッファ. ObmVoxel一つ毎の外部データ.
@@ -41,6 +45,9 @@ RWBuffer<uint>		RWOccupancyBitmaskVoxel;
 
 StructuredBuffer<CoarseVoxelData>		CoarseVoxelBuffer;
 RWStructuredBuffer<CoarseVoxelData>		RWCoarseVoxelBuffer;
+
+Texture2D       		TexProbeSkyVisibility;
+RWTexture2D<float>		RWTexProbeSkyVisibility;
 //----------------------------------------------------------------------------------------------------
 
 
@@ -137,7 +144,8 @@ struct SsvgParam
     int dummy0;
     
     int3 grid_move_cell_delta;// Toroidalではなくワールド空間Cellでのフレーム移動量.
-    int dummy1;
+
+    int probe_atlas_texture_base_width;// probeのAtlasを配置するテクスチャの基準幅. 実際はProbe毎のAtlasサイズを乗じたサイズのテクスチャを扱う.
 
     int2 tex_hw_depth_size;
     uint frame_count;

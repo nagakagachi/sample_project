@@ -211,26 +211,41 @@ float3 random_unit_vector3(float2 seed)
 float3 fibonacci_sphere_point(uint index, uint sample_count_max)
 {
     const float phi = 3.14159265359 * (3.0 - sqrt(5.0)); // 黄金角
-    
-    #if 0
-        const float y = 1.0 - (index / float(sample_count_max - 1)) * 2.0;// ここで 1 になると後段の sqrt に 0.0 が入って計算破綻する.
-        const float horizontal_radius = sqrt(1.0 - y * y);
-    #elif 0
-        const float y = frac( 1.0 - (index / float(sample_count_max - 1)) * 2.0 );// sqrtに1が入らないようにするための安全策その1.
-        const float horizontal_radius = sqrt(1.0 - y * y);
-    #else
-        const float y = 1.0 - (index / float(sample_count_max - 1)) * 2.0;// ここで 1 になると後段の sqrt に 0.0 が入って計算破綻する.
-        const float horizontal_radius = sqrt((1.0 - y * y) + NGL_EPSILON);// sqrtに1が入らないようにするための安全策として加算で済ませるパターン.
-    #endif
-
+    const float y = 1.0 - (index / float(sample_count_max - 1)) * 2.0;// ここで 1 になると後段の sqrt に 0.0 が入って計算破綻する.
+    const float horizontal_radius = sqrt((1.0 - y * y) + NGL_EPSILON);// sqrtに1が入らないようにするための安全策として加算で済ませるパターン.
     const float theta = phi * index;
 
     const float x = cos(theta) * horizontal_radius;
     const float z = sin(theta) * horizontal_radius;
-
     return float3(x, y, z);
 }
 
+
+
+// Octahedron Mapping.
+float2 OctWrap(float2 v)
+{
+    //return (1.0 - abs(v.yx)) * (v.xy >= 0.0 ? 1.0 : -1.0);
+    return (1.0 - abs(v.yx)) * select(v.xy >= 0.0, 1.0, -1.0);
+}
+float2 OctEncode(float3 n)
+{
+    n /= (abs(n.x) + abs(n.y) + abs(n.z));
+    n.xy = n.z >= 0.0 ? n.xy : OctWrap(n.xy);
+    n.xy = n.xy * 0.5 + 0.5;
+    return n.xy;
+} 
+float3 OctDecode(float2 f)
+{
+    f = f * 2.0 - 1.0;
+ 
+    // https://twitter.com/Stubbesaurus/status/937994790553227264
+    float3 n = float3(f.x, f.y, 1.0 - abs(f.x) - abs(f.y));
+    float t = saturate(-n.z);
+    //n.xy += n.xy >= 0.0 ? -t : t;
+    n.xy += select(n.xy >= 0.0, -t, t);
+    return normalize(n);
+}
 
 
 #endif

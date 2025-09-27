@@ -25,7 +25,15 @@ namespace ngl::render::app
     // ObmVoxel単位のデータサイズ(u32単位)
     #define k_obm_per_voxel_u32_count (k_obm_per_voxel_occupancy_bitmask_u32_count + k_obm_common_data_u32_count)
 
-    
+    #define k_obm_per_voxel_resolution_inv (1.0 / float(k_obm_per_voxel_resolution))
+    #define k_obm_per_voxel_resolution_vec3i int3(k_obm_per_voxel_resolution, k_obm_per_voxel_resolution, k_obm_per_voxel_resolution)
+    // probeあたりのOctMap解像度.
+    #define k_probe_octmap_width (7)
+    // それぞれのOctMapの+側境界に1テクセルボーダーを追加することで全方向に1テクセルのマージンを確保する.
+    #define k_probe_octmap_width_with_border (k_probe_octmap_width+1)
+
+
+
     // CoarseVoxelバッファ. ObmVoxel一つ毎の外部データ.
     struct CoarseVoxelData
     {
@@ -116,6 +124,9 @@ namespace ngl::render::app
             }
         }
 
+        const u32 voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
+        probe_atlas_texture_base_width_ = static_cast<u32>(std::ceil(std::sqrt(static_cast<float>(voxel_count))));
+
         {
             coarse_voxel_data_.InitializeAsStructured(p_device,
                                            rhi::BufferDep::Desc{
@@ -126,7 +137,6 @@ namespace ngl::render::app
                                                .heap_type = rhi::EResourceHeapType::Default});
         }
         {
-            const u32 voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
             occupancy_bitmask_voxel_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = 4,
@@ -135,6 +145,21 @@ namespace ngl::render::app
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
                                            rhi::EResourceFormat::Format_R32_UINT);
+        }
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width = probe_atlas_texture_base_width_ * k_probe_octmap_width_with_border;
+            desc.height = static_cast<u32>(std::ceil((voxel_count + probe_atlas_texture_base_width_-1) / probe_atlas_texture_base_width_)) * k_probe_octmap_width_with_border;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R16_FLOAT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::UnorderedAccess;
+
+            probe_skyvisibility_.Initialize(p_device, desc);
         }
 
         return true;
@@ -161,7 +186,7 @@ namespace ngl::render::app
 
 
         // 重視位置を若干補正.
-        #if 0
+        #if 1
             const math::Vec3 modified_important_point = important_point_ + important_dir_ * 5.0f;
         #else
             const math::Vec3 modified_important_point = important_point_;
@@ -199,7 +224,8 @@ namespace ngl::render::app
             int dummy0;
             
             math::Vec3i grid_move_cell_delta;// Toroidalではなくワールド空間Cellでのフレーム移動量.
-            int dummy1;
+
+            int probe_atlas_texture_base_width;
 
             math::Vec2i tex_hw_depth_size;
             u32 frame_count;
@@ -223,6 +249,8 @@ namespace ngl::render::app
             p->grid_toroidal_offset_prev = grid_toroidal_offset_prev_;
 
             p->grid_move_cell_delta = grid_min_pos_delta_cell;
+
+            p->probe_atlas_texture_base_width = probe_atlas_texture_base_width_;
 
             p->cell_size       = cell_size_;
             p->cell_size_inv    = 1.0f / cell_size_;
@@ -252,6 +280,7 @@ namespace ngl::render::app
                 pso_clear_voxel_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                 pso_clear_voxel_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
                 pso_clear_voxel_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
+                pso_clear_voxel_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_clear_voxel_.Get());
                 p_command_list->SetDescriptorSet(pso_clear_voxel_.Get(), &desc_set);
@@ -259,6 +288,7 @@ namespace ngl::render::app
 
                 p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
                 p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
+                p_command_list->ResourceUavBarrier(probe_skyvisibility_.texture.Get());
             }
             // Begin Update Pass.
             {
@@ -303,6 +333,7 @@ namespace ngl::render::app
                     pso_coarse_voxel_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_coarse_voxel_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
                     pso_coarse_voxel_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
+                    pso_coarse_voxel_update_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
 
                     p_command_list->SetPipelineState(pso_coarse_voxel_update_.Get());
                     p_command_list->SetDescriptorSet(pso_coarse_voxel_update_.Get(), &desc_set);
@@ -347,6 +378,8 @@ namespace ngl::render::app
             pso_debug_visualize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
             pso_debug_visualize_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
             pso_debug_visualize_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
+            pso_debug_visualize_->SetView(&desc_set, "TexProbeSkyVisibility", probe_skyvisibility_.srv.Get());
+            
             pso_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
 
             p_command_list->SetPipelineState(pso_debug_visualize_.Get());

@@ -338,7 +338,7 @@ bool AppGame::Initialize()
         const char* mesh_file_box = "K:\\GitHub\\sample_projct_lib\\ngl_v001\\ngl\\external\\assimp\\test\\models\\FBX\\box.fbx";
 
         // シーンモデル.
-#if 1
+#if 0
         // Sponza.
         const char* mesh_file_sponza = "../ngl/data/model/sponza_gltf/glTF/Sponza.gltf";
         const float sponza_scale     = 1.0f;
@@ -842,6 +842,7 @@ bool AppGame::ExecuteApp()
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Ssvg"))
         {
+            ImGui::SliderInt("Raytrace VersionCompare", &ngl::render::app::SsVg::dbg_raytrace_version_, 0, 1);
             
             if (ImGui::CollapsingHeader("Voxel Debug"))
             {
@@ -857,7 +858,6 @@ bool AppGame::ExecuteApp()
                 ImGui::SliderFloat("Probe Near Geometry Scale", &ngl::render::app::SsVg::dbg_probe_near_geom_scale_, 0.01f, 10.0f);
             }
 
-            ImGui::SliderInt("Raytrace VersionCompare", &ngl::render::app::SsVg::dbg_raytrace_version_, 0, 1);
         }
 
         ImGui::End();

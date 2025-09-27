@@ -67,11 +67,14 @@ namespace ngl::render::app
         math::Vec3i grid_toroidal_offset_ = {};
         math::Vec3i grid_toroidal_offset_prev_ = {};
 
-        math::Vec3u base_resolution_ = math::Vec3u(64);
+        math::Vec3u base_resolution_ = math::Vec3u(32);
         float   cell_size_ = 3.0f * (1<<0);
+        u32     probe_atlas_texture_base_width_ = {};
 
-        RhiBufferSet coarse_voxel_data_ = {};
-        RhiBufferSet occupancy_bitmask_voxel_ = {};
+        ComputeBufferSet coarse_voxel_data_ = {};
+        ComputeBufferSet occupancy_bitmask_voxel_ = {};
+
+        ComputeTextureSet probe_skyvisibility_ = {};
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
     };

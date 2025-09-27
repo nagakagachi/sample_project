@@ -12,11 +12,11 @@ coarse_voxel_update_cs.hlsl
 #include "../include/scene_view_struct.hlsli"
 
 
-#define RAY_SAMPLE_COUNT_PER_VOXEL 64
+#define RAY_SAMPLE_COUNT_PER_VOXEL 32
 #define RAY_SAMPLE_CONTRIBUTE_COEF (1.0/4.0)
 
 // Voxel更新のフレーム毎のスキップパラメータ. 1フレームに1/NのThreadGroupのVoxelだけを更新する.
-#define FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT 128
+#define FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT 32
 
 
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
@@ -111,20 +111,25 @@ void main_cs(
         const int sample_index = 0;
     #endif
         {
-            #if 0
-                const uint sample_rand = noise_iqint32_orig(uint2(voxel_index + sample_index, cb_ssvg.frame_count));
-                // 球面Fibonacciシーケンス分布上でランダムな方向をサンプリング
-                const int num_fibonacci_point_max = 256;
+            #if 1 < RAY_SAMPLE_COUNT_PER_VOXEL && 0
+                // 球面Fibonacciシーケンス分布上をフルでトレースする.
+                const uint sample_rand = noise_iqint32_orig(uint2(voxel_index, cb_ssvg.frame_count)) + sample_index;
+                const int num_fibonacci_point_max = RAY_SAMPLE_COUNT_PER_VOXEL;
                 float3 sample_ray_dir = fibonacci_sphere_point(sample_rand%num_fibonacci_point_max, num_fibonacci_point_max);
-            #else
+            #elif 1
                 // 完全ランダムな方向をサンプリング.
                 float3 sample_ray_dir = random_unit_vector3(float2(voxel_index + sample_index, cb_ssvg.frame_count));
+            #else
+                // 球面Fibonacciシーケンス分布上でランダムな方向をサンプリング. あまり良くない.
+                const uint sample_rand = noise_iqint32_orig(uint2(voxel_index, cb_ssvg.frame_count));
+                const int num_fibonacci_point_max = 256;
+                float3 sample_ray_dir = fibonacci_sphere_point(sample_rand%num_fibonacci_point_max, num_fibonacci_point_max);
             #endif
 
             const float3 sample_ray_origin = probe_sample_pos_ws;            
                 
             // SkyVisibility raycast.
-            const float trace_distance = 100.0;
+            const float trace_distance = 200.0;
             int hit_voxel_index = -1;
             #if 1
                 // リファクタリング版.
@@ -155,6 +160,13 @@ void main_cs(
                 // 安全な値にクランプ.
                 next_avg = clamp(next_avg, 0.0, 1.0);
                 coarse_voxel_data.sky_visibility_dir_avg[component_index] = next_avg;
+
+
+                // ProbeOctMapの更新テスト.
+                const float2 octmap_uv = OctEncode(sample_ray_dir);
+                const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.probe_atlas_texture_base_width, voxel_index / cb_ssvg.probe_atlas_texture_base_width);
+                const uint2 octmap_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + octmap_uv*k_probe_octmap_width;//uint2(component_index%3, component_index/3);
+                RWTexProbeSkyVisibility[octmap_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_texel_pos], float(sky_visibility), 0.5);
             }
         }
     }

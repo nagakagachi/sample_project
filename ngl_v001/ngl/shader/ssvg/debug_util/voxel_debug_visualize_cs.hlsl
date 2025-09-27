@@ -31,7 +31,41 @@ void main_cs(
 	const float2 screen_size_f = float2(cb_ssvg.tex_hw_depth_size.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
     
-    #if 1
+
+    if(4 == cb_ssvg.debug_view_mode)
+    {
+        // Voxel上面図X-Ray表示.
+        const int3 bv_full_reso = cb_ssvg.base_grid_resolution * k_obm_per_voxel_resolution;
+        const float visualize_scale = 0.5;
+        float3 read_pos_world_base = (float3(dtid.x, 0.0, cb_ssvg.tex_hw_depth_size.y-1 - dtid.y) + 0.5) * visualize_scale * cb_ssvg.cell_size/k_obm_per_voxel_resolution;
+        read_pos_world_base += cb_ssvg.grid_min_pos;
+
+        float write_data = 0.0;
+        for(int yi = 0; yi < bv_full_reso.y; ++yi)
+        {
+            const float3 read_pos_world = read_pos_world_base + float3(0.0, yi, 0.0) * (cb_ssvg.cell_size/k_obm_per_voxel_resolution);
+
+            const uint bit_value = read_occupancy_bitmask_voxel_from_world_pos(OccupancyBitmaskVoxel, cb_ssvg.base_grid_resolution, cb_ssvg.grid_toroidal_offset, cb_ssvg.grid_min_pos, cb_ssvg.cell_size_inv, read_pos_world);
+
+            float occupancy = float(bit_value);
+            occupancy /= (float)bv_full_reso.y;
+
+            write_data += occupancy * 8.0;
+        }
+
+        RWTexWork[dtid.xy] = float4(write_data, write_data, write_data, 1.0);
+    }
+    else if(5 == cb_ssvg.debug_view_mode)
+    {
+        // ProbeAtlas.
+        if(any(cb_ssvg.probe_atlas_texture_base_width * k_probe_octmap_width_with_border < dtid.xy))
+            return;
+        
+        //RWTexWork[dtid.xy] = float4(1.0, 0.0, 0.0, 0.0);//TexProbeSkyVisibility[dtid.xy];
+        RWTexWork[dtid.xy] = float4(TexProbeSkyVisibility.Load(uint3(dtid.xy * 0.5, 0)).r, 0.0, 0.0, 0.0);
+    }
+    else
+    {
         // ViewRayでレイキャスト可視化.
 	    const float3 camera_dir = normalize(ngl_cb_sceneview.cb_view_inv_mtx._m02_m12_m22);// InvShadowViewMtxから向きベクトルを取得.
 	    const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
@@ -65,7 +99,17 @@ void main_cs(
 
             const uint unique_data_addr = obm_voxel_unique_data_addr(hit_voxel_index);
             // デバッグ用テクスチャにモード別描画.
-            if(1 == cb_ssvg.debug_view_mode)
+            if(0 == cb_ssvg.debug_view_mode)
+            {
+                // obmセル可視化
+                const float3 obm_cell_id = floor((camera_pos + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.cell_size_inv*float(k_obm_per_voxel_resolution)));
+                debug_color.xyz = float4(noise_iqint32(obm_cell_id.xyzz), noise_iqint32(obm_cell_id.xzyy), noise_iqint32(obm_cell_id.xyzx), 1);
+                
+                // 簡易フォグ.
+                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
+                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
+            }
+            else if(1 == cb_ssvg.debug_view_mode)
             {
                 // CoarseVoxelIDを可視化.
                 debug_color.xyz = float4(noise_iqint32(hit_voxel_index), noise_iqint32(hit_voxel_index*2), noise_iqint32(hit_voxel_index*3), 1);
@@ -79,7 +123,7 @@ void main_cs(
                 // OBMセルの深度を可視化.
                 debug_color.xyz = float4(saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), 1);
             }
-            else if(3 == cb_ssvg.debug_view_mode)
+            else
             {
                 // OBMセルのヒット法線可視化.
                 const float3 obm_cell_id = floor((camera_pos + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.cell_size_inv*float(k_obm_per_voxel_resolution)));
@@ -89,39 +133,7 @@ void main_cs(
                 debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
                 debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
             }
-            else
-            {
-                // obmセル可視化
-                const float3 obm_cell_id = floor((camera_pos + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.cell_size_inv*float(k_obm_per_voxel_resolution)));
-                debug_color.xyz = float4(noise_iqint32(obm_cell_id.xyzz), noise_iqint32(obm_cell_id.xzyy), noise_iqint32(obm_cell_id.xyzx), 1);
-                
-                // 簡易フォグ.
-                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
-                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
-            }
         }
         RWTexWork[dtid.xy] = debug_color;
-    #else
-        // 上面図X-Ray表示.
-        const int3 bv_full_reso = cb_ssvg.base_grid_resolution * k_obm_per_voxel_resolution;
-        
-        const float visualize_scale = 0.5;
-        float3 read_pos_world_base = (float3(dtid.x, 0.0, cb_ssvg.tex_hw_depth_size.y-1 - dtid.y) + 0.5) * visualize_scale * cb_ssvg.cell_size/k_obm_per_voxel_resolution;
-        read_pos_world_base += cb_ssvg.grid_min_pos;
-
-        float write_data = 0.0;
-        for(int yi = 0; yi < bv_full_reso.y; ++yi)
-        {
-            const float3 read_pos_world = read_pos_world_base + float3(0.0, yi, 0.0) * (cb_ssvg.cell_size/k_obm_per_voxel_resolution);
-
-            const uint bit_value = read_occupancy_bitmask_voxel_from_world_pos(OccupancyBitmaskVoxel, cb_ssvg.base_grid_resolution, cb_ssvg.grid_toroidal_offset, cb_ssvg.grid_min_pos, cb_ssvg.cell_size_inv, read_pos_world);
-
-            float occupancy = float(bit_value);
-            occupancy /= (float)bv_full_reso.y;
-
-            write_data += occupancy * 8.0;
-        }
-
-        RWTexWork[dtid.xy] = float4(write_data, write_data, write_data, 1.0);
-    #endif
+    }
 }
