@@ -338,7 +338,7 @@ bool AppGame::Initialize()
         const char* mesh_file_box = "K:\\GitHub\\sample_projct_lib\\ngl_v001\\ngl\\external\\assimp\\test\\models\\FBX\\box.fbx";
 
         // シーンモデル.
-#if 1
+#if 0
         // Sponza.
         const char* mesh_file_sponza = "../ngl/data/model/sponza_gltf/glTF/Sponza.gltf";
         const float sponza_scale     = 1.0f;
@@ -843,9 +843,20 @@ bool AppGame::ExecuteApp()
         if (ImGui::CollapsingHeader("Ssvg"))
         {
             ImGui::Checkbox("Enable", &ngl::render::app::SsVg::dbg_view_enable_);
-            ImGui::SliderInt("Voxel Debug", &ngl::render::app::SsVg::dbg_view_mode_, 0, 5);
-            ImGui::SliderFloat("Visualize Screen Rate", &dbgw_view_ssvg_voxel_rate, 0.0f, 1.0f);
-            ImGui::SliderInt("Probe Debug", &ngl::render::app::SsVg::dbg_probe_debug_view_mode_, -1, 1);
+            
+            if (ImGui::CollapsingHeader("Voxel Debug"))
+            {
+                ImGui::SliderInt("View Mode", &ngl::render::app::SsVg::dbg_view_mode_, 0, 5);
+                ImGui::SliderFloat("Visualize Screen Rate", &dbgw_view_ssvg_voxel_rate, 0.0f, 1.0f);
+            }
+
+            if (ImGui::CollapsingHeader("Probe Debug"))
+            {
+                ImGui::SliderInt("Probe Mode", &ngl::render::app::SsVg::dbg_probe_debug_view_mode_, -1, 1);
+                ImGui::SliderFloat("Probe Scale", &ngl::render::app::SsVg::dbg_probe_scale_, 0.01f, 10.0f);
+                ImGui::SliderFloat("Probe Near Geometry Scale", &ngl::render::app::SsVg::dbg_probe_near_geom_scale_, 0.01f, 10.0f);
+            }
+
             ImGui::SliderInt("Raytrace VersionCompare", &ngl::render::app::SsVg::dbg_raytrace_version_, 0, 1);
         }
 

@@ -19,7 +19,7 @@ void main_cs(
 )
 {
     // 全Voxelをクリア.
-    uint voxel_count = cb_dispatch_param.base_grid_resolution.x * cb_dispatch_param.base_grid_resolution.y * cb_dispatch_param.base_grid_resolution.z;
+    uint voxel_count = cb_ssvg.base_grid_resolution.x * cb_ssvg.base_grid_resolution.y * cb_ssvg.base_grid_resolution.z;
     if(dtid.x < voxel_count)
     {
         RWCoarseVoxelBuffer[dtid.x] = (CoarseVoxelData)0; //empty_coarse_voxel_data();

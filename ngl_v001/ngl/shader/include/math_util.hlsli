@@ -211,8 +211,18 @@ float3 random_unit_vector3(float2 seed)
 float3 fibonacci_sphere_point(uint index, uint sample_count_max)
 {
     const float phi = 3.14159265359 * (3.0 - sqrt(5.0)); // 黄金角
-    const float y = 1.0 - (index / float(sample_count_max - 1)) * 2.0;
-    const float horizontal_radius = sqrt(1.0 - y * y);
+    
+    #if 0
+        const float y = 1.0 - (index / float(sample_count_max - 1)) * 2.0;// ここで 1 になると後段の sqrt に 0.0 が入って計算破綻する.
+        const float horizontal_radius = sqrt(1.0 - y * y);
+    #elif 0
+        const float y = frac( 1.0 - (index / float(sample_count_max - 1)) * 2.0 );// sqrtに1が入らないようにするための安全策その1.
+        const float horizontal_radius = sqrt(1.0 - y * y);
+    #else
+        const float y = 1.0 - (index / float(sample_count_max - 1)) * 2.0;// ここで 1 になると後段の sqrt に 0.0 が入って計算破綻する.
+        const float horizontal_radius = sqrt((1.0 - y * y) + NGL_EPSILON);// sqrtに1が入らないようにするための安全策として加算で済ませるパターン.
+    #endif
+
     const float theta = phi * index;
 
     const float x = cos(theta) * horizontal_radius;

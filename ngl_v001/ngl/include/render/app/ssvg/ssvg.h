@@ -17,6 +17,8 @@ namespace ngl::render::app
         static int dbg_view_mode_;
         static int dbg_probe_debug_view_mode_;
         static int dbg_raytrace_version_;
+        static float dbg_probe_scale_;
+        static float dbg_probe_near_geom_scale_;
 
     public:
         SsVg() = default;
@@ -65,7 +67,7 @@ namespace ngl::render::app
         math::Vec3i grid_toroidal_offset_ = {};
         math::Vec3i grid_toroidal_offset_prev_ = {};
 
-        math::Vec3u base_resolution_ = math::Vec3u(64, 64, 64);
+        math::Vec3u base_resolution_ = math::Vec3u(64);
         float   cell_size_ = 3.0f * (1<<0);
 
         RhiBufferSet coarse_voxel_data_ = {};

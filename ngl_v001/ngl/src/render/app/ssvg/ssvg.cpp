@@ -41,6 +41,8 @@ namespace ngl::render::app
     int SsVg::dbg_view_mode_ = 0;
     int SsVg::dbg_probe_debug_view_mode_ = -1;
     int SsVg::dbg_raytrace_version_ = 0;
+    float SsVg::dbg_probe_scale_ = 1.0f;
+    float SsVg::dbg_probe_near_geom_scale_ = 0.2f;
     
 
     SsVg::~SsVg()
@@ -182,7 +184,7 @@ namespace ngl::render::app
         const math::Vec2i hw_depth_size = math::Vec2i(static_cast<int>(hw_depth_tex->GetWidth()), static_cast<int>(hw_depth_tex->GetHeight()));
 
         const u32 voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
-        struct DispatchParam
+        struct SsvgParam
         {
             math::Vec3i base_grid_resolution{};
             u32 flag{};
@@ -204,11 +206,13 @@ namespace ngl::render::app
 
             int debug_view_mode;
             int debug_probe_mode;
+            float debug_probe_radius;
+            float debug_probe_near_geom_scale;
         };
 
-        cbh_dispatch_ = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(DispatchParam));
+        cbh_dispatch_ = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(SsvgParam));
         {
-            auto* p = cbh_dispatch_->buffer_.MapAs<DispatchParam>();
+            auto* p = cbh_dispatch_->buffer_.MapAs<SsvgParam>();
 
             p->base_grid_resolution = base_resolution_.Cast<int>();
             p->flag           = 0;
@@ -230,6 +234,9 @@ namespace ngl::render::app
             p->debug_view_mode = SsVg::dbg_view_mode_;
             p->debug_probe_mode = SsVg::dbg_probe_debug_view_mode_;
 
+            p->debug_probe_radius = SsVg::dbg_probe_scale_ * cell_size_ / k_obm_per_voxel_resolution;
+            p->debug_probe_near_geom_scale = SsVg::dbg_probe_near_geom_scale_;
+
             cbh_dispatch_->buffer_.Unmap();
         }
 
@@ -242,7 +249,7 @@ namespace ngl::render::app
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "InitClear");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_clear_voxel_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
+                pso_clear_voxel_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                 pso_clear_voxel_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
                 pso_clear_voxel_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
 
@@ -259,7 +266,7 @@ namespace ngl::render::app
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-                pso_begin_update_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
+                pso_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                 pso_begin_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
                 pso_begin_update_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
 
@@ -277,7 +284,7 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_voxelize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
                 pso_voxelize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-                pso_voxelize_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
+                pso_voxelize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                 pso_voxelize_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_voxelize_.Get());
@@ -293,7 +300,7 @@ namespace ngl::render::app
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
                     pso_coarse_voxel_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-                    pso_coarse_voxel_update_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
+                    pso_coarse_voxel_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_coarse_voxel_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
                     pso_coarse_voxel_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
 
@@ -304,7 +311,7 @@ namespace ngl::render::app
                     p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
                     p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
                 }
-                
+                /*
                 if(1 == dbg_raytrace_version_)
                 {
                     // 比較用に古いバージョンも動かす
@@ -312,7 +319,7 @@ namespace ngl::render::app
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
                     pso_coarse_voxel_update_old_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-                    pso_coarse_voxel_update_old_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
+                    pso_coarse_voxel_update_old_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_coarse_voxel_update_old_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
                     pso_coarse_voxel_update_old_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
 
@@ -323,6 +330,7 @@ namespace ngl::render::app
                     p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
                     p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
                 }
+                */
             }
         }
 
@@ -336,7 +344,7 @@ namespace ngl::render::app
             ngl::rhi::DescriptorSetDep desc_set = {};
             pso_debug_visualize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
             pso_debug_visualize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-            pso_debug_visualize_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
+            pso_debug_visualize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
             pso_debug_visualize_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
             pso_debug_visualize_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
             pso_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
@@ -377,7 +385,7 @@ namespace ngl::render::app
             pso_debug_obm_voxel_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
             pso_debug_obm_voxel_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
             
-            pso_debug_obm_voxel_->SetView(&desc_set, "cb_dispatch_param", &cbh_dispatch_->cbv_);
+            pso_debug_obm_voxel_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
             pso_debug_obm_voxel_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
             pso_debug_obm_voxel_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
 

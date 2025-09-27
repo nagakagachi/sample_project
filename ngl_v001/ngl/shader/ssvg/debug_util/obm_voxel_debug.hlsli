@@ -67,8 +67,8 @@ VS_OUTPUT main_vs(VS_INPUT input)
     const uint instance_vtx_id = input.vertex_id % 6;
 
 
-    const int3 voxel_coord = index_to_voxel_coord(instance_id, cb_dispatch_param.base_grid_resolution);
-    const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_coord, cb_dispatch_param.grid_toroidal_offset, cb_dispatch_param.base_grid_resolution), cb_dispatch_param.base_grid_resolution);
+    const int3 voxel_coord = index_to_voxel_coord(instance_id, cb_ssvg.base_grid_resolution);
+    const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
     const uint voxel_unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
 
     const uint obm_voxel_unique_data = OccupancyBitmaskVoxel[voxel_unique_data_addr];
@@ -85,18 +85,18 @@ VS_OUTPUT main_vs(VS_INPUT input)
     const CoarseVoxelData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
     const bool is_invalid_probe_local_pos = (0 == coarse_voxel_data.probe_pos_index);
     const int3 probe_coord_in_voxel = (is_invalid_probe_local_pos) ? int3(0,0,0) : calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(coarse_voxel_data.probe_pos_index-1);
-    const float3 probe_pos_ws = (float3(voxel_coord) + (float3(probe_coord_in_voxel) + 0.5) / float(k_obm_per_voxel_resolution)) * cb_dispatch_param.cell_size + cb_dispatch_param.grid_min_pos;
+    const float3 probe_pos_ws = (float3(voxel_coord) + (float3(probe_coord_in_voxel) + 0.5) / float(k_obm_per_voxel_resolution)) * cb_ssvg.cell_size + cb_ssvg.grid_min_pos;
 
 
     float4 color = float4(1,1,1,1);
 
     // 表示位置.
     const float3 instance_pos = probe_pos_ws;
-    float draw_scale = cb_dispatch_param.cell_size * 0.75 / k_obm_per_voxel_resolution;
+    float draw_scale = cb_ssvg.debug_probe_radius;
     if(is_obm_empty)
     {
         // ジオメトリのないVoxelは小さく表示.
-        draw_scale *= 0.3;
+        draw_scale *= cb_ssvg.debug_probe_near_geom_scale;
     }
     if(is_invalid_probe_local_pos)
     {
@@ -169,13 +169,13 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     
         // GI情報を可視化.
         const CoarseVoxelData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
-        if(0 == cb_dispatch_param.debug_probe_mode)
+        if(0 == cb_ssvg.debug_probe_mode)
         {
             // 指向性
             const float voxel_gi_average = coarse_voxel_data.sky_visibility_dir_avg[component_index];
             color.xyz = float4(voxel_gi_average, voxel_gi_average, voxel_gi_average, 1);
         }
-        else if(1 == cb_dispatch_param.debug_probe_mode)
+        else if(1 == cb_ssvg.debug_probe_mode)
         {
             // 全方向平均.
             const float voxel_gi_average = 

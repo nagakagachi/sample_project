@@ -123,7 +123,7 @@ uint3 calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(uint bit_inde
 
 
 // Dispatchパラメータ.
-struct DispatchParam
+struct SsvgParam
 {
     int3 base_grid_resolution;
     uint flag;
@@ -144,8 +144,10 @@ struct DispatchParam
 
     int debug_view_mode;
     int debug_probe_mode;
+    float debug_probe_radius;
+    float debug_probe_near_geom_scale;
 };
-ConstantBuffer<DispatchParam> cb_dispatch_param;
+ConstantBuffer<SsvgParam> cb_ssvg;
 
 
 // Voxelデータクリア.
