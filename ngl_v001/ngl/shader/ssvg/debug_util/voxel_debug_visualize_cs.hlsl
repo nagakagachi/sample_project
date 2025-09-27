@@ -62,7 +62,7 @@ void main_cs(
             return;
         
         //RWTexWork[dtid.xy] = float4(1.0, 0.0, 0.0, 0.0);//TexProbeSkyVisibility[dtid.xy];
-        RWTexWork[dtid.xy] = float4(TexProbeSkyVisibility.Load(uint3(dtid.xy * 0.5, 0)).r, 0.0, 0.0, 0.0);
+        RWTexWork[dtid.xy] = float4(TexProbeSkyVisibility.Load(uint3(dtid.xy * 0.25, 0)).r, 0.0, 0.0, 0.0);
     }
     else
     {

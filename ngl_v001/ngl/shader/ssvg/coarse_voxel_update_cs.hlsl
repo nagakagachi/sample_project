@@ -165,7 +165,7 @@ void main_cs(
                 // ProbeOctMapの更新テスト.
                 const float2 octmap_uv = OctEncode(sample_ray_dir);
                 const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.probe_atlas_texture_base_width, voxel_index / cb_ssvg.probe_atlas_texture_base_width);
-                const uint2 octmap_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + octmap_uv*k_probe_octmap_width;//uint2(component_index%3, component_index/3);
+                const uint2 octmap_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + uint2(octmap_uv*k_probe_octmap_width);
                 RWTexProbeSkyVisibility[octmap_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_texel_pos], float(sky_visibility), 0.5);
             }
         }
