@@ -10,6 +10,8 @@
 
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 
+SamplerState        SmpLinearClamp;
+
 struct VS_INPUT
 {
 	uint vertex_id	:	SV_VertexID;
@@ -24,12 +26,6 @@ struct VS_OUTPUT
     float3 voxel_probe_pos_ws : VOXELPROBEPOSWS0;
     int voxel_index : VOXELINDEX0;
 };
-
-
-
-
-
-
 
 
 
@@ -166,23 +162,52 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
             component_index = (0 < normal_ws.z) ? 4 : 5;
         }
 
-    
+        
+        const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.probe_atlas_texture_base_width, voxel_index / cb_ssvg.probe_atlas_texture_base_width);
+        uint tex_width, tex_height;
+        TexProbeSkyVisibility.GetDimensions(tex_width, tex_height);
+
+        const float2 octmap_texel_pos = float2(probe_2d_map_pos * k_probe_octmap_width_with_border + 1.0) + OctEncode(normal_ws)*k_probe_octmap_width;
+
         // GI情報を可視化.
         const CoarseVoxelData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
         if(0 == cb_ssvg.debug_probe_mode)
         {
-            // 指向性
-            const float voxel_gi_average = coarse_voxel_data.sky_visibility_dir_avg[component_index];
-            color.xyz = float4(voxel_gi_average, voxel_gi_average, voxel_gi_average, 1);
+            // TexProbeSkyVisibility に格納されたOctmapを可視化.
+            const float4 probe_data = TexProbeSkyVisibility.Load(uint3(octmap_texel_pos, 0));
+
+            const float dist_avg = probe_data.y;
+            const float dist_var = max(0.0, probe_data.z - dist_avg*dist_avg);
+            color = probe_data.xxxx;
         }
         else if(1 == cb_ssvg.debug_probe_mode)
         {
-            // 全方向平均.
-            const float voxel_gi_average = 
-            (coarse_voxel_data.sky_visibility_dir_avg[0] + coarse_voxel_data.sky_visibility_dir_avg[1]
-            + coarse_voxel_data.sky_visibility_dir_avg[2] + coarse_voxel_data.sky_visibility_dir_avg[3]
-            + coarse_voxel_data.sky_visibility_dir_avg[4] + coarse_voxel_data.sky_visibility_dir_avg[5]) / 6.0;
-            color.xyz = float4(voxel_gi_average, voxel_gi_average, voxel_gi_average, 1);
+            // TexProbeSkyVisibility に格納されたOctmapを可視化.
+            const float4 probe_data = TexProbeSkyVisibility.Load(uint3(octmap_texel_pos, 0));
+
+            const float dist_avg = probe_data.y;
+            const float dist_var = max(0.0, probe_data.z - dist_avg*dist_avg);
+            color = float4(dist_avg, dist_var, 0.0, 1.0);
+        }
+        else if(2 == cb_ssvg.debug_probe_mode)
+        {
+            // TexProbeSkyVisibility に格納されたOctmapを可視化.
+            // Samplerで補間取得
+            const float4 probe_data = TexProbeSkyVisibility.SampleLevel(SmpLinearClamp, (octmap_texel_pos) / float2(tex_width, tex_height), 0);
+
+            const float dist_avg = probe_data.y;
+            const float dist_var = max(0.0, probe_data.z - dist_avg*dist_avg);
+            color = probe_data.xxxx;
+        }
+        else if(3 == cb_ssvg.debug_probe_mode)
+        {
+            // TexProbeSkyVisibility に格納されたOctmapを可視化.
+            // Samplerで補間取得
+            const float4 probe_data = TexProbeSkyVisibility.SampleLevel(SmpLinearClamp, (octmap_texel_pos) / float2(tex_width, tex_height), 0);
+
+            const float dist_avg = probe_data.y;
+            const float dist_var = max(0.0, probe_data.z - dist_avg*dist_avg);
+            color = float4(dist_avg,  dist_var, 0.0, 1.0);
         }
 
 

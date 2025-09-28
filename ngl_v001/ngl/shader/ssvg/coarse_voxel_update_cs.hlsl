@@ -95,14 +95,16 @@ void main_cs(
         // 占有されているセルが全て埋まっている場合はVoxel中心をプローブ位置にする.
         probe_sample_pos_ws += cb_ssvg.cell_size * 0.5;
     }
-        
-
     
     // CoarseVoxelの固有データ読み取り. 更新
     CoarseVoxelData coarse_voxel_data = RWCoarseVoxelBuffer[voxel_index];
+    {
+        // Probe配置位置をObmCellインデックスとして書き込み, 0が無効値であるようにして +1.
+        coarse_voxel_data.probe_pos_index = (0 <= candidate_probe_pos_bit_cell_index) ? candidate_probe_pos_bit_cell_index+1 : 0;
+    }
+    // CoarseVoxelの固有データ書き込み.
+    RWCoarseVoxelBuffer[voxel_index] = coarse_voxel_data;
 
-    // Probe配置位置をObmCellインデックスとして書き込み, 0が無効値であるようにして +1.
-    coarse_voxel_data.probe_pos_index = (0 <= candidate_probe_pos_bit_cell_index) ? candidate_probe_pos_bit_cell_index+1 : 0;
 
     {
     #if 1 < RAY_SAMPLE_COUNT_PER_VOXEL
@@ -118,10 +120,10 @@ void main_cs(
                 float3 sample_ray_dir = fibonacci_sphere_point(sample_rand%num_fibonacci_point_max, num_fibonacci_point_max);
             #elif 1
                 // 完全ランダムな方向をサンプリング.
-                float3 sample_ray_dir = random_unit_vector3(float2(voxel_index + sample_index, cb_ssvg.frame_count));
+                float3 sample_ray_dir = random_unit_vector3(float2(voxel_index + sample_index, cb_ssvg.frame_count + sample_index));
             #else
                 // 球面Fibonacciシーケンス分布上でランダムな方向をサンプリング. あまり良くない.
-                const uint sample_rand = noise_iqint32_orig(uint2(voxel_index, cb_ssvg.frame_count));
+                const uint sample_rand = noise_iqint32_orig(uint2(voxel_index + sample_index, cb_ssvg.frame_count));
                 const int num_fibonacci_point_max = 256;
                 float3 sample_ray_dir = fibonacci_sphere_point(sample_rand%num_fibonacci_point_max, num_fibonacci_point_max);
             #endif
@@ -150,27 +152,17 @@ void main_cs(
             {
                 // SkyVisibilityの方向平均を更新.
                 const float sky_visibility = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
-                
-                const int principal_axis = calc_principal_axis_component_index(abs(sample_ray_dir));
-                int component_index = 0;
-                // レイ方向から書き込み要素インデックスを計算 x:0,1 y:2,3 z:4,5
-                component_index = (principal_axis * 2) + ((0 < sample_ray_dir[principal_axis]) ? 0 : 1);
 
-                float next_avg = lerp(coarse_voxel_data.sky_visibility_dir_avg[component_index], sky_visibility, 0.1 * RAY_SAMPLE_CONTRIBUTE_COEF);
-                // 安全な値にクランプ.
-                next_avg = clamp(next_avg, 0.0, 1.0);
-                coarse_voxel_data.sky_visibility_dir_avg[component_index] = next_avg;
-
-
-                // ProbeOctMapの更新テスト.
+                // ProbeOctMapの更新.
+                const float probe_update_rate = 0.25;
                 const float2 octmap_uv = OctEncode(sample_ray_dir);
                 const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.probe_atlas_texture_base_width, voxel_index / cb_ssvg.probe_atlas_texture_base_width);
                 const uint2 octmap_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + uint2(octmap_uv*k_probe_octmap_width);
-                RWTexProbeSkyVisibility[octmap_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_texel_pos], float(sky_visibility), 0.5);
+
+                float store_dist = (0.0 > curr_ray_t_ws.x) ? 1.0 : curr_ray_t_ws.x/trace_distance;
+                RWTexProbeSkyVisibility[octmap_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_texel_pos], float4(sky_visibility, store_dist, store_dist*store_dist, 0), probe_update_rate);
             }
         }
     }
 
-    // CoarseVoxelの固有データ書き込み.
-    RWCoarseVoxelBuffer[voxel_index] = coarse_voxel_data;
 }

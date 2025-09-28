@@ -67,7 +67,7 @@ namespace ngl::render::app
         math::Vec3i grid_toroidal_offset_ = {};
         math::Vec3i grid_toroidal_offset_prev_ = {};
 
-        math::Vec3u base_resolution_ = math::Vec3u(32);
+        math::Vec3u base_resolution_ = math::Vec3u(40);
         float   cell_size_ = 3.0f * (1<<0);
         u32     probe_atlas_texture_base_width_ = {};
 

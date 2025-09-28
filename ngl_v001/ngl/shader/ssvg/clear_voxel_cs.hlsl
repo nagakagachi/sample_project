@@ -26,13 +26,14 @@ void main_cs(
 
         clear_voxel_data(RWOccupancyBitmaskVoxel, dtid.x);
 
-
-        uint2 probe_2d_map_pos = uint2(dtid.x % cb_ssvg.probe_atlas_texture_base_width, dtid.x / cb_ssvg.probe_atlas_texture_base_width);
-        for(int oct_i = 0; oct_i < k_probe_octmap_width_with_border; ++oct_i)
         {
-            for(int oct_j = 0; oct_j < k_probe_octmap_width_with_border; ++oct_j)
+            uint2 probe_2d_map_pos = uint2(dtid.x % cb_ssvg.probe_atlas_texture_base_width, dtid.x / cb_ssvg.probe_atlas_texture_base_width);
+            for(int oct_i = 0; oct_i < k_probe_octmap_width_with_border; ++oct_i)
             {
-                RWTexProbeSkyVisibility[probe_2d_map_pos * k_probe_octmap_width_with_border + uint2(oct_i, oct_j)] = 0.0;
+                for(int oct_j = 0; oct_j < k_probe_octmap_width_with_border; ++oct_j)
+                {
+                    RWTexProbeSkyVisibility[probe_2d_map_pos * k_probe_octmap_width_with_border + uint2(oct_i, oct_j)] = 0.0;
+                }
             }
         }
     }

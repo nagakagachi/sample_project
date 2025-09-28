@@ -853,7 +853,7 @@ bool AppGame::ExecuteApp()
 
             if (ImGui::CollapsingHeader("Probe Debug"))
             {
-                ImGui::SliderInt("Probe Debug Mode", &ngl::render::app::SsVg::dbg_probe_debug_view_mode_, -1, 1);
+                ImGui::SliderInt("Probe Debug Mode", &ngl::render::app::SsVg::dbg_probe_debug_view_mode_, -1, 5);
                 ImGui::SliderFloat("Probe Scale", &ngl::render::app::SsVg::dbg_probe_scale_, 0.01f, 10.0f);
                 ImGui::SliderFloat("Probe Near Geometry Scale", &ngl::render::app::SsVg::dbg_probe_near_geom_scale_, 0.01f, 10.0f);
             }

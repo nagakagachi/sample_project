@@ -31,8 +31,6 @@ ssvg_util.hlsli
     // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.
     struct CoarseVoxelData
     {
-        float sky_visibility_dir_avg[6];
-
         uint probe_pos_index;   // ObmVoxel内部でのプローブ位置インデックス. 0は無効, probe_pos_index-1 が実際のインデックス. 値域は 0,k_obm_per_voxel_bitmask_bit_count.
         uint reserved;          // 予備.
     };
@@ -47,7 +45,8 @@ StructuredBuffer<CoarseVoxelData>		CoarseVoxelBuffer;
 RWStructuredBuffer<CoarseVoxelData>		RWCoarseVoxelBuffer;
 
 Texture2D       		TexProbeSkyVisibility;
-RWTexture2D<float>		RWTexProbeSkyVisibility;
+//RWTexture2D<float>		RWTexProbeSkyVisibility;
+RWTexture2D<float4>		RWTexProbeSkyVisibility;
 //----------------------------------------------------------------------------------------------------
 
 

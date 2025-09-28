@@ -37,8 +37,6 @@ namespace ngl::render::app
     // CoarseVoxelバッファ. ObmVoxel一つ毎の外部データ.
     struct CoarseVoxelData
     {
-        float sky_visibility_dir_avg[6];
-
         u32 probe_pos_index;   // ObmVoxel内部でのプローブ位置インデックス. 0は無効, probe_pos_index-1 が実際のインデックス. 値域は 0,k_obm_per_voxel_bitmask_bit_count.
         u32 reserved;          // 予備.
     };
@@ -154,7 +152,8 @@ namespace ngl::render::app
             desc.depth = 1;
             desc.mip_count = 1;
             desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R16_FLOAT;
+            //desc.format = rhi::EResourceFormat::Format_R16_FLOAT;
+            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
             desc.sample_count = 1;
             desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
             desc.initial_state = rhi::EResourceState::UnorderedAccess;
@@ -421,6 +420,8 @@ namespace ngl::render::app
             pso_debug_obm_voxel_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
             pso_debug_obm_voxel_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
             pso_debug_obm_voxel_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
+            pso_debug_obm_voxel_->SetView(&desc_set, "TexProbeSkyVisibility", probe_skyvisibility_.srv.Get());
+            pso_debug_obm_voxel_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
 
 
             p_command_list->SetDescriptorSet(pso_debug_obm_voxel_.Get(), &desc_set);

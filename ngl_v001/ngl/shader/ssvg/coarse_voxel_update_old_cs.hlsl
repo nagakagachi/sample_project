@@ -109,6 +109,7 @@ void main_cs(
                 coarse_voxel_data.probe_pos_index = (0 <= candidate_probe_pos_bit_cell_index) ? candidate_probe_pos_bit_cell_index+1 : 0;
             }   
             
+            /*
             {
                 // SkyVisibilityの方向平均を更新.
                 const float sky_visibility = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
@@ -132,6 +133,7 @@ void main_cs(
                 next_avg = clamp(next_avg, 0.0, 1.0);
                 coarse_voxel_data.sky_visibility_dir_avg[component_index] = next_avg;
             }
+            */
 
 
             // CoarseVoxelの固有データ書き込み.
