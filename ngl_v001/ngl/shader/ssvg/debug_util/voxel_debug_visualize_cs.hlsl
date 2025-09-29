@@ -80,20 +80,12 @@ void main_cs(
         const float trace_distance = 10000.0;
           
         int hit_voxel_index = -1;
-        #if 1
-            // Trace最適化検証.
-            float4 curr_ray_t_ws = trace_ray_vs_obm_voxel_grid(
-                hit_voxel_index,
-                camera_pos, ray_dir_ws, trace_distance, 
-                cb_ssvg.grid_min_pos, cb_ssvg.cell_size, cb_ssvg.base_grid_resolution,
-                cb_ssvg.grid_toroidal_offset, OccupancyBitmaskVoxel);
-        #else
-            float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
-                hit_voxel_index,
-                camera_pos, ray_dir_ws, trace_distance, 
-                cb_ssvg.grid_min_pos, cb_ssvg.cell_size, cb_ssvg.base_grid_resolution,
-                cb_ssvg.grid_toroidal_offset, OccupancyBitmaskVoxel);
-        #endif
+        // Trace最適化検証.
+        float4 curr_ray_t_ws = trace_ray_vs_obm_voxel_grid(
+            hit_voxel_index,
+            camera_pos, ray_dir_ws, trace_distance, 
+            cb_ssvg.grid_min_pos, cb_ssvg.cell_size, cb_ssvg.base_grid_resolution,
+            cb_ssvg.grid_toroidal_offset, OccupancyBitmaskVoxel);
 
         float4 debug_color = float4(0, 0, 1, 0);
         if(0.0 <= curr_ray_t_ws.x)

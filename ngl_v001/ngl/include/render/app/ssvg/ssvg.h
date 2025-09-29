@@ -10,22 +10,14 @@
 
 namespace ngl::render::app
 {
-    class SsVg
+    class SsVgCascade
     {
     public:
-        static bool dbg_view_enable_;
-        static int dbg_view_mode_;
-        static int dbg_probe_debug_view_mode_;
-        static int dbg_raytrace_version_;
-        static float dbg_probe_scale_;
-        static float dbg_probe_near_geom_scale_;
-
-    public:
-        SsVg() = default;
-        ~SsVg();
+        SsVgCascade() = default;
+        ~SsVgCascade();
 
         // 初期化
-        bool Initialize(ngl::rhi::DeviceDep* p_device);
+        bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u base_resolution, float cell_size);
 
         void Dispatch(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
@@ -57,9 +49,9 @@ namespace ngl::render::app
 
         u32 frame_count_{};
 
+        
         math::Vec3i grid_center_cell_id_ = {};
         math::Vec3i grid_center_cell_id_prev_ = {};
-
 
         math::Vec3 grid_min_pos_ = {};
         math::Vec3 grid_min_pos_prev_ = {};
@@ -67,16 +59,52 @@ namespace ngl::render::app
         math::Vec3i grid_toroidal_offset_ = {};
         math::Vec3i grid_toroidal_offset_prev_ = {};
 
-        math::Vec3u base_resolution_ = math::Vec3u(40);
-        float   cell_size_ = 3.0f * (1<<0);
+
+        math::Vec3u base_resolution_ = math::Vec3u(32);
+        float   cell_size_ = 3.0f;
         u32     probe_atlas_texture_base_width_ = {};
+
 
         ComputeBufferSet coarse_voxel_data_ = {};
         ComputeBufferSet occupancy_bitmask_voxel_ = {};
-
         ComputeTextureSet probe_skyvisibility_ = {};
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
+    };
+
+    
+    class SsVg
+    {
+    public:
+        static bool dbg_view_enable_;
+        static int dbg_view_mode_;
+        static int dbg_probe_debug_view_mode_;
+        static int dbg_raytrace_version_;
+        static float dbg_probe_scale_;
+        static float dbg_probe_near_geom_scale_;
+
+    public:
+        SsVg() = default;
+        ~SsVg();
+
+        // 初期化
+        bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u base_resolution, float cell_size, int cascade_count);
+
+        void Dispatch(rhi::GraphicsCommandListDep* p_command_list,
+            rhi::ConstantBufferPooledHandle scene_cbv, 
+            rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
+            rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
+
+        void DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
+            rhi::ConstantBufferPooledHandle scene_cbv, 
+            rhi::RefTextureDep hw_depth_tex, rhi::RefDsvDep hw_depth_dsv,
+            rhi::RefTextureDep lighting_tex, rhi::RefRtvDep lighting_rtv);
+
+
+        void SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir);
+
+    private:
+            std::vector<SsVgCascade*> cascades_;
     };
 
 }  // namespace ngl::render::app

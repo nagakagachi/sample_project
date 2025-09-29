@@ -45,8 +45,8 @@ StructuredBuffer<CoarseVoxelData>		CoarseVoxelBuffer;
 RWStructuredBuffer<CoarseVoxelData>		RWCoarseVoxelBuffer;
 
 Texture2D       		TexProbeSkyVisibility;
-//RWTexture2D<float>		RWTexProbeSkyVisibility;
-RWTexture2D<float4>		RWTexProbeSkyVisibility;
+RWTexture2D<float>		RWTexProbeSkyVisibility;
+//RWTexture2D<float4>		RWTexProbeSkyVisibility;
 //----------------------------------------------------------------------------------------------------
 
 

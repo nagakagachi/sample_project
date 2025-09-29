@@ -12,8 +12,7 @@ coarse_voxel_update_cs.hlsl
 #include "../include/scene_view_struct.hlsli"
 
 
-#define RAY_SAMPLE_COUNT_PER_VOXEL 32
-#define RAY_SAMPLE_CONTRIBUTE_COEF (1.0/4.0)
+#define RAY_SAMPLE_COUNT_PER_VOXEL 8
 
 // Voxel更新のフレーム毎のスキップパラメータ. 1フレームに1/NのThreadGroupのVoxelだけを更新する.
 #define FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT 32
@@ -133,34 +132,25 @@ void main_cs(
             // SkyVisibility raycast.
             const float trace_distance = 200.0;
             int hit_voxel_index = -1;
-            #if 1
-                // リファクタリング版.
-                float4 curr_ray_t_ws = trace_ray_vs_obm_voxel_grid(
-                    hit_voxel_index,
-                    sample_ray_origin, sample_ray_dir, trace_distance, 
-                    cb_ssvg.grid_min_pos, cb_ssvg.cell_size, cb_ssvg.base_grid_resolution,
-                    cb_ssvg.grid_toroidal_offset, OccupancyBitmaskVoxel);
-            #else
-                // 旧バージョン..
-                float4 curr_ray_t_ws = trace_ray_vs_occupancy_bitmask_voxel(
-                    hit_voxel_index,
-                    sample_ray_origin, sample_ray_dir, trace_distance, 
-                    cb_ssvg.grid_min_pos, cb_ssvg.cell_size, cb_ssvg.base_grid_resolution,
-                    cb_ssvg.grid_toroidal_offset, OccupancyBitmaskVoxel);
-            #endif
-
+            // リファクタリング版.
+            float4 curr_ray_t_ws = trace_ray_vs_obm_voxel_grid(
+                hit_voxel_index,
+                sample_ray_origin, sample_ray_dir, trace_distance, 
+                cb_ssvg.grid_min_pos, cb_ssvg.cell_size, cb_ssvg.base_grid_resolution,
+                cb_ssvg.grid_toroidal_offset, OccupancyBitmaskVoxel);
             {
                 // SkyVisibilityの方向平均を更新.
                 const float sky_visibility = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
 
                 // ProbeOctMapの更新.
-                const float probe_update_rate = 0.25;
+                const float probe_update_rate = 0.4;
                 const float2 octmap_uv = OctEncode(sample_ray_dir);
                 const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.probe_atlas_texture_base_width, voxel_index / cb_ssvg.probe_atlas_texture_base_width);
                 const uint2 octmap_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + uint2(octmap_uv*k_probe_octmap_width);
 
                 float store_dist = (0.0 > curr_ray_t_ws.x) ? 1.0 : curr_ray_t_ws.x/trace_distance;
-                RWTexProbeSkyVisibility[octmap_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_texel_pos], float4(sky_visibility, store_dist, store_dist*store_dist, 0), probe_update_rate);
+                RWTexProbeSkyVisibility[octmap_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_texel_pos], sky_visibility, probe_update_rate);
+                //RWTexProbeSkyVisibility[octmap_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_texel_pos], float4(sky_visibility, store_dist, store_dist*store_dist, 0), probe_update_rate);
             }
         }
     }

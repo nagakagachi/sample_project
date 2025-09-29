@@ -51,13 +51,23 @@ namespace ngl::render::app
     float SsVg::dbg_probe_near_geom_scale_ = 0.2f;
     
 
-    SsVg::~SsVg()
+
+
+
+    SsVgCascade::~SsVgCascade()
     {
     }
 
     // 初期化
-    bool SsVg::Initialize(ngl::rhi::DeviceDep* p_device)
+    bool SsVgCascade::Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u base_resolution, float cell_size)
     {
+        base_resolution_ = base_resolution;
+        cell_size_ = cell_size;
+
+        const u32 voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
+        probe_atlas_texture_base_width_ = static_cast<u32>(std::ceil(std::sqrt(static_cast<float>(voxel_count))));
+
+
         // Helper function to create compute shader PSO
         auto CreateComputePSO = [&](const char* shader_path) -> ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep>
         {
@@ -122,8 +132,6 @@ namespace ngl::render::app
             }
         }
 
-        const u32 voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
-        probe_atlas_texture_base_width_ = static_cast<u32>(std::ceil(std::sqrt(static_cast<float>(voxel_count))));
 
         {
             coarse_voxel_data_.InitializeAsStructured(p_device,
@@ -152,8 +160,8 @@ namespace ngl::render::app
             desc.depth = 1;
             desc.mip_count = 1;
             desc.array_size = 1;
-            //desc.format = rhi::EResourceFormat::Format_R16_FLOAT;
-            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
+            desc.format = rhi::EResourceFormat::Format_R16_FLOAT;
+            //desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
             desc.sample_count = 1;
             desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
             desc.initial_state = rhi::EResourceState::UnorderedAccess;
@@ -164,13 +172,13 @@ namespace ngl::render::app
         return true;
     }
 
-    void SsVg::SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir)
+    void SsVgCascade::SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir)
     {
         important_point_ = pos;
         important_dir_   = dir;
     }
 
-    void SsVg::Dispatch(rhi::GraphicsCommandListDep* p_command_list,
+    void SsVgCascade::Dispatch(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
                         rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
                         rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav)
@@ -185,7 +193,7 @@ namespace ngl::render::app
 
 
         // 重視位置を若干補正.
-        #if 1
+        #if 0
             const math::Vec3 modified_important_point = important_point_ + important_dir_ * 5.0f;
         #else
             const math::Vec3 modified_important_point = important_point_;
@@ -388,7 +396,7 @@ namespace ngl::render::app
         }
     }
 
-    void SsVg::DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
+    void SsVgCascade::DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
         rhi::ConstantBufferPooledHandle scene_cbv, 
         rhi::RefTextureDep hw_depth_tex, rhi::RefDsvDep hw_depth_dsv,
         rhi::RefTextureDep lighting_tex, rhi::RefRtvDep lighting_rtv)
@@ -431,5 +439,69 @@ namespace ngl::render::app
         }
 
     }
+
+
+    // ----------------------------------------------------------------
+
+    
+    SsVg::~SsVg()
+    {
+        for(auto& c : cascades_)
+        {
+            if(c)
+            {
+                delete c;
+                c = nullptr;
+            }
+        }
+        cascades_.clear();
+    }
+
+    // 初期化
+    bool SsVg::Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u base_resolution, float cell_size, int cascade_count)
+    {
+        for (int i = 0; i < cascade_count; ++i)
+        {
+            SsVgCascade* c = new SsVgCascade();
+            if(!c->Initialize(p_device, base_resolution, cell_size * (1 << i)))
+            {
+                delete c;
+                return false;
+            }
+            cascades_.push_back(c);
+        }
+        return true;
+    }
+
+    void SsVg::Dispatch(rhi::GraphicsCommandListDep* p_command_list,
+        rhi::ConstantBufferPooledHandle scene_cbv, 
+        rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
+        rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav)
+    {
+        for(auto& c : cascades_)
+        {
+            c->Dispatch(p_command_list, scene_cbv, hw_depth_tex, hw_depth_srv, work_tex, work_uav);
+        }
+    }
+
+    void SsVg::DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
+        rhi::ConstantBufferPooledHandle scene_cbv, 
+        rhi::RefTextureDep hw_depth_tex, rhi::RefDsvDep hw_depth_dsv,
+        rhi::RefTextureDep lighting_tex, rhi::RefRtvDep lighting_rtv)
+    {
+        for(auto& c : cascades_)
+        {
+            c->DebugDraw(p_command_list, scene_cbv, hw_depth_tex, hw_depth_dsv, lighting_tex, lighting_rtv);
+        }
+    }
+
+    void SsVg::SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir)
+    {
+        for(auto& c : cascades_)
+        {
+            c->SetImportantPointInfo(pos, dir);
+        }
+    }
+
 
 }  // namespace ngl::render::app
