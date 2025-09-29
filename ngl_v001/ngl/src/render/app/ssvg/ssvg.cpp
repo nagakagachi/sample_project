@@ -89,9 +89,11 @@ namespace ngl::render::app
             pso_clear_voxel_  = CreateComputePSO("ssvg/clear_voxel_cs.hlsl");
             pso_begin_update_ = CreateComputePSO("ssvg/begin_update_cs.hlsl");
             pso_voxelize_     = CreateComputePSO("ssvg/voxelize_pass_cs.hlsl");
-            pso_coarse_voxel_update_ = CreateComputePSO("ssvg/coarse_voxel_update_cs.hlsl");
-            pso_coarse_voxel_update_old_ = CreateComputePSO("ssvg/coarse_voxel_update_old_cs.hlsl");// 旧バージョン検証.
+            pso_coarse_probe_update_ = CreateComputePSO("ssvg/coarse_probe_update_cs.hlsl");
+            pso_visible_probe_update_ = CreateComputePSO("ssvg/visible_probe_update_cs.hlsl");
+            pso_generate_visible_voxel_indirect_arg_ = CreateComputePSO("ssvg/generate_visible_voxel_indirect_arg_cs.hlsl");
 
+            pso_coarse_voxel_update_old_ = CreateComputePSO("ssvg/coarse_voxel_update_old_cs.hlsl");// 旧バージョン検証.
             pso_debug_visualize_ = CreateComputePSO("ssvg/debug_util/voxel_debug_visualize_cs.hlsl");
             
             {
@@ -149,6 +151,26 @@ namespace ngl::render::app
                                                .element_count     = voxel_count * k_obm_per_voxel_u32_count,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default},
+                                           rhi::EResourceFormat::Format_R32_UINT);
+        }
+        {
+            visible_voxel_list_.InitializeAsTyped(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = 4,
+                                               .element_count     = voxel_count+1,// 0番目にアトミックカウンタ用途.
+
+                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default},
+                                           rhi::EResourceFormat::Format_R32_UINT);
+        }
+        {
+            visible_voxel_indirect_arg_.InitializeAsTyped(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(uint32_t),
+                                               .element_count     = 3,
+
+                                               .bind_flag = rhi::ResourceBindFlag::UnorderedAccess | rhi::ResourceBindFlag::IndirectArg,
                                                .heap_type = rhi::EResourceHeapType::Default},
                                            rhi::EResourceFormat::Format_R32_UINT);
         }
@@ -234,6 +256,9 @@ namespace ngl::render::app
 
             int probe_atlas_texture_base_width;
 
+            math::Vec3i voxel_dispatch_thread_group_count;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
+            int dummy1;
+
             math::Vec2i tex_hw_depth_size;
             u32 frame_count;
 
@@ -261,6 +286,8 @@ namespace ngl::render::app
 
             p->cell_size       = cell_size_;
             p->cell_size_inv    = 1.0f / cell_size_;
+
+            p->voxel_dispatch_thread_group_count = math::Vec3i(pso_visible_probe_update_->GetThreadGroupSizeX(), pso_visible_probe_update_->GetThreadGroupSizeY(), pso_visible_probe_update_->GetThreadGroupSizeZ());
 
             p->tex_hw_depth_size = hw_depth_size;
 
@@ -306,6 +333,7 @@ namespace ngl::render::app
                 pso_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                 pso_begin_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
                 pso_begin_update_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
+                pso_begin_update_->SetView(&desc_set, "RWVisibleCoarseVoxelList", visible_voxel_list_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_begin_update_.Get());
                 p_command_list->SetDescriptorSet(pso_begin_update_.Get(), &desc_set);
@@ -313,6 +341,7 @@ namespace ngl::render::app
 
                 p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
                 p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
+                p_command_list->ResourceUavBarrier(visible_voxel_list_.buffer.Get());
             }
             // Voxelization Pass.
             {
@@ -323,52 +352,76 @@ namespace ngl::render::app
                 pso_voxelize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                 pso_voxelize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                 pso_voxelize_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
+                pso_voxelize_->SetView(&desc_set, "RWVisibleCoarseVoxelList", visible_voxel_list_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_voxelize_.Get());
                 p_command_list->SetDescriptorSet(pso_voxelize_.Get(), &desc_set);
                 pso_voxelize_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);  // Screen処理でDispatch.
 
                 p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
+                p_command_list->ResourceUavBarrier(visible_voxel_list_.buffer.Get());
+            }
+            // VisibleVoxel IndirectArg生成.
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "GenerateVisibleElementIndirectArg");
+                
+                visible_voxel_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                pso_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
+                pso_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "RWVisibleVoxelIndirectArg", visible_voxel_indirect_arg_.uav.Get());
+
+                p_command_list->SetPipelineState(pso_generate_visible_voxel_indirect_arg_.Get());
+                p_command_list->SetDescriptorSet(pso_generate_visible_voxel_indirect_arg_.Get(), &desc_set);
+                pso_generate_visible_voxel_indirect_arg_->DispatchHelper(p_command_list, 1, 1, 1);
+
+                visible_voxel_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::IndirectArgument);
+            }
+            // Visible Voxel Update Pass.
+            {
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "VisibleUpdate");
+
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    pso_visible_probe_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                    pso_visible_probe_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                    pso_visible_probe_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
+                    pso_visible_probe_update_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
+                    pso_visible_probe_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
+                    pso_visible_probe_update_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
+
+                    p_command_list->SetPipelineState(pso_visible_probe_update_.Get());
+                    p_command_list->SetDescriptorSet(pso_visible_probe_update_.Get(), &desc_set);
+
+                    p_command_list->DispatchIndirect(visible_voxel_indirect_arg_.buffer.Get());// こちらは可視VoxelのIndirect.
+
+
+                    p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
+                    p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
+                }
             }
             // Coarse Voxel Update Pass.
             {
                 {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "CoarseUpdate_New");
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "CoarseUpdate");
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_coarse_voxel_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-                    pso_coarse_voxel_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_coarse_voxel_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
-                    pso_coarse_voxel_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
-                    pso_coarse_voxel_update_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
+                    pso_coarse_probe_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                    pso_coarse_probe_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                    pso_coarse_probe_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
+                    pso_coarse_probe_update_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
+                    pso_coarse_probe_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
+                    pso_coarse_probe_update_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
 
-                    p_command_list->SetPipelineState(pso_coarse_voxel_update_.Get());
-                    p_command_list->SetDescriptorSet(pso_coarse_voxel_update_.Get(), &desc_set);
-                    pso_coarse_voxel_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);
+                    p_command_list->SetPipelineState(pso_coarse_probe_update_.Get());
+                    p_command_list->SetDescriptorSet(pso_coarse_probe_update_.Get(), &desc_set);
+                    pso_coarse_probe_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);
+
 
                     p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
                     p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
                 }
-                /*
-                if(1 == dbg_raytrace_version_)
-                {
-                    // 比較用に古いバージョンも動かす
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "CoarseUpdate_OldReference");
-
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_coarse_voxel_update_old_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-                    pso_coarse_voxel_update_old_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_coarse_voxel_update_old_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
-                    pso_coarse_voxel_update_old_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
-
-                    p_command_list->SetPipelineState(pso_coarse_voxel_update_old_.Get());
-                    p_command_list->SetDescriptorSet(pso_coarse_voxel_update_old_.Get(), &desc_set);
-                    pso_coarse_voxel_update_old_->DispatchHelper(p_command_list, voxel_count, 1, 1);
-
-                    p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
-                    p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
-                }
-                */
             }
         }
 

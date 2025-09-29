@@ -40,13 +40,16 @@ ssvg_util.hlsli
 Buffer<uint>		OccupancyBitmaskVoxel;
 RWBuffer<uint>		RWOccupancyBitmaskVoxel;
 
-
 StructuredBuffer<CoarseVoxelData>		CoarseVoxelBuffer;
 RWStructuredBuffer<CoarseVoxelData>		RWCoarseVoxelBuffer;
 
 Texture2D       		TexProbeSkyVisibility;
 RWTexture2D<float>		RWTexProbeSkyVisibility;
 //RWTexture2D<float4>		RWTexProbeSkyVisibility;
+
+
+Buffer<uint>		VisibleCoarseVoxelList;
+RWBuffer<uint>		RWVisibleCoarseVoxelList;
 //----------------------------------------------------------------------------------------------------
 
 
@@ -143,8 +146,11 @@ struct SsvgParam
     int dummy0;
     
     int3 grid_move_cell_delta;// Toroidalではなくワールド空間Cellでのフレーム移動量.
-
     int probe_atlas_texture_base_width;// probeのAtlasを配置するテクスチャの基準幅. 実際はProbe毎のAtlasサイズを乗じたサイズのテクスチャを扱う.
+
+
+    int3 voxel_dispatch_thread_group_count;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
+    int dummy1;
 
     int2 tex_hw_depth_size;
     uint frame_count;

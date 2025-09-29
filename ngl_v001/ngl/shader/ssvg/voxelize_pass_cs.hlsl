@@ -162,8 +162,21 @@ void main_cs(
 
             if(0 != valid_flag)
             {
-                // 一部でも占有されていることを示すビットをCoarseVoxelに書き込みしてCoarseTraceで参照できるようにする.
-                InterlockedOr(RWOccupancyBitmaskVoxel[unique_data_addr], 1);
+                // Memo.
+                // 以下でVoxel固有データ部を更新しているが, 今後実装予定の動的オブジェクトによる占有度除去に伴う処理でも更新が必要な点に注意.
+
+                uint old_unique_data;
+                // 非Emptyフラグを0bit目, それ以降にVisible判定フレーム番号を書き込み.
+                const uint visible_check_frame_count = cb_ssvg.frame_count&0xff;
+                const uint set_bits = 1 | (visible_check_frame_count << 1);
+                InterlockedExchange(RWOccupancyBitmaskVoxel[unique_data_addr], set_bits, old_unique_data);
+                // 交換前の値でVisible判定フレーム番号が現在フレームと異なるならリストへ登録.
+                if(visible_check_frame_count != ((old_unique_data >> 1) & 0xff))
+                {
+                    int current_visible_count;
+                    InterlockedAdd(RWVisibleCoarseVoxelList[0], 1, current_visible_count);
+                    RWVisibleCoarseVoxelList[current_visible_count + 1] = voxel_index;
+                }
             }
         }
     #endif

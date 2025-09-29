@@ -1,22 +1,40 @@
 
 #if 0
 
-coarse_voxel_update_cs.hlsl
+probe_update_base.hlsli
+
+// Probe更新の共通コード.
+// Indirect版と非Indirect版で共通化.
+// #define INDIRECT_MODE 定義をしてincludeすることでIndirect版になる.
+
+// RAY_SAMPLE_COUNT_PER_VOXEL, FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT で挙動を変えられる.
 
 #endif
 
 
 #include "ssvg_util.hlsli"
-
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
 
 
-#define RAY_SAMPLE_COUNT_PER_VOXEL 8
+// Indirect版にする場合はこの定義をしてからIncludeする.
+#if !defined(INDIRECT_MODE)
+    #define INDIRECT_MODE 0
+#endif
 
-// Voxel更新のフレーム毎のスキップパラメータ. 1フレームに1/NのThreadGroupのVoxelだけを更新する.
-#define FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT 32
+#if !defined(RAY_SAMPLE_COUNT_PER_VOXEL)
+    // Probeの更新で発行するレイトレース数.
+    #define RAY_SAMPLE_COUNT_PER_VOXEL 8
+#endif
 
+#if !defined(FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT)
+    // Voxel更新のフレーム毎のスキップパラメータ. 1フレームに1/NのThreadGroupのVoxelだけを更新する.
+    #define FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT 1
+#endif
+
+#if !defined(PROBE_UPDATE_TEMPORAL_RATE)
+    #define PROBE_UPDATE_TEMPORAL_RATE  (0.1)
+#endif
 
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 
@@ -31,15 +49,27 @@ void main_cs(
 {
 	const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
 
-    const uint voxel_count = cb_ssvg.base_grid_resolution.x * cb_ssvg.base_grid_resolution.y * cb_ssvg.base_grid_resolution.z;
-    
-    // toroidalマッピング考慮.バッファインデックスに該当するVoxelは 3D座標->Toroidalマッピング->実インデックス で得る.
-    const int3 voxel_coord = index_to_voxel_coord(dtid.x, cb_ssvg.base_grid_resolution);
-    const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution);
-    const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.base_grid_resolution);
+    #if INDIRECT_MODE
+        // VisibleCoarseVoxelListを利用するバージョン.
+        const uint visible_voxel_count = VisibleCoarseVoxelList[0]; // 0番目にアトミックカウンタが入っている.
+        if(visible_voxel_count < dtid.x)
+            return;
 
-    if(voxel_count <= voxel_index)
-        return;
+        const uint voxel_index = VisibleCoarseVoxelList[dtid.x+1]; // 1番目以降に有効Voxelインデックスが入っている.
+        // voxel_indexからtoroidal考慮したVoxelIDを計算する.
+        int3 voxel_coord_toroidal = index_to_voxel_coord(voxel_index, cb_ssvg.base_grid_resolution);
+        int3 voxel_coord = voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_ssvg.base_grid_resolution -cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution);
+    #else
+        const uint voxel_count = cb_ssvg.base_grid_resolution.x * cb_ssvg.base_grid_resolution.y * cb_ssvg.base_grid_resolution.z;
+        // toroidalマッピング考慮.バッファインデックスに該当するVoxelは 3D座標->Toroidalマッピング->実インデックス で得る.
+        const int3 voxel_coord = index_to_voxel_coord(dtid.x, cb_ssvg.base_grid_resolution);
+        const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution);
+        const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.base_grid_resolution);
+        
+        if(voxel_count <= voxel_index)
+            return;
+    #endif
+
 
 
     #if 1 < FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT
@@ -143,14 +173,13 @@ void main_cs(
                 const float sky_visibility = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
 
                 // ProbeOctMapの更新.
-                const float probe_update_rate = 0.4;
                 const float2 octmap_uv = OctEncode(sample_ray_dir);
                 const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.probe_atlas_texture_base_width, voxel_index / cb_ssvg.probe_atlas_texture_base_width);
                 const uint2 octmap_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + uint2(octmap_uv*k_probe_octmap_width);
 
                 float store_dist = (0.0 > curr_ray_t_ws.x) ? 1.0 : curr_ray_t_ws.x/trace_distance;
-                RWTexProbeSkyVisibility[octmap_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_texel_pos], sky_visibility, probe_update_rate);
-                //RWTexProbeSkyVisibility[octmap_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_texel_pos], float4(sky_visibility, store_dist, store_dist*store_dist, 0), probe_update_rate);
+                RWTexProbeSkyVisibility[octmap_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_texel_pos], sky_visibility, PROBE_UPDATE_TEMPORAL_RATE);
+                //RWTexProbeSkyVisibility[octmap_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_texel_pos], float4(sky_visibility, store_dist, store_dist*store_dist, 0), k_probe_update_rate);
             }
         }
     }

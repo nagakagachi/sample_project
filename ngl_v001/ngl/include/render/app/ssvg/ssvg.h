@@ -38,9 +38,11 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_clear_voxel_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_begin_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_voxelize_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_coarse_voxel_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_coarse_voxel_update_old_ = {};// 旧バージョン検証.
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_coarse_probe_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_visible_probe_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_generate_visible_voxel_indirect_arg_ = {};
 
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_coarse_voxel_update_old_ = {};// 旧バージョン検証.
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_debug_visualize_ = {};
         ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_debug_obm_voxel_ = {};
 
@@ -68,6 +70,9 @@ namespace ngl::render::app
         ComputeBufferSet coarse_voxel_data_ = {};
         ComputeBufferSet occupancy_bitmask_voxel_ = {};
         ComputeTextureSet probe_skyvisibility_ = {};
+        
+        ComputeBufferSet visible_voxel_list_ = {};
+        ComputeBufferSet visible_voxel_indirect_arg_ = {};
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
     };

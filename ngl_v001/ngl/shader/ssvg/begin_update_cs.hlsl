@@ -24,6 +24,13 @@ void main_cs(
 {
     uint voxel_count = cb_ssvg.base_grid_resolution.x * cb_ssvg.base_grid_resolution.y * cb_ssvg.base_grid_resolution.z;
 
+    if(0 == dtid.x)
+    {
+        // VisibleCoarseVoxelListのアトミックカウンタをクリア.
+        // 0番目はアトミックカウンタ用に予約している.
+        RWVisibleCoarseVoxelList[0] = 0;
+    }
+
     #if 1
         if(all(cb_ssvg.grid_move_cell_delta == int3(0,0,0)))
         {
