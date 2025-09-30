@@ -27,8 +27,9 @@ namespace ngl::render::app
 
     #define k_obm_per_voxel_resolution_inv (1.0 / float(k_obm_per_voxel_resolution))
     #define k_obm_per_voxel_resolution_vec3i int3(k_obm_per_voxel_resolution, k_obm_per_voxel_resolution, k_obm_per_voxel_resolution)
+
     // probeあたりのOctMap解像度.
-    #define k_probe_octmap_width (8)
+    #define k_probe_octmap_width (6)
     // それぞれのOctMapの+側境界に1テクセルボーダーを追加することで全方向に1テクセルのマージンを確保する.
     #define k_probe_octmap_width_with_border (k_probe_octmap_width+2)
 
@@ -183,6 +184,7 @@ namespace ngl::render::app
             desc.mip_count = 1;
             desc.array_size = 1;
             desc.format = rhi::EResourceFormat::Format_R16_FLOAT;
+            //desc.format = rhi::EResourceFormat::Format_R8_UNORM;
             //desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
             desc.sample_count = 1;
             desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;

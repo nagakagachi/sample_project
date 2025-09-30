@@ -7,8 +7,6 @@ probe_update_base.hlsli
 // Indirect版と非Indirect版で共通化.
 // #define INDIRECT_MODE 定義をしてincludeすることでIndirect版になる.
 
-// RAY_SAMPLE_COUNT_PER_VOXEL, FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT で挙動を変えられる.
-
 #endif
 
 
@@ -27,9 +25,9 @@ probe_update_base.hlsli
     #define RAY_SAMPLE_COUNT_PER_VOXEL 8
 #endif
 
-#if !defined(FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT)
-    // Voxel更新のフレーム毎のスキップパラメータ. 1フレームに1/NのThreadGroupのVoxelだけを更新する.
-    #define FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT 1
+#if !defined(FRAME_UPDATE_PROBE_SKIP_COUNT)
+    // Probe更新時のスキップ要素数. 0で全更新, 1で1つ飛ばしでスキップ(半分).
+    #define FRAME_UPDATE_PROBE_SKIP_COUNT 0
 #endif
 
 #if !defined(PROBE_UPDATE_TEMPORAL_RATE)
@@ -52,30 +50,24 @@ void main_cs(
     #if INDIRECT_MODE
         // VisibleCoarseVoxelListを利用するバージョン.
         const uint visible_voxel_count = VisibleCoarseVoxelList[0]; // 0番目にアトミックカウンタが入っている.
-        if(visible_voxel_count < dtid.x)
+        const uint update_element_index = (dtid.x * (FRAME_UPDATE_PROBE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(FRAME_UPDATE_PROBE_SKIP_COUNT+1)));
+        if(visible_voxel_count < update_element_index)
             return;
 
-        const uint voxel_index = VisibleCoarseVoxelList[dtid.x+1]; // 1番目以降に有効Voxelインデックスが入っている.
+        const uint voxel_index = VisibleCoarseVoxelList[update_element_index+1]; // 1番目以降に有効Voxelインデックスが入っている.
         // voxel_indexからtoroidal考慮したVoxelIDを計算する.
         int3 voxel_coord_toroidal = index_to_voxel_coord(voxel_index, cb_ssvg.base_grid_resolution);
         int3 voxel_coord = voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_ssvg.base_grid_resolution -cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution);
     #else
         const uint voxel_count = cb_ssvg.base_grid_resolution.x * cb_ssvg.base_grid_resolution.y * cb_ssvg.base_grid_resolution.z;
-        // toroidalマッピング考慮.バッファインデックスに該当するVoxelは 3D座標->Toroidalマッピング->実インデックス で得る.
-        const int3 voxel_coord = index_to_voxel_coord(dtid.x, cb_ssvg.base_grid_resolution);
+        // 更新対象インデックスをスキップ.
+        const uint update_element_id = (dtid.x * (FRAME_UPDATE_PROBE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(FRAME_UPDATE_PROBE_SKIP_COUNT+1)));
+        if(voxel_count <= update_element_id)
+            return;
+
+        const int3 voxel_coord = index_to_voxel_coord(update_element_id, cb_ssvg.base_grid_resolution);
         const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution);
         const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.base_grid_resolution);
-        
-        if(voxel_count <= voxel_index)
-            return;
-    #endif
-
-
-
-    #if 1 < FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT
-    // フレーム毎の処理Voxelスキップ.
-    if((gid.x % FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT) != (cb_ssvg.frame_count % FRAME_UPDATE_SKIP_THREAD_GROUP_COUNT))
-        return;
     #endif
 
 
