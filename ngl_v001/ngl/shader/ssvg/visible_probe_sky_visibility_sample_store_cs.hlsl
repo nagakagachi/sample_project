@@ -1,9 +1,9 @@
 
 #if 0
 
-visible_probe_post_update_cs.hlsl
+visible_probe_sky_visibility_sample_store_cs.hlsl
 
-// 可視Probe更新の後処理.
+// 可視Probe SkyVisibilityサンプルの結果をバッファに書き戻し.
 
 #endif
 
@@ -16,7 +16,6 @@ visible_probe_post_update_cs.hlsl
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
 
-// DepthBufferに対してDispatch.
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,

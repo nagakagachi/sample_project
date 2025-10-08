@@ -1,16 +1,16 @@
 
 #if 0
 
-probe_update_base.hlsli
+probe_sky_visibility_sample_base.hlsli
 
-// Probe更新の共通コード.
+// Probe SkyVisibilityサンプリングの共通コード.
 // Indirect版と非Indirect版で共通化.
 // #define INDIRECT_MODE 定義をしてincludeすることでIndirect版になる.
 
 #endif
 
-#ifndef NGL_SHADER_SSVG_PROBE_UPDATE_BASE_HLSLI
-#define NGL_SHADER_SSVG_PROBE_UPDATE_BASE_HLSLI
+#ifndef NGL_SHADER_SSVG_PROBE_SKY_VISIBILITY_SAMPLE_BASE_HLSLI
+#define NGL_SHADER_SSVG_PROBE_SKY_VISIBILITY_SAMPLE_BASE_HLSLI
 
 
 #define ENABLE_SHARED_MEMORY_ACCUM_OPTIMIZE
@@ -44,7 +44,6 @@ probe_update_base.hlsli
 
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 
-// DepthBufferに対してDispatch.
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,
@@ -74,10 +73,21 @@ void main_cs(
         }
     #else
         const uint voxel_count = cb_ssvg.base_grid_resolution.x * cb_ssvg.base_grid_resolution.y * cb_ssvg.base_grid_resolution.z;
-        // 更新対象インデックスをスキップ.
-        const uint update_element_id = (dtid.x * (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(FRAME_UPDATE_ALL_PROBE_SKIP_COUNT+1)));
-        if(voxel_count <= update_element_id)
-            return;
+
+
+        #if 0
+            // 更新対象インデックスをn個飛ばしで採用する方式.
+            const uint update_element_id = (dtid.x * (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(FRAME_UPDATE_ALL_PROBE_SKIP_COUNT+1)));
+            if(voxel_count <= update_element_id)
+                return;
+        #else
+            // 更新対象インデックスをフレーム毎のブロックに分けて採用する方式. こちらのほうがキャッシュ効率は有利なはず.
+            const uint per_frame_loop_cnt = FRAME_UPDATE_ALL_PROBE_SKIP_COUNT+1;
+            const uint per_frame_update_voxel_count = (voxel_count + (per_frame_loop_cnt - 1)) / per_frame_loop_cnt;
+            const uint update_element_id = (((cb_ssvg.frame_count%per_frame_loop_cnt) * per_frame_update_voxel_count)) + dtid.x;
+            if(voxel_count <= update_element_id)
+                return;
+        #endif
 
         const int3 voxel_coord = index_to_voxel_coord(update_element_id, cb_ssvg.base_grid_resolution);
         const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution);
@@ -88,57 +98,19 @@ void main_cs(
     const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
     const uint obm_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
 
-    // Probeの埋まり回避のための位置探索.
-    // Obmセルを参照して空のセルから選択する.
-    int candidate_probe_pos_bit_cell_index = -1;
-    float candidate_probe_pos_dist_sq = 1e20;
-    const float3 camera_pos_in_bit_cell_space = ((camera_pos - cb_ssvg.grid_min_pos) * cb_ssvg.cell_size_inv - float3(voxel_coord)) * float(k_obm_per_voxel_resolution);
-    for(int i = 0; i < obm_voxel_occupancy_bitmask_uint_count(); ++i)
-    {
-        uint bit_block = (~OccupancyBitmaskVoxel[obm_addr + i]);
-
-        for(int bi = 0; bi < 32 && 0 != bit_block; ++bi)
-        {
-            if(bit_block & 1)
-            {
-                const uint bit_index = i * 32 + bi;
-                const uint3 bit_pos_in_voxel = calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(bit_index);
-                
-                // Voxel中心に近いセルを選択.
-                const float3 score_vec = float3(bit_pos_in_voxel) - (float3(k_obm_per_voxel_resolution, k_obm_per_voxel_resolution, k_obm_per_voxel_resolution) * 0.5);
-                // カメラに一番近いセルを選択.
-                //const float3 score_vec = float3(bit_pos_in_voxel) - camera_pos_in_bit_cell_space;
-
-                const float dist_sq = dot(score_vec, score_vec);
-                if(dist_sq < candidate_probe_pos_dist_sq)
-                {
-                    candidate_probe_pos_dist_sq = dist_sq;
-                    candidate_probe_pos_bit_cell_index = bit_index;
-                }
-            }
-            bit_block >>= 1;
-        }
-    }
+    // 前パスで格納された線形インデックスからプローブ位置(レイ原点)を計算.
+    CoarseVoxelData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
     // VoxelのMin位置.
     float3 probe_sample_pos_ws = float3(voxel_coord) * cb_ssvg.cell_size + cb_ssvg.grid_min_pos;
-    if(0 <= candidate_probe_pos_bit_cell_index)
+    if(0 < coarse_voxel_data.probe_pos_index)
     {
-        probe_sample_pos_ws += (float3(calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(candidate_probe_pos_bit_cell_index)) + 0.5) * (cb_ssvg.cell_size / float(k_obm_per_voxel_resolution));
+        probe_sample_pos_ws += (float3(calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(coarse_voxel_data.probe_pos_index-1)) + 0.5) * (cb_ssvg.cell_size / float(k_obm_per_voxel_resolution));
     }
     else
     {
         // 占有されているセルが全て埋まっている場合はVoxel中心をプローブ位置にする.
         probe_sample_pos_ws += cb_ssvg.cell_size * 0.5;
     }
-    
-    // CoarseVoxelの固有データ読み取り. 更新
-    CoarseVoxelData coarse_voxel_data = RWCoarseVoxelBuffer[voxel_index];
-    {
-        // Probe配置位置をObmCellインデックスとして書き込み, 0が無効値であるようにして +1.
-        coarse_voxel_data.probe_pos_index = (0 <= candidate_probe_pos_bit_cell_index) ? candidate_probe_pos_bit_cell_index+1 : 0;
-    }
-    // CoarseVoxelの固有データ書き込み.
-    RWCoarseVoxelBuffer[voxel_index] = coarse_voxel_data;
 
     // Probeレイサンプル.
     {
@@ -148,19 +120,16 @@ void main_cs(
         const int sample_index = 0;
     #endif
         {
-            #if 1 < RAY_SAMPLE_COUNT_PER_VOXEL && 0
-                // 球面Fibonacciシーケンス分布上をフルでトレースする.
-                const uint sample_rand = noise_iqint32_orig(uint2(voxel_index, cb_ssvg.frame_count)) + sample_index;
-                const int num_fibonacci_point_max = RAY_SAMPLE_COUNT_PER_VOXEL;
-                float3 sample_ray_dir = fibonacci_sphere_point(sample_rand%num_fibonacci_point_max, num_fibonacci_point_max);
-            #elif 1
+            #if INDIRECT_MODE
+                // 可視Probe更新.
                 // 完全ランダムな方向をサンプリング.
                 float3 sample_ray_dir = random_unit_vector3(float2(voxel_index + sample_index, cb_ssvg.frame_count + sample_index));
             #else
-                // 球面Fibonacciシーケンス分布上でランダムな方向をサンプリング. あまり良くない.
-                const uint sample_rand = noise_iqint32_orig(uint2(voxel_index + sample_index, cb_ssvg.frame_count));
-                const int num_fibonacci_point_max = 256;
-                float3 sample_ray_dir = fibonacci_sphere_point(sample_rand%num_fibonacci_point_max, num_fibonacci_point_max);
+                // 全域Probe更新.
+                // 球面Fibonacciシーケンス分布上をフルでトレースする.
+                // 同時更新されるProbeのレイ方向がほとんど同じになるためか, Probe毎に乱数でサンプルするよりも数倍速くなる模様.
+                const int num_fibonacci_point_max = 128;
+                float3 sample_ray_dir = fibonacci_sphere_point((cb_ssvg.frame_count*RAY_SAMPLE_COUNT_PER_VOXEL + sample_index)%num_fibonacci_point_max, num_fibonacci_point_max);
             #endif
 
             const float3 sample_ray_origin = probe_sample_pos_ws;            
@@ -208,4 +177,4 @@ void main_cs(
 }
 
 
-#endif //NGL_SHADER_SSVG_PROBE_UPDATE_BASE_HLSLI
+#endif //NGL_SHADER_SSVG_PROBE_SKY_VISIBILITY_SAMPLE_BASE_HLSLI

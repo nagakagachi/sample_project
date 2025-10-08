@@ -35,11 +35,10 @@ namespace ngl::render::app
 
     #define k_per_probe_texel_count (k_probe_octmap_width*k_probe_octmap_width)
 
-
     // 可視Probe更新時のスキップ数. 0でスキップせずに可視Probeバッファのすべての要素を処理する. 1で1つ飛ばしでスキップ(半分).
     #define FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT 0
     // Probe全体更新のスキップ数. 0でスキップせずにProbeバッファのすべての要素を処理する. 1で1つ飛ばしでスキップ(半分).
-    #define FRAME_UPDATE_ALL_PROBE_SKIP_COUNT 60
+    #define FRAME_UPDATE_ALL_PROBE_SKIP_COUNT 16
 
 
     // シェーダとCppで一致させる.
@@ -47,8 +46,10 @@ namespace ngl::render::app
     // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.
     struct CoarseVoxelData
     {
-        u32 probe_pos_index;   // ObmVoxel内部でのプローブ位置インデックス. 0は無効, probe_pos_index-1 が実際のインデックス. 値域は 0,k_obm_per_voxel_bitmask_bit_count.
-        u32 reserved;          // 予備.
+        // ObmVoxel内部でのプローブ位置の線形インデックス. 0は無効, probe_pos_index-1 が実際のインデックス. 値域は 0,k_obm_per_voxel_bitmask_bit_count.
+        u32 probe_pos_index;
+        // 占有された表面Voxelまでの距離の格納, 更新.
+        u32 distance_to_surface_voxel;
     };
 
     
@@ -107,12 +108,12 @@ namespace ngl::render::app
             pso_clear_voxel_  = CreateComputePSO("ssvg/clear_voxel_cs.hlsl");
             pso_begin_update_ = CreateComputePSO("ssvg/begin_update_cs.hlsl");
             pso_voxelize_     = CreateComputePSO("ssvg/voxelize_pass_cs.hlsl");
-            pso_coarse_probe_update_ = CreateComputePSO("ssvg/coarse_probe_update_cs.hlsl");
-            pso_visible_probe_update_ = CreateComputePSO("ssvg/visible_probe_update_cs.hlsl");
-            pso_visible_probe_post_update_ = CreateComputePSO("ssvg/visible_probe_post_update_cs.hlsl");
+            pso_probe_common_update_ = CreateComputePSO("ssvg/probe_common_update_cs.hlsl");
+            pso_coarse_probe_update_ = CreateComputePSO("ssvg/coarse_probe_sky_visibility_sample_cs.hlsl");
+            pso_visible_probe_update_ = CreateComputePSO("ssvg/visible_probe_sky_visibility_sample_cs.hlsl");
+            pso_visible_probe_post_update_ = CreateComputePSO("ssvg/visible_probe_sky_visibility_sample_store_cs.hlsl");
             pso_generate_visible_voxel_indirect_arg_ = CreateComputePSO("ssvg/generate_visible_voxel_indirect_arg_cs.hlsl");
 
-            pso_coarse_voxel_update_old_ = CreateComputePSO("ssvg/coarse_voxel_update_old_cs.hlsl");// 旧バージョン検証.
             pso_debug_visualize_ = CreateComputePSO("ssvg/debug_util/voxel_debug_visualize_cs.hlsl");
             
             {
@@ -414,6 +415,22 @@ namespace ngl::render::app
 
                 visible_voxel_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::IndirectArgument);
             }
+            // Common Update.
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ProbeCommonUpdate");
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_probe_common_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                pso_probe_common_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                pso_probe_common_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
+                pso_probe_common_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
+
+                p_command_list->SetPipelineState(pso_probe_common_update_.Get());
+                p_command_list->SetDescriptorSet(pso_probe_common_update_.Get(), &desc_set);
+                pso_probe_common_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);
+
+                p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
+            }
             // Visible Voxel Update Pass.
             {
                 {
@@ -424,7 +441,9 @@ namespace ngl::render::app
                     pso_visible_probe_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_visible_probe_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
                     pso_visible_probe_update_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
-                    pso_visible_probe_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
+
+                    pso_visible_probe_update_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
+
                     pso_visible_probe_update_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
                     pso_visible_probe_update_->SetView(&desc_set, "RWUpdateProbeWork", visible_voxel_update_probe_.uav.Get());
 
@@ -435,7 +454,6 @@ namespace ngl::render::app
 
 
                     p_command_list->ResourceUavBarrier(visible_voxel_update_probe_.buffer.Get());
-                    p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
                 }
                 if(1)
                 {
@@ -466,7 +484,9 @@ namespace ngl::render::app
                     pso_coarse_probe_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_coarse_probe_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
                     pso_coarse_probe_update_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
-                    pso_coarse_probe_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
+
+                    pso_coarse_probe_update_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
+
                     pso_coarse_probe_update_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
 
                     p_command_list->SetPipelineState(pso_coarse_probe_update_.Get());
@@ -475,7 +495,7 @@ namespace ngl::render::app
                     pso_coarse_probe_update_->DispatchHelper(p_command_list, (voxel_count + (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT - 1)) / FRAME_UPDATE_ALL_PROBE_SKIP_COUNT, 1, 1);
 
 
-                    p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
+                    p_command_list->ResourceUavBarrier(probe_skyvisibility_.texture.Get());
                 }
             }
         }

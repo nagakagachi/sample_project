@@ -38,12 +38,12 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_clear_voxel_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_begin_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_voxelize_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_probe_common_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_coarse_probe_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_visible_probe_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_visible_probe_post_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_generate_visible_voxel_indirect_arg_ = {};
 
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_coarse_voxel_update_old_ = {};// 旧バージョン検証.
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_debug_visualize_ = {};
         ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_debug_obm_voxel_ = {};
 

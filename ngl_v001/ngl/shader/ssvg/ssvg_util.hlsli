@@ -29,11 +29,10 @@ ssvg_util.hlsli
 
     #define k_per_probe_texel_count (k_probe_octmap_width*k_probe_octmap_width)
 
-
     // 可視Probe更新時のスキップ数. 0でスキップせずに可視Probeバッファのすべての要素を処理する. 1で1つ飛ばしでスキップ(半分).
     #define FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT 0
     // Probe全体更新のスキップ数. 0でスキップせずにProbeバッファのすべての要素を処理する. 1で1つ飛ばしでスキップ(半分).
-    #define FRAME_UPDATE_ALL_PROBE_SKIP_COUNT 60
+    #define FRAME_UPDATE_ALL_PROBE_SKIP_COUNT 16
 
 
     // シェーダとCppで一致させる.
@@ -41,8 +40,10 @@ ssvg_util.hlsli
     // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.
     struct CoarseVoxelData
     {
-        uint probe_pos_index;   // ObmVoxel内部でのプローブ位置インデックス. 0は無効, probe_pos_index-1 が実際のインデックス. 値域は 0,k_obm_per_voxel_bitmask_bit_count.
-        uint reserved;          // 予備.
+        // ObmVoxel内部でのプローブ位置の線形インデックス. 0は無効, probe_pos_index-1 が実際のインデックス. 値域は 0,k_obm_per_voxel_bitmask_bit_count.
+        uint probe_pos_index;
+        // 占有された表面Voxelまでの距離の格納, 更新.
+        uint distance_to_surface_voxel;
     };
 
 
@@ -58,16 +59,18 @@ ssvg_util.hlsli
 
 //----------------------------------------------------------------------------------------------------
 // OccupancyBitmaskVoxel本体. ObmVoxel.
+// uint UniqueData + uint[brick数分] OccupancyBitMask.
+// UniqueData : 0bit:空ではないなら1, 1-31: 最後に可視状態になったフレーム番号. 
 Buffer<uint>		OccupancyBitmaskVoxel;
 RWBuffer<uint>		RWOccupancyBitmaskVoxel;
 
+// ObmVoxel毎の追加データ.
+// 
 StructuredBuffer<CoarseVoxelData>		CoarseVoxelBuffer;
 RWStructuredBuffer<CoarseVoxelData>		RWCoarseVoxelBuffer;
 
 Texture2D       		TexProbeSkyVisibility;
 RWTexture2D<float>		RWTexProbeSkyVisibility;
-//RWTexture2D<float4>		RWTexProbeSkyVisibility;
-
 
 Buffer<uint>		VisibleCoarseVoxelList;
 RWBuffer<uint>		RWVisibleCoarseVoxelList;
@@ -153,6 +156,28 @@ uint3 calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(uint bit_inde
 }
 
 
+// OBMのユニークデータレイアウトメモ.
+struct ObmVoxelUniqueData
+{
+    uint is_occupied;
+    uint last_visible_frame;
+};
+// 0 : からで無いなら1
+// 1-8 : 最後に可視状態になったフレーム番号. 0-255でループ.
+
+// OBMのユニークデータの構築.
+uint build_occupancy_bitmask_voxel_unique_data(ObmVoxelUniqueData data)
+{
+    // OBMのユニークデータレイアウトメモに則ってuintエンコード.
+    return (data.is_occupied & 0x1) | ((data.last_visible_frame & 0xff) << 1);
+}
+// OBMのユニークデータを展開.
+void parse_occupancy_bitmask_voxel_unique_data(out ObmVoxelUniqueData out_data, uint unique_data)
+{
+    // OBMのユニークデータレイアウトメモに則ってuintからでコード.
+    out_data.is_occupied = (unique_data >> 0) & 0x1;
+    out_data.last_visible_frame = (unique_data >> 1) & 0xff;
+}
 
 
 

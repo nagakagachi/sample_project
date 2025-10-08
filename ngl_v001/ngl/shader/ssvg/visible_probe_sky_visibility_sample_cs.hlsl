@@ -1,7 +1,7 @@
 
 #if 0
 
-visible_probe_update_cs.hlsl
+visible_probe_sky_visibility_sample_cs.hlsl
 
 #endif
 
@@ -10,4 +10,4 @@ visible_probe_update_cs.hlsl
 #define RAY_SAMPLE_COUNT_PER_VOXEL 8
 
 #define PROBE_UPDATE_TEMPORAL_RATE  (0.1)
-#include "probe_update_base.hlsli"
+#include "probe_sky_visibility_sample_base.hlsli"
