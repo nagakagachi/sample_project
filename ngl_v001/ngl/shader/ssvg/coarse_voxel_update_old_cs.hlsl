@@ -16,7 +16,7 @@ coarse_voxel_update_old_cs.hlsl
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 
 // DepthBufferに対してDispatch.
-[numthreads(128, 1, 1)]
+[numthreads(96, 1, 1)]
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,
 	uint3 gtid : SV_GroupThreadID,

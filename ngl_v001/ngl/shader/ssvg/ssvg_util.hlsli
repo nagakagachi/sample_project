@@ -380,11 +380,10 @@ float4 trace_ray_vs_obm_voxel_grid(
             const float3 mini = ((mapPos-ray_pos) + 0.5 - 0.5*float3(raySign)) * inv_dir;
             const float d = max(mini.x, max(mini.y, mini.z));
             const float3 intersect = ray_pos + ray_dir_ws*d;
-            float3 uv3d = intersect - mapPos;
 
-            // レイ始点がBrick内部に入っている場合の対応.
-            if (all(mapPos == floor(ray_pos)))
-                uv3d = ray_pos - mapPos;
+            // レイ始点がBrick内部に入っている場合のエッジケース対応.
+            const bool is_ray_origin_inner_voxel = all(mapPos == floor(ray_pos));
+            float3 uv3d = is_ray_origin_inner_voxel ? ray_pos - mapPos : intersect - mapPos;
 
             const int3 subp = trace_bitmask_brick(uv3d*k_obm_per_voxel_resolution, ray_dir_ws, inv_dir, stepMask, occupancy_bitmask_voxel, voxel_index);
             // obm bitmaskヒット.

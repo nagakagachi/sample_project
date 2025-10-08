@@ -66,6 +66,12 @@ void main_cs(
         // voxel_indexからtoroidal考慮したVoxelIDを計算する.
         int3 voxel_coord_toroidal = index_to_voxel_coord(voxel_index, cb_ssvg.base_grid_resolution);
         int3 voxel_coord = voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_ssvg.base_grid_resolution -cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution);
+        
+        // Probeサンプリングワークをクリア.
+        for(int i = 0; i < k_per_probe_texel_count; ++i)
+        {
+            shared_probe_octmap_accumulation[gindex * k_per_probe_texel_count + i] = float2(0.0, 0.0);
+        }
     #else
         const uint voxel_count = cb_ssvg.base_grid_resolution.x * cb_ssvg.base_grid_resolution.y * cb_ssvg.base_grid_resolution.z;
         // 更新対象インデックスをスキップ.
@@ -133,17 +139,6 @@ void main_cs(
     }
     // CoarseVoxelの固有データ書き込み.
     RWCoarseVoxelBuffer[voxel_index] = coarse_voxel_data;
-
-
-
-    #if INDIRECT_MODE
-        // Probeサンプリングワークをクリア.
-        for(int i = 0; i < k_per_probe_texel_count; ++i)
-        {
-            shared_probe_octmap_accumulation[gindex * k_per_probe_texel_count + i] = float2(0.0, 0.0);
-        }
-    #endif
-
 
     // Probeレイサンプル.
     {
