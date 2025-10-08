@@ -33,15 +33,30 @@ namespace ngl::render::app
     // それぞれのOctMapの+側境界に1テクセルボーダーを追加することで全方向に1テクセルのマージンを確保する.
     #define k_probe_octmap_width_with_border (k_probe_octmap_width+2)
 
+    #define k_per_probe_texel_count (k_probe_octmap_width*k_probe_octmap_width)
 
 
+    // 可視Probe更新時のスキップ数. 0でスキップせずに可視Probeバッファのすべての要素を処理する. 1で1つ飛ばしでスキップ(半分).
+    #define FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT 0
+    // Probe全体更新のスキップ数. 0でスキップせずにProbeバッファのすべての要素を処理する. 1で1つ飛ばしでスキップ(半分).
+    #define FRAME_UPDATE_ALL_PROBE_SKIP_COUNT 60
+
+
+    // シェーダとCppで一致させる.
     // CoarseVoxelバッファ. ObmVoxel一つ毎の外部データ.
+    // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.
     struct CoarseVoxelData
     {
         u32 probe_pos_index;   // ObmVoxel内部でのプローブ位置インデックス. 0は無効, probe_pos_index-1 が実際のインデックス. 値域は 0,k_obm_per_voxel_bitmask_bit_count.
         u32 reserved;          // 予備.
     };
+
+    
     static constexpr size_t k_sizeof_CoarseVoxelData = sizeof(CoarseVoxelData);
+
+    static constexpr u32 k_max_update_probe_work_count = 1024;
+
+
 
     // デバッグ.
     bool SsVg::dbg_view_enable_ = false;
@@ -68,6 +83,8 @@ namespace ngl::render::app
         const u32 voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
         probe_atlas_texture_base_width_ = static_cast<u32>(std::ceil(std::sqrt(static_cast<float>(voxel_count))));
 
+        update_probe_work_count_= std::clamp(voxel_count / 50u, 64u, k_max_update_probe_work_count);
+        //update_probe_work_count_= 1;
 
         // Helper function to create compute shader PSO
         auto CreateComputePSO = [&](const char* shader_path) -> ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep>
@@ -92,6 +109,7 @@ namespace ngl::render::app
             pso_voxelize_     = CreateComputePSO("ssvg/voxelize_pass_cs.hlsl");
             pso_coarse_probe_update_ = CreateComputePSO("ssvg/coarse_probe_update_cs.hlsl");
             pso_visible_probe_update_ = CreateComputePSO("ssvg/visible_probe_update_cs.hlsl");
+            pso_visible_probe_post_update_ = CreateComputePSO("ssvg/visible_probe_post_update_cs.hlsl");
             pso_generate_visible_voxel_indirect_arg_ = CreateComputePSO("ssvg/generate_visible_voxel_indirect_arg_cs.hlsl");
 
             pso_coarse_voxel_update_old_ = CreateComputePSO("ssvg/coarse_voxel_update_old_cs.hlsl");// 旧バージョン検証.
@@ -148,7 +166,7 @@ namespace ngl::render::app
         {
             occupancy_bitmask_voxel_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
-                                               .element_byte_size = 4,
+                                               .element_byte_size = sizeof(uint32_t),
                                                .element_count     = voxel_count * k_obm_per_voxel_u32_count,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
@@ -158,8 +176,8 @@ namespace ngl::render::app
         {
             visible_voxel_list_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
-                                               .element_byte_size = 4,
-                                               .element_count     = voxel_count+1,// 0番目にアトミックカウンタ用途.
+                                               .element_byte_size = sizeof(uint32_t),
+                                               .element_count     = update_probe_work_count_+1,// 0番目にアトミックカウンタ用途.
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
@@ -175,6 +193,19 @@ namespace ngl::render::app
                                                .heap_type = rhi::EResourceHeapType::Default},
                                            rhi::EResourceFormat::Format_R32_UINT);
         }
+        {
+            // 1F更新可能プローブ数分の k_probe_octmap_width*k_probe_octmap_width テクセル分バッファ.
+            visible_voxel_update_probe_.InitializeAsTyped(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(float),
+                                               .element_count     = update_probe_work_count_ * (k_probe_octmap_width*k_probe_octmap_width),
+
+                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default},
+                                           rhi::EResourceFormat::Format_R32_FLOAT);
+        }
+
+
         {
             rhi::TextureDep::Desc desc = {};
             desc.type = rhi::ETextureType::Texture2D;
@@ -259,7 +290,8 @@ namespace ngl::render::app
             int probe_atlas_texture_base_width;
 
             math::Vec3i voxel_dispatch_thread_group_count;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
-            int dummy1;
+
+            int update_probe_work_count;// 更新プローブ用のワークサイズ.
 
             math::Vec2i tex_hw_depth_size;
             u32 frame_count;
@@ -290,6 +322,8 @@ namespace ngl::render::app
             p->cell_size_inv    = 1.0f / cell_size_;
 
             p->voxel_dispatch_thread_group_count = math::Vec3i(pso_visible_probe_update_->GetThreadGroupSizeX(), pso_visible_probe_update_->GetThreadGroupSizeY(), pso_visible_probe_update_->GetThreadGroupSizeZ());
+
+            p->update_probe_work_count = update_probe_work_count_;
 
             p->tex_hw_depth_size = hw_depth_size;
 
@@ -392,6 +426,7 @@ namespace ngl::render::app
                     pso_visible_probe_update_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
                     pso_visible_probe_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
                     pso_visible_probe_update_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
+                    pso_visible_probe_update_->SetView(&desc_set, "RWUpdateProbeWork", visible_voxel_update_probe_.uav.Get());
 
                     p_command_list->SetPipelineState(pso_visible_probe_update_.Get());
                     p_command_list->SetDescriptorSet(pso_visible_probe_update_.Get(), &desc_set);
@@ -399,12 +434,30 @@ namespace ngl::render::app
                     p_command_list->DispatchIndirect(visible_voxel_indirect_arg_.buffer.Get());// こちらは可視VoxelのIndirect.
 
 
-                    p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
+                    p_command_list->ResourceUavBarrier(visible_voxel_update_probe_.buffer.Get());
                     p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
+                }
+                if(1)
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "VisiblePostUpdate");
+
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    pso_visible_probe_post_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                    pso_visible_probe_post_update_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
+                    pso_visible_probe_post_update_->SetView(&desc_set, "UpdateProbeWork", visible_voxel_update_probe_.srv.Get());
+                    pso_visible_probe_post_update_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
+
+                    p_command_list->SetPipelineState(pso_visible_probe_post_update_.Get());
+                    p_command_list->SetDescriptorSet(pso_visible_probe_post_update_.Get(), &desc_set);
+
+                    p_command_list->DispatchIndirect(visible_voxel_indirect_arg_.buffer.Get());// こちらは可視VoxelのIndirect.
+
+                    p_command_list->ResourceUavBarrier(probe_skyvisibility_.texture.Get());
                 }
             }
             // Coarse Voxel Update Pass.
             {
+                if(1)
                 {
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "CoarseUpdate");
 
@@ -418,10 +471,10 @@ namespace ngl::render::app
 
                     p_command_list->SetPipelineState(pso_coarse_probe_update_.Get());
                     p_command_list->SetDescriptorSet(pso_coarse_probe_update_.Get(), &desc_set);
-                    pso_coarse_probe_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);
+                    // 全Probe更新のスキップ要素分考慮したDispatch.
+                    pso_coarse_probe_update_->DispatchHelper(p_command_list, (voxel_count + (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT - 1)) / FRAME_UPDATE_ALL_PROBE_SKIP_COUNT, 1, 1);
 
 
-                    p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
                     p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
                 }
             }

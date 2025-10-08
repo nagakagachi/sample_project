@@ -27,6 +27,15 @@ ssvg_util.hlsli
     // それぞれのOctMapの+側境界に1テクセルボーダーを追加することで全方向に1テクセルのマージンを確保する.
     #define k_probe_octmap_width_with_border (k_probe_octmap_width+2)
 
+    #define k_per_probe_texel_count (k_probe_octmap_width*k_probe_octmap_width)
+
+
+    // 可視Probe更新時のスキップ数. 0でスキップせずに可視Probeバッファのすべての要素を処理する. 1で1つ飛ばしでスキップ(半分).
+    #define FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT 0
+    // Probe全体更新のスキップ数. 0でスキップせずにProbeバッファのすべての要素を処理する. 1で1つ飛ばしでスキップ(半分).
+    #define FRAME_UPDATE_ALL_PROBE_SKIP_COUNT 60
+
+
     // シェーダとCppで一致させる.
     // CoarseVoxelバッファ. ObmVoxel一つ毎の外部データ.
     // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.
@@ -35,6 +44,17 @@ ssvg_util.hlsli
         uint probe_pos_index;   // ObmVoxel内部でのプローブ位置インデックス. 0は無効, probe_pos_index-1 が実際のインデックス. 値域は 0,k_obm_per_voxel_bitmask_bit_count.
         uint reserved;          // 予備.
     };
+
+
+
+
+// Probe更新系のCS ThreadGroupSize. Indirectのため共有ヘッダに定義.
+// SharedMemのサイズ制限のため調整.
+#define PROBE_UPDATE_THREAD_GROUP_SIZE 96
+
+
+
+
 
 //----------------------------------------------------------------------------------------------------
 // OccupancyBitmaskVoxel本体. ObmVoxel.
@@ -51,6 +71,10 @@ RWTexture2D<float>		RWTexProbeSkyVisibility;
 
 Buffer<uint>		VisibleCoarseVoxelList;
 RWBuffer<uint>		RWVisibleCoarseVoxelList;
+
+
+Buffer<float>		UpdateProbeWork;
+RWBuffer<float>		RWUpdateProbeWork;
 //----------------------------------------------------------------------------------------------------
 
 
@@ -151,7 +175,8 @@ struct SsvgParam
 
 
     int3 voxel_dispatch_thread_group_count;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
-    int dummy1;
+    
+    int update_probe_work_count;// 更新プローブ用のワークサイズ.
 
     int2 tex_hw_depth_size;
     uint frame_count;

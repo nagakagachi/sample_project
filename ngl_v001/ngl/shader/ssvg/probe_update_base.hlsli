@@ -9,13 +9,19 @@ probe_update_base.hlsli
 
 #endif
 
+#ifndef NGL_SHADER_SSVG_PROBE_UPDATE_BASE_HLSLI
+#define NGL_SHADER_SSVG_PROBE_UPDATE_BASE_HLSLI
+
+
+#define ENABLE_SHARED_MEMORY_ACCUM_OPTIMIZE
+
 
 #include "ssvg_util.hlsli"
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
 
 
-// Indirect版にする場合はこの定義をしてからIncludeする.
+// 可視Probeに対するIndirect処理の場合はこの定義をしてからIncludeする.
 #if !defined(INDIRECT_MODE)
     #define INDIRECT_MODE 0
 #endif
@@ -25,19 +31,21 @@ probe_update_base.hlsli
     #define RAY_SAMPLE_COUNT_PER_VOXEL 8
 #endif
 
-#if !defined(FRAME_UPDATE_PROBE_SKIP_COUNT)
-    // Probe更新時のスキップ要素数. 0で全更新, 1で1つ飛ばしでスキップ(半分).
-    #define FRAME_UPDATE_PROBE_SKIP_COUNT 0
-#endif
 
 #if !defined(PROBE_UPDATE_TEMPORAL_RATE)
     #define PROBE_UPDATE_TEMPORAL_RATE  (0.1)
 #endif
 
+
+
+#if INDIRECT_MODE
+    groupshared float2 shared_probe_octmap_accumulation[PROBE_UPDATE_THREAD_GROUP_SIZE * k_per_probe_texel_count];
+#endif
+
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 
 // DepthBufferに対してDispatch.
-[numthreads(128, 1, 1)]
+[numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,
 	uint3 gtid : SV_GroupThreadID,
@@ -50,7 +58,7 @@ void main_cs(
     #if INDIRECT_MODE
         // VisibleCoarseVoxelListを利用するバージョン.
         const uint visible_voxel_count = VisibleCoarseVoxelList[0]; // 0番目にアトミックカウンタが入っている.
-        const uint update_element_index = (dtid.x * (FRAME_UPDATE_PROBE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(FRAME_UPDATE_PROBE_SKIP_COUNT+1)));
+        const uint update_element_index = (dtid.x * (FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT+1)));
         if(visible_voxel_count < update_element_index)
             return;
 
@@ -61,7 +69,7 @@ void main_cs(
     #else
         const uint voxel_count = cb_ssvg.base_grid_resolution.x * cb_ssvg.base_grid_resolution.y * cb_ssvg.base_grid_resolution.z;
         // 更新対象インデックスをスキップ.
-        const uint update_element_id = (dtid.x * (FRAME_UPDATE_PROBE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(FRAME_UPDATE_PROBE_SKIP_COUNT+1)));
+        const uint update_element_id = (dtid.x * (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(FRAME_UPDATE_ALL_PROBE_SKIP_COUNT+1)));
         if(voxel_count <= update_element_id)
             return;
 
@@ -127,6 +135,17 @@ void main_cs(
     RWCoarseVoxelBuffer[voxel_index] = coarse_voxel_data;
 
 
+
+    #if INDIRECT_MODE
+        // Probeサンプリングワークをクリア.
+        for(int i = 0; i < k_per_probe_texel_count; ++i)
+        {
+            shared_probe_octmap_accumulation[gindex * k_per_probe_texel_count + i] = float2(0.0, 0.0);
+        }
+    #endif
+
+
+    // Probeレイサンプル.
     {
     #if 1 < RAY_SAMPLE_COUNT_PER_VOXEL
         for(int sample_index = 0; sample_index < RAY_SAMPLE_COUNT_PER_VOXEL; ++sample_index)
@@ -152,7 +171,7 @@ void main_cs(
             const float3 sample_ray_origin = probe_sample_pos_ws;            
                 
             // SkyVisibility raycast.
-            const float trace_distance = 200.0;
+            const float trace_distance = 10.0;
             int hit_voxel_index = -1;
             // リファクタリング版.
             float4 curr_ray_t_ws = trace_ray_vs_obm_voxel_grid(
@@ -160,20 +179,38 @@ void main_cs(
                 sample_ray_origin, sample_ray_dir, trace_distance, 
                 cb_ssvg.grid_min_pos, cb_ssvg.cell_size, cb_ssvg.base_grid_resolution,
                 cb_ssvg.grid_toroidal_offset, OccupancyBitmaskVoxel);
-            {
-                // SkyVisibilityの方向平均を更新.
-                const float sky_visibility = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
-
-                // ProbeOctMapの更新.
-                const float2 octmap_uv = OctEncode(sample_ray_dir);
-                const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.probe_atlas_texture_base_width, voxel_index / cb_ssvg.probe_atlas_texture_base_width);
-                const uint2 octmap_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + uint2(octmap_uv*k_probe_octmap_width);
-
-                float store_dist = (0.0 > curr_ray_t_ws.x) ? 1.0 : curr_ray_t_ws.x/trace_distance;
-                RWTexProbeSkyVisibility[octmap_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_texel_pos], sky_visibility, PROBE_UPDATE_TEMPORAL_RATE);
-                //RWTexProbeSkyVisibility[octmap_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_texel_pos], float4(sky_visibility, store_dist, store_dist*store_dist, 0), k_probe_update_rate);
-            }
+                
+            // SkyVisibilityの方向平均を更新.
+            const float sky_visibility = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
+            // ProbeOctMapの更新.
+            const float2 octmap_uv = OctEncode(sample_ray_dir);
+            const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.probe_atlas_texture_base_width, voxel_index / cb_ssvg.probe_atlas_texture_base_width);
+            
+            #if INDIRECT_MODE
+                const uint2 octmap_texel_pos = uint2(octmap_uv * k_probe_octmap_width);
+                // ワークにSharedMemを使用する.
+                shared_probe_octmap_accumulation[gindex * k_per_probe_texel_count + (octmap_texel_pos.x + octmap_texel_pos.y * k_probe_octmap_width)] += float2(sky_visibility, 1.0);
+            #else
+                // 境界部込のテクセル位置.
+                const uint2 octmap_atlas_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + uint2(octmap_uv * k_probe_octmap_width);
+                RWTexProbeSkyVisibility[octmap_atlas_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_atlas_texel_pos], sky_visibility, PROBE_UPDATE_TEMPORAL_RATE);
+            #endif
         }
     }
 
+
+    #if INDIRECT_MODE
+        // SharedMemの内容をバッファへ反映.
+        for(int i = 0; i < k_per_probe_texel_count; ++i)
+        {
+            const int smi = gindex * k_per_probe_texel_count + i;
+            // サンプルが無い場合は負数を設定しておく.
+            const float sky_visibility = (0.0!=shared_probe_octmap_accumulation[smi].y)? (shared_probe_octmap_accumulation[smi].x / shared_probe_octmap_accumulation[smi].y) : -1.0;
+
+            RWUpdateProbeWork[update_element_index * k_per_probe_texel_count + i] = sky_visibility;
+        }
+    #endif
 }
+
+
+#endif //NGL_SHADER_SSVG_PROBE_UPDATE_BASE_HLSLI

@@ -175,7 +175,16 @@ void main_cs(
                 {
                     int current_visible_count;
                     InterlockedAdd(RWVisibleCoarseVoxelList[0], 1, current_visible_count);
-                    RWVisibleCoarseVoxelList[current_visible_count + 1] = voxel_index;
+                    if(cb_ssvg.update_probe_work_count > current_visible_count)
+                    {
+                        // 追加可能であれば登録. 登録位置はindex0のカウンタを除いた位置.
+                        RWVisibleCoarseVoxelList[current_visible_count + 1] = voxel_index;
+                    }
+                    else
+                    {
+                        // サイズオーバーの場合はカウンタを戻す.
+                        InterlockedAdd(RWVisibleCoarseVoxelList[0], -1);
+                    }
                 }
             }
         }

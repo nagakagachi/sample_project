@@ -40,6 +40,7 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_voxelize_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_coarse_probe_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_visible_probe_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_visible_probe_post_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_generate_visible_voxel_indirect_arg_ = {};
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_coarse_voxel_update_old_ = {};// 旧バージョン検証.
@@ -66,6 +67,7 @@ namespace ngl::render::app
         float   cell_size_ = 3.0f;
         u32     probe_atlas_texture_base_width_ = {};
 
+        ngl::u32     update_probe_work_count_ = {};
 
         ComputeBufferSet coarse_voxel_data_ = {};
         ComputeBufferSet occupancy_bitmask_voxel_ = {};
@@ -73,6 +75,8 @@ namespace ngl::render::app
         
         ComputeBufferSet visible_voxel_list_ = {};
         ComputeBufferSet visible_voxel_indirect_arg_ = {};
+        
+        ComputeBufferSet visible_voxel_update_probe_ = {};
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
     };

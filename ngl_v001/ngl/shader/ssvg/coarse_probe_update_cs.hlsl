@@ -7,8 +7,7 @@ coarse_probe_update_cs.hlsl
 
 
 #define INDIRECT_MODE 0
-#define RAY_SAMPLE_COUNT_PER_VOXEL 2
-#define FRAME_UPDATE_PROBE_SKIP_COUNT (120)
+#define RAY_SAMPLE_COUNT_PER_VOXEL 1
 
 #define PROBE_UPDATE_TEMPORAL_RATE  (0.5)
 #include "probe_update_base.hlsli"
