@@ -145,7 +145,7 @@ void main_cs(
             // 以下でVoxel固有データ部を更新しているが, 今後実装予定の動的オブジェクトによる占有度除去に伴う処理でも更新が必要な点に注意.
 
             // 非Emptyフラグを0bit目, それ以降にVisible判定フレーム番号を書き込み.
-            const uint visible_check_frame_count = cb_ssvg.frame_count&0xff;
+            const uint visible_check_frame_count = mask_occupancy_bitmask_voxel_unique_data_last_visible_frame(cb_ssvg.frame_count);
             ObmVoxelUniqueData new_unique_data;
             new_unique_data.is_occupied = 1;
             new_unique_data.last_visible_frame = visible_check_frame_count;
@@ -157,7 +157,7 @@ void main_cs(
             ObmVoxelUniqueData old_unique_data;
             parse_occupancy_bitmask_voxel_unique_data(old_unique_data, old_unique_bits);
 
-            // 交換前の値でVisible判定フレーム番号が現在フレームと異なるならリストへ登録.
+            // 交換前の値でVisible判定フレーム番号が現在フレームと異なるならリストへ登録. 別スレッドで同じVoxelを処理している場合の重複を除去する.
             if(visible_check_frame_count !=  old_unique_data.last_visible_frame)
             {
                 int current_visible_count;

@@ -108,11 +108,11 @@ namespace ngl::render::app
             pso_clear_voxel_  = CreateComputePSO("ssvg/clear_voxel_cs.hlsl");
             pso_begin_update_ = CreateComputePSO("ssvg/begin_update_cs.hlsl");
             pso_voxelize_     = CreateComputePSO("ssvg/voxelize_pass_cs.hlsl");
-            pso_probe_common_update_ = CreateComputePSO("ssvg/probe_common_update_cs.hlsl");
-            pso_coarse_probe_update_ = CreateComputePSO("ssvg/coarse_probe_sky_visibility_sample_cs.hlsl");
-            pso_visible_probe_update_ = CreateComputePSO("ssvg/visible_probe_sky_visibility_sample_cs.hlsl");
-            pso_visible_probe_post_update_ = CreateComputePSO("ssvg/visible_probe_sky_visibility_sample_store_cs.hlsl");
             pso_generate_visible_voxel_indirect_arg_ = CreateComputePSO("ssvg/generate_visible_voxel_indirect_arg_cs.hlsl");
+            pso_probe_common_update_ = CreateComputePSO("ssvg/probe_common_update_cs.hlsl");
+            pso_visible_probe_sky_visibility_sample_ = CreateComputePSO("ssvg/visible_probe_sky_visibility_sample_cs.hlsl");
+            pso_visible_probe_sky_visibility_apply_ = CreateComputePSO("ssvg/visible_probe_sky_visibility_sample_store_cs.hlsl");
+            pso_coarse_probe_sky_visibility_sample_and_apply_ = CreateComputePSO("ssvg/coarse_probe_sky_visibility_sample_cs.hlsl");
 
             pso_debug_visualize_ = CreateComputePSO("ssvg/debug_util/voxel_debug_visualize_cs.hlsl");
             
@@ -322,7 +322,7 @@ namespace ngl::render::app
             p->cell_size       = cell_size_;
             p->cell_size_inv    = 1.0f / cell_size_;
 
-            p->voxel_dispatch_thread_group_count = math::Vec3i(pso_visible_probe_update_->GetThreadGroupSizeX(), pso_visible_probe_update_->GetThreadGroupSizeY(), pso_visible_probe_update_->GetThreadGroupSizeZ());
+            p->voxel_dispatch_thread_group_count = math::Vec3i(pso_visible_probe_sky_visibility_sample_->GetThreadGroupSizeX(), pso_visible_probe_sky_visibility_sample_->GetThreadGroupSizeY(), pso_visible_probe_sky_visibility_sample_->GetThreadGroupSizeZ());
 
             p->update_probe_work_count = update_probe_work_count_;
 
@@ -382,7 +382,7 @@ namespace ngl::render::app
             }
             // Voxelization Pass.
             {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ObmGeneration");
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ObmVoxelGeneration");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_voxelize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
@@ -434,21 +434,21 @@ namespace ngl::render::app
             // Visible Voxel Update Pass.
             {
                 {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "VisibleUpdate");
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ProbeSkyVisibilitySample");
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_visible_probe_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-                    pso_visible_probe_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_visible_probe_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
-                    pso_visible_probe_update_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
+                    pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                    pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                    pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
+                    pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
 
-                    pso_visible_probe_update_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
+                    pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
 
-                    pso_visible_probe_update_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
-                    pso_visible_probe_update_->SetView(&desc_set, "RWUpdateProbeWork", visible_voxel_update_probe_.uav.Get());
+                    pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
+                    pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "RWUpdateProbeWork", visible_voxel_update_probe_.uav.Get());
 
-                    p_command_list->SetPipelineState(pso_visible_probe_update_.Get());
-                    p_command_list->SetDescriptorSet(pso_visible_probe_update_.Get(), &desc_set);
+                    p_command_list->SetPipelineState(pso_visible_probe_sky_visibility_sample_.Get());
+                    p_command_list->SetDescriptorSet(pso_visible_probe_sky_visibility_sample_.Get(), &desc_set);
 
                     p_command_list->DispatchIndirect(visible_voxel_indirect_arg_.buffer.Get());// こちらは可視VoxelのIndirect.
 
@@ -457,16 +457,16 @@ namespace ngl::render::app
                 }
                 if(1)
                 {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "VisiblePostUpdate");
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "VisibleProbeSkyVisibilityApply");
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_visible_probe_post_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_visible_probe_post_update_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
-                    pso_visible_probe_post_update_->SetView(&desc_set, "UpdateProbeWork", visible_voxel_update_probe_.srv.Get());
-                    pso_visible_probe_post_update_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
+                    pso_visible_probe_sky_visibility_apply_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                    pso_visible_probe_sky_visibility_apply_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
+                    pso_visible_probe_sky_visibility_apply_->SetView(&desc_set, "UpdateProbeWork", visible_voxel_update_probe_.srv.Get());
+                    pso_visible_probe_sky_visibility_apply_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
 
-                    p_command_list->SetPipelineState(pso_visible_probe_post_update_.Get());
-                    p_command_list->SetDescriptorSet(pso_visible_probe_post_update_.Get(), &desc_set);
+                    p_command_list->SetPipelineState(pso_visible_probe_sky_visibility_apply_.Get());
+                    p_command_list->SetDescriptorSet(pso_visible_probe_sky_visibility_apply_.Get(), &desc_set);
 
                     p_command_list->DispatchIndirect(visible_voxel_indirect_arg_.buffer.Get());// こちらは可視VoxelのIndirect.
 
@@ -477,22 +477,22 @@ namespace ngl::render::app
             {
                 if(1)
                 {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "CoarseUpdate");
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "CoarseProbeSkyVisibilitySampleAndApply");
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_coarse_probe_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-                    pso_coarse_probe_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_coarse_probe_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
-                    pso_coarse_probe_update_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
+                    pso_coarse_probe_sky_visibility_sample_and_apply_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                    pso_coarse_probe_sky_visibility_sample_and_apply_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                    pso_coarse_probe_sky_visibility_sample_and_apply_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
+                    pso_coarse_probe_sky_visibility_sample_and_apply_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
 
-                    pso_coarse_probe_update_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
+                    pso_coarse_probe_sky_visibility_sample_and_apply_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
 
-                    pso_coarse_probe_update_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
+                    pso_coarse_probe_sky_visibility_sample_and_apply_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
 
-                    p_command_list->SetPipelineState(pso_coarse_probe_update_.Get());
-                    p_command_list->SetDescriptorSet(pso_coarse_probe_update_.Get(), &desc_set);
+                    p_command_list->SetPipelineState(pso_coarse_probe_sky_visibility_sample_and_apply_.Get());
+                    p_command_list->SetDescriptorSet(pso_coarse_probe_sky_visibility_sample_and_apply_.Get(), &desc_set);
                     // 全Probe更新のスキップ要素分考慮したDispatch.
-                    pso_coarse_probe_update_->DispatchHelper(p_command_list, (voxel_count + (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT - 1)) / FRAME_UPDATE_ALL_PROBE_SKIP_COUNT, 1, 1);
+                    pso_coarse_probe_sky_visibility_sample_and_apply_->DispatchHelper(p_command_list, (voxel_count + (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT - 1)) / FRAME_UPDATE_ALL_PROBE_SKIP_COUNT, 1, 1);
 
 
                     p_command_list->ResourceUavBarrier(probe_skyvisibility_.texture.Get());

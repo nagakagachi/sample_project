@@ -41,7 +41,8 @@ void main_cs(
     const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
     const uint obm_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
 
-    // Probeの埋まり回避のための位置探索.
+
+    // Voxel内のProbe位置の更新.
     // Obmセルを参照して空のセルから選択する.
     int candidate_probe_pos_bit_cell_index = -1;
     float candidate_probe_pos_dist_sq = 1e20;
@@ -73,8 +74,9 @@ void main_cs(
         }
     }
 
-/*
-    // 近傍Voxelを参照する更新.
+
+    /*
+        // 近傍Voxelを参照する更新.
         const int3 neighbor_offset[6] = {
             int3(-1,0,0), int3(1,0,0),
             int3(0,-1,0), int3(0,1,0),
@@ -100,7 +102,8 @@ void main_cs(
                 }
             }
         }
-*/
+    */
+
     
     // CoarseVoxelの固有データ読み取り. 更新
     CoarseVoxelData coarse_voxel_data = RWCoarseVoxelBuffer[voxel_index];
