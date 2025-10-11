@@ -49,7 +49,7 @@ void main_cs(
         if(is_invalidate_area)
         {
             // 移動によってシフトしてきた無効領域.
-            RWCoarseVoxelBuffer[dtid.x] = (CoarseVoxelData)0; //empty_coarse_voxel_data();
+            RWCoarseVoxelBuffer[dtid.x] = (ObmVoxelOptionalData)0; //empty_coarse_voxel_data();
             clear_voxel_data(RWOccupancyBitmaskVoxel, dtid.x);
         }
     }

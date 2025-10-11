@@ -99,7 +99,7 @@ void main_cs(
     const uint obm_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
 
     // 前パスで格納された線形インデックスからプローブ位置(レイ原点)を計算.
-    CoarseVoxelData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
+    ObmVoxelOptionalData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
     // VoxelのMin位置.
     float3 probe_sample_pos_ws = float3(voxel_coord) * cb_ssvg.cell_size + cb_ssvg.grid_min_pos;
     if(0 < coarse_voxel_data.probe_pos_code)

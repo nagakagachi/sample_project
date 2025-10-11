@@ -23,7 +23,7 @@ namespace ngl::render::app
     #undef NGL_SHADER_CPP_INCLUDE
 
 
-    static constexpr size_t k_sizeof_CoarseVoxelData = sizeof(CoarseVoxelData);
+    static constexpr size_t k_sizeof_CoarseVoxelData = sizeof(ObmVoxelOptionalData);
     static constexpr u32 k_max_update_probe_work_count = 1024;
 
     // デバッグ.
@@ -125,7 +125,7 @@ namespace ngl::render::app
         {
             coarse_voxel_data_.InitializeAsStructured(p_device,
                                            rhi::BufferDep::Desc{
-                                               .element_byte_size = sizeof(CoarseVoxelData),
+                                               .element_byte_size = sizeof(ObmVoxelOptionalData),
                                                .element_count     = base_resolution_.x * base_resolution_.y * base_resolution_.z,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,

@@ -22,7 +22,7 @@ void main_cs(
     uint voxel_count = cb_ssvg.base_grid_resolution.x * cb_ssvg.base_grid_resolution.y * cb_ssvg.base_grid_resolution.z;
     if(dtid.x < voxel_count)
     {
-        RWCoarseVoxelBuffer[dtid.x] = (CoarseVoxelData)0; //empty_coarse_voxel_data();
+        RWCoarseVoxelBuffer[dtid.x] = (ObmVoxelOptionalData)0; //empty_coarse_voxel_data();
 
         clear_voxel_data(RWOccupancyBitmaskVoxel, dtid.x);
 

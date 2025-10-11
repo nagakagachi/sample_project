@@ -78,7 +78,7 @@ VS_OUTPUT main_vs(VS_INPUT input)
     }
     */
     
-    const CoarseVoxelData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
+    const ObmVoxelOptionalData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
     const bool is_invalid_probe_local_pos = (0 == coarse_voxel_data.probe_pos_code);
     const int3 probe_coord_in_voxel = (is_invalid_probe_local_pos) ? int3(0,0,0) : calc_obm_bitcell_pos_from_bit_index(calc_obm_probe_bitcell_index(coarse_voxel_data));
     const float3 probe_pos_ws = (float3(voxel_coord) + (float3(probe_coord_in_voxel) + 0.5) / float(k_obm_per_voxel_resolution)) * cb_ssvg.cell_size + cb_ssvg.grid_min_pos;
@@ -170,7 +170,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
         const float2 octmap_texel_pos = float2(probe_2d_map_pos * k_probe_octmap_width_with_border + 1.0) + OctEncode(normal_ws)*k_probe_octmap_width;
 
         // GI情報を可視化.
-        const CoarseVoxelData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
+        const ObmVoxelOptionalData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
         if(0 == cb_ssvg.debug_probe_mode)
         {
             // TexProbeSkyVisibility に格納されたOctmapを可視化.

@@ -93,7 +93,7 @@ void main_cs(
 
 
                 const uint neighbor_unique_data_addr = obm_voxel_unique_data_addr(neighbor_voxel_index);
-                CoarseVoxelData neighbor_coarse_voxel_data = CoarseVoxelBuffer[neighbor_voxel_index];
+                ObmVoxelOptionalData neighbor_coarse_voxel_data = CoarseVoxelBuffer[neighbor_voxel_index];
 
                 ObmVoxelUniqueData neighbor_unique_data;
                 parse_obm_voxel_unique_data(neighbor_unique_data, OccupancyBitmaskVoxel[neighbor_unique_data_addr]);
@@ -107,7 +107,7 @@ void main_cs(
 
     
     // CoarseVoxelの固有データ読み取り. 更新
-    CoarseVoxelData coarse_voxel_data = RWCoarseVoxelBuffer[voxel_index];
+    ObmVoxelOptionalData coarse_voxel_data = RWCoarseVoxelBuffer[voxel_index];
     {
         set_obm_probe_bitcell_index(coarse_voxel_data, candidate_probe_bitcell_index);
     }

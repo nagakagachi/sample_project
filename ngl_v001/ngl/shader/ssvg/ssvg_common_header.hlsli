@@ -56,7 +56,7 @@ cppからインクルードする場合は以下のマクロ定義を先行定�
     // シェーダとCppで一致させる.
     // CoarseVoxelバッファ. ObmVoxel一つ毎の外部データ.
     // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.
-    struct CoarseVoxelData
+    struct ObmVoxelOptionalData
     {
         // ObmVoxel内部でのプローブ位置の線形インデックス. 0は無効, probe_pos_code-1 が実際のインデックス. 値域は 0,k_obm_per_voxel_bitmask_bit_count.
         uint probe_pos_code;

@@ -22,7 +22,7 @@ ssvg_util.hlsli
 
 
 
-//----------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------
 // OccupancyBitmaskVoxel本体. ObmVoxel.
 // uint UniqueData + uint[brick数分] OccupancyBitMask.
 // UniqueData : 0bit:空ではないなら1, 1-31: 最後に可視状態になったフレーム番号. 
@@ -31,8 +31,8 @@ RWBuffer<uint>		RWOccupancyBitmaskVoxel;
 
 // ObmVoxel毎の追加データ.
 // 
-StructuredBuffer<CoarseVoxelData>		CoarseVoxelBuffer;
-RWStructuredBuffer<CoarseVoxelData>		RWCoarseVoxelBuffer;
+StructuredBuffer<ObmVoxelOptionalData>		CoarseVoxelBuffer;
+RWStructuredBuffer<ObmVoxelOptionalData>		RWCoarseVoxelBuffer;
 
 Texture2D       		TexProbeSkyVisibility;
 RWTexture2D<float>		RWTexProbeSkyVisibility;
@@ -46,7 +46,7 @@ RWBuffer<float>		RWUpdateProbeWork;
 
 
 ConstantBuffer<SsvgParam> cb_ssvg;
-//----------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------
 
 
 
@@ -72,7 +72,7 @@ int3 voxel_coord_toroidal_mapping(int3 voxel_coord, int3 toroidal_offset, int3 r
 }
 
 // ObmVoxelの取り扱い.
-//----------------------------------------------------------------------------------------------------
+// ------------------------------------------------------------------------------------------------------------------------
 // VoxelIndexからアドレス計算. Buffer上の該当Voxelデータの先頭アドレスを返す.
 uint obm_voxel_index_to_addr(uint voxel_index)
 {
@@ -116,18 +116,6 @@ void calc_obm_bitcell_info(out uint out_u32_offset, out uint out_bit_location, u
     calc_obm_bitcell_info_from_bitcell_index(out_u32_offset, out_bit_location, bitcell_index);
 }
 
-//  probe_bitcell_index : -1なら空セル無し, 0〜k_obm_per_voxel_bitmask_bit_count-1
-void set_obm_probe_bitcell_index(inout CoarseVoxelData voxel_data, int probe_bitcell_index)
-{
-     // 0は空セル無しのフラグとして予約.
-    voxel_data.probe_pos_code = (0 <= probe_bitcell_index)? probe_bitcell_index + 1 : 0;
-}
-// Occupancy Bitmask Voxelのビットセルインデックスからk_obm_per_voxel_resolution^3 ボクセル内位置を計算.
-// bit_index : 0 〜 k_obm_per_voxel_bitmask_bit_count-1
-int calc_obm_probe_bitcell_index(CoarseVoxelData voxel_data)
-{
-    return voxel_data.probe_pos_code-1;
-}
 // Occupancy Bitmask Voxelのビットセルインデックスから k_obm_per_voxel_resolution^3 ボクセル内位置を計算.
 // bit_index : 0 〜 k_obm_per_voxel_bitmask_bit_count-1
 uint3 calc_obm_bitcell_pos_from_bit_index(uint bit_index)
@@ -137,6 +125,8 @@ uint3 calc_obm_bitcell_pos_from_bit_index(uint bit_index)
     return bit_pos;
 }
 
+
+// ------------------------------------------------------------------------------------------------------------------------
 
 // OBMのユニークデータレイアウトメモ.
 struct ObmVoxelUniqueData
@@ -166,7 +156,24 @@ void parse_obm_voxel_unique_data(out ObmVoxelUniqueData out_data, uint unique_da
     out_data.last_visible_frame = (unique_data >> 1) & 0xff;
 }
 
+// ------------------------------------------------------------------------------------------------------------------------
+// ObmVoxelの追加データ構造の操作.
 
+//  probe_bitcell_index : -1なら空セル無し, 0〜k_obm_per_voxel_bitmask_bit_count-1
+void set_obm_probe_bitcell_index(inout ObmVoxelOptionalData voxel_data, int probe_bitcell_index)
+{
+     // 0は空セル無しのフラグとして予約.
+    voxel_data.probe_pos_code = (0 <= probe_bitcell_index)? probe_bitcell_index + 1 : 0;
+}
+// Occupancy Bitmask Voxelのビットセルインデックスからk_obm_per_voxel_resolution^3 ボクセル内位置を計算.
+// bit_index : 0 〜 k_obm_per_voxel_bitmask_bit_count-1
+int calc_obm_probe_bitcell_index(ObmVoxelOptionalData voxel_data)
+{
+    return voxel_data.probe_pos_code-1;
+}
+
+
+// ------------------------------------------------------------------------------------------------------------------------
 // Voxelデータクリア.
 void clear_voxel_data(RWBuffer<uint> occupancy_bitmask_voxel, uint voxel_index)
 {
@@ -186,6 +193,7 @@ void clear_voxel_data(RWBuffer<uint> occupancy_bitmask_voxel, uint voxel_index)
 }
 
 
+// ------------------------------------------------------------------------------------------------------------------------
 // ワールド座標からOBVの値を読み取る.
 uint read_obm_voxel_from_world_pos(Buffer<uint> occupancy_bitmask_voxel, int3 grid_resolution, int3 grid_toroidal_offset, float3 grid_min_pos_world, float cell_size_inv, float3 pos_world)
 {
@@ -212,8 +220,6 @@ uint read_obm_voxel_from_world_pos(Buffer<uint> occupancy_bitmask_voxel, int3 gr
 
     return 0;
 }
-
-
 
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
