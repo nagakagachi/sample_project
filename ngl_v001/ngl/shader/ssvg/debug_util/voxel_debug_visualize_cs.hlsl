@@ -45,7 +45,7 @@ void main_cs(
         {
             const float3 read_pos_world = read_pos_world_base + float3(0.0, yi, 0.0) * (cb_ssvg.cell_size/k_obm_per_voxel_resolution);
 
-            const uint bit_value = read_occupancy_bitmask_voxel_from_world_pos(OccupancyBitmaskVoxel, cb_ssvg.base_grid_resolution, cb_ssvg.grid_toroidal_offset, cb_ssvg.grid_min_pos, cb_ssvg.cell_size_inv, read_pos_world);
+            const uint bit_value = read_obm_voxel_from_world_pos(OccupancyBitmaskVoxel, cb_ssvg.base_grid_resolution, cb_ssvg.grid_toroidal_offset, cb_ssvg.grid_min_pos, cb_ssvg.cell_size_inv, read_pos_world);
 
             float occupancy = float(bit_value);
             occupancy /= (float)bv_full_reso.y;

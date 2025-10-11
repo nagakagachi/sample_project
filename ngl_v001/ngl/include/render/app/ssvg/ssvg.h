@@ -98,6 +98,9 @@ namespace ngl::render::app
 
         // 初期化
         bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u base_resolution, float cell_size, int cascade_count);
+        bool IsValid() const { return is_initialized_; }
+        // 破棄
+        void Finalize();
 
         void Dispatch(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
@@ -113,6 +116,7 @@ namespace ngl::render::app
         void SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir);
 
     private:
+            bool is_initialized_ = false;
             std::vector<SsVgCascade*> cascades_;
     };
 

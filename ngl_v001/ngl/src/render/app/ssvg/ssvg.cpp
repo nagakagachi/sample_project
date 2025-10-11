@@ -511,15 +511,7 @@ namespace ngl::render::app
     
     SsVg::~SsVg()
     {
-        for(auto& c : cascades_)
-        {
-            if(c)
-            {
-                delete c;
-                c = nullptr;
-            }
-        }
-        cascades_.clear();
+        Finalize();
     }
 
     // 初期化
@@ -535,7 +527,22 @@ namespace ngl::render::app
             }
             cascades_.push_back(c);
         }
+        is_initialized_ = true;
         return true;
+    }
+    // 破棄
+    void SsVg::Finalize()
+    {
+        for(auto& c : cascades_)
+        {
+            if(c)
+            {
+                delete c;
+                c = nullptr;
+            }
+        }
+        cascades_.clear();
+        is_initialized_ = false;
     }
 
     void SsVg::Dispatch(rhi::GraphicsCommandListDep* p_command_list,

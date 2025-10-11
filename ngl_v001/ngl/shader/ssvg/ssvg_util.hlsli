@@ -96,28 +96,41 @@ uint obm_voxel_occupancy_bitmask_uint_count()
 }
 
 // Occupancy Bitmask Voxelの内部座標を元にリニアインデックスを計算.
-uint calc_occupancy_bitmask_cell_linear_index(uint3 bit_position_in_voxel)
+uint calc_obm_bitcell_index(uint3 bitcell_pos)
 {
     // 現状はX,Y,Z順のリニアレイアウト.
-    return bit_position_in_voxel.x + (bit_position_in_voxel.y * k_obm_per_voxel_resolution) + (bit_position_in_voxel.z * (k_obm_per_voxel_resolution * k_obm_per_voxel_resolution));
+    return bitcell_pos.x + (bitcell_pos.y * k_obm_per_voxel_resolution) + (bitcell_pos.z * (k_obm_per_voxel_resolution * k_obm_per_voxel_resolution));
 }
-// calc_occupancy_bitmask_cell_linear_index で計算したリニアインデックスからVoxelブロック内のオフセットと読み取りビット位置を計算.
-void calc_occupancy_bitmask_voxel_inner_bit_info_from_linear_index(out uint out_u32_offset, out uint out_bit_location, uint bitmask_cell_linear_index)
+// calc_obm_bitcell_index で計算したリニアインデックスからVoxelブロック内のオフセットと読み取りビット位置を計算.
+void calc_obm_bitcell_info_from_bitcell_index(out uint out_u32_offset, out uint out_bit_location, uint bitcell_index)
 {
-    out_u32_offset = bitmask_cell_linear_index / 32;
-    out_bit_location = bitmask_cell_linear_index - (out_u32_offset * 32);
+    out_u32_offset = bitcell_index / 32;// 何番目のuintか.
+    out_bit_location = bitcell_index - (out_u32_offset * 32);// uint内の何番目のビットか.
 }
 // Occupancy Bitmask Voxelの内部座標を元にバッファの該当Voxelブロック内のオフセットと読み取りビット位置を計算.
-void calc_occupancy_bitmask_voxel_inner_bit_info(out uint out_u32_offset, out uint out_bit_location, uint3 bit_position_in_voxel)
+void calc_obm_bitcell_info(out uint out_u32_offset, out uint out_bit_location, uint3 bitcell_pos)
 {
     // 現状はX,Y,Z順のリニアレイアウト.
-    const uint bit_linear_pos = calc_occupancy_bitmask_cell_linear_index(bit_position_in_voxel);
+    const uint bitcell_index = calc_obm_bitcell_index(bitcell_pos);
 
-    calc_occupancy_bitmask_voxel_inner_bit_info_from_linear_index(out_u32_offset, out_bit_location, bit_linear_pos);
+    calc_obm_bitcell_info_from_bitcell_index(out_u32_offset, out_bit_location, bitcell_index);
 }
-// Occupancy Bitmask Voxelのビットセルインデックスからk_per_voxel_occupancy_reso^3 ボクセル内位置を計算.
+
+//  probe_bitcell_index : -1なら空セル無し, 0〜k_obm_per_voxel_bitmask_bit_count-1
+void set_obm_probe_bitcell_index(inout CoarseVoxelData voxel_data, int probe_bitcell_index)
+{
+     // 0は空セル無しのフラグとして予約.
+    voxel_data.probe_pos_code = (0 <= probe_bitcell_index)? probe_bitcell_index + 1 : 0;
+}
+// Occupancy Bitmask Voxelのビットセルインデックスからk_obm_per_voxel_resolution^3 ボクセル内位置を計算.
 // bit_index : 0 〜 k_obm_per_voxel_bitmask_bit_count-1
-uint3 calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(uint bit_index)
+int calc_obm_probe_bitcell_index(CoarseVoxelData voxel_data)
+{
+    return voxel_data.probe_pos_code-1;
+}
+// Occupancy Bitmask Voxelのビットセルインデックスから k_obm_per_voxel_resolution^3 ボクセル内位置を計算.
+// bit_index : 0 〜 k_obm_per_voxel_bitmask_bit_count-1
+uint3 calc_obm_bitcell_pos_from_bit_index(uint bit_index)
 {
     // 現状はX,Y,Z順のリニアレイアウト.
     const uint3 bit_pos = uint3(bit_index % k_obm_per_voxel_resolution, (bit_index / k_obm_per_voxel_resolution) % k_obm_per_voxel_resolution, bit_index / (k_obm_per_voxel_resolution * k_obm_per_voxel_resolution));
@@ -135,18 +148,18 @@ struct ObmVoxelUniqueData
 // 1-8 : 最後に可視状態になったフレーム番号. 0-255でループ.
 
 // ユニークデータに埋め込むためのフレーム番号マスク処理.
-uint mask_occupancy_bitmask_voxel_unique_data_last_visible_frame(uint last_visible_frame)
+uint mask_obm_voxel_unique_data_last_visible_frame(uint last_visible_frame)
 {
     return (last_visible_frame & 0xff);
 }
 // OBMのユニークデータの構築.
-uint build_occupancy_bitmask_voxel_unique_data(ObmVoxelUniqueData data)
+uint build_obm_voxel_unique_data(ObmVoxelUniqueData data)
 {
     // OBMのユニークデータレイアウトメモに則ってuintエンコード.
-    return (data.is_occupied & 0x1) | (mask_occupancy_bitmask_voxel_unique_data_last_visible_frame(data.last_visible_frame) << 1);
+    return (data.is_occupied & 0x1) | (mask_obm_voxel_unique_data_last_visible_frame(data.last_visible_frame) << 1);
 }
 // OBMのユニークデータを展開.
-void parse_occupancy_bitmask_voxel_unique_data(out ObmVoxelUniqueData out_data, uint unique_data)
+void parse_obm_voxel_unique_data(out ObmVoxelUniqueData out_data, uint unique_data)
 {
     // OBMのユニークデータレイアウトメモに則ってuintからでコード.
     out_data.is_occupied = (unique_data >> 0) & 0x1;
@@ -174,7 +187,7 @@ void clear_voxel_data(RWBuffer<uint> occupancy_bitmask_voxel, uint voxel_index)
 
 
 // ワールド座標からOBVの値を読み取る.
-uint read_occupancy_bitmask_voxel_from_world_pos(Buffer<uint> occupancy_bitmask_voxel, int3 grid_resolution, int3 grid_toroidal_offset, float3 grid_min_pos_world, float cell_size_inv, float3 pos_world)
+uint read_obm_voxel_from_world_pos(Buffer<uint> occupancy_bitmask_voxel, int3 grid_resolution, int3 grid_toroidal_offset, float3 grid_min_pos_world, float cell_size_inv, float3 pos_world)
 {
     // WorldPosからVoxelCoordを計算.
     const float3 voxel_coordf = (pos_world - grid_min_pos_world) * cell_size_inv;
@@ -189,12 +202,12 @@ uint read_occupancy_bitmask_voxel_from_world_pos(Buffer<uint> occupancy_bitmask_
         const float3 voxel_coord_frac = frac(voxel_coordf);
         const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_obm_per_voxel_resolution);
         // 占有ビットマスクのデータ部情報.
-        uint bitmask_u32_offset;
-        uint bitmask_u32_bit_pos;
-        calc_occupancy_bitmask_voxel_inner_bit_info(bitmask_u32_offset, bitmask_u32_bit_pos, voxel_coord_bitmask_pos);
-        const uint bitmask_append = (1 << bitmask_u32_bit_pos);
+        uint bitcell_u32_offset;
+        uint bitcell_u32_bit_pos;
+        calc_obm_bitcell_info(bitcell_u32_offset, bitcell_u32_bit_pos, voxel_coord_bitmask_pos);
+        const uint bitmask_append = (1 << bitcell_u32_bit_pos);
         // 読み取り.
-        return (occupancy_bitmask_voxel[voxel_obm_addr + bitmask_u32_offset] & bitmask_append) ? 1 : 0;
+        return (occupancy_bitmask_voxel[voxel_obm_addr + bitcell_u32_offset] & bitmask_append) ? 1 : 0;
     }
 
     return 0;
@@ -281,9 +294,9 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 invDir, inout bool
     #if 1
         const uint obm_bitmask_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
         do {
-            uint bitmask_u32_offset, bitmask_u32_bit_pos;
-            calc_occupancy_bitmask_voxel_inner_bit_info(bitmask_u32_offset, bitmask_u32_bit_pos, mapPos);
-            bool is_hit = occupancy_bitmask_voxel[obm_bitmask_addr + bitmask_u32_offset] & (1 << bitmask_u32_bit_pos);
+            uint bitcell_u32_offset, bitcell_u32_bit_pos;
+            calc_obm_bitcell_info(bitcell_u32_offset, bitcell_u32_bit_pos, mapPos);
+            bool is_hit = occupancy_bitmask_voxel[obm_bitmask_addr + bitcell_u32_offset] & (1 << bitcell_u32_bit_pos);
             
             if(is_hit) { return mapPos; }
 
@@ -340,7 +353,7 @@ float4 trace_ray_vs_obm_voxel_grid(
         
         // CoarseVoxelで簡易判定.
         ObmVoxelUniqueData unique_data;
-        parse_occupancy_bitmask_voxel_unique_data(unique_data, occupancy_bitmask_voxel[unique_data_addr]);
+        parse_obm_voxel_unique_data(unique_data, occupancy_bitmask_voxel[unique_data_addr]);
         if(0 != (unique_data.is_occupied))
         {
             // TODO. WaveActiveCountBitsを使用して一定数以上(８割以上~等)のLaneが到達するまでcontinueすることで発散対策をすることも検討.

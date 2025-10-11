@@ -86,11 +86,11 @@ void main_cs(
             const float3 voxel_coord_frac = frac(voxel_coordf);
             const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_obm_per_voxel_resolution);
 
-            uint bitmask_u32_offset;
-            uint bitmask_u32_bit_pos;
-            calc_occupancy_bitmask_voxel_inner_bit_info(bitmask_u32_offset, bitmask_u32_bit_pos, voxel_coord_bitmask_pos);
+            uint bitcell_u32_offset;
+            uint bitcell_u32_bit_pos;
+            calc_obm_bitcell_info(bitcell_u32_offset, bitcell_u32_bit_pos, voxel_coord_bitmask_pos);
 
-            shared_obm_bitmask_addr[gindex] = uint4(voxel_index, 1, bitmask_u32_offset, (1 << bitmask_u32_bit_pos));
+            shared_obm_bitmask_addr[gindex] = uint4(voxel_index, 1, bitcell_u32_offset, (1 << bitcell_u32_bit_pos));
         }
     }
 
@@ -145,17 +145,17 @@ void main_cs(
             // 以下でVoxel固有データ部を更新しているが, 今後実装予定の動的オブジェクトによる占有度除去に伴う処理でも更新が必要な点に注意.
 
             // 非Emptyフラグを0bit目, それ以降にVisible判定フレーム番号を書き込み.
-            const uint visible_check_frame_count = mask_occupancy_bitmask_voxel_unique_data_last_visible_frame(cb_ssvg.frame_count);
+            const uint visible_check_frame_count = mask_obm_voxel_unique_data_last_visible_frame(cb_ssvg.frame_count);
             ObmVoxelUniqueData new_unique_data;
             new_unique_data.is_occupied = 1;
             new_unique_data.last_visible_frame = visible_check_frame_count;
-            const uint set_bits = build_occupancy_bitmask_voxel_unique_data(new_unique_data);
+            const uint set_bits = build_obm_voxel_unique_data(new_unique_data);
             uint old_unique_bits;
             InterlockedExchange(RWOccupancyBitmaskVoxel[unique_data_addr], set_bits, old_unique_bits);
 
             // old_unique_dataを展開
             ObmVoxelUniqueData old_unique_data;
-            parse_occupancy_bitmask_voxel_unique_data(old_unique_data, old_unique_bits);
+            parse_obm_voxel_unique_data(old_unique_data, old_unique_bits);
 
             // 交換前の値でVisible判定フレーム番号が現在フレームと異なるならリストへ登録. 別スレッドで同じVoxelを処理している場合の重複を除去する.
             if(visible_check_frame_count !=  old_unique_data.last_visible_frame)

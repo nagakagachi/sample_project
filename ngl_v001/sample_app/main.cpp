@@ -208,7 +208,7 @@ AppGame::~AppGame()
         skybox_.FinalizeGfx();
 
         rt_scene_ = {};
-        ssvg_ = {};
+        ssvg_.Finalize();
 
         // リソース参照クリア.
         mesh_entity_array_.clear();
@@ -1049,7 +1049,10 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
                 render_frame_desc.p_rt_scene = &rt_scene_;
             }
 
-            render_frame_desc.p_ssvg = &ssvg_;
+            if(ssvg_.IsValid())
+            {
+                render_frame_desc.p_ssvg = &ssvg_;
+            }
 
             render_frame_desc.ref_test_tex_srv      = res_texture_->ref_view_;
             render_frame_desc.h_prev_lit            = h_prev_light;  // MainViewはヒストリ有効.

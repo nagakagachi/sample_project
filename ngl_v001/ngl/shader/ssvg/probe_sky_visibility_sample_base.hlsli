@@ -102,9 +102,9 @@ void main_cs(
     CoarseVoxelData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
     // VoxelのMin位置.
     float3 probe_sample_pos_ws = float3(voxel_coord) * cb_ssvg.cell_size + cb_ssvg.grid_min_pos;
-    if(0 < coarse_voxel_data.probe_pos_index)
+    if(0 < coarse_voxel_data.probe_pos_code)
     {
-        probe_sample_pos_ws += (float3(calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(coarse_voxel_data.probe_pos_index-1)) + 0.5) * (cb_ssvg.cell_size / float(k_obm_per_voxel_resolution));
+        probe_sample_pos_ws += (float3(calc_obm_bitcell_pos_from_bit_index(calc_obm_probe_bitcell_index(coarse_voxel_data))) + 0.5) * (cb_ssvg.cell_size / float(k_obm_per_voxel_resolution));
     }
     else
     {

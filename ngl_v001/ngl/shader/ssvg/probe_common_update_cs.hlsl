@@ -44,11 +44,12 @@ void main_cs(
 
     // Voxel内のProbe位置の更新.
     // Obmセルを参照して空のセルから選択する.
-    int candidate_probe_pos_bit_cell_index = -1;
+    int candidate_probe_bitcell_index = -1;
     float candidate_probe_pos_dist_sq = 1e20;
     const float3 camera_pos_in_bit_cell_space = ((camera_pos - cb_ssvg.grid_min_pos) * cb_ssvg.cell_size_inv - float3(voxel_coord)) * float(k_obm_per_voxel_resolution);
     for(int i = 0; i < obm_voxel_occupancy_bitmask_uint_count(); ++i)
     {
+        // 0のbitcellを探す.
         uint bit_block = (~OccupancyBitmaskVoxel[obm_addr + i]);
 
         for(int bi = 0; bi < 32 && 0 != bit_block; ++bi)
@@ -56,18 +57,18 @@ void main_cs(
             if(bit_block & 1)
             {
                 const uint bit_index = i * 32 + bi;
-                const uint3 bit_pos_in_voxel = calc_occupancy_bitmask_cell_position_in_voxel_from_bit_index(bit_index);
+                const uint3 bitcell_pos_in_voxel = calc_obm_bitcell_pos_from_bit_index(bit_index);
                 
                 // Voxel中心に近いセルを選択.
-                const float3 score_vec = float3(bit_pos_in_voxel) - (float3(k_obm_per_voxel_resolution, k_obm_per_voxel_resolution, k_obm_per_voxel_resolution) * 0.5);
+                const float3 score_vec = float3(bitcell_pos_in_voxel) - (float3(k_obm_per_voxel_resolution, k_obm_per_voxel_resolution, k_obm_per_voxel_resolution) * 0.5);
                 // カメラに一番近いセルを選択.
-                //const float3 score_vec = float3(bit_pos_in_voxel) - camera_pos_in_bit_cell_space;
+                //const float3 score_vec = float3(bitcell_pos_in_voxel) - camera_pos_in_bit_cell_space;
 
                 const float dist_sq = dot(score_vec, score_vec);
                 if(dist_sq < candidate_probe_pos_dist_sq)
                 {
                     candidate_probe_pos_dist_sq = dist_sq;
-                    candidate_probe_pos_bit_cell_index = bit_index;
+                    candidate_probe_bitcell_index = bit_index;
                 }
             }
             bit_block >>= 1;
@@ -95,7 +96,7 @@ void main_cs(
                 CoarseVoxelData neighbor_coarse_voxel_data = CoarseVoxelBuffer[neighbor_voxel_index];
 
                 ObmVoxelUniqueData neighbor_unique_data;
-                parse_occupancy_bitmask_voxel_unique_data(neighbor_unique_data, OccupancyBitmaskVoxel[neighbor_unique_data_addr]);
+                parse_obm_voxel_unique_data(neighbor_unique_data, OccupancyBitmaskVoxel[neighbor_unique_data_addr]);
                 if(neighbor_unique_data.is_occupied)
                 {
                     // TODO.
@@ -108,8 +109,7 @@ void main_cs(
     // CoarseVoxelの固有データ読み取り. 更新
     CoarseVoxelData coarse_voxel_data = RWCoarseVoxelBuffer[voxel_index];
     {
-        // Probe配置位置をObmCellインデックスとして書き込み, 0が無効値であるようにして +1.
-        coarse_voxel_data.probe_pos_index = (0 <= candidate_probe_pos_bit_cell_index) ? candidate_probe_pos_bit_cell_index+1 : 0;
+        set_obm_probe_bitcell_index(coarse_voxel_data, candidate_probe_bitcell_index);
     }
     // CoarseVoxelの固有データ書き込み.
     RWCoarseVoxelBuffer[voxel_index] = coarse_voxel_data;
