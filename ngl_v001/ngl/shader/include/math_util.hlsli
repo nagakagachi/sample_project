@@ -97,6 +97,43 @@ float4x4 Matrix4x4_Cofactor(float4x4 m)
     );
 }
 
+// vec3を符号1bit+9bit整数 * 3のu32にエンコード/デコード.
+uint encode_10bit_int_vector3_to_u32(int3 v)
+{
+    // 各成分を10bit符号付き整数に変換してu32にパック.
+    const uint3 component_sign = select(0 > v, 1, 0);
+    v = abs(v);
+    uint code_x = (v.x & 0x1ff) | (component_sign.x << 9);
+    uint code_y = (v.y & 0x1ff) | (component_sign.y << 9);
+    uint code_z = (v.z & 0x1ff) | (component_sign.z << 9);
+    return (code_x | (code_y << 10) | (code_z << 20));
+}
+// vec3を符号1bit+9bit整数 * 3のu32にエンコード/デコード.
+int3 decode_10bit_int_vector3_from_u32(uint code)
+{
+    int3 v;
+    v.x = int(code & 0x1ff);
+    v.y = int((code >> 10) & 0x1ff);
+    v.z = int((code >> 20) & 0x1ff);
+    const uint3 component_sign = uint3((code >> 9) & 0x1, (code >> 19) & 0x1, (code >> 29) & 0x1);
+    v = select(component_sign, v, -v);
+    return v;
+}
+
+// マンハッタン距離.
+int length_int_vector3(int3 a)
+{
+    int3 d = abs(a);
+    return d.x + d.y + d.z;
+}
+// マンハッタン距離.
+int distance_int_vector3(int3 a, int3 b)
+{
+    return length_int_vector3(a - b);
+}
+
+
+
 
 //--------------------------------------------------------------------------------
 // スクリーンピクセルへのView空間レイベクトルを計算

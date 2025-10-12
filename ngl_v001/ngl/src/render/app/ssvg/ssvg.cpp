@@ -23,7 +23,7 @@ namespace ngl::render::app
     #undef NGL_SHADER_CPP_INCLUDE
 
 
-    static constexpr size_t k_sizeof_CoarseVoxelData = sizeof(ObmVoxelOptionalData);
+    static constexpr size_t k_sizeof_ObmVoxelOptionalData = sizeof(ObmVoxelOptionalData);
     static constexpr u32 k_max_update_probe_work_count = 1024;
 
     // デバッグ.
@@ -123,7 +123,7 @@ namespace ngl::render::app
 
 
         {
-            coarse_voxel_data_.InitializeAsStructured(p_device,
+            voxel_optional_data_.InitializeAsStructured(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = sizeof(ObmVoxelOptionalData),
                                                .element_count     = base_resolution_.x * base_resolution_.y * base_resolution_.z,
@@ -249,6 +249,8 @@ namespace ngl::render::app
 
             p->grid_min_pos     = grid_min_pos_;
 
+            p->grid_min_voxel_coord = math::Vec3::Floor(grid_min_pos_ * (1.0f / cell_size_)).Cast<int>(); 
+
             p->grid_toroidal_offset = grid_toroidal_offset_;
             p->grid_toroidal_offset_prev = grid_toroidal_offset_prev_;
 
@@ -286,7 +288,7 @@ namespace ngl::render::app
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_clear_voxel_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_clear_voxel_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
+                pso_clear_voxel_->SetView(&desc_set, "RWObmVoxelOptionalBuffer", voxel_optional_data_.uav.Get());
                 pso_clear_voxel_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
                 pso_clear_voxel_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
 
@@ -294,7 +296,7 @@ namespace ngl::render::app
                 p_command_list->SetDescriptorSet(pso_clear_voxel_.Get(), &desc_set);
                 pso_clear_voxel_->DispatchHelper(p_command_list, voxel_count, 1, 1);
 
-                p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
+                p_command_list->ResourceUavBarrier(voxel_optional_data_.buffer.Get());
                 p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
                 p_command_list->ResourceUavBarrier(probe_skyvisibility_.texture.Get());
             }
@@ -305,15 +307,15 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                 pso_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_begin_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
+                pso_begin_update_->SetView(&desc_set, "RWObmVoxelOptionalBuffer", voxel_optional_data_.uav.Get());
                 pso_begin_update_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
-                pso_begin_update_->SetView(&desc_set, "RWVisibleCoarseVoxelList", visible_voxel_list_.uav.Get());
+                pso_begin_update_->SetView(&desc_set, "RWVisibleVoxelList", visible_voxel_list_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_begin_update_.Get());
                 p_command_list->SetDescriptorSet(pso_begin_update_.Get(), &desc_set);
                 pso_begin_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);
 
-                p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
+                p_command_list->ResourceUavBarrier(voxel_optional_data_.buffer.Get());
                 p_command_list->ResourceUavBarrier(occupancy_bitmask_voxel_.buffer.Get());
                 p_command_list->ResourceUavBarrier(visible_voxel_list_.buffer.Get());
             }
@@ -326,7 +328,7 @@ namespace ngl::render::app
                 pso_voxelize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                 pso_voxelize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                 pso_voxelize_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", occupancy_bitmask_voxel_.uav.Get());
-                pso_voxelize_->SetView(&desc_set, "RWVisibleCoarseVoxelList", visible_voxel_list_.uav.Get());
+                pso_voxelize_->SetView(&desc_set, "RWVisibleVoxelList", visible_voxel_list_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_voxelize_.Get());
                 p_command_list->SetDescriptorSet(pso_voxelize_.Get(), &desc_set);
@@ -343,7 +345,7 @@ namespace ngl::render::app
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
+                pso_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "VisibleVoxelList", visible_voxel_list_.srv.Get());
                 pso_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "RWVisibleVoxelIndirectArg", visible_voxel_indirect_arg_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_generate_visible_voxel_indirect_arg_.Get());
@@ -360,13 +362,13 @@ namespace ngl::render::app
                 pso_probe_common_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                 pso_probe_common_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                 pso_probe_common_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
-                pso_probe_common_update_->SetView(&desc_set, "RWCoarseVoxelBuffer", coarse_voxel_data_.uav.Get());
+                pso_probe_common_update_->SetView(&desc_set, "RWObmVoxelOptionalBuffer", voxel_optional_data_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_probe_common_update_.Get());
                 p_command_list->SetDescriptorSet(pso_probe_common_update_.Get(), &desc_set);
                 pso_probe_common_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);
 
-                p_command_list->ResourceUavBarrier(coarse_voxel_data_.buffer.Get());
+                p_command_list->ResourceUavBarrier(voxel_optional_data_.buffer.Get());
             }
             // Visible Voxel Update Pass.
             {
@@ -377,9 +379,9 @@ namespace ngl::render::app
                     pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                     pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
-                    pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
+                    pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "VisibleVoxelList", visible_voxel_list_.srv.Get());
 
-                    pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
+                    pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "ObmVoxelOptionalBuffer", voxel_optional_data_.srv.Get());
 
                     pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
                     pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "RWUpdateProbeWork", visible_voxel_update_probe_.uav.Get());
@@ -398,7 +400,7 @@ namespace ngl::render::app
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
                     pso_visible_probe_sky_visibility_apply_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_visible_probe_sky_visibility_apply_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
+                    pso_visible_probe_sky_visibility_apply_->SetView(&desc_set, "VisibleVoxelList", visible_voxel_list_.srv.Get());
                     pso_visible_probe_sky_visibility_apply_->SetView(&desc_set, "UpdateProbeWork", visible_voxel_update_probe_.srv.Get());
                     pso_visible_probe_sky_visibility_apply_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
 
@@ -420,9 +422,9 @@ namespace ngl::render::app
                     pso_coarse_probe_sky_visibility_sample_and_apply_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                     pso_coarse_probe_sky_visibility_sample_and_apply_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_coarse_probe_sky_visibility_sample_and_apply_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
-                    pso_coarse_probe_sky_visibility_sample_and_apply_->SetView(&desc_set, "VisibleCoarseVoxelList", visible_voxel_list_.srv.Get());
+                    pso_coarse_probe_sky_visibility_sample_and_apply_->SetView(&desc_set, "VisibleVoxelList", visible_voxel_list_.srv.Get());
 
-                    pso_coarse_probe_sky_visibility_sample_and_apply_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
+                    pso_coarse_probe_sky_visibility_sample_and_apply_->SetView(&desc_set, "ObmVoxelOptionalBuffer", voxel_optional_data_.srv.Get());
 
                     pso_coarse_probe_sky_visibility_sample_and_apply_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
 
@@ -448,7 +450,7 @@ namespace ngl::render::app
             pso_debug_visualize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
             pso_debug_visualize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
             pso_debug_visualize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-            pso_debug_visualize_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
+            pso_debug_visualize_->SetView(&desc_set, "ObmVoxelOptionalBuffer", voxel_optional_data_.srv.Get());
             pso_debug_visualize_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
             pso_debug_visualize_->SetView(&desc_set, "TexProbeSkyVisibility", probe_skyvisibility_.srv.Get());
             
@@ -482,7 +484,7 @@ namespace ngl::render::app
         {
             NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ProbeDebug");
 
-            const int coarse_voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
+            const int voxel_count = base_resolution_.x * base_resolution_.y * base_resolution_.z;
 
             p_command_list->SetPipelineState(pso_debug_obm_voxel_.Get());
             ngl::rhi::DescriptorSetDep desc_set = {};
@@ -491,7 +493,7 @@ namespace ngl::render::app
             pso_debug_obm_voxel_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
             
             pso_debug_obm_voxel_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-            pso_debug_obm_voxel_->SetView(&desc_set, "CoarseVoxelBuffer", coarse_voxel_data_.srv.Get());
+            pso_debug_obm_voxel_->SetView(&desc_set, "ObmVoxelOptionalBuffer", voxel_optional_data_.srv.Get());
             pso_debug_obm_voxel_->SetView(&desc_set, "OccupancyBitmaskVoxel", occupancy_bitmask_voxel_.srv.Get());
             pso_debug_obm_voxel_->SetView(&desc_set, "TexProbeSkyVisibility", probe_skyvisibility_.srv.Get());
             pso_debug_obm_voxel_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
@@ -500,7 +502,7 @@ namespace ngl::render::app
             p_command_list->SetDescriptorSet(pso_debug_obm_voxel_.Get(), &desc_set);
 
             p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
-            p_command_list->DrawInstanced(6 * coarse_voxel_count, 1, 0, 0);
+            p_command_list->DrawInstanced(6 * voxel_count, 1, 0, 0);
         }
 
     }

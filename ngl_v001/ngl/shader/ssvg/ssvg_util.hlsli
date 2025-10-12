@@ -31,14 +31,14 @@ RWBuffer<uint>		RWOccupancyBitmaskVoxel;
 
 // ObmVoxel毎の追加データ.
 // 
-StructuredBuffer<ObmVoxelOptionalData>		CoarseVoxelBuffer;
-RWStructuredBuffer<ObmVoxelOptionalData>		RWCoarseVoxelBuffer;
+StructuredBuffer<ObmVoxelOptionalData>		ObmVoxelOptionalBuffer;
+RWStructuredBuffer<ObmVoxelOptionalData>		RWObmVoxelOptionalBuffer;
 
 Texture2D       		TexProbeSkyVisibility;
 RWTexture2D<float>		RWTexProbeSkyVisibility;
 
-Buffer<uint>		VisibleCoarseVoxelList;
-RWBuffer<uint>		RWVisibleCoarseVoxelList;
+Buffer<uint>		VisibleVoxelList;
+RWBuffer<uint>		RWVisibleVoxelList;
 
 
 Buffer<float>		UpdateProbeWork;
@@ -66,6 +66,9 @@ int3 index_to_voxel_coord(uint index, int3 resolution)
     return int3(x, y, z);
 }
 // リニアなVoxel座標をループするToroidalマッピングに変換する.
+//  ToroidalMapping座標をリニア座標に戻す変換は
+//      voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_ssvg.base_grid_resolution - cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution)
+//  という使い方で可能.
 int3 voxel_coord_toroidal_mapping(int3 voxel_coord, int3 toroidal_offset, int3 resolution)
 {
     return (voxel_coord + toroidal_offset) % resolution;
@@ -357,7 +360,7 @@ float4 trace_ray_vs_obm_voxel_grid(
         const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(mapPos, grid_toroidal_offset, grid_resolution), grid_resolution);
         const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
         
-        // CoarseVoxelで簡易判定.
+        // Voxelで簡易判定.
         ObmVoxelUniqueData unique_data;
         parse_obm_voxel_unique_data(unique_data, occupancy_bitmask_voxel[unique_data_addr]);
         if(0 != (unique_data.is_occupied))

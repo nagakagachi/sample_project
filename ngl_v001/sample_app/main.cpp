@@ -354,7 +354,6 @@ bool AppGame::Initialize()
         const float target_scene_base_scale = bistro_scale;
 #endif
 
-
         std::shared_ptr<ngl::gfx::MeshData> procedural_mesh_data = std::make_shared<ngl::gfx::MeshData>();
         {
             const float mesh_scale = 10.0f;
@@ -853,7 +852,7 @@ bool AppGame::ExecuteApp()
 
             if (ImGui::CollapsingHeader("Probe Debug"))
             {
-                ImGui::SliderInt("Probe Debug Mode", &ngl::render::app::SsVg::dbg_probe_debug_view_mode_, -1, 5);
+                ImGui::SliderInt("Probe Debug Mode", &ngl::render::app::SsVg::dbg_probe_debug_view_mode_, -1, 10);
                 ImGui::SliderFloat("Probe Scale", &ngl::render::app::SsVg::dbg_probe_scale_, 0.01f, 10.0f);
                 ImGui::SliderFloat("Probe Near Geometry Scale", &ngl::render::app::SsVg::dbg_probe_near_geom_scale_, 0.01f, 10.0f);
             }

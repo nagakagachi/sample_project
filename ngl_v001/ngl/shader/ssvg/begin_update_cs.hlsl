@@ -28,7 +28,7 @@ void main_cs(
     {
         // VisibleCoarseVoxelListのアトミックカウンタをクリア.
         // 0番目はアトミックカウンタ用に予約している.
-        RWVisibleCoarseVoxelList[0] = 0;
+        RWVisibleVoxelList[0] = 0;
     }
 
     if(all(cb_ssvg.grid_move_cell_delta == int3(0,0,0)))
@@ -49,7 +49,7 @@ void main_cs(
         if(is_invalidate_area)
         {
             // 移動によってシフトしてきた無効領域.
-            RWCoarseVoxelBuffer[dtid.x] = (ObmVoxelOptionalData)0; //empty_coarse_voxel_data();
+            RWObmVoxelOptionalBuffer[dtid.x] = (ObmVoxelOptionalData)0;
             clear_voxel_data(RWOccupancyBitmaskVoxel, dtid.x);
         }
     }

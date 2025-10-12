@@ -69,7 +69,7 @@ namespace ngl::render::app
 
         ngl::u32     update_probe_work_count_ = {};
 
-        ComputeBufferSet coarse_voxel_data_ = {};
+        ComputeBufferSet voxel_optional_data_ = {};
         ComputeBufferSet occupancy_bitmask_voxel_ = {};
         ComputeTextureSet probe_skyvisibility_ = {};
         

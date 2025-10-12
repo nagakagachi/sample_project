@@ -107,7 +107,7 @@ void main_cs(
             }
             else if(1 == cb_ssvg.debug_view_mode)
             {
-                // CoarseVoxelIDを可視化.
+                // VoxelIDを可視化.
                 debug_color.xyz = float4(noise_iqint32(hit_voxel_index), noise_iqint32(hit_voxel_index*2), noise_iqint32(hit_voxel_index*3), 1);
                 
                 // 簡易フォグ.

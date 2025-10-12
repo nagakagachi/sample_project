@@ -56,12 +56,12 @@ void main_cs(
 
     #if INDIRECT_MODE
         // VisibleCoarseVoxelListを利用するバージョン.
-        const uint visible_voxel_count = VisibleCoarseVoxelList[0]; // 0番目にアトミックカウンタが入っている.
+        const uint visible_voxel_count = VisibleVoxelList[0]; // 0番目にアトミックカウンタが入っている.
         const uint update_element_index = (dtid.x * (FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT+1)));
         if(visible_voxel_count < update_element_index)
             return;
 
-        const uint voxel_index = VisibleCoarseVoxelList[update_element_index+1]; // 1番目以降に有効Voxelインデックスが入っている.
+        const uint voxel_index = VisibleVoxelList[update_element_index+1]; // 1番目以降に有効Voxelインデックスが入っている.
         // voxel_indexからtoroidal考慮したVoxelIDを計算する.
         int3 voxel_coord_toroidal = index_to_voxel_coord(voxel_index, cb_ssvg.base_grid_resolution);
         int3 voxel_coord = voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_ssvg.base_grid_resolution -cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution);
@@ -99,12 +99,12 @@ void main_cs(
     const uint obm_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
 
     // 前パスで格納された線形インデックスからプローブ位置(レイ原点)を計算.
-    ObmVoxelOptionalData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
+    ObmVoxelOptionalData voxel_optional_data = ObmVoxelOptionalBuffer[voxel_index];
     // VoxelのMin位置.
     float3 probe_sample_pos_ws = float3(voxel_coord) * cb_ssvg.cell_size + cb_ssvg.grid_min_pos;
-    if(0 < coarse_voxel_data.probe_pos_code)
+    if(0 < voxel_optional_data.probe_pos_code)
     {
-        probe_sample_pos_ws += (float3(calc_obm_bitcell_pos_from_bit_index(calc_obm_probe_bitcell_index(coarse_voxel_data))) + 0.5) * (cb_ssvg.cell_size / float(k_obm_per_voxel_resolution));
+        probe_sample_pos_ws += (float3(calc_obm_bitcell_pos_from_bit_index(calc_obm_probe_bitcell_index(voxel_optional_data))) + 0.5) * (cb_ssvg.cell_size / float(k_obm_per_voxel_resolution));
     }
     else
     {

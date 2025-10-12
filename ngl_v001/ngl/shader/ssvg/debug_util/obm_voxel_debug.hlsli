@@ -65,22 +65,15 @@ VS_OUTPUT main_vs(VS_INPUT input)
 
     const int3 voxel_coord = index_to_voxel_coord(instance_id, cb_ssvg.base_grid_resolution);
     const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
-    const uint voxel_unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
 
-    const uint obm_voxel_unique_data = OccupancyBitmaskVoxel[voxel_unique_data_addr];
-    const bool is_obm_empty = (0 == obm_voxel_unique_data);
-    /*
-    if(is_obm_empty)
-    {
-        // ジオメトリが無い場合の非表示.
-        output.pos = float4(1.0/0.0,0,0,0);//NaN export culling.
-        return output;
-    }
-    */
+    // obm固有データ.
+    ObmVoxelUniqueData unique_data;
+    parse_obm_voxel_unique_data(unique_data, OccupancyBitmaskVoxel[obm_voxel_unique_data_addr(voxel_index)]);
     
-    const ObmVoxelOptionalData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
-    const bool is_invalid_probe_local_pos = (0 == coarse_voxel_data.probe_pos_code);
-    const int3 probe_coord_in_voxel = (is_invalid_probe_local_pos) ? int3(0,0,0) : calc_obm_bitcell_pos_from_bit_index(calc_obm_probe_bitcell_index(coarse_voxel_data));
+    // obm追加データ.
+    const ObmVoxelOptionalData voxel_optional_data = ObmVoxelOptionalBuffer[voxel_index];
+    const bool is_invalid_probe_local_pos = (0 == voxel_optional_data.probe_pos_code);
+    const int3 probe_coord_in_voxel = (is_invalid_probe_local_pos) ? int3(0,0,0) : calc_obm_bitcell_pos_from_bit_index(calc_obm_probe_bitcell_index(voxel_optional_data));
     const float3 probe_pos_ws = (float3(voxel_coord) + (float3(probe_coord_in_voxel) + 0.5) / float(k_obm_per_voxel_resolution)) * cb_ssvg.cell_size + cb_ssvg.grid_min_pos;
 
 
@@ -89,7 +82,7 @@ VS_OUTPUT main_vs(VS_INPUT input)
     // 表示位置.
     const float3 instance_pos = probe_pos_ws;
     float draw_scale = cb_ssvg.debug_probe_radius;
-    if(is_obm_empty)
+    if(unique_data.is_occupied == 0)
     {
         // ジオメトリのないVoxelは小さく表示.
         draw_scale *= cb_ssvg.debug_probe_near_geom_scale;
@@ -166,11 +159,16 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
         const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.probe_atlas_texture_base_width, voxel_index / cb_ssvg.probe_atlas_texture_base_width);
         uint tex_width, tex_height;
         TexProbeSkyVisibility.GetDimensions(tex_width, tex_height);
-
         const float2 octmap_texel_pos = float2(probe_2d_map_pos * k_probe_octmap_width_with_border + 1.0) + OctEncode(normal_ws)*k_probe_octmap_width;
 
-        // GI情報を可視化.
-        const ObmVoxelOptionalData coarse_voxel_data = CoarseVoxelBuffer[voxel_index];
+        // obm固有データ.
+        ObmVoxelUniqueData unique_data;
+        parse_obm_voxel_unique_data(unique_data, OccupancyBitmaskVoxel[obm_voxel_unique_data_addr(voxel_index)]);
+
+        // obm追加データ.
+        const ObmVoxelOptionalData voxel_optional_data = ObmVoxelOptionalBuffer[voxel_index];
+
+        // 可視化.
         if(0 == cb_ssvg.debug_probe_mode)
         {
             // TexProbeSkyVisibility に格納されたOctmapを可視化.
@@ -208,6 +206,47 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
             const float dist_avg = probe_data.y;
             const float dist_var = max(0.0, probe_data.z - dist_avg*dist_avg);
             color = float4(dist_avg,  dist_var, 0.0, 1.0);
+        }
+        else if(4 == cb_ssvg.debug_probe_mode)
+        {
+            const float surface_distance = length_int_vector3(voxel_optional_data.surface_distance);
+            #if 1
+                // 距離をグレースケールで可視化.
+                float distance_color = saturate(surface_distance/8.0);
+                // 適当ガンマ
+                distance_color = pow(distance_color, 2.0);
+                color = float4(distance_color, distance_color, distance_color, 1.0);
+            #else
+                // 整数距離を色変えでわかりやすく可視化.
+                if(0.0 > surface_distance)
+                {
+                    color = float4(0,0,0.25,1);
+                }
+                else if((1<<10)*3 == surface_distance)
+                {
+                    color = float4(0,1,1,1);// 無効値.
+                }
+                else if(0.0 == surface_distance)
+                {
+                    color = float4(0,0,0,1);
+                }
+                else if(1.0 == surface_distance)
+                {
+                    color = float4(1,0,0,1);
+                }
+                else if(2.0 == surface_distance)
+                {
+                    color = float4(0,1,0,1);
+                }
+                else if(3.0 == surface_distance)
+                {
+                    color = float4(0,0,1,1);
+                }
+                else
+                {
+                    color = float4(1,1,1,1);
+                }
+            #endif
         }
 
 

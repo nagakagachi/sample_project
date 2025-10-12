@@ -108,16 +108,16 @@ void main_cs(
                 if(check_index == gindex || check_index >= (TILE_WIDTH*TILE_WIDTH))
                     continue;
                 
-                // CoarseVoxelの一致チェック.
+                // Voxelの一致チェック.
                 if(shared_obm_bitmask_addr[gindex].x == shared_obm_bitmask_addr[check_index].x)
                 {
-                    shared_obm_bitmask_addr[gindex].y = 0;// CoarseVoxelの占有ビット書き込み不要にする.
+                    shared_obm_bitmask_addr[gindex].y = 0;// Voxelの占有ビット書き込み不要にする.
 
                     // u32オフセットも一致する場合はビットマスクをマージ.
                     if(shared_obm_bitmask_addr[gindex].z == shared_obm_bitmask_addr[check_index].z)
                     {
                         shared_obm_bitmask_addr[gindex].w |= shared_obm_bitmask_addr[check_index].w;
-                        shared_obm_bitmask_addr[check_index].x = ~uint(0);// CoarseVoxelも書き込みu32オフセットも一致するため完全にマージして無効化.
+                        shared_obm_bitmask_addr[check_index].x = ~uint(0);// Voxelも書き込みu32オフセットも一致するため完全にマージして無効化.
                     }
                 }   
             }
@@ -161,16 +161,16 @@ void main_cs(
             if(visible_check_frame_count !=  old_unique_data.last_visible_frame)
             {
                 int current_visible_count;
-                InterlockedAdd(RWVisibleCoarseVoxelList[0], 1, current_visible_count);
+                InterlockedAdd(RWVisibleVoxelList[0], 1, current_visible_count);
                 if(cb_ssvg.update_probe_work_count > current_visible_count)
                 {
                     // 追加可能であれば登録. 登録位置はindex0のカウンタを除いた位置.
-                    RWVisibleCoarseVoxelList[current_visible_count + 1] = voxel_index;
+                    RWVisibleVoxelList[current_visible_count + 1] = voxel_index;
                 }
                 else
                 {
                     // サイズオーバーの場合はカウンタを戻す.
-                    InterlockedAdd(RWVisibleCoarseVoxelList[0], -1);
+                    InterlockedAdd(RWVisibleVoxelList[0], -1);
                 }
             }
         }
