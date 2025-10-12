@@ -80,6 +80,7 @@ namespace ngl::render::app
             pso_visible_probe_sky_visibility_sample_ = CreateComputePSO("ssvg/visible_probe_sky_visibility_sample_cs.hlsl");
             pso_visible_probe_sky_visibility_apply_ = CreateComputePSO("ssvg/visible_probe_sky_visibility_sample_store_cs.hlsl");
             pso_coarse_probe_sky_visibility_sample_and_apply_ = CreateComputePSO("ssvg/coarse_probe_sky_visibility_sample_cs.hlsl");
+            pso_fill_probe_sky_visibility_octmap_border_ = CreateComputePSO("ssvg/fill_probe_sky_visibility_octmap_border_cs.hlsl");
 
             pso_debug_visualize_ = CreateComputePSO("ssvg/debug_util/voxel_debug_visualize_cs.hlsl");
             
@@ -370,10 +371,12 @@ namespace ngl::render::app
 
                 p_command_list->ResourceUavBarrier(voxel_optional_data_.buffer.Get());
             }
+
+            static constexpr bool k_enable_octahedral_map_update = true;
             // Visible Voxel Update Pass.
             {
                 {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ProbeSkyVisibilitySample");
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "VisibleProbeSkyVisibilitySample");
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
                     pso_visible_probe_sky_visibility_sample_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
@@ -394,7 +397,7 @@ namespace ngl::render::app
 
                     p_command_list->ResourceUavBarrier(visible_voxel_update_probe_.buffer.Get());
                 }
-                if(1)
+                if(k_enable_octahedral_map_update)
                 {
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "VisibleProbeSkyVisibilityApply");
 
@@ -414,7 +417,7 @@ namespace ngl::render::app
             }
             // Coarse Voxel Update Pass.
             {
-                if(1)
+                if(k_enable_octahedral_map_update)
                 {
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "CoarseProbeSkyVisibilitySampleAndApply");
 
@@ -433,9 +436,25 @@ namespace ngl::render::app
                     // 全Probe更新のスキップ要素分考慮したDispatch.
                     pso_coarse_probe_sky_visibility_sample_and_apply_->DispatchHelper(p_command_list, (voxel_count + (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT - 1)) / FRAME_UPDATE_ALL_PROBE_SKIP_COUNT, 1, 1);
 
-
                     p_command_list->ResourceUavBarrier(probe_skyvisibility_.texture.Get());
                 }
+            }
+
+            // Octahedral Map Border Fill Pass.
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "FillProbeSkyVisibilityOctmapBorder");
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_fill_probe_sky_visibility_octmap_border_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                pso_fill_probe_sky_visibility_octmap_border_->SetView(&desc_set, "RWTexProbeSkyVisibility", probe_skyvisibility_.uav.Get());
+
+                p_command_list->SetPipelineState(pso_fill_probe_sky_visibility_octmap_border_.Get());
+                p_command_list->SetDescriptorSet(pso_fill_probe_sky_visibility_octmap_border_.Get(), &desc_set);
+
+                // 全Probe更新のスキップ要素分考慮したDispatch.
+                pso_fill_probe_sky_visibility_octmap_border_->DispatchHelper(p_command_list, voxel_count, 1, 1);
+
+                p_command_list->ResourceUavBarrier(probe_skyvisibility_.texture.Get());
             }
         }
 

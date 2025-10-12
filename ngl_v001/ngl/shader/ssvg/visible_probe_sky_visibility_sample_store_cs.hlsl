@@ -13,8 +13,6 @@ visible_probe_sky_visibility_sample_store_cs.hlsl
 
 
 #include "ssvg_util.hlsli"
-// SceneView定数バッファ構造定義.
-#include "../include/scene_view_struct.hlsli"
 
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(

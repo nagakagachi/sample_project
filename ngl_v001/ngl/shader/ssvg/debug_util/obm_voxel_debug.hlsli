@@ -136,123 +136,94 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     normal_ws = (normal_ws.x * quad_pose_side + normal_ws.y * quad_pose_up + normal_ws.z * dir_to_camera);
     normal_ws = normalize(normal_ws);
 
-
     
     float4 color = float4(normal_ws * 0.5 + 0.5, 1.0);// デフォルトでは法線を仮表示.
 
-        const int normal_principal_axis = calc_principal_axis_component_index(abs(normal_ws));
-        int component_index = 0;
-        if(0 == normal_principal_axis)
-        {
-            component_index = (0 < normal_ws.x) ? 0 : 1;
-        }
-        else if(1 == normal_principal_axis)
-        {
-            component_index = (0 < normal_ws.y) ? 2 : 3;
-        }
-        else
-        {
-            component_index = (0 < normal_ws.z) ? 4 : 5;
-        }
+    const int normal_principal_axis = calc_principal_axis_component_index(abs(normal_ws));
+    int component_index = 0;
+    if(0 == normal_principal_axis)
+    {
+        component_index = (0 < normal_ws.x) ? 0 : 1;
+    }
+    else if(1 == normal_principal_axis)
+    {
+        component_index = (0 < normal_ws.y) ? 2 : 3;
+    }
+    else
+    {
+        component_index = (0 < normal_ws.z) ? 4 : 5;
+    }
 
-        
-        const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.probe_atlas_texture_base_width, voxel_index / cb_ssvg.probe_atlas_texture_base_width);
-        uint tex_width, tex_height;
-        TexProbeSkyVisibility.GetDimensions(tex_width, tex_height);
-        const float2 octmap_texel_pos = float2(probe_2d_map_pos * k_probe_octmap_width_with_border + 1.0) + OctEncode(normal_ws)*k_probe_octmap_width;
+    
+    const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.probe_atlas_texture_base_width, voxel_index / cb_ssvg.probe_atlas_texture_base_width);
+    uint tex_width, tex_height;
+    TexProbeSkyVisibility.GetDimensions(tex_width, tex_height);
+    const float2 octmap_texel_pos = float2(probe_2d_map_pos * k_probe_octmap_width_with_border + 1.0) + OctEncode(normal_ws)*k_probe_octmap_width;
 
-        // obm固有データ.
-        ObmVoxelUniqueData unique_data;
-        parse_obm_voxel_unique_data(unique_data, OccupancyBitmaskVoxel[obm_voxel_unique_data_addr(voxel_index)]);
+    // obm固有データ.
+    ObmVoxelUniqueData unique_data;
+    parse_obm_voxel_unique_data(unique_data, OccupancyBitmaskVoxel[obm_voxel_unique_data_addr(voxel_index)]);
 
-        // obm追加データ.
-        const ObmVoxelOptionalData voxel_optional_data = ObmVoxelOptionalBuffer[voxel_index];
+    // obm追加データ.
+    const ObmVoxelOptionalData voxel_optional_data = ObmVoxelOptionalBuffer[voxel_index];
 
-        // 可視化.
-        if(0 == cb_ssvg.debug_probe_mode)
-        {
-            // TexProbeSkyVisibility に格納されたOctmapを可視化.
-            const float4 probe_data = TexProbeSkyVisibility.Load(uint3(octmap_texel_pos, 0));
+    // 可視化.
+    if(0 == cb_ssvg.debug_probe_mode)
+    {
+        // TexProbeSkyVisibility に格納されたOctmapを可視化.
+        const float4 probe_data = TexProbeSkyVisibility.Load(uint3(octmap_texel_pos, 0));
 
-            const float dist_avg = probe_data.y;
-            const float dist_var = max(0.0, probe_data.z - dist_avg*dist_avg);
-            color = probe_data.xxxx;
-        }
-        else if(1 == cb_ssvg.debug_probe_mode)
-        {
-            // TexProbeSkyVisibility に格納されたOctmapを可視化.
-            const float4 probe_data = TexProbeSkyVisibility.Load(uint3(octmap_texel_pos, 0));
+        color = pow(probe_data.xxxx, 2.0);// 適当ガンマ
+    }
+    else if(1 == cb_ssvg.debug_probe_mode)
+    {
+        // TexProbeSkyVisibility に格納されたOctmapを可視化.
+        // Samplerで補間取得
+        const float4 probe_data = TexProbeSkyVisibility.SampleLevel(SmpLinearClamp, (octmap_texel_pos) / float2(tex_width, tex_height), 0);
 
-            const float dist_avg = probe_data.y;
-            const float dist_var = max(0.0, probe_data.z - dist_avg*dist_avg);
-            color = float4(dist_avg, dist_var, 0.0, 1.0);
-        }
-        else if(2 == cb_ssvg.debug_probe_mode)
-        {
-            // TexProbeSkyVisibility に格納されたOctmapを可視化.
-            // Samplerで補間取得
-            const float4 probe_data = TexProbeSkyVisibility.SampleLevel(SmpLinearClamp, (octmap_texel_pos) / float2(tex_width, tex_height), 0);
-
-            const float dist_avg = probe_data.y;
-            const float dist_var = max(0.0, probe_data.z - dist_avg*dist_avg);
-            color = probe_data.xxxx;
-        }
-        else if(3 == cb_ssvg.debug_probe_mode)
-        {
-            // TexProbeSkyVisibility に格納されたOctmapを可視化.
-            // Samplerで補間取得
-            const float4 probe_data = TexProbeSkyVisibility.SampleLevel(SmpLinearClamp, (octmap_texel_pos) / float2(tex_width, tex_height), 0);
-
-            const float dist_avg = probe_data.y;
-            const float dist_var = max(0.0, probe_data.z - dist_avg*dist_avg);
-            color = float4(dist_avg,  dist_var, 0.0, 1.0);
-        }
-        else if(4 == cb_ssvg.debug_probe_mode)
-        {
-            const float surface_distance = length_int_vector3(voxel_optional_data.surface_distance);
-            #if 1
-                // 距離をグレースケールで可視化.
-                float distance_color = saturate(surface_distance/8.0);
-                // 適当ガンマ
-                distance_color = pow(distance_color, 2.0);
-                color = float4(distance_color, distance_color, distance_color, 1.0);
-            #else
-                // 整数距離を色変えでわかりやすく可視化.
-                if(0.0 > surface_distance)
-                {
-                    color = float4(0,0,0.25,1);
-                }
-                else if((1<<10)*3 == surface_distance)
-                {
-                    color = float4(0,1,1,1);// 無効値.
-                }
-                else if(0.0 == surface_distance)
-                {
-                    color = float4(0,0,0,1);
-                }
-                else if(1.0 == surface_distance)
-                {
-                    color = float4(1,0,0,1);
-                }
-                else if(2.0 == surface_distance)
-                {
-                    color = float4(0,1,0,1);
-                }
-                else if(3.0 == surface_distance)
-                {
-                    color = float4(0,0,1,1);
-                }
-                else
-                {
-                    color = float4(1,1,1,1);
-                }
-            #endif
-        }
-
-
-    //float4 color = float4(saturate(dot(normal_ws, -float3(0.0, -1.0, 0.0)).xxx), 1.0);
-    //const float4 rand_seed = float4(voxel_index, voxel_index+1, voxel_index*2, voxel_index*3);
-    //float4 color = float4(noise_iqint32(rand_seed), noise_iqint32(rand_seed.yzwx), noise_iqint32(rand_seed.zxyw), 1.0);
+        color = pow(probe_data.xxxx, 2.0);// 適当ガンマ
+    }
+    else if(4 == cb_ssvg.debug_probe_mode)
+    {
+        const float surface_distance = length_int_vector3(voxel_optional_data.surface_distance);
+        #if 1
+            // 距離をグレースケールで可視化.
+            float distance_color = saturate(surface_distance/8.0);
+            
+            distance_color = pow(distance_color, 2.0);// 適当ガンマ
+            color = float4(distance_color, distance_color, distance_color, 1.0);
+        #else
+            // 整数距離を色変えでわかりやすく可視化.
+            if(0.0 > surface_distance)
+            {
+                color = float4(0,0,0.25,1);
+            }
+            else if((1<<10)*3 == surface_distance)
+            {
+                color = float4(0,1,1,1);// 無効値.
+            }
+            else if(0.0 == surface_distance)
+            {
+                color = float4(0,0,0,1);
+            }
+            else if(1.0 == surface_distance)
+            {
+                color = float4(1,0,0,1);
+            }
+            else if(2.0 == surface_distance)
+            {
+                color = float4(0,1,0,1);
+            }
+            else if(3.0 == surface_distance)
+            {
+                color = float4(0,0,1,1);
+            }
+            else
+            {
+                color = float4(1,1,1,1);
+            }
+        #endif
+    }
 
 	return color;
 }

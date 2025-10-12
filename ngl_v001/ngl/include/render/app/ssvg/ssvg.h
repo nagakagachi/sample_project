@@ -43,6 +43,7 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_visible_probe_sky_visibility_sample_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_visible_probe_sky_visibility_apply_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_coarse_probe_sky_visibility_sample_and_apply_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fill_probe_sky_visibility_octmap_border_ = {};
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_debug_visualize_ = {};
         ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_debug_obm_voxel_ = {};
