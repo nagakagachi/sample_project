@@ -74,6 +74,7 @@ namespace ngl::test
 
         bool debugview_ssvg_voxel = false;
         float debugview_ssvg_voxel_rate = 0.5f;
+    	bool debugview_ssvg_sky_visibility = false;
     };
 	// RenderPathが生成した出力リソース.
 	//	このRenderPathとは異なるRtgや次フレームのRtgでアクセス可能.

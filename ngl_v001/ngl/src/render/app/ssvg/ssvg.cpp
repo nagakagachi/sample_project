@@ -596,5 +596,11 @@ namespace ngl::render::app
         }
     }
 
+    void SsVg::SetDescriptorCascade0(rhi::PipelineStateBaseDep* p_pso, rhi::DescriptorSetDep* p_desc_set) const
+    {
+        assert(!cascades_.empty());
+        p_pso->SetView(p_desc_set, "TexProbeSkyVisibility", cascades_[0]->GetProbeSkyVisibilitySrv().Get());
+        p_pso->SetView(p_desc_set, "cb_ssvg", &cascades_[0]->GetDispatchCbh()->cbv_);
+    }
 
 }  // namespace ngl::render::app

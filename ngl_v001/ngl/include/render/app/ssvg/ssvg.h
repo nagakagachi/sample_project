@@ -32,6 +32,10 @@ namespace ngl::render::app
 
         void SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir);
 
+
+        ngl::rhi::ConstantBufferPooledHandle GetDispatchCbh() const { return cbh_dispatch_; }
+        rhi::RefSrvDep GetProbeSkyVisibilitySrv() const { return probe_skyvisibility_.srv; }
+
     private:
         bool is_first_dispatch_ = true;
 
@@ -115,6 +119,8 @@ namespace ngl::render::app
 
 
         void SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir);
+
+        void SetDescriptorCascade0(rhi::PipelineStateBaseDep* p_pso, rhi::DescriptorSetDep* p_desc_set) const;
 
     private:
             bool is_initialized_ = false;

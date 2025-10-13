@@ -60,6 +60,7 @@ static bool dbgw_view_dshadow                     = false;
 
 //static bool dbgw_view_ssvg_voxel                  = true;
 static float dbgw_view_ssvg_voxel_rate            = 0.5f;
+static bool dbgw_view_ssvg_sky_visibility         = false;
 
 static float dbgw_dlit_angle_v                    = 0.4f;
 static float dbgw_dlit_angle_h                    = 4.1f;
@@ -338,7 +339,7 @@ bool AppGame::Initialize()
         const char* mesh_file_box = "K:\\GitHub\\sample_projct_lib\\ngl_v001\\ngl\\external\\assimp\\test\\models\\FBX\\box.fbx";
 
         // シーンモデル.
-#if 1
+#if 0
         // Sponza.
         const char* mesh_file_sponza = "../ngl/data/model/sponza_gltf/glTF/Sponza.gltf";
         const float sponza_scale     = 1.0f;
@@ -762,6 +763,8 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("View GBuffer", &dbgw_view_gbuffer);
             ImGui::Checkbox("View Directional Shadow Atlas", &dbgw_view_dshadow);
             ImGui::Checkbox("View Half Dot Gray", &dbgw_view_half_dot_gray);
+            // sky visibilityデバッグ.
+            ImGui::Checkbox("View Ssvg Sky Visibility", &dbgw_view_ssvg_sky_visibility);
         }
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Directional Light"))
@@ -1070,6 +1073,7 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
                 render_frame_desc.debugview_dshadow = dbgw_view_dshadow;
                 render_frame_desc.debugview_ssvg_voxel = ngl::render::app::SsVg::dbg_view_enable_;
                 render_frame_desc.debugview_ssvg_voxel_rate = dbgw_view_ssvg_voxel_rate;
+                render_frame_desc.debugview_ssvg_sky_visibility = dbgw_view_ssvg_sky_visibility;
             }
         }
 

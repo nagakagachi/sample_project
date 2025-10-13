@@ -116,6 +116,15 @@ void main_cs(
             }
             else if(2 == cb_ssvg.debug_view_mode)
             {
+                // VoxelIDを可視化.
+                debug_color.xyz = float4(frac(hit_voxel_index / 64.0), frac(hit_voxel_index / 256.0), frac(hit_voxel_index / 1024.0), 1);
+                
+                // 簡易フォグ.
+                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
+                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
+            }
+            else if(3 == cb_ssvg.debug_view_mode)
+            {
                 // OBMセルの深度を可視化.
                 debug_color.xyz = float4(saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), 1);
             }

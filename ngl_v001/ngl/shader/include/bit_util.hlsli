@@ -90,14 +90,14 @@
         const uint zz = BitSeparate2(v.z);
         return xx | (yy << 1) | (zz << 2);
     }
+    #define k_10_bit_mask (0x3FF) // 10bitマスク
     // 32bitモートンコードからセル座標復元
     int3 DecodeMortonCodeX10Y10Z10(uint morton)
     {
-        const int range = (0x01 << 10) - 1;
         int3 result;
-        result.x = BitCompact2(morton) & range;
-        result.y = BitCompact2(morton >> 1) & range;
-        result.z = BitCompact2(morton >> 2) & range;
+        result.x = BitCompact2(morton) &  k_10_bit_mask;
+        result.y = BitCompact2(morton >> 1) & k_10_bit_mask;
+        result.z = BitCompact2(morton >> 2) & k_10_bit_mask;
         return result;
     }
 

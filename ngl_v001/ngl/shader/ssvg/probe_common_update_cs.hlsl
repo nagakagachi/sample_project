@@ -82,6 +82,11 @@ void main_cs(
             }
         }
     }
+    else
+    {
+        // 空Voxelの場合は中心.
+        candidate_probe_bitcell_index = calc_obm_bitcell_index(k_obm_per_voxel_resolution.xxx * 0.5);
+    }
 
     // SurfaceDistance計算検証.
     // 実際にはマルチスレッド考慮せずに近傍情報参照しているため, 定常状態になるまでは一部正しくない距離情報が格納される場合がある近似処理に注意.

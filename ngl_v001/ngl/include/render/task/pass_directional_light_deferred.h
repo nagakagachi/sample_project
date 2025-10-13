@@ -5,6 +5,9 @@
 #include "gfx/rtg/graph_builder.h"
 #include "gfx/command_helper.h"
 
+#include "render/app/ssvg/ssvg.h"
+
+
 namespace ngl::render::task
 {
 	// Lightingパス.
@@ -34,7 +37,10 @@ namespace ngl::render::task
 			fwk::GfxScene* scene{};
 			fwk::GfxSceneEntityId skybox_proxy_id{};
 			
+            render::app::SsVg* p_ssvg = {};
+
 			bool enable_feedback_blur_test{};
+            bool dbg_view_ssvg_sky_visibility = false;
 		};
 		SetupDesc desc_{};
 		bool is_render_skip_debug{};
@@ -158,19 +164,28 @@ namespace ngl::render::task
 					// SkyboxProxyから情報取り出し.
 					auto* skybox_proxy = desc_.scene->buffer_skybox_.proxy_buffer_[desc_.skybox_proxy_id.GetIndex()];
 					
+
+                    static bool debug_first_frame_flag = true;
+                    const bool is_first_frame = debug_first_frame_flag;
+                    debug_first_frame_flag = false;
+
+
 					// LightingPass定数バッファ.
 					struct CbLightingPass
 					{
-						int enable_feedback_blur_test;
-						int is_first_frame;
+						int enable_feedback_blur_test{};
+						int is_first_frame{};
+                        int is_enable_gi{};
+                        int dbg_view_ssvg_sky_visibility{};
 					};
 					auto lighting_cbh = gfx_commandlist->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(CbLightingPass));
 					if(auto* p_mapped = lighting_cbh->buffer_.MapAs<CbLightingPass>())
 					{
 						p_mapped->enable_feedback_blur_test = desc_.enable_feedback_blur_test;
-						static bool debug_first_frame_flag = true;
-						p_mapped->is_first_frame = debug_first_frame_flag;
-						debug_first_frame_flag = false;
+						p_mapped->is_first_frame = is_first_frame ? 1 : 0;
+
+                        p_mapped->is_enable_gi = (desc_.p_ssvg != nullptr) ? 1 : 0;
+                        p_mapped->dbg_view_ssvg_sky_visibility = desc_.dbg_view_ssvg_sky_visibility ? 1 : 0;
 
 						lighting_cbh->buffer_.Unmap();
 					}
@@ -207,6 +222,13 @@ namespace ngl::render::task
 
 					pso_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
 					pso_->SetView(&desc_set, "samp_shadow", gfx::GlobalRenderResource::Instance().default_resource_.sampler_shadow_linear.Get());
+
+
+                    if(desc_.p_ssvg)
+                    {
+                        desc_.p_ssvg->SetDescriptorCascade0(pso_.Get(), &desc_set);
+                    }
+
 						
 					gfx_commandlist->SetDescriptorSet(pso_.Get(), &desc_set);
 

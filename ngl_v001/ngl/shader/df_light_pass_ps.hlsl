@@ -22,6 +22,9 @@ struct CbLightingPass
 {
 	int enable_feedback_blur_test;
 	int is_first_frame;
+
+    int is_enable_gi;
+    int dbg_view_ssvg_sky_visibility;
 };
 ConstantBuffer<CbLightingPass> ngl_cb_lighting_pass;
 
@@ -38,6 +41,9 @@ SamplerComparisonState samp_shadow;
 TextureCube tex_ibl_diffuse;
 TextureCube tex_ibl_specular;
 Texture2D tex_ibl_dfg;
+
+// GI
+#include "ssvg/ssvg_util.hlsli"
 
 
 // DirectionalLight評価. 標準.
@@ -179,6 +185,16 @@ float EvalDirectionalShadow(Texture2D tex_cascade_shadowmap, SamplerComparisonSt
 }
 
 
+uint2 calc_2d_position_from_index(uint index, uint tex_width)
+{
+    return uint2(index % tex_width, index / tex_width);
+}
+uint2 calc_probe_octahedral_map_atlas_texel_base_pos(uint index, uint tex_width)
+{
+    // 境界部分の +1.
+    return calc_2d_position_from_index(index, tex_width) * k_probe_octmap_width_with_border + 1.0;
+}
+
 float4 main_ps(VS_OUTPUT input) : SV_TARGET
 {	
 	// リニアView深度.
@@ -241,13 +257,63 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		//lit_color += (dlit_diffuse) * light_visibility;// テスト.
 		//lit_color += (dlit_specular) * light_visibility;// テスト.
 	}
+
+    // GI.
+    float sky_visibility = 1.0;;
+    if(ngl_cb_lighting_pass.is_enable_gi)
+    {
+        uint tex_width, tex_height;
+        TexProbeSkyVisibility.GetDimensions(tex_width, tex_height);
+        const float2 texel_size = 1.0 / float2(tex_width, tex_height);
+
+        const float2 octmap_local_texel_pos = OctEncode(gb_normal_ws)*k_probe_octmap_width;
+
+
+        const float3 voxel_coordf = (pixel_pos_ws - cb_ssvg.grid_min_pos) * cb_ssvg.cell_size_inv;
+
+        
+        const int3 voxel_base_coord = floor(voxel_coordf - 0.5);
+        const float3 coord_frac = frac(voxel_coordf - 0.5);
+
+
+        const uint voxel_index_000 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord, cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
+        const uint voxel_index_001 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 0, 0), cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
+        const uint voxel_index_010 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(0, 1, 0), cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
+        const uint voxel_index_011 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 1, 0), cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
+        const uint voxel_index_100 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(0, 0, 1), cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
+        const uint voxel_index_101 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 0, 1), cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
+        const uint voxel_index_110 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(0, 1, 1), cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
+        const uint voxel_index_111 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 1, 1), cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
+
+        const float2 octmap_uv_000 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_000, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_001 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_001, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_010 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_010, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_011 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_011, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_100 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_100, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_101 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_101, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_110 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_110, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_111 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_111, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
+
+
+        const float svx0 = lerp(TexProbeSkyVisibility.SampleLevel(samp, octmap_uv_000, 0).r, TexProbeSkyVisibility.SampleLevel(samp, octmap_uv_001, 0).r, coord_frac.x);
+        const float svx1 = lerp(TexProbeSkyVisibility.SampleLevel(samp, octmap_uv_010, 0).r, TexProbeSkyVisibility.SampleLevel(samp, octmap_uv_011, 0).r, coord_frac.x);
+        const float svx2 = lerp(TexProbeSkyVisibility.SampleLevel(samp, octmap_uv_100, 0).r, TexProbeSkyVisibility.SampleLevel(samp, octmap_uv_101, 0).r, coord_frac.x);
+        const float svx3 = lerp(TexProbeSkyVisibility.SampleLevel(samp, octmap_uv_110, 0).r, TexProbeSkyVisibility.SampleLevel(samp, octmap_uv_111, 0).r, coord_frac.x);
+
+        const float svy0 = lerp(svx0, svx1, coord_frac.y);
+        const float svy1 = lerp(svx2, svx3, coord_frac.y);
+
+        const float sv = lerp(svy0, svy1, coord_frac.z);
+
+        sky_visibility = sv;
+    }
 	
 	// IBL.
 	{
 		float3 ibl_diffuse, ibl_specular;
 		EvalIblDiffuseStandard(ibl_diffuse, ibl_specular, tex_ibl_diffuse, tex_ibl_specular, tex_ibl_dfg, samp, gb_normal_ws, V, gb_base_color, gb_roughness, gb_metalness);
 
-		lit_color += ibl_diffuse + ibl_specular;
+		lit_color += (ibl_diffuse + ibl_specular) * sky_visibility;
 		
 		//lit_color = ibl_diffuse + ibl_specular;// テスト
 		//lit_color = ibl_diffuse;// テスト.
@@ -255,22 +321,22 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	}
 
 
-		// ------------------------------------------------------------------------------
-			// NaNチェック.
-			const float3  k_lit_nan_key_color = float3(1.0, 0.25, 1.0);
-			if(isnan(lit_color.x) || isnan(lit_color.y) || isnan(lit_color.z))
-			{
-				// ライティング計算でNaN検出した場合はキーになるカラーをそのまま返す.
-				return float4(k_lit_nan_key_color, 0.0);
-			}
-			// NaNチェック. 前回フレームのバッファがNaNキー色の場合は, そのまま返す.
-			if(all(prev_light.rgb == k_lit_nan_key_color))
-			{
-				return float4(k_lit_nan_key_color, 0.0);
-			}
-		// ------------------------------------------------------------------------------
 
 
+    // ------------------------------------------------------------------------------
+        // NaNチェック.
+        const float3  k_lit_nan_key_color = float3(1.0, 0.25, 1.0);
+        if(isnan(lit_color.x) || isnan(lit_color.y) || isnan(lit_color.z))
+        {
+            // ライティング計算でNaN検出した場合はキーになるカラーをそのまま返す.
+            return float4(k_lit_nan_key_color, 0.0);
+        }
+        // NaNチェック. 前回フレームのバッファがNaNキー色の場合は, そのまま返す.
+        if(all(prev_light.rgb == k_lit_nan_key_color))
+        {
+            return float4(k_lit_nan_key_color, 0.0);
+        }
+    // ------------------------------------------------------------------------------
 
 	// 過去フレームを使ったフィードバックブラーテスト.
 	if(ngl_cb_lighting_pass.enable_feedback_blur_test)
@@ -282,6 +348,17 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		float prev_blend_rate = saturate((length_from_center - k_lenght_min)*5.0);
 		lit_color = lerp(lit_color, prev_light.rgb, prev_blend_rate * 0.95);
 	}
+    
+
+    // デバッグ表示.
+    // ------------------------------------------------------------------------------
+        // sky_visibilityテスト.
+        if(ngl_cb_lighting_pass.dbg_view_ssvg_sky_visibility)
+        {
+            lit_color = sky_visibility;
+        }
+    // ------------------------------------------------------------------------------
+
 
 	return float4(lit_color, 1.0);
 }

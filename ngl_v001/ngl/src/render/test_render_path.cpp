@@ -324,6 +324,9 @@ namespace ngl::test
 						setup_desc.scene = p_scene->gfx_scene_;
 						setup_desc.skybox_proxy_id = p_scene->skybox_proxy_id_;
 						
+                        setup_desc.p_ssvg = render_frame_desc.p_ssvg;
+                        setup_desc.dbg_view_ssvg_sky_visibility = render_frame_desc.debugview_ssvg_sky_visibility;
+                        
 						setup_desc.enable_feedback_blur_test = render_frame_desc.debugview_enable_feedback_blur_test;
 					}
 					task_light->Setup(rtg_builder, p_device, view_info,

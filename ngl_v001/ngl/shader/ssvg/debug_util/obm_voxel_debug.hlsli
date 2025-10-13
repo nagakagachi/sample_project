@@ -73,7 +73,7 @@ VS_OUTPUT main_vs(VS_INPUT input)
     // obm追加データ.
     const ObmVoxelOptionalData voxel_optional_data = ObmVoxelOptionalBuffer[voxel_index];
     const bool is_invalid_probe_local_pos = (0 == voxel_optional_data.probe_pos_code);
-    const int3 probe_coord_in_voxel = (is_invalid_probe_local_pos) ? int3(0,0,0) : calc_obm_bitcell_pos_from_bit_index(calc_obm_probe_bitcell_index(voxel_optional_data));
+    const int3 probe_coord_in_voxel = (is_invalid_probe_local_pos) ? int3(k_obm_per_voxel_resolution.xxx * 0.5) : calc_obm_bitcell_pos_from_bit_index(calc_obm_probe_bitcell_index(voxel_optional_data));
     const float3 probe_pos_ws = (float3(voxel_coord) + (float3(probe_coord_in_voxel) + 0.5) / float(k_obm_per_voxel_resolution)) * cb_ssvg.cell_size + cb_ssvg.grid_min_pos;
 
 
