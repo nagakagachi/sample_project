@@ -9,6 +9,7 @@ ssvg_util.hlsli
 
 
 #include "../include/math_util.hlsli"
+#include "../include/bit_util.hlsli"
 
 // cpp/hlsl共通定義用ヘッダ.
 #include "ssvg_common_header.hlsli"
@@ -49,22 +50,40 @@ ConstantBuffer<SsvgParam> cb_ssvg;
 // ------------------------------------------------------------------------------------------------------------------------
 
 
+#if 1
+    // シンプルなインデックスフラット化.
 
-// Voxel座標からVoxelIndex計算.
-uint voxel_coord_to_index(int3 coord, int3 resolution)
-{
-    return coord.x + coord.y * resolution.x + coord.z * resolution.x * resolution.y;
-}
-// VoxelIndexからVoxel座標計算.
-int3 index_to_voxel_coord(uint index, int3 resolution)
-{
-    int z = index / (resolution.x * resolution.y);
-    index -= z * (resolution.x * resolution.y);
-    int y = index / resolution.x;
-    index -= y * resolution.x;
-    int x = index;
-    return int3(x, y, z);
-}
+    // Voxel座標からVoxelIndex計算.
+    uint voxel_coord_to_index(int3 coord, int3 resolution)
+    {
+        return coord.x + coord.y * resolution.x + coord.z * resolution.x * resolution.y;
+    }
+    // VoxelIndexからVoxel座標計算.
+    int3 index_to_voxel_coord(uint index, int3 resolution)
+    {
+        int z = index / (resolution.x * resolution.y);
+        index -= z * (resolution.x * resolution.y);
+        int y = index / resolution.x;
+        index -= y * resolution.x;
+        int x = index;
+        return int3(x, y, z);
+    }
+#else
+    // Z-Order Morton Codeによるインデックスフラット化. インデックスの局所化によるキャッシュ効率向上を意図.
+
+    // Voxel座標からVoxelIndex計算.
+    uint voxel_coord_to_index(int3 coord, int3 resolution)
+    {
+        return EncodeMortonCodeX10Y10Z10(coord);
+    }
+    // VoxelIndexからVoxel座標計算.
+    int3 index_to_voxel_coord(uint index, int3 resolution)
+    {
+        return DecodeMortonCodeX10Y10Z10(index);
+    }
+#endif
+
+
 // リニアなVoxel座標をループするToroidalマッピングに変換する.
 //  ToroidalMapping座標をリニア座標に戻す変換は
 //      voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_ssvg.base_grid_resolution - cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution)

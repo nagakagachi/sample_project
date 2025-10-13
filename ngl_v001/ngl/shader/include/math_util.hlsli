@@ -183,22 +183,6 @@ void GetCubemapPlaneAxis(int cube_plane_index, out float3 out_front, out float3 
     out_right = plane_axis_right[cube_plane_index];
 }
 
-
-
-//--------------------------------------------------------------------------------
-// ビット操作.
-
-// ビットカウント関数
-uint CountBits32(uint value)
-{
-    // ハミング重み計算
-    value = value - ((value >> 1) & 0x55555555);
-    value = (value & 0x33333333) + ((value >> 2) & 0x33333333);
-    return (((value + (value >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
-}
-
-
-
 //--------------------------------------------------------------------------------
 // 最大の値を取る軸の軸ベクトルを返す(入力ベクトルは正のみ).
 int3 calc_principal_axis(float3 v)
