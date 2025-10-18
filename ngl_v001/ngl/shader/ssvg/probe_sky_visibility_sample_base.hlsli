@@ -135,7 +135,7 @@ void main_cs(
             const float3 sample_ray_origin = probe_sample_pos_ws;            
                 
             // SkyVisibility raycast.
-            const float trace_distance = 10.0;
+            const float trace_distance = 20.0;
             int hit_voxel_index = -1;
             // リファクタリング版.
             float4 curr_ray_t_ws = trace_ray_vs_obm_voxel_grid(
@@ -145,7 +145,10 @@ void main_cs(
                 cb_ssvg.grid_toroidal_offset, OccupancyBitmaskVoxel);
                 
             // SkyVisibilityの方向平均を更新.
-            const float sky_visibility = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
+            //const float sky_visibility = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
+            float sky_visibility = (0.0 > curr_ray_t_ws.x) ? trace_distance : curr_ray_t_ws.x;// 距離をそのまま書き込み.
+            //sky_visibility = saturate(sky_visibility / trace_distance);// 適当な距離で正規化する?.
+
             // ProbeOctMapの更新.
             const float2 octmap_uv = OctEncode(sample_ray_dir);
             const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.probe_atlas_texture_base_width, voxel_index / cb_ssvg.probe_atlas_texture_base_width);

@@ -66,10 +66,13 @@ void main_cs(
                     const uint bit_index = i * 32 + bi;
                     const uint3 bitcell_pos_in_voxel = calc_obm_bitcell_pos_from_bit_index(bit_index);
                     
-                    // Voxel中心に近いセルを選択.
-                    const float3 score_vec = float3(bitcell_pos_in_voxel) - (float3(k_obm_per_voxel_resolution, k_obm_per_voxel_resolution, k_obm_per_voxel_resolution) * 0.5);
-                    // カメラに一番近いセルを選択.
-                    //const float3 score_vec = float3(bitcell_pos_in_voxel) - camera_pos_in_bit_cell_space;
+                    #if 0
+                        // Voxel中心に近いセルを選択.
+                        const float3 score_vec = float3(bitcell_pos_in_voxel) - (float3(k_obm_per_voxel_resolution, k_obm_per_voxel_resolution, k_obm_per_voxel_resolution) * 0.5);
+                    #else
+                        // カメラに一番近いセルを選択.
+                        const float3 score_vec = float3(bitcell_pos_in_voxel) - camera_pos_in_bit_cell_space;
+                    #endif
 
                     const float dist_sq = dot(score_vec, score_vec);
                     if(dist_sq < candidate_probe_pos_dist_sq)
