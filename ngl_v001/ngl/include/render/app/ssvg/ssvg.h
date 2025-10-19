@@ -32,7 +32,7 @@ namespace ngl::render::app
         ToroidalGridUpdater() = default;
         ~ToroidalGridUpdater() = default;
 
-        void Initialize(const math::Vec3u& grid_resolution, float cell_size);
+        void Initialize(const math::Vec3u& grid_resolution, float bbv_cell_size);
 
         void UpdateGrid(const math::Vec3& important_pos);
 
@@ -142,7 +142,7 @@ namespace ngl::render::app
         ~SsVg();
 
         // 初期化
-        bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u base_resolution, float cell_size);
+        bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u base_resolution, float bbv_cell_size);
         bool IsValid() const { return is_initialized_; }
         // 破棄
         void Finalize();

@@ -23,7 +23,7 @@ namespace ngl::render::app
     #undef NGL_SHADER_CPP_INCLUDE
 
 
-    static constexpr size_t k_sizeof_ObmVoxelOptionalData = sizeof(ObmVoxelOptionalData);
+    static constexpr size_t k_sizeof_BbvOptionalData = sizeof(BbvOptionalData);
     static constexpr u32 k_max_update_probe_work_count = 1024;
 
     // デバッグ.
@@ -35,10 +35,10 @@ namespace ngl::render::app
     float SsVg::dbg_probe_near_geom_scale_ = 0.2f;
     
 
-    void ToroidalGridUpdater::Initialize(const math::Vec3u& grid_resolution, float cell_size)
+    void ToroidalGridUpdater::Initialize(const math::Vec3u& grid_resolution, float bbv_cell_size)
     {
         grid_.resolution_ = grid_resolution;
-        grid_.cell_size_ = cell_size;
+        grid_.cell_size_ = bbv_cell_size;
 
         const u32 voxel_count = grid_.resolution_.x * grid_.resolution_.y * grid_.resolution_.z;
         grid_.flatten_2d_width_ = static_cast<u32>(std::ceil(std::sqrt(static_cast<float>(voxel_count))));
@@ -155,7 +155,7 @@ namespace ngl::render::app
         {
             bbv_optional_data_buffer_.InitializeAsStructured(p_device,
                                            rhi::BufferDep::Desc{
-                                               .element_byte_size = sizeof(ObmVoxelOptionalData),
+                                               .element_byte_size = sizeof(BbvOptionalData),
                                                .element_count     = bbv_grid_updater_.Get().resolution_.x * bbv_grid_updater_.Get().resolution_.y * bbv_grid_updater_.Get().resolution_.z,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
@@ -165,7 +165,7 @@ namespace ngl::render::app
             bbv_buffer_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = sizeof(uint32_t),
-                                               .element_count     = voxel_count * k_obm_per_voxel_u32_count,
+                                               .element_count     = voxel_count * k_bbv_per_voxel_u32_count,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
@@ -263,35 +263,50 @@ namespace ngl::render::app
         {
             auto* p = cbh_dispatch_->buffer_.MapAs<SsvgParam>();
 
-            p->base_grid_resolution = bbv_grid_updater_.Get().resolution_.Cast<int>();
-            p->flag           = 0;
+            //Bbv
+            {
+                p->bbv.grid_resolution = bbv_grid_updater_.Get().resolution_.Cast<int>();
+                p->bbv.grid_min_pos     = bbv_grid_updater_.Get().min_pos_;
+                p->bbv.grid_min_voxel_coord = math::Vec3::Floor(bbv_grid_updater_.Get().min_pos_ * (1.0f / bbv_grid_updater_.Get().cell_size_)).Cast<int>();
 
-            p->grid_min_pos     = bbv_grid_updater_.Get().min_pos_;
+                p->bbv.grid_toroidal_offset =  bbv_grid_updater_.Get().toroidal_offset_;
+                p->bbv.grid_toroidal_offset_prev =  bbv_grid_updater_.Get().toroidal_offset_prev_;
 
-            p->grid_min_voxel_coord = math::Vec3::Floor(bbv_grid_updater_.Get().min_pos_ * (1.0f / bbv_grid_updater_.Get().cell_size_)).Cast<int>();
+                p->bbv.grid_move_cell_delta = bbv_grid_updater_.Get().min_pos_delta_cell_;
 
-            p->grid_toroidal_offset =  bbv_grid_updater_.Get().toroidal_offset_;
-            p->grid_toroidal_offset_prev =  bbv_grid_updater_.Get().toroidal_offset_prev_;
+                p->bbv.flatten_2d_width = bbv_grid_updater_.Get().flatten_2d_width_;
 
-            p->grid_move_cell_delta = bbv_grid_updater_.Get().min_pos_delta_cell_;
+                p->bbv.cell_size       = bbv_grid_updater_.Get().cell_size_;
+                p->bbv.cell_size_inv    = 1.0f / bbv_grid_updater_.Get().cell_size_;
 
-            p->probe_atlas_texture_base_width = bbv_grid_updater_.Get().flatten_2d_width_;
+                p->bbv_indirect_cs_thread_group_size = math::Vec3i(pso_bbv_visible_probe_sampling_->GetThreadGroupSizeX(), pso_bbv_visible_probe_sampling_->GetThreadGroupSizeY(), pso_bbv_visible_probe_sampling_->GetThreadGroupSizeZ());
+                p->bbv_visible_voxel_buffer_size = bbv_fine_update_voxel_count_max_;
+            }
+            // Wcp
+            {
+                p->wcp.grid_resolution = wcp_grid_updater_.Get().resolution_.Cast<int>();
+                p->wcp.grid_min_pos     = wcp_grid_updater_.Get().min_pos_;
+                p->wcp.grid_min_voxel_coord = math::Vec3::Floor(wcp_grid_updater_.Get().min_pos_ * (1.0f / wcp_grid_updater_.Get().cell_size_)).Cast<int>();
 
-            p->cell_size       = bbv_grid_updater_.Get().cell_size_;
-            p->cell_size_inv    = 1.0f / bbv_grid_updater_.Get().cell_size_;
+                p->wcp.grid_toroidal_offset =  wcp_grid_updater_.Get().toroidal_offset_;
+                p->wcp.grid_toroidal_offset_prev =  wcp_grid_updater_.Get().toroidal_offset_prev_;
 
-            p->voxel_dispatch_thread_group_count = math::Vec3i(pso_bbv_visible_probe_sampling_->GetThreadGroupSizeX(), pso_bbv_visible_probe_sampling_->GetThreadGroupSizeY(), pso_bbv_visible_probe_sampling_->GetThreadGroupSizeZ());
+                p->wcp.grid_move_cell_delta = wcp_grid_updater_.Get().min_pos_delta_cell_;
 
-            p->update_probe_work_count = bbv_fine_update_voxel_count_max_;
+                p->wcp.flatten_2d_width = wcp_grid_updater_.Get().flatten_2d_width_;
+
+                p->wcp.cell_size       = wcp_grid_updater_.Get().cell_size_;
+                p->wcp.cell_size_inv    = 1.0f / wcp_grid_updater_.Get().cell_size_;
+            }
+
 
             p->tex_hw_depth_size = hw_depth_size;
-
             p->frame_count = frame_count_;
 
             p->debug_view_mode = SsVg::dbg_view_mode_;
             p->debug_probe_mode = SsVg::dbg_probe_debug_view_mode_;
 
-            p->debug_probe_radius = SsVg::dbg_probe_scale_ * 0.5f * bbv_grid_updater_.Get().cell_size_ / k_obm_per_voxel_resolution;
+            p->debug_probe_radius = SsVg::dbg_probe_scale_ * 0.5f * bbv_grid_updater_.Get().cell_size_ / k_bbv_per_voxel_resolution;
             p->debug_probe_near_geom_scale = SsVg::dbg_probe_near_geom_scale_;
 
             cbh_dispatch_->buffer_.Unmap();
@@ -307,8 +322,8 @@ namespace ngl::render::app
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_bbv_clear_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_bbv_clear_->SetView(&desc_set, "RWObmVoxelOptionalBuffer", bbv_optional_data_buffer_.uav.Get());
-                pso_bbv_clear_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", bbv_buffer_.uav.Get());
+                pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
+                pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
                 pso_bbv_clear_->SetView(&desc_set, "RWTexProbeSkyVisibility", bbv_probe_atlas_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_bbv_clear_.Get());
@@ -326,8 +341,8 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_bbv_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                 pso_bbv_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_bbv_begin_update_->SetView(&desc_set, "RWObmVoxelOptionalBuffer", bbv_optional_data_buffer_.uav.Get());
-                pso_bbv_begin_update_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", bbv_buffer_.uav.Get());
+                pso_bbv_begin_update_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
+                pso_bbv_begin_update_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
                 pso_bbv_begin_update_->SetView(&desc_set, "RWVisibleVoxelList", bbv_fine_update_voxel_list_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_bbv_begin_update_.Get());
@@ -340,13 +355,13 @@ namespace ngl::render::app
             }
             // Voxelization Pass.
             {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ObmVoxelGeneration");
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BitmaskBrickVoxelGeneration");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_bbv_voxelize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
                 pso_bbv_voxelize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                 pso_bbv_voxelize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_bbv_voxelize_->SetView(&desc_set, "RWOccupancyBitmaskVoxel", bbv_buffer_.uav.Get());
+                pso_bbv_voxelize_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
                 pso_bbv_voxelize_->SetView(&desc_set, "RWVisibleVoxelList", bbv_fine_update_voxel_list_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_bbv_voxelize_.Get());
@@ -380,8 +395,8 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_bbv_probe_common_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                 pso_bbv_probe_common_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_bbv_probe_common_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", bbv_buffer_.srv.Get());
-                pso_bbv_probe_common_update_->SetView(&desc_set, "RWObmVoxelOptionalBuffer", bbv_optional_data_buffer_.uav.Get());
+                pso_bbv_probe_common_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+                pso_bbv_probe_common_update_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_bbv_probe_common_update_.Get());
                 p_command_list->SetDescriptorSet(pso_bbv_probe_common_update_.Get(), &desc_set);
@@ -399,10 +414,10 @@ namespace ngl::render::app
                     ngl::rhi::DescriptorSetDep desc_set = {};
                     pso_bbv_visible_probe_sampling_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                     pso_bbv_visible_probe_sampling_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_bbv_visible_probe_sampling_->SetView(&desc_set, "OccupancyBitmaskVoxel", bbv_buffer_.srv.Get());
+                    pso_bbv_visible_probe_sampling_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                     pso_bbv_visible_probe_sampling_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
 
-                    pso_bbv_visible_probe_sampling_->SetView(&desc_set, "ObmVoxelOptionalBuffer", bbv_optional_data_buffer_.srv.Get());
+                    pso_bbv_visible_probe_sampling_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
 
                     pso_bbv_visible_probe_sampling_->SetView(&desc_set, "RWTexProbeSkyVisibility", bbv_probe_atlas_tex_.uav.Get());
                     pso_bbv_visible_probe_sampling_->SetView(&desc_set, "RWUpdateProbeWork", bbv_fine_update_voxel_probe_buffer_.uav.Get());
@@ -442,10 +457,10 @@ namespace ngl::render::app
                     ngl::rhi::DescriptorSetDep desc_set = {};
                     pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                     pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "OccupancyBitmaskVoxel", bbv_buffer_.srv.Get());
+                    pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                     pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
 
-                    pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "ObmVoxelOptionalBuffer", bbv_optional_data_buffer_.srv.Get());
+                    pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
 
                     pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "RWTexProbeSkyVisibility", bbv_probe_atlas_tex_.uav.Get());
 
@@ -487,8 +502,8 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
             pso_bbv_debug_visualize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-            pso_bbv_debug_visualize_->SetView(&desc_set, "ObmVoxelOptionalBuffer", bbv_optional_data_buffer_.srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, "OccupancyBitmaskVoxel", bbv_buffer_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "TexProbeSkyVisibility", bbv_probe_atlas_tex_.srv.Get());
             
             pso_bbv_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
@@ -530,8 +545,8 @@ namespace ngl::render::app
             pso_bbv_debug_probe_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
             
             pso_bbv_debug_probe_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-            pso_bbv_debug_probe_->SetView(&desc_set, "ObmVoxelOptionalBuffer", bbv_optional_data_buffer_.srv.Get());
-            pso_bbv_debug_probe_->SetView(&desc_set, "OccupancyBitmaskVoxel", bbv_buffer_.srv.Get());
+            pso_bbv_debug_probe_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
+            pso_bbv_debug_probe_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
             pso_bbv_debug_probe_->SetView(&desc_set, "TexProbeSkyVisibility", bbv_probe_atlas_tex_.srv.Get());
             pso_bbv_debug_probe_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
 
@@ -554,13 +569,13 @@ namespace ngl::render::app
     }
 
     // 初期化
-    bool SsVg::Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u base_resolution, float cell_size)
+    bool SsVg::Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u base_resolution, float bbv_cell_size)
     {
         ssvg_instance_ = new BitmaskBrickVoxel();
         BitmaskBrickVoxel::InitArg init_arg = {};
         {
             init_arg.voxel_resolution = base_resolution;
-            init_arg.voxel_size       = cell_size;
+            init_arg.voxel_size       = bbv_cell_size;
         }
         if(!ssvg_instance_->Initialize(p_device, init_arg))
         {

@@ -63,8 +63,8 @@ void main_cs(
 
         const uint voxel_index = VisibleVoxelList[update_element_index+1]; // 1番目以降に有効Voxelインデックスが入っている.
         // voxel_indexからtoroidal考慮したVoxelIDを計算する.
-        int3 voxel_coord_toroidal = index_to_voxel_coord(voxel_index, cb_ssvg.base_grid_resolution);
-        int3 voxel_coord = voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_ssvg.base_grid_resolution -cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution);
+        int3 voxel_coord_toroidal = index_to_voxel_coord(voxel_index, cb_ssvg.bbv.grid_resolution);
+        int3 voxel_coord = voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution -cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
         
         // Probeサンプリングワークをクリア.
         for(int i = 0; i < k_per_probe_texel_count; ++i)
@@ -72,7 +72,7 @@ void main_cs(
             shared_probe_octmap_accumulation[gindex * k_per_probe_texel_count + i] = float2(0.0, 0.0);
         }
     #else
-        const uint voxel_count = cb_ssvg.base_grid_resolution.x * cb_ssvg.base_grid_resolution.y * cb_ssvg.base_grid_resolution.z;
+        const uint voxel_count = cb_ssvg.bbv.grid_resolution.x * cb_ssvg.bbv.grid_resolution.y * cb_ssvg.bbv.grid_resolution.z;
 
 
         #if 0
@@ -89,27 +89,27 @@ void main_cs(
                 return;
         #endif
 
-        const int3 voxel_coord = index_to_voxel_coord(update_element_id, cb_ssvg.base_grid_resolution);
-        const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution);
-        const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.base_grid_resolution);
+        const int3 voxel_coord = index_to_voxel_coord(update_element_id, cb_ssvg.bbv.grid_resolution);
+        const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
+        const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution);
     #endif
 
 
-    const uint unique_data_addr = obm_voxel_unique_data_addr(voxel_index);
-    const uint obm_addr = obm_voxel_occupancy_bitmask_data_addr(voxel_index);
+    const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
+    const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
 
     // 前パスで格納された線形インデックスからプローブ位置(レイ原点)を計算.
-    ObmVoxelOptionalData voxel_optional_data = ObmVoxelOptionalBuffer[voxel_index];
+    BbvOptionalData voxel_optional_data = BitmaskBrickVoxelOptionData[voxel_index];
     // VoxelのMin位置.
-    float3 probe_sample_pos_ws = float3(voxel_coord) * cb_ssvg.cell_size + cb_ssvg.grid_min_pos;
+    float3 probe_sample_pos_ws = float3(voxel_coord) * cb_ssvg.bbv.cell_size + cb_ssvg.bbv.grid_min_pos;
     if(0 < voxel_optional_data.probe_pos_code)
     {
-        probe_sample_pos_ws += (float3(calc_obm_bitcell_pos_from_bit_index(calc_obm_probe_bitcell_index(voxel_optional_data))) + 0.5) * (cb_ssvg.cell_size / float(k_obm_per_voxel_resolution));
+        probe_sample_pos_ws += (float3(calc_bbv_bitcell_pos_from_bit_index(calc_bbv_probe_bitcell_index(voxel_optional_data))) + 0.5) * (cb_ssvg.bbv.cell_size / float(k_bbv_per_voxel_resolution));
     }
     else
     {
         // 占有されているセルが全て埋まっている場合はVoxel中心をプローブ位置にする.
-        probe_sample_pos_ws += cb_ssvg.cell_size * 0.5;
+        probe_sample_pos_ws += cb_ssvg.bbv.cell_size * 0.5;
     }
 
     // Probeレイサンプル.
@@ -138,17 +138,17 @@ void main_cs(
             const float trace_distance = 10.0;
             int hit_voxel_index = -1;
             // リファクタリング版.
-            float4 curr_ray_t_ws = trace_ray_vs_obm_voxel_grid(
+            float4 curr_ray_t_ws = trace_ray_vs_bitmask_brick_voxel_grid(
                 hit_voxel_index,
                 sample_ray_origin, sample_ray_dir, trace_distance, 
-                cb_ssvg.grid_min_pos, cb_ssvg.cell_size, cb_ssvg.base_grid_resolution,
-                cb_ssvg.grid_toroidal_offset, OccupancyBitmaskVoxel);
+                cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
+                cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
                 
             // SkyVisibilityの方向平均を更新.
             const float sky_visibility = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
             // ProbeOctMapの更新.
             const float2 octmap_uv = OctEncode(sample_ray_dir);
-            const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.probe_atlas_texture_base_width, voxel_index / cb_ssvg.probe_atlas_texture_base_width);
+            const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.bbv.flatten_2d_width, voxel_index / cb_ssvg.bbv.flatten_2d_width);
             
             #if INDIRECT_MODE
                 const uint2 octmap_texel_pos = uint2(octmap_uv * k_probe_octmap_width);

@@ -19,15 +19,15 @@ void main_cs(
 )
 {
     // 全Voxelをクリア.
-    uint voxel_count = cb_ssvg.base_grid_resolution.x * cb_ssvg.base_grid_resolution.y * cb_ssvg.base_grid_resolution.z;
+    uint voxel_count = cb_ssvg.bbv.grid_resolution.x * cb_ssvg.bbv.grid_resolution.y * cb_ssvg.bbv.grid_resolution.z;
     if(dtid.x < voxel_count)
     {
-        RWObmVoxelOptionalBuffer[dtid.x] = (ObmVoxelOptionalData)0;
+        RWBitmaskBrickVoxelOptionData[dtid.x] = (BbvOptionalData)0;
 
-        clear_voxel_data(RWOccupancyBitmaskVoxel, dtid.x);
+        clear_voxel_data(RWBitmaskBrickVoxel, dtid.x);
 
         {
-            uint2 probe_2d_map_pos = uint2(dtid.x % cb_ssvg.probe_atlas_texture_base_width, dtid.x / cb_ssvg.probe_atlas_texture_base_width);
+            uint2 probe_2d_map_pos = uint2(dtid.x % cb_ssvg.bbv.flatten_2d_width, dtid.x / cb_ssvg.bbv.flatten_2d_width);
             for(int oct_j = 0; oct_j < k_probe_octmap_width_with_border; ++oct_j)
             {
                 for(int oct_i = 0; oct_i < k_probe_octmap_width_with_border; ++oct_i)

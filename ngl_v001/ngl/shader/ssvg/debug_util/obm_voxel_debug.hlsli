@@ -63,18 +63,18 @@ VS_OUTPUT main_vs(VS_INPUT input)
     const uint instance_vtx_id = input.vertex_id % 6;
 
 
-    const int3 voxel_coord = index_to_voxel_coord(instance_id, cb_ssvg.base_grid_resolution);
-    const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
+    const int3 voxel_coord = index_to_voxel_coord(instance_id, cb_ssvg.bbv.grid_resolution);
+    const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution), cb_ssvg.bbv.grid_resolution);
 
-    // obm固有データ.
-    ObmVoxelUniqueData unique_data;
-    parse_obm_voxel_unique_data(unique_data, OccupancyBitmaskVoxel[obm_voxel_unique_data_addr(voxel_index)]);
-    
-    // obm追加データ.
-    const ObmVoxelOptionalData voxel_optional_data = ObmVoxelOptionalBuffer[voxel_index];
+    // Bbv固有データ.
+    BbvVoxelUniqueData unique_data;
+    parse_bbv_voxel_unique_data(unique_data, BitmaskBrickVoxel[bbv_voxel_unique_data_addr(voxel_index)]);
+
+    // Bbv追加データ.
+    const BbvOptionalData voxel_optional_data = BitmaskBrickVoxelOptionData[voxel_index];
     const bool is_invalid_probe_local_pos = (0 == voxel_optional_data.probe_pos_code);
-    const int3 probe_coord_in_voxel = (is_invalid_probe_local_pos) ? int3(k_obm_per_voxel_resolution.xxx * 0.5) : calc_obm_bitcell_pos_from_bit_index(calc_obm_probe_bitcell_index(voxel_optional_data));
-    const float3 probe_pos_ws = (float3(voxel_coord) + (float3(probe_coord_in_voxel) + 0.5) / float(k_obm_per_voxel_resolution)) * cb_ssvg.cell_size + cb_ssvg.grid_min_pos;
+    const int3 probe_coord_in_voxel = (is_invalid_probe_local_pos) ? int3(k_bbv_per_voxel_resolution.xxx * 0.5) : calc_bbv_bitcell_pos_from_bit_index(calc_bbv_probe_bitcell_index(voxel_optional_data));
+    const float3 probe_pos_ws = (float3(voxel_coord) + (float3(probe_coord_in_voxel) + 0.5) / float(k_bbv_per_voxel_resolution)) * cb_ssvg.bbv.cell_size + cb_ssvg.bbv.grid_min_pos;
 
 
     float4 color = float4(1,1,1,1);
@@ -155,17 +155,17 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     }
 
     
-    const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.probe_atlas_texture_base_width, voxel_index / cb_ssvg.probe_atlas_texture_base_width);
+    const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.bbv.flatten_2d_width, voxel_index / cb_ssvg.bbv.flatten_2d_width);
     uint tex_width, tex_height;
     TexProbeSkyVisibility.GetDimensions(tex_width, tex_height);
     const float2 octmap_texel_pos = float2(probe_2d_map_pos * k_probe_octmap_width_with_border + 1.0) + OctEncode(normal_ws)*k_probe_octmap_width;
 
-    // obm固有データ.
-    ObmVoxelUniqueData unique_data;
-    parse_obm_voxel_unique_data(unique_data, OccupancyBitmaskVoxel[obm_voxel_unique_data_addr(voxel_index)]);
+    // Bbv固有データ.
+    BbvVoxelUniqueData unique_data;
+    parse_bbv_voxel_unique_data(unique_data, BitmaskBrickVoxel[bbv_voxel_unique_data_addr(voxel_index)]);
 
-    // obm追加データ.
-    const ObmVoxelOptionalData voxel_optional_data = ObmVoxelOptionalBuffer[voxel_index];
+    // Bbv追加データ.
+    const BbvOptionalData voxel_optional_data = BitmaskBrickVoxelOptionData[voxel_index];
 
     // 可視化.
     if(0 == cb_ssvg.debug_probe_mode)

@@ -269,30 +269,30 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
         const float2 octmap_local_texel_pos = OctEncode(gb_normal_ws)*k_probe_octmap_width;
 
 
-        const float3 voxel_coordf = (pixel_pos_ws - cb_ssvg.grid_min_pos) * cb_ssvg.cell_size_inv;
+        const float3 voxel_coordf = (pixel_pos_ws - cb_ssvg.bbv.grid_min_pos) * cb_ssvg.bbv.cell_size_inv;
 
         
         const int3 voxel_base_coord = floor(voxel_coordf - 0.5);
         const float3 coord_frac = frac(voxel_coordf - 0.5);
 
 
-        const uint voxel_index_000 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord, cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
-        const uint voxel_index_001 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 0, 0), cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
-        const uint voxel_index_010 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(0, 1, 0), cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
-        const uint voxel_index_011 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 1, 0), cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
-        const uint voxel_index_100 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(0, 0, 1), cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
-        const uint voxel_index_101 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 0, 1), cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
-        const uint voxel_index_110 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(0, 1, 1), cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
-        const uint voxel_index_111 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 1, 1), cb_ssvg.grid_toroidal_offset, cb_ssvg.base_grid_resolution), cb_ssvg.base_grid_resolution);
+        const uint voxel_index_000 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution), cb_ssvg.bbv.grid_resolution);
+        const uint voxel_index_001 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 0, 0), cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution), cb_ssvg.bbv.grid_resolution);
+        const uint voxel_index_010 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(0, 1, 0), cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution), cb_ssvg.bbv.grid_resolution);
+        const uint voxel_index_011 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 1, 0), cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution), cb_ssvg.bbv.grid_resolution);
+        const uint voxel_index_100 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(0, 0, 1), cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution), cb_ssvg.bbv.grid_resolution);
+        const uint voxel_index_101 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 0, 1), cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution), cb_ssvg.bbv.grid_resolution);
+        const uint voxel_index_110 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(0, 1, 1), cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution), cb_ssvg.bbv.grid_resolution);
+        const uint voxel_index_111 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 1, 1), cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution), cb_ssvg.bbv.grid_resolution);
 
-        const float2 octmap_uv_000 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_000, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
-        const float2 octmap_uv_001 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_001, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
-        const float2 octmap_uv_010 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_010, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
-        const float2 octmap_uv_011 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_011, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
-        const float2 octmap_uv_100 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_100, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
-        const float2 octmap_uv_101 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_101, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
-        const float2 octmap_uv_110 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_110, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
-        const float2 octmap_uv_111 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_111, cb_ssvg.probe_atlas_texture_base_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_000 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_000, cb_ssvg.bbv.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_001 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_001, cb_ssvg.bbv.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_010 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_010, cb_ssvg.bbv.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_011 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_011, cb_ssvg.bbv.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_100 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_100, cb_ssvg.bbv.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_101 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_101, cb_ssvg.bbv.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_110 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_110, cb_ssvg.bbv.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
+        const float2 octmap_uv_111 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_111, cb_ssvg.bbv.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
 
 
         const float svx0 = lerp(TexProbeSkyVisibility.SampleLevel(samp, octmap_uv_000, 0).r, TexProbeSkyVisibility.SampleLevel(samp, octmap_uv_001, 0).r, coord_frac.x);

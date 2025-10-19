@@ -28,17 +28,17 @@ cppからインクルードする場合は以下のマクロ定義を先行定�
 
 
     // シェーダとCppで一致させる.
-    // ObmVoxel単位の固有データ部のu32単位数.ジオメトリを表現する占有ビットマスクとは別に荒い単位で保持するデータ. レイアウトの簡易化のためビット単位ではなくu32単位.
-    #define k_obm_common_data_u32_count (1)
-    // ObmVoxel単位の占有ビットマスク解像度. 2の冪でなくても良い.
-    #define k_obm_per_voxel_resolution (8)
-    #define k_obm_per_voxel_bitmask_bit_count (k_obm_per_voxel_resolution*k_obm_per_voxel_resolution*k_obm_per_voxel_resolution)
-    #define k_obm_per_voxel_occupancy_bitmask_u32_count ((k_obm_per_voxel_bitmask_bit_count + 31) / 32)
-    // ObmVoxel単位のデータサイズ(u32単位)
-    #define k_obm_per_voxel_u32_count (k_obm_per_voxel_occupancy_bitmask_u32_count + k_obm_common_data_u32_count)
+    // BitmaskBrickVoxel単位の固有データ部のu32単位数.ジオメトリを表現する占有ビットマスクとは別に荒い単位で保持するデータ. レイアウトの簡易化のためビット単位ではなくu32単位.
+    #define k_bbv_common_data_u32_count (1)
+    // BitmaskBrickVoxel単位の占有ビットマスク解像度. 2の冪でなくても良い.
+    #define k_bbv_per_voxel_resolution (8)
+    #define k_bbv_per_voxel_bitmask_bit_count (k_bbv_per_voxel_resolution*k_bbv_per_voxel_resolution*k_bbv_per_voxel_resolution)
+    #define k_bbv_per_voxel_bitmask_u32_count ((k_bbv_per_voxel_bitmask_bit_count + 31) / 32)
+    // BitmaskBrickVoxel単位のデータサイズ(u32単位)
+    #define k_bbv_per_voxel_u32_count (k_bbv_per_voxel_bitmask_u32_count + k_bbv_common_data_u32_count)
 
-    #define k_obm_per_voxel_resolution_inv (1.0 / float(k_obm_per_voxel_resolution))
-    #define k_obm_per_voxel_resolution_vec3i int3(k_obm_per_voxel_resolution, k_obm_per_voxel_resolution, k_obm_per_voxel_resolution)
+    #define k_bbv_per_voxel_resolution_inv (1.0 / float(k_bbv_per_voxel_resolution))
+    #define k_bbv_per_voxel_resolution_vec3i int3(k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution)
 
     // probeあたりのOctMap解像度.
     #define k_probe_octmap_width (6)
@@ -54,46 +54,51 @@ cppからインクルードする場合は以下のマクロ定義を先行定�
 
 
     // シェーダとCppで一致させる.
-    // Voxel追加データバッファ. ObmVoxel一つ毎の外部データ.
+    // Voxel追加データバッファ. BitmaskBrickVoxel一つ毎の外部データ.
     // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.
-    struct ObmVoxelOptionalData
+    struct BbvOptionalData
     {
         // .
         int3 surface_distance;
 
-        // ObmVoxel内部でのプローブ位置の線形インデックス. 0は無効, probe_pos_code-1 が実際のインデックス. 値域は 0,k_obm_per_voxel_bitmask_bit_count.
+        // BitmaskBrickVoxel内部でのプローブ位置の線形インデックス. 0は無効, probe_pos_code-1 が実際のインデックス. 値域は 0,k_bbv_per_voxel_bitmask_bit_count.
         uint probe_pos_code;
     };
 
+    struct SsvgToroidalGridParam
+    {
+        int3 grid_resolution;
+        float cell_size;
+
+        float3 grid_min_pos;
+        float cell_size_inv;
+
+        int3 grid_min_voxel_coord;
+        int flatten_2d_width;// GridCell要素を2Dにフラット化する際の幅.
+
+        int3 grid_toroidal_offset;
+        int dummy0;
+
+        int3 grid_toroidal_offset_prev;
+        int dummy1;
+
+        int3 grid_move_cell_delta;// Toroidalではなくワールド空間Cellでのフレーム移動量.
+        int dummy2;
+    };
 
     // Dispatchパラメータ.
     struct SsvgParam
     {
-        int3 base_grid_resolution;
-        uint flag;
+        // bitmask brick voxel関連パラメータ.
+        SsvgToroidalGridParam bbv;
+        int3 bbv_indirect_cs_thread_group_size;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
+        int bbv_visible_voxel_buffer_size;// 更新プローブ用のワークサイズ.
 
-        float3 grid_min_pos;
-        float cell_size;
-
-        int3 grid_min_voxel_coord;
-        int dummy1;
-
-        int3 grid_toroidal_offset;
-        float cell_size_inv;
-
-        int3 grid_toroidal_offset_prev;
-        int dummy0;
-        
-        int3 grid_move_cell_delta;// Toroidalではなくワールド空間Cellでのフレーム移動量.
-        int probe_atlas_texture_base_width;// probeのAtlasを配置するテクスチャの基準幅. 実際はProbe毎のAtlasサイズを乗じたサイズのテクスチャを扱う.
-
-
-        int3 voxel_dispatch_thread_group_count;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
-        
-        int update_probe_work_count;// 更新プローブ用のワークサイズ.
+        SsvgToroidalGridParam wcp;
 
         int2 tex_hw_depth_size;
         uint frame_count;
+        int dummy3;
 
         int debug_view_mode;
         int debug_probe_mode;

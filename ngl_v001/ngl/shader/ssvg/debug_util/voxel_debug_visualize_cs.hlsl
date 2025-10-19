@@ -35,17 +35,17 @@ void main_cs(
     if(4 == cb_ssvg.debug_view_mode)
     {
         // Voxel上面図X-Ray表示.
-        const int3 bv_full_reso = cb_ssvg.base_grid_resolution * k_obm_per_voxel_resolution;
+        const int3 bv_full_reso = cb_ssvg.bbv.grid_resolution * k_bbv_per_voxel_resolution;
         const float visualize_scale = 0.5;
-        float3 read_pos_world_base = (float3(dtid.x, 0.0, cb_ssvg.tex_hw_depth_size.y-1 - dtid.y) + 0.5) * visualize_scale * cb_ssvg.cell_size/k_obm_per_voxel_resolution;
-        read_pos_world_base += cb_ssvg.grid_min_pos;
+        float3 read_pos_world_base = (float3(dtid.x, 0.0, cb_ssvg.tex_hw_depth_size.y-1 - dtid.y) + 0.5) * visualize_scale * cb_ssvg.bbv.cell_size/k_bbv_per_voxel_resolution;
+        read_pos_world_base += cb_ssvg.bbv.grid_min_pos;
 
         float write_data = 0.0;
         for(int yi = 0; yi < bv_full_reso.y; ++yi)
         {
-            const float3 read_pos_world = read_pos_world_base + float3(0.0, yi, 0.0) * (cb_ssvg.cell_size/k_obm_per_voxel_resolution);
+            const float3 read_pos_world = read_pos_world_base + float3(0.0, yi, 0.0) * (cb_ssvg.bbv.cell_size/k_bbv_per_voxel_resolution);
 
-            const uint bit_value = read_obm_voxel_from_world_pos(OccupancyBitmaskVoxel, cb_ssvg.base_grid_resolution, cb_ssvg.grid_toroidal_offset, cb_ssvg.grid_min_pos, cb_ssvg.cell_size_inv, read_pos_world);
+            const uint bit_value = read_bbv_voxel_from_world_pos(BitmaskBrickVoxel, cb_ssvg.bbv.grid_resolution, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size_inv, read_pos_world);
 
             float occupancy = float(bit_value);
             occupancy /= (float)bv_full_reso.y;
@@ -58,7 +58,7 @@ void main_cs(
     else if(5 == cb_ssvg.debug_view_mode)
     {
         // ProbeAtlas.
-        if(any(cb_ssvg.probe_atlas_texture_base_width * k_probe_octmap_width_with_border < dtid.xy))
+        if(any(cb_ssvg.bbv.flatten_2d_width * k_probe_octmap_width_with_border < dtid.xy))
             return;
         
         //RWTexWork[dtid.xy] = float4(1.0, 0.0, 0.0, 0.0);//TexProbeSkyVisibility[dtid.xy];
@@ -81,11 +81,11 @@ void main_cs(
           
         int hit_voxel_index = -1;
         // Trace最適化検証.
-        float4 curr_ray_t_ws = trace_ray_vs_obm_voxel_grid(
+        float4 curr_ray_t_ws = trace_ray_vs_bitmask_brick_voxel_grid(
             hit_voxel_index,
             camera_pos, ray_dir_ws, trace_distance, 
-            cb_ssvg.grid_min_pos, cb_ssvg.cell_size, cb_ssvg.base_grid_resolution,
-            cb_ssvg.grid_toroidal_offset, OccupancyBitmaskVoxel);
+            cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
+            cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
 
         float4 debug_color = float4(0, 0, 1, 0);
         if(0.0 <= curr_ray_t_ws.x)
@@ -93,14 +93,14 @@ void main_cs(
             const float fog_rate0 = pow(saturate((curr_ray_t_ws.x - 20.0)/100.0), 1.0/1.2);
             const float fog_rate1 = saturate((curr_ray_t_ws.x - 70.0)/500.0);
 
-            const uint unique_data_addr = obm_voxel_unique_data_addr(hit_voxel_index);
+            const uint unique_data_addr = bbv_voxel_unique_data_addr(hit_voxel_index);
             // デバッグ用テクスチャにモード別描画.
             if(0 == cb_ssvg.debug_view_mode)
             {
-                // obmセル可視化
-                const float3 obm_cell_id = floor((camera_pos + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.cell_size_inv*float(k_obm_per_voxel_resolution)));
-                debug_color.xyz = float4(noise_iqint32(obm_cell_id.xyzz), noise_iqint32(obm_cell_id.xzyy), noise_iqint32(obm_cell_id.xyzx), 1);
-                
+                // bbvセル可視化
+                const float3 bbv_cell_id = floor((camera_pos + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
+                debug_color.xyz = float4(noise_iqint32(bbv_cell_id.xyzz), noise_iqint32(bbv_cell_id.xzyy), noise_iqint32(bbv_cell_id.xyzx), 1);
+
                 // 簡易フォグ.
                 debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
                 debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
@@ -125,13 +125,13 @@ void main_cs(
             }
             else if(3 == cb_ssvg.debug_view_mode)
             {
-                // OBMセルの深度を可視化.
+                // BitmaskBrickVoxelセルの深度を可視化.
                 debug_color.xyz = float4(saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), 1);
             }
             else
             {
-                // OBMセルのヒット法線可視化.
-                const float3 obm_cell_id = floor((camera_pos + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.cell_size_inv*float(k_obm_per_voxel_resolution)));
+                // BitmaskBrickVoxelセルのヒット法線可視化.
+                const float3 bbv_cell_id = floor((camera_pos + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
                 debug_color.xyz = abs(curr_ray_t_ws.yzw);
                 
                 // 簡易フォグ.
