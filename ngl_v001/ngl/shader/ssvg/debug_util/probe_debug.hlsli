@@ -1,5 +1,5 @@
 /*
-    obm_voxel_debug_vs.hlsl
+    probe_debug_vs.hlsl
 
     Voxel Probeデバッグ描画.
 */

@@ -122,7 +122,7 @@ namespace ngl::render::app
                     vs_load_desc.shader_model_version          = k_shader_model;
                     vs_load_desc.entry_point_name              = "main_vs";
                     auto vs_load_handle                        = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
-                        p_device, NGL_RENDER_SHADER_PATH("ssvg/debug_util/obm_voxel_debug_vs.hlsl"), &vs_load_desc);
+                        p_device, NGL_RENDER_SHADER_PATH("ssvg/debug_util/probe_debug_vs.hlsl"), &vs_load_desc);
                     gpso_desc.vs = &vs_load_handle->data_;
                 }
                 {
@@ -131,7 +131,7 @@ namespace ngl::render::app
                     ps_load_desc.shader_model_version          = k_shader_model;
                     ps_load_desc.entry_point_name              = "main_ps";
                     auto ps_load_handle                        = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
-                        p_device, NGL_RENDER_SHADER_PATH("ssvg/debug_util/obm_voxel_debug_ps.hlsl"), &ps_load_desc);
+                        p_device, NGL_RENDER_SHADER_PATH("ssvg/debug_util/probe_debug_ps.hlsl"), &ps_load_desc);
                     gpso_desc.ps = &ps_load_handle->data_;
                 }
 
