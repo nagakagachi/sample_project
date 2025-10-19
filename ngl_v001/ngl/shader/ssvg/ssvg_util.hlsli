@@ -26,14 +26,14 @@ ssvg_util.hlsli
 // ------------------------------------------------------------------------------------------------------------------------
 // OccupancyBitmaskVoxel本体. ObmVoxel.
 // uint UniqueData + uint[brick数分] OccupancyBitMask.
-// UniqueData : 0bit:空ではないなら1, 1-31: 最後に可視状態になったフレーム番号. 
+// UniqueData : 0bit:空ではないなら1, 1-31: 最後に可視状態になったフレーム番号.
 Buffer<uint>		OccupancyBitmaskVoxel;
 RWBuffer<uint>		RWOccupancyBitmaskVoxel;
 
 // ObmVoxel毎の追加データ.
 // 
 StructuredBuffer<ObmVoxelOptionalData>		ObmVoxelOptionalBuffer;
-RWStructuredBuffer<ObmVoxelOptionalData>		RWObmVoxelOptionalBuffer;
+RWStructuredBuffer<ObmVoxelOptionalData>	RWObmVoxelOptionalBuffer;
 
 Texture2D       		TexProbeSkyVisibility;
 RWTexture2D<float>		RWTexProbeSkyVisibility;

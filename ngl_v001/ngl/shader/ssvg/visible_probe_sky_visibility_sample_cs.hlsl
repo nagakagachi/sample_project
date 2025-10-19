@@ -3,6 +3,8 @@
 
 visible_probe_sky_visibility_sample_cs.hlsl
 
+// 可視Probe SkyVisibilityサンプルの取得とワークバッファへの蓄積. 後段のstore処理で本体のバッファにフィードバック.
+
 #endif
 
 

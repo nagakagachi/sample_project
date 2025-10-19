@@ -10,14 +10,58 @@
 
 namespace ngl::render::app
 {
-    class SsVgCascade
+
+    struct ToroidalGridArea
+    {
+        math::Vec3i center_cell_id_ = {};
+        math::Vec3i center_cell_id_prev_ = {};
+        math::Vec3 min_pos_ = {};
+        math::Vec3 min_pos_prev_ = {};
+        math::Vec3i toroidal_offset_ = {};
+        math::Vec3i toroidal_offset_prev_ = {};
+        math::Vec3i min_pos_delta_cell_ = {};
+
+        math::Vec3u resolution_ = math::Vec3u(32);
+        float       cell_size_ = 3.0f;
+        
+        u32         flatten_2d_width_ = {};
+    };
+    class ToroidalGridUpdater
     {
     public:
-        SsVgCascade() = default;
-        ~SsVgCascade();
+        ToroidalGridUpdater() = default;
+        ~ToroidalGridUpdater() = default;
+
+        void Initialize(const math::Vec3u& grid_resolution, float cell_size);
+
+        void UpdateGrid(const math::Vec3& important_pos);
+
+        const ToroidalGridArea& Get() const { return grid_; }
+
+        math::Vec3i CalcToroidalGridCoordFromLinearCoord(const math::Vec3i& linear_coord) const;
+        math::Vec3i CalcLinearGridCoordFromToroidalCoord(const math::Vec3i& toroidal_coord) const;
+
+    private:
+        ToroidalGridArea grid_;
+    };
+
+    // BitmaskBrickVoxel:Bbv.
+    class BitmaskBrickVoxel
+    {
+    public:
+        BitmaskBrickVoxel() = default;
+        ~BitmaskBrickVoxel();
 
         // 初期化
-        bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u base_resolution, float cell_size);
+        struct InitArg
+        {
+            math::Vec3u voxel_resolution = math::Vec3u(32);
+            float       voxel_size = 3.0f;
+            
+            math::Vec3u probe_resolution = math::Vec3u(32);
+            float       probe_cell_size = 3.0f;
+        };
+        bool Initialize(ngl::rhi::DeviceDep* p_device, const InitArg& init_arg);
 
         void Dispatch(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
@@ -34,56 +78,52 @@ namespace ngl::render::app
 
 
         ngl::rhi::ConstantBufferPooledHandle GetDispatchCbh() const { return cbh_dispatch_; }
-        rhi::RefSrvDep GetProbeSkyVisibilitySrv() const { return probe_skyvisibility_.srv; }
+        rhi::RefSrvDep GetProbeSkyVisibilitySrv() const { return bbv_probe_atlas_tex_.srv; }
 
     private:
         bool is_first_dispatch_ = true;
 
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_clear_voxel_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_begin_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_voxelize_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_generate_visible_voxel_indirect_arg_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_probe_common_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_visible_probe_sky_visibility_sample_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_visible_probe_sky_visibility_apply_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_coarse_probe_sky_visibility_sample_and_apply_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fill_probe_sky_visibility_octmap_border_ = {};
-
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_debug_visualize_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_debug_obm_voxel_ = {};
+        u32 frame_count_{};
 
         math::Vec3 important_point_ = {0,0,0};
         math::Vec3 important_dir_ = {0,0,1};
 
-        u32 frame_count_{};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_clear_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_begin_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_voxelize_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_generate_visible_voxel_indirect_arg_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_probe_common_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_visible_probe_sampling_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_visible_probe_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_coarse_probe_sampling_and_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_fill_probe_octmap_border_ = {};
 
-        
-        math::Vec3i grid_center_cell_id_ = {};
-        math::Vec3i grid_center_cell_id_prev_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_debug_visualize_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_bbv_debug_probe_ = {};
 
-        math::Vec3 grid_min_pos_ = {};
-        math::Vec3 grid_min_pos_prev_ = {};
-
-        math::Vec3i grid_toroidal_offset_ = {};
-        math::Vec3i grid_toroidal_offset_prev_ = {};
-
-
-        math::Vec3u base_resolution_ = math::Vec3u(32);
-        float   cell_size_ = 3.0f;
-        u32     probe_atlas_texture_base_width_ = {};
-
-        ngl::u32     update_probe_work_count_ = {};
-
-        ComputeBufferSet voxel_optional_data_ = {};
-        ComputeBufferSet occupancy_bitmask_voxel_ = {};
-        ComputeTextureSet probe_skyvisibility_ = {};
-        
-        ComputeBufferSet visible_voxel_list_ = {};
-        ComputeBufferSet visible_voxel_indirect_arg_ = {};
-        
-        ComputeBufferSet visible_voxel_update_probe_ = {};
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
+
+        // Bitmask Brick Voxel. Bbv.
+        // ----------------------------------------------------------------
+        ToroidalGridUpdater bbv_grid_updater_ = {};
+
+        ComputeBufferSet bbv_buffer_ = {};
+        ComputeBufferSet bbv_optional_data_buffer_ = {};
+        ComputeTextureSet bbv_probe_atlas_tex_ = {};
+
+        // 可視Voxelのみ更新用.
+        ngl::u32     bbv_fine_update_voxel_count_max_ = {};
+        ComputeBufferSet bbv_fine_update_voxel_list_ = {};
+        ComputeBufferSet bbv_fine_update_voxel_indirect_arg_ = {};
+        ComputeBufferSet bbv_fine_update_voxel_probe_buffer_ = {};
+
+        // World Cache Probe. Wcp.
+        // ----------------------------------------------------------------
+        ToroidalGridUpdater wcp_grid_updater_ = {};
+
+        //ComputeBufferSet wcp_buffer_ = {};
+
     };
 
     
@@ -102,7 +142,7 @@ namespace ngl::render::app
         ~SsVg();
 
         // 初期化
-        bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u base_resolution, float cell_size, int cascade_count);
+        bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u base_resolution, float cell_size);
         bool IsValid() const { return is_initialized_; }
         // 破棄
         void Finalize();
@@ -124,7 +164,7 @@ namespace ngl::render::app
 
     private:
             bool is_initialized_ = false;
-            std::vector<SsVgCascade*> cascades_;
+            BitmaskBrickVoxel* ssvg_instance_;
     };
 
 }  // namespace ngl::render::app

@@ -593,7 +593,7 @@ bool AppGame::Initialize()
     #endif
     
     // SSVG.
-    ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, 1);
+    ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f);
     ngl::render::app::SsVg::dbg_view_enable_ = false;
 
 
