@@ -57,16 +57,12 @@ void main_cs(
     }
     else if(5 == cb_ssvg.debug_view_mode)
     {
-        // ProbeAtlas.
-        if(any(cb_ssvg.bbv.flatten_2d_width * k_probe_octmap_width_with_border < dtid.xy))
+        // WCP ProbeAtlas.
+        if(any(cb_ssvg.wcp.flatten_2d_width * k_probe_octmap_width_with_border < dtid.xy))
             return;
         
-        //RWTexWork[dtid.xy] = float4(1.0, 0.0, 0.0, 0.0);//TexProbeSkyVisibility[dtid.xy];
-        //RWTexWork[dtid.xy] = float4(TexProbeSkyVisibility.Load(uint3(dtid.xy * 0.25, 0)).r, 0.0, 0.0, 0.0);
-        const float4 probe_data = TexProbeSkyVisibility.Load(uint3(dtid.xy*0.2, 0));
-        const float dist_avg = probe_data.y;
-        const float dis_var = max(0.0, probe_data.z - dist_avg*dist_avg);
-        RWTexWork[dtid.xy] = float4(probe_data.x, dist_avg, dis_var, 1.0);
+        const float4 probe_data = WcpProbeAtlasTex.Load(uint3(dtid.xy, 0));
+        RWTexWork[dtid.xy] = probe_data.xxxx;
     }
     else
     {

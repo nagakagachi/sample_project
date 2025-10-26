@@ -8,10 +8,6 @@ wcp_probe_ray_sample.hlsli
 #ifndef NGL_SHADER_SSVG_PROBE_SKY_VISIBILITY_SAMPLE_BASE_HLSLI
 #define NGL_SHADER_SSVG_PROBE_SKY_VISIBILITY_SAMPLE_BASE_HLSLI
 
-
-#define ENABLE_SHARED_MEMORY_ACCUM_OPTIMIZE
-
-
 #include "ssvg_util.hlsli"
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
@@ -153,7 +149,8 @@ void main_cs(
             #else
                 // 境界部込のテクセル位置.
                 const uint2 octmap_atlas_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + uint2(octmap_uv * k_probe_octmap_width);
-                RWTexProbeSkyVisibility[octmap_atlas_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_atlas_texel_pos], sky_visibility, PROBE_UPDATE_TEMPORAL_RATE);
+                // TODO. 対応するAtlasTexの更新など.
+                //RWAtlasTexTest[octmap_atlas_texel_pos] = lerp(RWAtlasTexTest[octmap_atlas_texel_pos], sky_visibility, PROBE_UPDATE_TEMPORAL_RATE);
             #endif
         }
     }

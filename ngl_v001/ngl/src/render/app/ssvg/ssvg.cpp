@@ -86,7 +86,6 @@ namespace ngl::render::app
 
 
         const u32 wcp_probe_cell_count = wcp_grid_updater_.Get().resolution_.x * wcp_grid_updater_.Get().resolution_.y * wcp_grid_updater_.Get().resolution_.z;
-        wcp_max_update_probe_count_ = std::clamp(wcp_probe_cell_count / 50u, 64u, k_max_update_probe_work_count);
 
         // Helper function to create compute shader PSO
         auto CreateComputePSO = [&](const char* shader_path) -> ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep>
@@ -114,11 +113,11 @@ namespace ngl::render::app
             pso_bbv_visible_probe_sampling_ = CreateComputePSO("ssvg/visible_probe_sky_visibility_sample_cs.hlsl");
             pso_bbv_visible_probe_update_ = CreateComputePSO("ssvg/visible_probe_sky_visibility_sample_store_cs.hlsl");
             pso_bbv_coarse_probe_sampling_and_update_ = CreateComputePSO("ssvg/coarse_probe_sky_visibility_sample_cs.hlsl");
-            pso_bbv_fill_probe_octmap_border_ = CreateComputePSO("ssvg/fill_probe_sky_visibility_octmap_border_cs.hlsl");
 
             pso_wcp_clear_ = CreateComputePSO("ssvg/wcp_clear_voxel_cs.hlsl");
             pso_wcp_begin_update_ = CreateComputePSO("ssvg/wcp_begin_update_cs.hlsl");
             pso_wcp_coarse_ray_sample_ = CreateComputePSO("ssvg/wcp_coarse_ray_sample_cs.hlsl");
+            pso_wcp_fill_probe_octmap_atlas_border_ = CreateComputePSO("ssvg/wcp_fill_probe_octmap_atlas_border_cs.hlsl");
 
             
             // デバッグ用PSO.
@@ -262,12 +261,11 @@ namespace ngl::render::app
                                                .heap_type = rhi::EResourceHeapType::Default});
         }
 
-
         {
             rhi::TextureDep::Desc desc = {};
             desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  bbv_grid_updater_.Get().flatten_2d_width_ * k_probe_octmap_width_with_border;
-            desc.height = static_cast<u32>(std::ceil((voxel_count + bbv_grid_updater_.Get().flatten_2d_width_-1) / bbv_grid_updater_.Get().flatten_2d_width_)) * k_probe_octmap_width_with_border;
+            desc.width =  wcp_grid_updater_.Get().flatten_2d_width_ * k_probe_octmap_width_with_border;
+            desc.height = static_cast<u32>(std::ceil((wcp_grid_updater_.Get().total_count + wcp_grid_updater_.Get().flatten_2d_width_-1) / wcp_grid_updater_.Get().flatten_2d_width_)) * k_probe_octmap_width_with_border;
             desc.depth = 1;
             desc.mip_count = 1;
             desc.array_size = 1;
@@ -278,7 +276,7 @@ namespace ngl::render::app
             desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
             desc.initial_state = rhi::EResourceState::UnorderedAccess;
 
-            bbv_probe_atlas_tex_.Initialize(p_device, desc);
+            wcp_probe_atlas_tex_.Initialize(p_device, desc);
         }
 
         return true;
@@ -384,7 +382,6 @@ namespace ngl::render::app
                     pso_bbv_clear_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
                     pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
-                    pso_bbv_clear_->SetView(&desc_set, "RWTexProbeSkyVisibility", bbv_probe_atlas_tex_.uav.Get());
 
                     p_command_list->SetPipelineState(pso_bbv_clear_.Get());
                     p_command_list->SetDescriptorSet(pso_bbv_clear_.Get(), &desc_set);
@@ -392,7 +389,6 @@ namespace ngl::render::app
 
                     p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
                     p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
-                    p_command_list->ResourceUavBarrier(bbv_probe_atlas_tex_.texture.Get());
                 }
                 {
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpInitClear");
@@ -400,12 +396,14 @@ namespace ngl::render::app
                     ngl::rhi::DescriptorSetDep desc_set = {};
                     pso_wcp_clear_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_wcp_clear_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+                    pso_wcp_clear_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
 
                     p_command_list->SetPipelineState(pso_wcp_clear_.Get());
                     p_command_list->SetDescriptorSet(pso_wcp_clear_.Get(), &desc_set);
                     pso_wcp_clear_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
 
                     p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+                    p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
                 }
             }
             // Bbv Begin Update Pass.
@@ -435,12 +433,14 @@ namespace ngl::render::app
                     pso_wcp_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                     pso_wcp_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+                    pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
 
                     p_command_list->SetPipelineState(pso_wcp_begin_update_.Get());
                     p_command_list->SetDescriptorSet(pso_wcp_begin_update_.Get(), &desc_set);
                     pso_wcp_begin_update_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
 
                     p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+                    p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
                 }
 
             // Bbv Voxelization Pass.
@@ -512,7 +512,6 @@ namespace ngl::render::app
 
                     pso_bbv_visible_probe_sampling_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
 
-                    pso_bbv_visible_probe_sampling_->SetView(&desc_set, "RWTexProbeSkyVisibility", bbv_probe_atlas_tex_.uav.Get());
                     pso_bbv_visible_probe_sampling_->SetView(&desc_set, "RWUpdateProbeWork", bbv_fine_update_voxel_probe_buffer_.uav.Get());
 
                     p_command_list->SetPipelineState(pso_bbv_visible_probe_sampling_.Get());
@@ -531,14 +530,11 @@ namespace ngl::render::app
                     pso_bbv_visible_probe_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_bbv_visible_probe_update_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
                     pso_bbv_visible_probe_update_->SetView(&desc_set, "UpdateProbeWork", bbv_fine_update_voxel_probe_buffer_.srv.Get());
-                    pso_bbv_visible_probe_update_->SetView(&desc_set, "RWTexProbeSkyVisibility", bbv_probe_atlas_tex_.uav.Get());
 
                     p_command_list->SetPipelineState(pso_bbv_visible_probe_update_.Get());
                     p_command_list->SetDescriptorSet(pso_bbv_visible_probe_update_.Get(), &desc_set);
 
                     p_command_list->DispatchIndirect(bbv_fine_update_voxel_indirect_arg_.buffer.Get());// こちらは可視VoxelのIndirect.
-
-                    p_command_list->ResourceUavBarrier(bbv_probe_atlas_tex_.texture.Get());
                 }
             }
             // Coarse Voxel Update Pass.
@@ -555,39 +551,17 @@ namespace ngl::render::app
 
                     pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
 
-                    pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "RWTexProbeSkyVisibility", bbv_probe_atlas_tex_.uav.Get());
-
                     p_command_list->SetPipelineState(pso_bbv_coarse_probe_sampling_and_update_.Get());
                     p_command_list->SetDescriptorSet(pso_bbv_coarse_probe_sampling_and_update_.Get(), &desc_set);
                     // 全Probe更新のスキップ要素分考慮したDispatch.
                     pso_bbv_coarse_probe_sampling_and_update_->DispatchHelper(p_command_list, (bbv_grid_updater_.Get().total_count + (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT)) / (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT+1), 1, 1);
-
-                    p_command_list->ResourceUavBarrier(bbv_probe_atlas_tex_.texture.Get());
                 }
             }
-
-            // Octahedral Map Border Fill Pass.
-            {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "FillProbeSkyVisibilityOctmapBorder");
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_bbv_fill_probe_octmap_border_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_bbv_fill_probe_octmap_border_->SetView(&desc_set, "RWTexProbeSkyVisibility", bbv_probe_atlas_tex_.uav.Get());
-
-                p_command_list->SetPipelineState(pso_bbv_fill_probe_octmap_border_.Get());
-                p_command_list->SetDescriptorSet(pso_bbv_fill_probe_octmap_border_.Get(), &desc_set);
-
-                // 全Probe更新のスキップ要素分考慮したDispatch.
-                pso_bbv_fill_probe_octmap_border_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
-
-                p_command_list->ResourceUavBarrier(bbv_probe_atlas_tex_.texture.Get());
-            }
-
             
                 // Coarse Probe RaySample Pass.
                 {
                     {
-                        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "CoarseProbeRaySample");
+                        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpCoarseProbeRaySample");
 
                         ngl::rhi::DescriptorSetDep desc_set = {};
                         pso_wcp_coarse_ray_sample_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
@@ -596,6 +570,7 @@ namespace ngl::render::app
 
 
                         pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+                        pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
 
                         p_command_list->SetPipelineState(pso_wcp_coarse_ray_sample_.Get());
                         p_command_list->SetDescriptorSet(pso_wcp_coarse_ray_sample_.Get(), &desc_set);
@@ -603,7 +578,24 @@ namespace ngl::render::app
                         pso_wcp_coarse_ray_sample_->DispatchHelper(p_command_list, (wcp_grid_updater_.Get().total_count + (WCP_FRAME_PROBE_UPDATE_SKIP_COUNT)) / (WCP_FRAME_PROBE_UPDATE_SKIP_COUNT+1), 1, 1);
 
                         p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+                        p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
                     }
+                }
+                // Octahedral Map Border Fill Pass.
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpFillProbeOctmapAtlasBorder");
+
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    pso_wcp_fill_probe_octmap_atlas_border_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                    pso_wcp_fill_probe_octmap_atlas_border_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
+
+                    p_command_list->SetPipelineState(pso_wcp_fill_probe_octmap_atlas_border_.Get());
+                    p_command_list->SetDescriptorSet(pso_wcp_fill_probe_octmap_atlas_border_.Get(), &desc_set);
+
+                    // 全Probe更新のスキップ要素分考慮したDispatch.
+                    pso_wcp_fill_probe_octmap_atlas_border_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
+
+                    p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
                 }
         }
 
@@ -620,7 +612,7 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, "TexProbeSkyVisibility", bbv_probe_atlas_tex_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, "WcpProbeAtlasTex", wcp_probe_atlas_tex_.srv.Get());
             
             pso_bbv_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
 
@@ -660,7 +652,6 @@ namespace ngl::render::app
             pso_bbv_debug_probe_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
             pso_bbv_debug_probe_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
             pso_bbv_debug_probe_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-            pso_bbv_debug_probe_->SetView(&desc_set, "TexProbeSkyVisibility", bbv_probe_atlas_tex_.srv.Get());
             pso_bbv_debug_probe_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
 
 
@@ -680,6 +671,7 @@ namespace ngl::render::app
 
             pso_wcp_debug_probe_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
             pso_wcp_debug_probe_->SetView(&desc_set, "WcpProbeBuffer", wcp_buffer_.srv.Get());
+            pso_wcp_debug_probe_->SetView(&desc_set, "WcpProbeAtlasTex", wcp_probe_atlas_tex_.srv.Get());
             pso_wcp_debug_probe_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
 
 
@@ -766,7 +758,7 @@ namespace ngl::render::app
     void SsVg::SetDescriptorCascade0(rhi::PipelineStateBaseDep* p_pso, rhi::DescriptorSetDep* p_desc_set) const
     {
         assert(ssvg_instance_);
-        p_pso->SetView(p_desc_set, "TexProbeSkyVisibility", ssvg_instance_->GetProbeSkyVisibilitySrv().Get());
+        p_pso->SetView(p_desc_set, "WcpProbeAtlasTex", ssvg_instance_->GetWcpProbeAtlasTex().Get());
         p_pso->SetView(p_desc_set, "cb_ssvg", &ssvg_instance_->GetDispatchCbh()->cbv_);
     }
 

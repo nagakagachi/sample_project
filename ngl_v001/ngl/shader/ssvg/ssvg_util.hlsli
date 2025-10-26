@@ -34,12 +34,8 @@ RWBuffer<uint>		RWBitmaskBrickVoxel;
 StructuredBuffer<BbvOptionalData>		BitmaskBrickVoxelOptionData;
 RWStructuredBuffer<BbvOptionalData>	RWBitmaskBrickVoxelOptionData;
 
-Texture2D       		TexProbeSkyVisibility;
-RWTexture2D<float>		RWTexProbeSkyVisibility;
-
 Buffer<uint>		VisibleVoxelList;
 RWBuffer<uint>		RWVisibleVoxelList;
-
 
 Buffer<float>		UpdateProbeWork;
 RWBuffer<float>		RWUpdateProbeWork;
@@ -49,6 +45,9 @@ RWBuffer<float>		RWUpdateProbeWork;
 // World Cache Probe.
 StructuredBuffer<WcpProbeData>		WcpProbeBuffer;
 RWStructuredBuffer<WcpProbeData>	RWWcpProbeBuffer;
+
+Texture2D       		WcpProbeAtlasTex;
+RWTexture2D<float>		RWWcpProbeAtlasTex;
 
 
 ConstantBuffer<SsvgParam> cb_ssvg;

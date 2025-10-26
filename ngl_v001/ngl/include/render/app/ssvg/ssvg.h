@@ -80,7 +80,7 @@ namespace ngl::render::app
 
 
         ngl::rhi::ConstantBufferPooledHandle GetDispatchCbh() const { return cbh_dispatch_; }
-        rhi::RefSrvDep GetProbeSkyVisibilitySrv() const { return bbv_probe_atlas_tex_.srv; }
+        rhi::RefSrvDep GetWcpProbeAtlasTex() const { return wcp_probe_atlas_tex_.srv; }
 
     private:
         bool is_first_dispatch_ = true;
@@ -98,12 +98,12 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_visible_probe_sampling_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_visible_probe_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_coarse_probe_sampling_and_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_fill_probe_octmap_border_ = {};
 
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_clear_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_begin_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_coarse_ray_sample_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_fill_probe_octmap_atlas_border_ = {};
 
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_debug_visualize_ = {};
@@ -118,7 +118,6 @@ namespace ngl::render::app
 
         ComputeBufferSet bbv_buffer_ = {};
         ComputeBufferSet bbv_optional_data_buffer_ = {};
-        ComputeTextureSet bbv_probe_atlas_tex_ = {};
 
         // 可視Voxelのみ更新用.
         ngl::u32     bbv_fine_update_voxel_count_max_ = {};
@@ -131,7 +130,7 @@ namespace ngl::render::app
         ToroidalGridUpdater wcp_grid_updater_ = {};
 
         ComputeBufferSet wcp_buffer_ = {};
-        ngl::u32     wcp_max_update_probe_count_ = {};
+        ComputeTextureSet wcp_probe_atlas_tex_ = {};
 
     };
 

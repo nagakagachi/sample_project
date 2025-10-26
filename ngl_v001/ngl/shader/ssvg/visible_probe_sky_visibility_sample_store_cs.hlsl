@@ -3,7 +3,7 @@
 
 visible_probe_sky_visibility_sample_store_cs.hlsl
 
-// 可視Probe SkyVisibilityサンプルの結果をバッファに書き戻し.
+// 可視要素リストの処理の後処理サンプル.
 
 #endif
 
@@ -44,7 +44,7 @@ void main_cs(
 
         // 境界部込のテクセル位置.
         const uint2 octmap_atlas_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + uint2(i % k_probe_octmap_width, i / k_probe_octmap_width);
-        // 更新.
-        RWTexProbeSkyVisibility[octmap_atlas_texel_pos] = lerp(RWTexProbeSkyVisibility[octmap_atlas_texel_pos], sky_visibility, PROBE_UPDATE_TEMPORAL_RATE);
+        // TODO. 対応するAtlasTexの更新など.
+        //RWAtlasTexTest[octmap_atlas_texel_pos] = lerp(RWAtlasTexTest[octmap_atlas_texel_pos], sky_visibility, PROBE_UPDATE_TEMPORAL_RATE);
     }
 }

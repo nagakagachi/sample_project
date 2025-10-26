@@ -117,6 +117,13 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     normal_ws = (normal_ws.x * quad_pose_side + normal_ws.y * quad_pose_up + normal_ws.z * dir_to_camera);
     normal_ws = normalize(normal_ws);
 
+
+    const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.wcp.flatten_2d_width, voxel_index / cb_ssvg.wcp.flatten_2d_width);
+    uint tex_width, tex_height;
+    WcpProbeAtlasTex.GetDimensions(tex_width, tex_height);
+    const float2 octmap_texel_pos = float2(probe_2d_map_pos * k_probe_octmap_width_with_border + 1.0) + OctEncode(normal_ws)*k_probe_octmap_width;
+
+
     
     float4 color = float4(normal_ws * 0.5 + 0.5, 1.0);// デフォルトでは法線を仮表示.
 
@@ -125,6 +132,21 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     {
         const WcpProbeData probe_data = WcpProbeBuffer[voxel_index];
         color = probe_data.data;
+    }
+    else if(1 == cb_ssvg.debug_wcp_probe_mode)
+    {
+        // WcpProbeAtlasTex に格納されたOctmapを可視化.
+        const float4 probe_data = WcpProbeAtlasTex.Load(uint3(octmap_texel_pos, 0));
+
+        color = pow(probe_data.xxxx, 2.0);// 適当ガンマ
+    }
+    else if(2 == cb_ssvg.debug_wcp_probe_mode)
+    {
+        // WcpProbeAtlasTex に格納されたOctmapを可視化.
+        // Samplerで補間取得
+        const float4 probe_data = WcpProbeAtlasTex.SampleLevel(SmpLinearClamp, (octmap_texel_pos) / float2(tex_width, tex_height), 0);
+
+        color = pow(probe_data.xxxx, 2.0);// 適当ガンマ
     }
 
 	return color;

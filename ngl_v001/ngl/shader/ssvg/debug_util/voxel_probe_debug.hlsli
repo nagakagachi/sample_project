@@ -154,12 +154,6 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
         component_index = (0 < normal_ws.z) ? 4 : 5;
     }
 
-    
-    const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.bbv.flatten_2d_width, voxel_index / cb_ssvg.bbv.flatten_2d_width);
-    uint tex_width, tex_height;
-    TexProbeSkyVisibility.GetDimensions(tex_width, tex_height);
-    const float2 octmap_texel_pos = float2(probe_2d_map_pos * k_probe_octmap_width_with_border + 1.0) + OctEncode(normal_ws)*k_probe_octmap_width;
-
     // Bbv固有データ.
     BbvVoxelUniqueData unique_data;
     parse_bbv_voxel_unique_data(unique_data, BitmaskBrickVoxel[bbv_voxel_unique_data_addr(voxel_index)]);
@@ -167,23 +161,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     // Bbv追加データ.
     const BbvOptionalData voxel_optional_data = BitmaskBrickVoxelOptionData[voxel_index];
 
-    // 可視化.
     if(0 == cb_ssvg.debug_bbv_probe_mode)
-    {
-        // TexProbeSkyVisibility に格納されたOctmapを可視化.
-        const float4 probe_data = TexProbeSkyVisibility.Load(uint3(octmap_texel_pos, 0));
-
-        color = pow(probe_data.xxxx, 2.0);// 適当ガンマ
-    }
-    else if(1 == cb_ssvg.debug_bbv_probe_mode)
-    {
-        // TexProbeSkyVisibility に格納されたOctmapを可視化.
-        // Samplerで補間取得
-        const float4 probe_data = TexProbeSkyVisibility.SampleLevel(SmpLinearClamp, (octmap_texel_pos) / float2(tex_width, tex_height), 0);
-
-        color = pow(probe_data.xxxx, 2.0);// 適当ガンマ
-    }
-    else if(4 == cb_ssvg.debug_bbv_probe_mode)
     {
         const float surface_distance = length_int_vector3(voxel_optional_data.surface_distance);
         #if 1
