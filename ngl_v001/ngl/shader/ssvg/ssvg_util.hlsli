@@ -45,6 +45,12 @@ Buffer<float>		UpdateProbeWork;
 RWBuffer<float>		RWUpdateProbeWork;
 
 
+
+// World Cache Probe.
+StructuredBuffer<WcpProbeData>		WcpProbeBuffer;
+RWStructuredBuffer<WcpProbeData>	RWWcpProbeBuffer;
+
+
 ConstantBuffer<SsvgParam> cb_ssvg;
 // ------------------------------------------------------------------------------------------------------------------------
 

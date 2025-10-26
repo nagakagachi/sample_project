@@ -1,7 +1,7 @@
 
 #if 0
 
-clear_voxel_cs.hlsl
+bbv_clear_voxel_cs.hlsl
 
 #endif
 

@@ -1,5 +1,5 @@
 /*
-    probe_debug_vs.hlsl
+    voxel_probe_debug_vs.hlsl
 
     Voxel Probeデバッグ描画.
 */
@@ -168,14 +168,14 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     const BbvOptionalData voxel_optional_data = BitmaskBrickVoxelOptionData[voxel_index];
 
     // 可視化.
-    if(0 == cb_ssvg.debug_probe_mode)
+    if(0 == cb_ssvg.debug_bbv_probe_mode)
     {
         // TexProbeSkyVisibility に格納されたOctmapを可視化.
         const float4 probe_data = TexProbeSkyVisibility.Load(uint3(octmap_texel_pos, 0));
 
         color = pow(probe_data.xxxx, 2.0);// 適当ガンマ
     }
-    else if(1 == cb_ssvg.debug_probe_mode)
+    else if(1 == cb_ssvg.debug_bbv_probe_mode)
     {
         // TexProbeSkyVisibility に格納されたOctmapを可視化.
         // Samplerで補間取得
@@ -183,7 +183,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
 
         color = pow(probe_data.xxxx, 2.0);// 適当ガンマ
     }
-    else if(4 == cb_ssvg.debug_probe_mode)
+    else if(4 == cb_ssvg.debug_bbv_probe_mode)
     {
         const float surface_distance = length_int_vector3(voxel_optional_data.surface_distance);
         #if 1

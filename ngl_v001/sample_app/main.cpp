@@ -593,7 +593,7 @@ bool AppGame::Initialize()
     #endif
     
     // SSVG.
-    ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f);
+    ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(16), 3.0f);
     ngl::render::app::SsVg::dbg_view_enable_ = false;
 
 
@@ -844,8 +844,6 @@ bool AppGame::ExecuteApp()
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Ssvg"))
         {
-            ImGui::SliderInt("Raytrace VersionCompare", &ngl::render::app::SsVg::dbg_raytrace_version_, 0, 1);
-            
             if (ImGui::CollapsingHeader("Voxel Debug"))
             {
                 ImGui::Checkbox("Voxel Debug Enable", &ngl::render::app::SsVg::dbg_view_enable_);
@@ -855,7 +853,9 @@ bool AppGame::ExecuteApp()
 
             if (ImGui::CollapsingHeader("Probe Debug"))
             {
-                ImGui::SliderInt("Probe Debug Mode", &ngl::render::app::SsVg::dbg_probe_debug_view_mode_, -1, 10);
+                ImGui::SliderInt("Bbv Probe Mode", &ngl::render::app::SsVg::dbg_bbv_probe_debug_mode_, -1, 10);
+                ImGui::SliderInt("Wcp Probe Mode", &ngl::render::app::SsVg::dbg_wcp_probe_debug_mode_, -1, 10);
+                
                 ImGui::SliderFloat("Probe Scale", &ngl::render::app::SsVg::dbg_probe_scale_, 0.01f, 10.0f);
                 ImGui::SliderFloat("Probe Near Geometry Scale", &ngl::render::app::SsVg::dbg_probe_near_geom_scale_, 0.01f, 10.0f);
             }

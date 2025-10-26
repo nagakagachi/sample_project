@@ -1,7 +1,7 @@
 
 #if 0
 
-ss_voxelize_cs.hlsl
+bbv_voxelize_cs.hlsl
 
 ハードウェア深度バッファからリニア深度バッファを生成
 

@@ -51,6 +51,9 @@ cppからインクルードする場合は以下のマクロ定義を先行定�
     #define FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT 0
     // Probe全体更新のスキップ数. 0でスキップせずにProbeバッファのすべての要素を処理する. 1で1つ飛ばしでスキップ(半分).
     #define FRAME_UPDATE_ALL_PROBE_SKIP_COUNT 16
+    
+    // WCP Probe全体更新のスキップ数. 0でスキップせずにProbeバッファのすべての要素を処理する. 1で1つ飛ばしでスキップ(半分).
+    #define WCP_FRAME_PROBE_UPDATE_SKIP_COUNT 0
 
 
     // シェーダとCppで一致させる.
@@ -58,12 +61,21 @@ cppからインクルードする場合は以下のマクロ定義を先行定�
     // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.
     struct BbvOptionalData
     {
-        // .
+        // ジオメトリ表面を含むVoxelまでの距離. ジオメトリ表面を含むVoxelは0, それ以外はマンハッタン距離.
         int3 surface_distance;
 
-        // BitmaskBrickVoxel内部でのプローブ位置の線形インデックス. 0は無効, probe_pos_code-1 が実際のインデックス. 値域は 0,k_bbv_per_voxel_bitmask_bit_count.
+        // BitmaskBrickVoxel内部でのプローブ候補位置を表す線形インデックス. 0は無効, probe_pos_code-1 が実際のインデックス. 値域は 0,k_bbv_per_voxel_bitmask_bit_count.
         uint probe_pos_code;
     };
+
+
+    // WorldCacheProbeのデータ.
+    struct WcpProbeData
+    {
+        float4 data;
+    };
+
+
 
     struct SsvgToroidalGridParam
     {
@@ -101,7 +113,10 @@ cppからインクルードする場合は以下のマクロ定義を先行定�
         int dummy3;
 
         int debug_view_mode;
-        int debug_probe_mode;
+        
+        int debug_bbv_probe_mode;
+        int debug_wcp_probe_mode;
+
         float debug_probe_radius;
         float debug_probe_near_geom_scale;
     };

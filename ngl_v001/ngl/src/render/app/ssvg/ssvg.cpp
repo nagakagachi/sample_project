@@ -29,8 +29,8 @@ namespace ngl::render::app
     // デバッグ.
     bool SsVg::dbg_view_enable_ = false;
     int SsVg::dbg_view_mode_ = 0;
-    int SsVg::dbg_probe_debug_view_mode_ = -1;
-    int SsVg::dbg_raytrace_version_ = 0;
+    int SsVg::dbg_bbv_probe_debug_mode_ = -1;
+    int SsVg::dbg_wcp_probe_debug_mode_ = -1;
     float SsVg::dbg_probe_scale_ = 1.0f;
     float SsVg::dbg_probe_near_geom_scale_ = 0.2f;
     
@@ -40,8 +40,9 @@ namespace ngl::render::app
         grid_.resolution_ = grid_resolution;
         grid_.cell_size_ = bbv_cell_size;
 
-        const u32 voxel_count = grid_.resolution_.x * grid_.resolution_.y * grid_.resolution_.z;
-        grid_.flatten_2d_width_ = static_cast<u32>(std::ceil(std::sqrt(static_cast<float>(voxel_count))));
+        const u32 total_count = grid_.resolution_.x * grid_.resolution_.y * grid_.resolution_.z;
+        grid_.total_count = total_count;
+        grid_.flatten_2d_width_ = static_cast<u32>(std::ceil(std::sqrt(static_cast<float>(total_count))));
     }
     void ToroidalGridUpdater::UpdateGrid(const math::Vec3& important_pos)
     {
@@ -83,6 +84,10 @@ namespace ngl::render::app
         const u32 voxel_count = bbv_grid_updater_.Get().resolution_.x * bbv_grid_updater_.Get().resolution_.y * bbv_grid_updater_.Get().resolution_.z;
         bbv_fine_update_voxel_count_max_= std::clamp(voxel_count / 50u, 64u, k_max_update_probe_work_count);
 
+
+        const u32 wcp_probe_cell_count = wcp_grid_updater_.Get().resolution_.x * wcp_grid_updater_.Get().resolution_.y * wcp_grid_updater_.Get().resolution_.z;
+        wcp_max_update_probe_count_ = std::clamp(wcp_probe_cell_count / 50u, 64u, k_max_update_probe_work_count);
+
         // Helper function to create compute shader PSO
         auto CreateComputePSO = [&](const char* shader_path) -> ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep>
         {
@@ -101,52 +106,96 @@ namespace ngl::render::app
             return pso;
         };
         {
-            pso_bbv_clear_  = CreateComputePSO("ssvg/clear_voxel_cs.hlsl");
-            pso_bbv_begin_update_ = CreateComputePSO("ssvg/begin_update_cs.hlsl");
-            pso_bbv_voxelize_     = CreateComputePSO("ssvg/voxelize_pass_cs.hlsl");
+            pso_bbv_clear_  = CreateComputePSO("ssvg/bbv_clear_voxel_cs.hlsl");
+            pso_bbv_begin_update_ = CreateComputePSO("ssvg/bbv_begin_update_cs.hlsl");
+            pso_bbv_voxelize_     = CreateComputePSO("ssvg/bbv_voxelize_pass_cs.hlsl");
             pso_bbv_generate_visible_voxel_indirect_arg_ = CreateComputePSO("ssvg/generate_visible_voxel_indirect_arg_cs.hlsl");
-            pso_bbv_probe_common_update_ = CreateComputePSO("ssvg/probe_common_update_cs.hlsl");
+            pso_bbv_option_data_update_ = CreateComputePSO("ssvg/bbv_option_data_update_cs.hlsl");
             pso_bbv_visible_probe_sampling_ = CreateComputePSO("ssvg/visible_probe_sky_visibility_sample_cs.hlsl");
             pso_bbv_visible_probe_update_ = CreateComputePSO("ssvg/visible_probe_sky_visibility_sample_store_cs.hlsl");
             pso_bbv_coarse_probe_sampling_and_update_ = CreateComputePSO("ssvg/coarse_probe_sky_visibility_sample_cs.hlsl");
             pso_bbv_fill_probe_octmap_border_ = CreateComputePSO("ssvg/fill_probe_sky_visibility_octmap_border_cs.hlsl");
 
-            pso_bbv_debug_visualize_ = CreateComputePSO("ssvg/debug_util/voxel_debug_visualize_cs.hlsl");
+            pso_wcp_clear_ = CreateComputePSO("ssvg/wcp_clear_voxel_cs.hlsl");
+            pso_wcp_begin_update_ = CreateComputePSO("ssvg/wcp_begin_update_cs.hlsl");
+            pso_wcp_coarse_ray_sample_ = CreateComputePSO("ssvg/wcp_coarse_ray_sample_cs.hlsl");
+
             
+            // デバッグ用PSO.
             {
-                pso_bbv_debug_probe_ = ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep>(new ngl::rhi::GraphicsPipelineStateDep());
-                ngl::rhi::GraphicsPipelineStateDep::Desc gpso_desc = {};
-                {
-                    ngl::gfx::ResShader::LoadDesc vs_load_desc = {};
-                    vs_load_desc.stage                         = ngl::rhi::EShaderStage::Vertex;
-                    vs_load_desc.shader_model_version          = k_shader_model;
-                    vs_load_desc.entry_point_name              = "main_vs";
-                    auto vs_load_handle                        = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
-                        p_device, NGL_RENDER_SHADER_PATH("ssvg/debug_util/probe_debug_vs.hlsl"), &vs_load_desc);
-                    gpso_desc.vs = &vs_load_handle->data_;
-                }
-                {
-                    ngl::gfx::ResShader::LoadDesc ps_load_desc = {};
-                    ps_load_desc.stage                         = ngl::rhi::EShaderStage::Pixel;
-                    ps_load_desc.shader_model_version          = k_shader_model;
-                    ps_load_desc.entry_point_name              = "main_ps";
-                    auto ps_load_handle                        = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
-                        p_device, NGL_RENDER_SHADER_PATH("ssvg/debug_util/probe_debug_ps.hlsl"), &ps_load_desc);
-                    gpso_desc.ps = &ps_load_handle->data_;
-                }
-
-                gpso_desc.num_render_targets = 1;
-                gpso_desc.render_target_formats[0] = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
-
-                gpso_desc.depth_stencil_state.depth_enable = true;
-                gpso_desc.depth_stencil_state.depth_func = ngl::rhi::ECompFunc::Greater; // ReverseZ.
-                gpso_desc.depth_stencil_state.depth_write_enable = true;
-                gpso_desc.depth_stencil_state.stencil_enable = false;
-                gpso_desc.depth_stencil_format = rhi::EResourceFormat::Format_D32_FLOAT;
+                pso_bbv_debug_visualize_ = CreateComputePSO("ssvg/debug_util/voxel_debug_visualize_cs.hlsl");
                 
-                if(!pso_bbv_debug_probe_->Initialize(p_device, gpso_desc))
                 {
-                    return false;
+                    pso_bbv_debug_probe_ = ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep>(new ngl::rhi::GraphicsPipelineStateDep());
+                    ngl::rhi::GraphicsPipelineStateDep::Desc gpso_desc = {};
+                    {
+                        ngl::gfx::ResShader::LoadDesc vs_load_desc = {};
+                        vs_load_desc.stage                         = ngl::rhi::EShaderStage::Vertex;
+                        vs_load_desc.shader_model_version          = k_shader_model;
+                        vs_load_desc.entry_point_name              = "main_vs";
+                        auto vs_load_handle                        = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
+                            p_device, NGL_RENDER_SHADER_PATH("ssvg/debug_util/voxel_probe_debug_vs.hlsl"), &vs_load_desc);
+                        gpso_desc.vs = &vs_load_handle->data_;
+                    }
+                    {
+                        ngl::gfx::ResShader::LoadDesc ps_load_desc = {};
+                        ps_load_desc.stage                         = ngl::rhi::EShaderStage::Pixel;
+                        ps_load_desc.shader_model_version          = k_shader_model;
+                        ps_load_desc.entry_point_name              = "main_ps";
+                        auto ps_load_handle                        = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
+                            p_device, NGL_RENDER_SHADER_PATH("ssvg/debug_util/voxel_probe_debug_ps.hlsl"), &ps_load_desc);
+                        gpso_desc.ps = &ps_load_handle->data_;
+                    }
+
+                    gpso_desc.num_render_targets = 1;
+                    gpso_desc.render_target_formats[0] = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
+
+                    gpso_desc.depth_stencil_state.depth_enable = true;
+                    gpso_desc.depth_stencil_state.depth_func = ngl::rhi::ECompFunc::Greater; // ReverseZ.
+                    gpso_desc.depth_stencil_state.depth_write_enable = true;
+                    gpso_desc.depth_stencil_state.stencil_enable = false;
+                    gpso_desc.depth_stencil_format = rhi::EResourceFormat::Format_D32_FLOAT;
+                    
+                    if(!pso_bbv_debug_probe_->Initialize(p_device, gpso_desc))
+                    {
+                        return false;
+                    }
+                }
+                {
+                    pso_wcp_debug_probe_ = ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep>(new ngl::rhi::GraphicsPipelineStateDep());
+                    ngl::rhi::GraphicsPipelineStateDep::Desc gpso_desc = {};
+                    {
+                        ngl::gfx::ResShader::LoadDesc vs_load_desc = {};
+                        vs_load_desc.stage                         = ngl::rhi::EShaderStage::Vertex;
+                        vs_load_desc.shader_model_version          = k_shader_model;
+                        vs_load_desc.entry_point_name              = "main_vs";
+                        auto vs_load_handle                        = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
+                            p_device, NGL_RENDER_SHADER_PATH("ssvg/debug_util/wcp_probe_debug_vs.hlsl"), &vs_load_desc);
+                        gpso_desc.vs = &vs_load_handle->data_;
+                    }
+                    {
+                        ngl::gfx::ResShader::LoadDesc ps_load_desc = {};
+                        ps_load_desc.stage                         = ngl::rhi::EShaderStage::Pixel;
+                        ps_load_desc.shader_model_version          = k_shader_model;
+                        ps_load_desc.entry_point_name              = "main_ps";
+                        auto ps_load_handle                        = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
+                            p_device, NGL_RENDER_SHADER_PATH("ssvg/debug_util/wcp_probe_debug_ps.hlsl"), &ps_load_desc);
+                        gpso_desc.ps = &ps_load_handle->data_;
+                    }
+
+                    gpso_desc.num_render_targets = 1;
+                    gpso_desc.render_target_formats[0] = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
+
+                    gpso_desc.depth_stencil_state.depth_enable = true;
+                    gpso_desc.depth_stencil_state.depth_func = ngl::rhi::ECompFunc::Greater; // ReverseZ.
+                    gpso_desc.depth_stencil_state.depth_write_enable = true;
+                    gpso_desc.depth_stencil_state.stencil_enable = false;
+                    gpso_desc.depth_stencil_format = rhi::EResourceFormat::Format_D32_FLOAT;
+
+                    if(!pso_wcp_debug_probe_->Initialize(p_device, gpso_desc))
+                    {
+                        return false;
+                    }
                 }
             }
         }
@@ -156,7 +205,7 @@ namespace ngl::render::app
             bbv_optional_data_buffer_.InitializeAsStructured(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = sizeof(BbvOptionalData),
-                                               .element_count     = bbv_grid_updater_.Get().resolution_.x * bbv_grid_updater_.Get().resolution_.y * bbv_grid_updater_.Get().resolution_.z,
+                                               .element_count     = voxel_count,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default});
@@ -201,6 +250,16 @@ namespace ngl::render::app
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
                                            rhi::EResourceFormat::Format_R32_FLOAT);
+        }
+        {
+            // wcp_buffer_初期化.
+            wcp_buffer_.InitializeAsStructured(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(WcpProbeData),
+                                               .element_count     = wcp_probe_cell_count,
+
+                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default});
         }
 
 
@@ -256,7 +315,6 @@ namespace ngl::render::app
             wcp_grid_updater_.UpdateGrid(modified_important_point);
         }
 
-        const u32 voxel_count = bbv_grid_updater_.Get().resolution_.x * bbv_grid_updater_.Get().resolution_.y * bbv_grid_updater_.Get().resolution_.z;
         const math::Vec2i hw_depth_size = math::Vec2i(static_cast<int>(hw_depth_tex->GetWidth()), static_cast<int>(hw_depth_tex->GetHeight()));
 
         cbh_dispatch_ = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(SsvgParam));
@@ -304,7 +362,8 @@ namespace ngl::render::app
             p->frame_count = frame_count_;
 
             p->debug_view_mode = SsVg::dbg_view_mode_;
-            p->debug_probe_mode = SsVg::dbg_probe_debug_view_mode_;
+            p->debug_bbv_probe_mode = SsVg::dbg_bbv_probe_debug_mode_;
+            p->debug_wcp_probe_mode = SsVg::dbg_wcp_probe_debug_mode_;
 
             p->debug_probe_radius = SsVg::dbg_probe_scale_ * 0.5f * bbv_grid_updater_.Get().cell_size_ / k_bbv_per_voxel_resolution;
             p->debug_probe_near_geom_scale = SsVg::dbg_probe_near_geom_scale_;
@@ -318,25 +377,40 @@ namespace ngl::render::app
             if (is_first_dispatch)
             {
                 // 初回クリア.
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "InitClear");
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvInitClear");
 
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_bbv_clear_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
-                pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
-                pso_bbv_clear_->SetView(&desc_set, "RWTexProbeSkyVisibility", bbv_probe_atlas_tex_.uav.Get());
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    pso_bbv_clear_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                    pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
+                    pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
+                    pso_bbv_clear_->SetView(&desc_set, "RWTexProbeSkyVisibility", bbv_probe_atlas_tex_.uav.Get());
 
-                p_command_list->SetPipelineState(pso_bbv_clear_.Get());
-                p_command_list->SetDescriptorSet(pso_bbv_clear_.Get(), &desc_set);
-                pso_bbv_clear_->DispatchHelper(p_command_list, voxel_count, 1, 1);
+                    p_command_list->SetPipelineState(pso_bbv_clear_.Get());
+                    p_command_list->SetDescriptorSet(pso_bbv_clear_.Get(), &desc_set);
+                    pso_bbv_clear_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
 
-                p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
-                p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
-                p_command_list->ResourceUavBarrier(bbv_probe_atlas_tex_.texture.Get());
+                    p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
+                    p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
+                    p_command_list->ResourceUavBarrier(bbv_probe_atlas_tex_.texture.Get());
+                }
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpInitClear");
+
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    pso_wcp_clear_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                    pso_wcp_clear_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+
+                    p_command_list->SetPipelineState(pso_wcp_clear_.Get());
+                    p_command_list->SetDescriptorSet(pso_wcp_clear_.Get(), &desc_set);
+                    pso_wcp_clear_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
+
+                    p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+                }
             }
-            // Begin Update Pass.
+            // Bbv Begin Update Pass.
             {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BeginUpdate");
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvBeginUpdate");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_bbv_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
@@ -347,13 +421,29 @@ namespace ngl::render::app
 
                 p_command_list->SetPipelineState(pso_bbv_begin_update_.Get());
                 p_command_list->SetDescriptorSet(pso_bbv_begin_update_.Get(), &desc_set);
-                pso_bbv_begin_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);
+                pso_bbv_begin_update_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
 
                 p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_list_.buffer.Get());
             }
-            // Voxelization Pass.
+                // WCP Begin Update Pass.
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpBeginUpdate");
+
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    pso_wcp_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                    pso_wcp_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                    pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+
+                    p_command_list->SetPipelineState(pso_wcp_begin_update_.Get());
+                    p_command_list->SetDescriptorSet(pso_wcp_begin_update_.Get(), &desc_set);
+                    pso_wcp_begin_update_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
+
+                    p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+                }
+
+            // Bbv Voxelization Pass.
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BitmaskBrickVoxelGeneration");
 
@@ -371,6 +461,9 @@ namespace ngl::render::app
                 p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_list_.buffer.Get());
             }
+
+
+
             // VisibleVoxel IndirectArg生成.
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "GenerateVisibleElementIndirectArg");
@@ -393,14 +486,14 @@ namespace ngl::render::app
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ProbeCommonUpdate");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_bbv_probe_common_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-                pso_bbv_probe_common_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_bbv_probe_common_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                pso_bbv_probe_common_update_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
+                pso_bbv_option_data_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                pso_bbv_option_data_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                pso_bbv_option_data_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+                pso_bbv_option_data_update_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
 
-                p_command_list->SetPipelineState(pso_bbv_probe_common_update_.Get());
-                p_command_list->SetDescriptorSet(pso_bbv_probe_common_update_.Get(), &desc_set);
-                pso_bbv_probe_common_update_->DispatchHelper(p_command_list, voxel_count, 1, 1);
+                p_command_list->SetPipelineState(pso_bbv_option_data_update_.Get());
+                p_command_list->SetDescriptorSet(pso_bbv_option_data_update_.Get(), &desc_set);
+                pso_bbv_option_data_update_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
 
                 p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
             }
@@ -467,7 +560,7 @@ namespace ngl::render::app
                     p_command_list->SetPipelineState(pso_bbv_coarse_probe_sampling_and_update_.Get());
                     p_command_list->SetDescriptorSet(pso_bbv_coarse_probe_sampling_and_update_.Get(), &desc_set);
                     // 全Probe更新のスキップ要素分考慮したDispatch.
-                    pso_bbv_coarse_probe_sampling_and_update_->DispatchHelper(p_command_list, (voxel_count + (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT - 1)) / FRAME_UPDATE_ALL_PROBE_SKIP_COUNT, 1, 1);
+                    pso_bbv_coarse_probe_sampling_and_update_->DispatchHelper(p_command_list, (bbv_grid_updater_.Get().total_count + (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT)) / (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT+1), 1, 1);
 
                     p_command_list->ResourceUavBarrier(bbv_probe_atlas_tex_.texture.Get());
                 }
@@ -485,10 +578,33 @@ namespace ngl::render::app
                 p_command_list->SetDescriptorSet(pso_bbv_fill_probe_octmap_border_.Get(), &desc_set);
 
                 // 全Probe更新のスキップ要素分考慮したDispatch.
-                pso_bbv_fill_probe_octmap_border_->DispatchHelper(p_command_list, voxel_count, 1, 1);
+                pso_bbv_fill_probe_octmap_border_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
 
                 p_command_list->ResourceUavBarrier(bbv_probe_atlas_tex_.texture.Get());
             }
+
+            
+                // Coarse Probe RaySample Pass.
+                {
+                    {
+                        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "CoarseProbeRaySample");
+
+                        ngl::rhi::DescriptorSetDep desc_set = {};
+                        pso_wcp_coarse_ray_sample_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                        pso_wcp_coarse_ray_sample_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                        pso_wcp_coarse_ray_sample_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+
+
+                        pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+
+                        p_command_list->SetPipelineState(pso_wcp_coarse_ray_sample_.Get());
+                        p_command_list->SetDescriptorSet(pso_wcp_coarse_ray_sample_.Get(), &desc_set);
+                        // 全Probe更新のスキップ要素分考慮したDispatch.
+                        pso_wcp_coarse_ray_sample_->DispatchHelper(p_command_list, (wcp_grid_updater_.Get().total_count + (WCP_FRAME_PROBE_UPDATE_SKIP_COUNT)) / (WCP_FRAME_PROBE_UPDATE_SKIP_COUNT+1), 1, 1);
+
+                        p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+                    }
+                }
         }
 
         // デバッグ描画.
@@ -532,17 +648,14 @@ namespace ngl::render::app
             p_command_list->SetRenderTargets(&p_rtv, 1, hw_depth_dsv.Get());
         }
 
-        if (0 <= SsVg::dbg_probe_debug_view_mode_)
+        if (0 <= SsVg::dbg_bbv_probe_debug_mode_)
         {
-            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ProbeDebug");
-
-            const int voxel_count = bbv_grid_updater_.Get().resolution_.x * bbv_grid_updater_.Get().resolution_.y * bbv_grid_updater_.Get().resolution_.z;
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvProbeDebug");
 
             p_command_list->SetPipelineState(pso_bbv_debug_probe_.Get());
             ngl::rhi::DescriptorSetDep desc_set = {};
 
             pso_bbv_debug_probe_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-            pso_bbv_debug_probe_->SetView(&desc_set, "samp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
             
             pso_bbv_debug_probe_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
             pso_bbv_debug_probe_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
@@ -554,7 +667,26 @@ namespace ngl::render::app
             p_command_list->SetDescriptorSet(pso_bbv_debug_probe_.Get(), &desc_set);
 
             p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
-            p_command_list->DrawInstanced(6 * voxel_count, 1, 0, 0);
+            p_command_list->DrawInstanced(6 * bbv_grid_updater_.Get().total_count, 1, 0, 0);
+        }
+        if (0 <= SsVg::dbg_wcp_probe_debug_mode_)
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpProbeDebug");
+
+            p_command_list->SetPipelineState(pso_wcp_debug_probe_.Get());
+            ngl::rhi::DescriptorSetDep desc_set = {};
+
+            pso_wcp_debug_probe_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+
+            pso_wcp_debug_probe_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_wcp_debug_probe_->SetView(&desc_set, "WcpProbeBuffer", wcp_buffer_.srv.Get());
+            pso_wcp_debug_probe_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
+
+
+            p_command_list->SetDescriptorSet(pso_wcp_debug_probe_.Get(), &desc_set);
+
+            p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
+            p_command_list->DrawInstanced(6 * wcp_grid_updater_.Get().total_count, 1, 0, 0);
         }
 
     }
@@ -569,13 +701,16 @@ namespace ngl::render::app
     }
 
     // 初期化
-    bool SsVg::Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u base_resolution, float bbv_cell_size)
+    bool SsVg::Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u bbv_resolution, float bbv_cell_size, math::Vec3u wcp_resolution, float wcp_cell_size)
     {
         ssvg_instance_ = new BitmaskBrickVoxel();
         BitmaskBrickVoxel::InitArg init_arg = {};
         {
-            init_arg.voxel_resolution = base_resolution;
+            init_arg.voxel_resolution = bbv_resolution;
             init_arg.voxel_size       = bbv_cell_size;
+
+            init_arg.probe_resolution = wcp_resolution;
+            init_arg.probe_cell_size  = wcp_cell_size;
         }
         if(!ssvg_instance_->Initialize(p_device, init_arg))
         {

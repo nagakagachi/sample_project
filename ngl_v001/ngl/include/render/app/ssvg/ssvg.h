@@ -23,6 +23,8 @@ namespace ngl::render::app
 
         math::Vec3u resolution_ = math::Vec3u(32);
         float       cell_size_ = 3.0f;
+
+        u32 total_count = {};
         
         u32         flatten_2d_width_ = {};
     };
@@ -92,15 +94,21 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_begin_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_voxelize_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_generate_visible_voxel_indirect_arg_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_probe_common_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_option_data_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_visible_probe_sampling_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_visible_probe_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_coarse_probe_sampling_and_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_fill_probe_octmap_border_ = {};
 
+
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_clear_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_begin_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_coarse_ray_sample_ = {};
+
+
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_debug_visualize_ = {};
         ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_bbv_debug_probe_ = {};
-
+        ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_wcp_debug_probe_ = {};
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
 
@@ -122,7 +130,8 @@ namespace ngl::render::app
         // ----------------------------------------------------------------
         ToroidalGridUpdater wcp_grid_updater_ = {};
 
-        //ComputeBufferSet wcp_buffer_ = {};
+        ComputeBufferSet wcp_buffer_ = {};
+        ngl::u32     wcp_max_update_probe_count_ = {};
 
     };
 
@@ -132,8 +141,10 @@ namespace ngl::render::app
     public:
         static bool dbg_view_enable_;
         static int dbg_view_mode_;
-        static int dbg_probe_debug_view_mode_;
-        static int dbg_raytrace_version_;
+        
+        
+        static int dbg_bbv_probe_debug_mode_;
+        static int dbg_wcp_probe_debug_mode_;
         static float dbg_probe_scale_;
         static float dbg_probe_near_geom_scale_;
 
@@ -142,7 +153,7 @@ namespace ngl::render::app
         ~SsVg();
 
         // 初期化
-        bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u base_resolution, float bbv_cell_size);
+        bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u bbv_resolution, float bbv_cell_size, math::Vec3u wcp_resolution, float wcp_cell_size);
         bool IsValid() const { return is_initialized_; }
         // 破棄
         void Finalize();
