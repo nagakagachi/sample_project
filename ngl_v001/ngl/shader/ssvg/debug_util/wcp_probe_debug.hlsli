@@ -131,7 +131,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     if(0 == cb_ssvg.debug_wcp_probe_mode)
     {
         const WcpProbeData probe_data = WcpProbeBuffer[voxel_index];
-        color = probe_data.data;
+        color = float4(probe_data.data, 0.0);
     }
     else if(1 == cb_ssvg.debug_wcp_probe_mode)
     {

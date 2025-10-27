@@ -1,9 +1,11 @@
 
 #if 0
 
-bbv_voxelize_cs.hlsl
+wcp_visible_surface_proc_cs.hlsl
 
-ハードウェア深度バッファをもとにBitmaskBrickVoxelの更新.
+ハードウェア深度バッファから可視サーフェイス上の処理をする.
+
+可視サーフェイスに接するProbeのリスト生成など
 
 #endif
 
@@ -23,7 +25,7 @@ SamplerState		SmpHardwareDepth;
 
 // SharedMem上のタイルで簡易重複除去をする際のサイズ.
 #define REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH 4
-groupshared uint4 shared_bbv_bitmask_addr[TILE_WIDTH*TILE_WIDTH];
+groupshared uint2 shared_work[TILE_WIDTH*TILE_WIDTH];
 
 // DepthBufferに対してDispatch.
 [numthreads(TILE_WIDTH, TILE_WIDTH, 1)]
@@ -67,31 +69,21 @@ void main_cs(
     if(65535.0 <= abs(view_z))
         return;
 
-    shared_bbv_bitmask_addr[gindex] = uint4(~uint(0), 0, 0, 0);// 初期無効値.
+    shared_work[gindex] = uint2(~uint(0), 0);// 初期無効値.
         
     // 深度->PixelWorldPosition
     const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, ngl_cb_sceneview.cb_proj_mtx);
     const float3 pixel_pos_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
 
     // PixelWorldPosition->VoxelCoord
-    const float3 voxel_coordf = (pixel_pos_ws - cb_ssvg.bbv.grid_min_pos) * cb_ssvg.bbv.cell_size_inv;
+    const float3 voxel_coordf = (pixel_pos_ws - cb_ssvg.wcp.grid_min_pos) * cb_ssvg.wcp.cell_size_inv;
     const int3 voxel_coord = floor(voxel_coordf);
-    if(all(voxel_coord >= 0) && all(voxel_coord < cb_ssvg.bbv.grid_resolution))
+    if(all(voxel_coord >= 0) && all(voxel_coord < cb_ssvg.wcp.grid_resolution))
     {
-        int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
-        uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution);
+        int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution);
+        uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.wcp.grid_resolution);
 
-        {
-            // 占有ビットマスク.
-            const float3 voxel_coord_frac = frac(voxel_coordf);
-            const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_bbv_per_voxel_resolution);
-
-            uint bitcell_u32_offset;
-            uint bitcell_u32_bit_pos;
-            calc_bbv_bitcell_info(bitcell_u32_offset, bitcell_u32_bit_pos, voxel_coord_bitmask_pos);
-
-            shared_bbv_bitmask_addr[gindex] = uint4(voxel_index, 1, bitcell_u32_offset, (1 << bitcell_u32_bit_pos));
-        }
+        shared_work[gindex] = uint2(voxel_index, 1);
     }
 
 
@@ -109,17 +101,10 @@ void main_cs(
                     continue;
                 
                 // Voxelの一致チェック.
-                if(shared_bbv_bitmask_addr[gindex].x == shared_bbv_bitmask_addr[check_index].x)
+                if(shared_work[gindex].x == shared_work[check_index].x)
                 {
-                    shared_bbv_bitmask_addr[gindex].y = 0;// Voxelの占有ビット書き込み不要にする.
-
-                    // u32オフセットも一致する場合はビットマスクをマージ.
-                    if(shared_bbv_bitmask_addr[gindex].z == shared_bbv_bitmask_addr[check_index].z)
-                    {
-                        shared_bbv_bitmask_addr[gindex].w |= shared_bbv_bitmask_addr[check_index].w;
-                        shared_bbv_bitmask_addr[check_index].x = ~uint(0);// Voxelも書き込みu32オフセットも一致するため完全にマージして無効化.
-                    }
-                }   
+                    shared_work[gindex].y = 0;// 重複するのでこの要素による書き込みは不要にする.
+                }
             }
         }
     }
@@ -127,50 +112,30 @@ void main_cs(
     GroupMemoryBarrierWithGroupSync();
 
     // shared memからバッファ書き込み解決. ここで重複要素への書き込みをマージしてAtomic操作の衝突を最小化したい.
-    const uint voxel_index = shared_bbv_bitmask_addr[gindex].x;
-    const uint valid_flag = shared_bbv_bitmask_addr[gindex].y;
-    const uint bitmask_u32_offset = shared_bbv_bitmask_addr[gindex].z;
-    const uint bitmask_append = shared_bbv_bitmask_addr[gindex].w;
+    const uint voxel_index = shared_work[gindex].x;
+    const uint valid_flag = shared_work[gindex].y;
     if(~uint(0) != voxel_index)
     {
-        const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
-        const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
-    
-        // 詳細ジオメトリを占有ビット書き込み.
-        InterlockedOr(RWBitmaskBrickVoxel[bbv_addr + bitmask_u32_offset], bitmask_append);
-
         if(0 != valid_flag)
         {
-            // Memo.
-            // 以下でVoxel固有データ部を更新しているが, 今後実装予定の動的オブジェクトによる占有度除去に伴う処理でも更新が必要な点に注意.
-
-            // 非Emptyフラグを0bit目, それ以降にVisible判定フレーム番号を書き込み.
-            const uint visible_check_frame_count = mask_bbv_voxel_unique_data_last_visible_frame(cb_ssvg.frame_count);
-            BbvVoxelUniqueData new_unique_data;
-            new_unique_data.is_occupied = 1;
-            new_unique_data.last_visible_frame = visible_check_frame_count;
-            const uint set_bits = build_bbv_voxel_unique_data(new_unique_data);
-            uint old_unique_bits;
-            InterlockedExchange(RWBitmaskBrickVoxel[unique_data_addr], set_bits, old_unique_bits);
-
-            // old_unique_dataを展開
-            BbvVoxelUniqueData old_unique_data;
-            parse_bbv_voxel_unique_data(old_unique_data, old_unique_bits);
+            // Visible判定フレーム番号を書き込み.
+            uint old_atomic_work;
+            InterlockedExchange(RWWcpProbeBuffer[voxel_index].atomic_work, cb_ssvg.frame_count, old_atomic_work);
 
             // 交換前の値でVisible判定フレーム番号が現在フレームと異なるならリストへ登録. 別スレッドで同じVoxelを処理している場合の重複を除去する.
-            if(visible_check_frame_count !=  old_unique_data.last_visible_frame)
+            if(cb_ssvg.frame_count !=  old_atomic_work)
             {
                 int current_visible_count;
-                InterlockedAdd(RWVisibleVoxelList[0], 1, current_visible_count);
-                if(cb_ssvg.bbv_visible_voxel_buffer_size > current_visible_count)
+                InterlockedAdd(RWSurfaceProbeCellList[0], 1, current_visible_count);
+                if(cb_ssvg.wcp_visible_voxel_buffer_size > current_visible_count)
                 {
                     // 追加可能であれば登録. 登録位置はindex0のカウンタを除いた位置.
-                    RWVisibleVoxelList[current_visible_count + 1] = voxel_index;
+                    RWSurfaceProbeCellList[current_visible_count + 1] = voxel_index;
                 }
                 else
                 {
                     // サイズオーバーの場合はカウンタを戻す.
-                    InterlockedAdd(RWVisibleVoxelList[0], -1);
+                    InterlockedAdd(RWSurfaceProbeCellList[0], -1);
                 }
             }
         }

@@ -49,6 +49,9 @@ RWStructuredBuffer<WcpProbeData>	RWWcpProbeBuffer;
 Texture2D       		WcpProbeAtlasTex;
 RWTexture2D<float>		RWWcpProbeAtlasTex;
 
+// 0番目はアトミックカウンタ, それ以降をリスト利用.
+Buffer<uint>		SurfaceProbeCellList;
+RWBuffer<uint>		RWSurfaceProbeCellList;
 
 ConstantBuffer<SsvgParam> cb_ssvg;
 // ------------------------------------------------------------------------------------------------------------------------

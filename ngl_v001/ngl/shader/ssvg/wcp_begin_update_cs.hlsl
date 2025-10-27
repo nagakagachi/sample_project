@@ -24,6 +24,12 @@ void main_cs(
 {
     uint probe_count = cb_ssvg.wcp.grid_resolution.x * cb_ssvg.wcp.grid_resolution.y * cb_ssvg.wcp.grid_resolution.z;
 
+    if(0 == dtid.x)
+    {
+        // アトミックカウンタをクリア. 0番目はアトミックカウンタ用に予約している.
+        RWSurfaceProbeCellList[0] = 0;
+    }
+
     if(all(cb_ssvg.wcp.grid_move_cell_delta == int3(0,0,0)))
     {
         // 移動無しなら何もしない.

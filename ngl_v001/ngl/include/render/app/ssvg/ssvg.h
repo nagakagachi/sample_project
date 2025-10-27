@@ -102,6 +102,9 @@ namespace ngl::render::app
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_clear_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_begin_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_visible_surface_proc_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_generate_visible_surface_list_indirect_arg_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_visible_surface_element_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_coarse_ray_sample_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_fill_probe_octmap_atlas_border_ = {};
 
@@ -129,6 +132,9 @@ namespace ngl::render::app
         // ----------------------------------------------------------------
         ToroidalGridUpdater wcp_grid_updater_ = {};
 
+        ngl::u32     wcp_visible_surface_buffer_size_ = {};
+        ComputeBufferSet wcp_visible_surface_list_ = {};
+        ComputeBufferSet wcp_visible_surface_list_indirect_arg_ = {};
         ComputeBufferSet wcp_buffer_ = {};
         ComputeTextureSet wcp_probe_atlas_tex_ = {};
 

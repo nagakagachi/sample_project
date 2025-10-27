@@ -53,7 +53,7 @@ cppからインクルードする場合は以下のマクロ定義を先行定�
     #define FRAME_UPDATE_ALL_PROBE_SKIP_COUNT 16
     
     // WCP Probe全体更新のスキップ数. 0でスキップせずにProbeバッファのすべての要素を処理する. 1で1つ飛ばしでスキップ(半分).
-    #define WCP_FRAME_PROBE_UPDATE_SKIP_COUNT 0
+    #define WCP_FRAME_PROBE_UPDATE_SKIP_COUNT 60
 
 
     // シェーダとCppで一致させる.
@@ -72,7 +72,8 @@ cppからインクルードする場合は以下のマクロ定義を先行定�
     // WorldCacheProbeのデータ.
     struct WcpProbeData
     {
-        float4 data;
+        float3 data;
+        uint atomic_work;
     };
 
 
@@ -107,6 +108,8 @@ cppからインクルードする場合は以下のマクロ定義を先行定�
         int bbv_visible_voxel_buffer_size;// 更新プローブ用のワークサイズ.
 
         SsvgToroidalGridParam wcp;
+        int3 wcp_indirect_cs_thread_group_size;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
+        int wcp_visible_voxel_buffer_size;// 更新プローブ用のワークサイズ.
 
         int2 tex_hw_depth_size;
         uint frame_count;

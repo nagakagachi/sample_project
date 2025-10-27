@@ -24,6 +24,7 @@ namespace ngl::render::app
 
 
     static constexpr size_t k_sizeof_BbvOptionalData = sizeof(BbvOptionalData);
+    static constexpr size_t k_sizeof_WcpProbeData      = sizeof(WcpProbeData);
     static constexpr u32 k_max_update_probe_work_count = 1024;
 
     // デバッグ.
@@ -86,6 +87,7 @@ namespace ngl::render::app
 
 
         const u32 wcp_probe_cell_count = wcp_grid_updater_.Get().resolution_.x * wcp_grid_updater_.Get().resolution_.y * wcp_grid_updater_.Get().resolution_.z;
+        wcp_visible_surface_buffer_size_ = k_max_update_probe_work_count;
 
         // Helper function to create compute shader PSO
         auto CreateComputePSO = [&](const char* shader_path) -> ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep>
@@ -116,6 +118,9 @@ namespace ngl::render::app
 
             pso_wcp_clear_ = CreateComputePSO("ssvg/wcp_clear_voxel_cs.hlsl");
             pso_wcp_begin_update_ = CreateComputePSO("ssvg/wcp_begin_update_cs.hlsl");
+            pso_wcp_visible_surface_proc_ = CreateComputePSO("ssvg/wcp_visible_surface_proc_cs.hlsl");
+            pso_wcp_generate_visible_surface_list_indirect_arg_ = CreateComputePSO("ssvg/wcp_generate_visible_surface_list_indirect_arg_cs.hlsl");
+            pso_wcp_visible_surface_element_update_ = CreateComputePSO("ssvg/wcp_visible_surface_element_update_cs.hlsl");
             pso_wcp_coarse_ray_sample_ = CreateComputePSO("ssvg/wcp_coarse_ray_sample_cs.hlsl");
             pso_wcp_fill_probe_octmap_atlas_border_ = CreateComputePSO("ssvg/wcp_fill_probe_octmap_atlas_border_cs.hlsl");
 
@@ -260,6 +265,26 @@ namespace ngl::render::app
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default});
         }
+        {
+            wcp_visible_surface_list_.InitializeAsTyped(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(uint32_t),
+                                               .element_count     = wcp_visible_surface_buffer_size_+1,// 0番目にアトミックカウンタ用途.
+
+                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default},
+                                           rhi::EResourceFormat::Format_R32_UINT);
+        }
+        {
+            wcp_visible_surface_list_indirect_arg_.InitializeAsTyped(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(uint32_t),
+                                               .element_count     = 3,
+
+                                               .bind_flag = rhi::ResourceBindFlag::UnorderedAccess | rhi::ResourceBindFlag::IndirectArg,
+                                               .heap_type = rhi::EResourceHeapType::Default},
+                                           rhi::EResourceFormat::Format_R32_UINT);
+        }
 
         {
             rhi::TextureDep::Desc desc = {};
@@ -353,6 +378,9 @@ namespace ngl::render::app
 
                 p->wcp.cell_size       = wcp_grid_updater_.Get().cell_size_;
                 p->wcp.cell_size_inv    = 1.0f / wcp_grid_updater_.Get().cell_size_;
+
+                p->wcp_indirect_cs_thread_group_size = math::Vec3i(pso_wcp_visible_surface_element_update_->GetThreadGroupSizeX(), pso_wcp_visible_surface_element_update_->GetThreadGroupSizeY(), pso_wcp_visible_surface_element_update_->GetThreadGroupSizeZ());
+                p->wcp_visible_voxel_buffer_size = wcp_visible_surface_buffer_size_;
             }
 
 
@@ -434,6 +462,7 @@ namespace ngl::render::app
                     pso_wcp_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
                     pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
+                    pso_wcp_begin_update_->SetView(&desc_set, "RWSurfaceProbeCellList", wcp_visible_surface_list_.uav.Get());
 
                     p_command_list->SetPipelineState(pso_wcp_begin_update_.Get());
                     p_command_list->SetDescriptorSet(pso_wcp_begin_update_.Get(), &desc_set);
@@ -441,7 +470,9 @@ namespace ngl::render::app
 
                     p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
                     p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
+                    p_command_list->ResourceUavBarrier(wcp_visible_surface_list_.buffer.Get());
                 }
+
 
             // Bbv Voxelization Pass.
             {
@@ -461,9 +492,6 @@ namespace ngl::render::app
                 p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_list_.buffer.Get());
             }
-
-
-
             // VisibleVoxel IndirectArg生成.
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "GenerateVisibleElementIndirectArg");
@@ -481,6 +509,46 @@ namespace ngl::render::app
 
                 bbv_fine_update_voxel_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::IndirectArgument);
             }
+
+
+                // Wcp Visible Surface Processing Pass.
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpVisibleSurfaceProcessing");
+
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    pso_wcp_visible_surface_proc_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
+                    pso_wcp_visible_surface_proc_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                    pso_wcp_visible_surface_proc_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                    pso_wcp_visible_surface_proc_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+                    pso_wcp_visible_surface_proc_->SetView(&desc_set, "RWSurfaceProbeCellList", wcp_visible_surface_list_.uav.Get());
+
+                    p_command_list->SetPipelineState(pso_wcp_visible_surface_proc_.Get());
+                    p_command_list->SetDescriptorSet(pso_wcp_visible_surface_proc_.Get(), &desc_set);
+                    pso_wcp_visible_surface_proc_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);  // Screen処理でDispatch.
+
+                    p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+                    p_command_list->ResourceUavBarrier(wcp_visible_surface_list_.buffer.Get());
+                }
+                // Wcp VisibleSurfaceList IndirectArg生成.
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpGenerateVisibleSurfaceListIndirectArg");
+                    
+                    wcp_visible_surface_list_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
+
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    pso_wcp_generate_visible_surface_list_indirect_arg_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                    pso_wcp_generate_visible_surface_list_indirect_arg_->SetView(&desc_set, "SurfaceProbeCellList", wcp_visible_surface_list_.srv.Get());
+                    pso_wcp_generate_visible_surface_list_indirect_arg_->SetView(&desc_set, "RWVisibleSurfaceListIndirectArg", wcp_visible_surface_list_indirect_arg_.uav.Get());
+
+                    p_command_list->SetPipelineState(pso_wcp_generate_visible_surface_list_indirect_arg_.Get());
+                    p_command_list->SetDescriptorSet(pso_wcp_generate_visible_surface_list_indirect_arg_.Get(), &desc_set);
+                    pso_wcp_generate_visible_surface_list_indirect_arg_->DispatchHelper(p_command_list, 1, 1, 1);
+
+                    wcp_visible_surface_list_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::IndirectArgument);
+                }
+
+
+
             // Common Update.
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ProbeCommonUpdate");
@@ -558,6 +626,29 @@ namespace ngl::render::app
                 }
             }
             
+                // Visible Surface Element RaySample Pass.
+                {
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpVisibleSurfaceElementRaySample");
+
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    pso_wcp_visible_surface_element_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                    pso_wcp_visible_surface_element_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                    pso_wcp_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+
+                    pso_wcp_visible_surface_element_update_->SetView(&desc_set, "SurfaceProbeCellList", wcp_visible_surface_list_.srv.Get());
+                    pso_wcp_visible_surface_element_update_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+                    pso_wcp_visible_surface_element_update_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
+
+
+                    p_command_list->SetPipelineState(pso_wcp_visible_surface_element_update_.Get());
+                    p_command_list->SetDescriptorSet(pso_wcp_visible_surface_element_update_.Get(), &desc_set);
+
+                    p_command_list->DispatchIndirect(wcp_visible_surface_list_indirect_arg_.buffer.Get());// 可視SurfaceListDispatch.
+
+
+                    p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+                    p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
+                }
                 // Coarse Probe RaySample Pass.
                 {
                     {
@@ -567,7 +658,6 @@ namespace ngl::render::app
                         pso_wcp_coarse_ray_sample_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
                         pso_wcp_coarse_ray_sample_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                         pso_wcp_coarse_ray_sample_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-
 
                         pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
                         pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
