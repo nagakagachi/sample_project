@@ -110,11 +110,9 @@ namespace ngl::render::app
             pso_bbv_clear_  = CreateComputePSO("ssvg/bbv_clear_voxel_cs.hlsl");
             pso_bbv_begin_update_ = CreateComputePSO("ssvg/bbv_begin_update_cs.hlsl");
             pso_bbv_voxelize_     = CreateComputePSO("ssvg/bbv_voxelize_pass_cs.hlsl");
-            pso_bbv_generate_visible_voxel_indirect_arg_ = CreateComputePSO("ssvg/generate_visible_voxel_indirect_arg_cs.hlsl");
+            pso_bbv_generate_visible_voxel_indirect_arg_ = CreateComputePSO("ssvg/bbv_generate_visible_surface_list_indirect_arg_cs.hlsl");
             pso_bbv_option_data_update_ = CreateComputePSO("ssvg/bbv_option_data_update_cs.hlsl");
-            pso_bbv_visible_probe_sampling_ = CreateComputePSO("ssvg/visible_probe_sky_visibility_sample_cs.hlsl");
-            pso_bbv_visible_probe_update_ = CreateComputePSO("ssvg/visible_probe_sky_visibility_sample_store_cs.hlsl");
-            pso_bbv_coarse_probe_sampling_and_update_ = CreateComputePSO("ssvg/coarse_probe_sky_visibility_sample_cs.hlsl");
+            pso_bbv_visible_surface_element_update_ = CreateComputePSO("ssvg/bbv_visible_surface_element_update_cs.hlsl");
 
             pso_wcp_clear_ = CreateComputePSO("ssvg/wcp_clear_voxel_cs.hlsl");
             pso_wcp_begin_update_ = CreateComputePSO("ssvg/wcp_begin_update_cs.hlsl");
@@ -360,7 +358,7 @@ namespace ngl::render::app
                 p->bbv.cell_size       = bbv_grid_updater_.Get().cell_size_;
                 p->bbv.cell_size_inv    = 1.0f / bbv_grid_updater_.Get().cell_size_;
 
-                p->bbv_indirect_cs_thread_group_size = math::Vec3i(pso_bbv_visible_probe_sampling_->GetThreadGroupSizeX(), pso_bbv_visible_probe_sampling_->GetThreadGroupSizeY(), pso_bbv_visible_probe_sampling_->GetThreadGroupSizeZ());
+                p->bbv_indirect_cs_thread_group_size = math::Vec3i(pso_bbv_visible_surface_element_update_->GetThreadGroupSizeX(), pso_bbv_visible_surface_element_update_->GetThreadGroupSizeY(), pso_bbv_visible_surface_element_update_->GetThreadGroupSizeZ());
                 p->bbv_visible_voxel_buffer_size = bbv_fine_update_voxel_count_max_;
             }
             // Wcp
@@ -453,7 +451,7 @@ namespace ngl::render::app
                 p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_list_.buffer.Get());
             }
-                // WCP Begin Update Pass.
+                // Wcp Begin Update Pass.
                 {
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpBeginUpdate");
 
@@ -549,7 +547,7 @@ namespace ngl::render::app
 
 
 
-            // Common Update.
+            // Voxel Update.
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ProbeCommonUpdate");
 
@@ -566,67 +564,32 @@ namespace ngl::render::app
                 p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
             }
 
-            static constexpr bool k_enable_octahedral_map_update = true;
-            // Visible Voxel Update Pass.
+            // Visible Surface Voxel Update Pass.
             {
                 {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "VisibleProbeSkyVisibilitySample");
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "VisibleSurfaceVoxelUpdate");
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_bbv_visible_probe_sampling_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-                    pso_bbv_visible_probe_sampling_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_bbv_visible_probe_sampling_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                    pso_bbv_visible_probe_sampling_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
+                    pso_bbv_visible_surface_element_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                    pso_bbv_visible_surface_element_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                    pso_bbv_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+                    pso_bbv_visible_surface_element_update_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
 
-                    pso_bbv_visible_probe_sampling_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
+                    pso_bbv_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
 
-                    pso_bbv_visible_probe_sampling_->SetView(&desc_set, "RWUpdateProbeWork", bbv_fine_update_voxel_probe_buffer_.uav.Get());
+                    pso_bbv_visible_surface_element_update_->SetView(&desc_set, "RWUpdateProbeWork", bbv_fine_update_voxel_probe_buffer_.uav.Get());
 
-                    p_command_list->SetPipelineState(pso_bbv_visible_probe_sampling_.Get());
-                    p_command_list->SetDescriptorSet(pso_bbv_visible_probe_sampling_.Get(), &desc_set);
+                    p_command_list->SetPipelineState(pso_bbv_visible_surface_element_update_.Get());
+                    p_command_list->SetDescriptorSet(pso_bbv_visible_surface_element_update_.Get(), &desc_set);
 
                     p_command_list->DispatchIndirect(bbv_fine_update_voxel_indirect_arg_.buffer.Get());// こちらは可視VoxelのIndirect.
 
 
                     p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_probe_buffer_.buffer.Get());
                 }
-                if(k_enable_octahedral_map_update)
-                {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "VisibleProbeSkyVisibilityApply");
-
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_bbv_visible_probe_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_bbv_visible_probe_update_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
-                    pso_bbv_visible_probe_update_->SetView(&desc_set, "UpdateProbeWork", bbv_fine_update_voxel_probe_buffer_.srv.Get());
-
-                    p_command_list->SetPipelineState(pso_bbv_visible_probe_update_.Get());
-                    p_command_list->SetDescriptorSet(pso_bbv_visible_probe_update_.Get(), &desc_set);
-
-                    p_command_list->DispatchIndirect(bbv_fine_update_voxel_indirect_arg_.buffer.Get());// こちらは可視VoxelのIndirect.
-                }
-            }
-            // Coarse Voxel Update Pass.
-            {
-                if(k_enable_octahedral_map_update)
-                {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "CoarseProbeSkyVisibilitySampleAndApply");
-
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
-                    pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                    pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
-
-                    pso_bbv_coarse_probe_sampling_and_update_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
-
-                    p_command_list->SetPipelineState(pso_bbv_coarse_probe_sampling_and_update_.Get());
-                    p_command_list->SetDescriptorSet(pso_bbv_coarse_probe_sampling_and_update_.Get(), &desc_set);
-                    // 全Probe更新のスキップ要素分考慮したDispatch.
-                    pso_bbv_coarse_probe_sampling_and_update_->DispatchHelper(p_command_list, (bbv_grid_updater_.Get().total_count + (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT)) / (FRAME_UPDATE_ALL_PROBE_SKIP_COUNT+1), 1, 1);
-                }
             }
             
-                // Visible Surface Element RaySample Pass.
+                // Wcp Visible Surface Element RaySample Pass.
                 {
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpVisibleSurfaceElementRaySample");
 
@@ -649,7 +612,7 @@ namespace ngl::render::app
                     p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
                     p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
                 }
-                // Coarse Probe RaySample Pass.
+                // Wcp Coarse Probe RaySample Pass.
                 {
                     {
                         NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpCoarseProbeRaySample");
@@ -671,7 +634,7 @@ namespace ngl::render::app
                         p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
                     }
                 }
-                // Octahedral Map Border Fill Pass.
+                // Wcp Octahedral Map Border Fill Pass.
                 {
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpFillProbeOctmapAtlasBorder");
 

@@ -1,18 +1,20 @@
 
 #if 0
 
-visible_probe_sky_visibility_sample_store_cs.hlsl
-
-// 可視要素リストの処理の後処理サンプル.
+bbv_visible_surface_element_update_cs.hlsl
 
 #endif
 
-
-
-#define PROBE_UPDATE_TEMPORAL_RATE (0.025)
-
-
 #include "ssvg_util.hlsli"
+// SceneView定数バッファ構造定義.
+#include "../include/scene_view_struct.hlsli"
+
+
+// Probeの更新で発行するレイトレース数.
+#define RAY_SAMPLE_COUNT_PER_VOXEL 8
+#define PROBE_UPDATE_TEMPORAL_RATE  (0.1)
+
+ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(
@@ -22,10 +24,11 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
+	const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
+
     // VisibleCoarseVoxelListを利用するバージョン.
     const uint visible_voxel_count = VisibleVoxelList[0]; // 0番目にアトミックカウンタが入っている.
     const uint update_element_index = (dtid.x * (FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT+1)));
-    
     if(visible_voxel_count < update_element_index)
         return;
 
@@ -34,17 +37,10 @@ void main_cs(
     int3 voxel_coord_toroidal = index_to_voxel_coord(voxel_index, cb_ssvg.bbv.grid_resolution);
     int3 voxel_coord = voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution -cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
 
-    const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.bbv.flatten_2d_width, voxel_index / cb_ssvg.bbv.flatten_2d_width);
-    // バッファの内容をAtlasへ反映.
-    for(int i = 0; i < k_per_probe_texel_count; ++i)
-    {
-        const float sky_visibility = UpdateProbeWork[update_element_index * k_per_probe_texel_count + i];
-        if(0.0 > sky_visibility)
-            continue; // 負数の場合はサンプルがなかったとして更新無し.
+    const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
+    const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
 
-        // 境界部込のテクセル位置.
-        const uint2 octmap_atlas_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + uint2(i % k_probe_octmap_width, i / k_probe_octmap_width);
-        // TODO. 対応するAtlasTexの更新など.
-        //RWAtlasTexTest[octmap_atlas_texel_pos] = lerp(RWAtlasTexTest[octmap_atlas_texel_pos], sky_visibility, PROBE_UPDATE_TEMPORAL_RATE);
-    }
+    // TODO. Surface上のVoxel情報を更新するなど.
+    //BbvOptionalData voxel_optional_data = BitmaskBrickVoxelOptionData[voxel_index];
 }
+

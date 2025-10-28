@@ -11,7 +11,7 @@ wcp_visible_surface_element_update_cs.hlsl
 #include "ssvg_util.hlsli"
 
 
-#define RAY_SAMPLE_COUNT_PER_VOXEL 8
+#define RAY_SAMPLE_COUNT_PER_VOXEL 16
 #define PROBE_UPDATE_TEMPORAL_RATE (0.025)
 
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]

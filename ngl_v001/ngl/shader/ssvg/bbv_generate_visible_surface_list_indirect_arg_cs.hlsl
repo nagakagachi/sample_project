@@ -1,7 +1,7 @@
 
 #if 0
 
-generate_visible_voxel_indirect_arg_cs.hlsl
+bbv_generate_visible_surface_list_indirect_arg_cs.hlsl
 
 #endif
 
