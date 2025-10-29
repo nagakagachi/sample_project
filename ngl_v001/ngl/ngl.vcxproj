@@ -63,8 +63,8 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
     <Lib>
-      <AdditionalDependencies>assimp-vc143-mt.lib;DirectXTex.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>.\external\assimp\lib\Release;.\external\DirectXTex\lib\$(Configuration);</AdditionalLibraryDirectories>
+      <AdditionalDependencies>assimp-vc143-mtd.lib;DirectXTex.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalLibraryDirectories>.\external\assimp\lib\$(Configuration);.\external\DirectXTex\lib\$(Configuration);</AdditionalLibraryDirectories>
     </Lib>
     <PreBuildEvent>
       <Command>copy .\external\assimp\bin\Release\\*.dll $(TargetDir)</Command>
@@ -94,7 +94,7 @@
     </Link>
     <Lib>
       <AdditionalDependencies>assimp-vc143-mt.lib;DirectXTex.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>.\external\assimp\lib\Release;.\external\DirectXTex\lib\$(Configuration);</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>.\external\assimp\lib\$(Configuration);.\external\DirectXTex\lib\$(Configuration);</AdditionalLibraryDirectories>
     </Lib>
     <PreBuildEvent>
       <Command>copy .\external\assimp\bin\Release\\*.dll $(TargetDir)</Command>
