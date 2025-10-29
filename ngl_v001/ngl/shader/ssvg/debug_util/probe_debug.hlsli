@@ -65,7 +65,13 @@ VS_OUTPUT main_vs(VS_INPUT input)
     const int3 voxel_coord = index_to_voxel_coord(instance_id, cb_ssvg.wcp.grid_resolution);
     const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
 
-    const float3 probe_pos_ws = (float3(voxel_coord) + (0.5)) * cb_ssvg.wcp.cell_size + cb_ssvg.wcp.grid_min_pos;
+    #if 1
+        const float3 probe_offset = decode_uint_to_range1_vec3(WcpProbeBuffer[voxel_index].probe_offset_v3) * (cb_ssvg.wcp.cell_size * 0.5);
+    #else
+        const float3 probe_offset = float3(0.0, 0.0, 0.0);
+    #endif
+
+    const float3 probe_pos_ws = (float3(voxel_coord) + (0.5)) * cb_ssvg.wcp.cell_size + cb_ssvg.wcp.grid_min_pos + probe_offset;
 
 
     float4 color = float4(1,1,1,1);
@@ -131,7 +137,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     if(0 == cb_ssvg.debug_wcp_probe_mode)
     {
         const WcpProbeData probe_data = WcpProbeBuffer[voxel_index];
-        color = float4(probe_data.data, 0.0);
+        color = probe_data.avg_sky_visibility.xxxx;
     }
     else if(1 == cb_ssvg.debug_wcp_probe_mode)
     {

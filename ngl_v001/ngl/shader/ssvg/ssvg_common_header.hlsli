@@ -57,7 +57,7 @@ cppからインクルードする場合は以下のマクロ定義を先行定�
     // Wcp 全体更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
     #define WCP_ALL_ELEMENT_UPDATE_SKIP_COUNT 60
     // Wcp 可視Wcp要素更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
-    #define WCP_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT 0
+    #define WCP_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT 1
 
 
 
@@ -78,8 +78,12 @@ cppからインクルードする場合は以下のマクロ定義を先行定�
     // WorldCacheProbeのデータ.
     struct WcpProbeData
     {
-        float3 data;
-        uint atomic_work;
+        uint probe_offset_v3;//signed 10bit vector3 encode.
+        
+        float avg_sky_visibility;
+        uint probe_data_dummy;
+        
+        uint atomic_work;// 可視要素リスト作成時の重複除去用.
     };
 
 

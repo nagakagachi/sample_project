@@ -85,6 +85,7 @@ void main_cs(
             cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
 
         float4 debug_color = float4(0, 0, 1, 0);
+
         if(0.0 <= curr_ray_t_ws.x)
         {
             const float fog_rate0 = pow(saturate((curr_ray_t_ws.x - 20.0)/100.0), 1.0/1.2);

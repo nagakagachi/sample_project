@@ -188,13 +188,13 @@ void parse_bbv_voxel_unique_data(out BbvVoxelUniqueData out_data, uint unique_da
 // ------------------------------------------------------------------------------------------------------------------------
 // BitmaskBrickVoxelの追加データ構造の操作.
 
-//  probe_bitcell_index : -1なら空セル無し, 0〜k_bbv_per_voxel_bitmask_bit_count-1
+// Bbv. probe_bitcell_index : -1なら空セル無し, 0〜k_bbv_per_voxel_bitmask_bit_count-1
 void set_bbv_probe_bitcell_index(inout BbvOptionalData voxel_data, int probe_bitcell_index)
 {
      // 0は空セル無しのフラグとして予約.
     voxel_data.probe_pos_code = (0 <= probe_bitcell_index)? probe_bitcell_index + 1 : 0;
 }
-// Occupancy Bitmask Voxelのビットセルインデックスからk_bbv_per_voxel_resolution^3 ボクセル内位置を計算.
+// Bbv. Bitmask Brick Voxelのビットセルインデックスからk_bbv_per_voxel_resolution^3 ボクセル内位置を計算.
 // bit_index : 0 〜 k_bbv_per_voxel_bitmask_bit_count-1
 int calc_bbv_probe_bitcell_index(BbvOptionalData voxel_data)
 {
@@ -203,7 +203,7 @@ int calc_bbv_probe_bitcell_index(BbvOptionalData voxel_data)
 
 
 // ------------------------------------------------------------------------------------------------------------------------
-// Voxelデータクリア.
+// Bbv. Voxelデータクリア.
 void clear_voxel_data(RWBuffer<uint> bbv_buffer, uint voxel_index)
 {
     const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
@@ -220,10 +220,8 @@ void clear_voxel_data(RWBuffer<uint> bbv_buffer, uint voxel_index)
         bbv_buffer[bbv_addr + i] = 0;
     }
 }
-
-
 // ------------------------------------------------------------------------------------------------------------------------
-// ワールド座標からBbvの値を読み取る.
+// Bbv. ワールド座標から占有値を読み取る.
 uint read_bbv_voxel_from_world_pos(Buffer<uint> bbv_buffer, int3 grid_resolution, int3 bbv_grid_toroidal_offset, float3 grid_min_pos_world, float bbv_cell_size_inv, float3 pos_world)
 {
     // WorldPosからVoxelCoordを計算.
@@ -252,29 +250,13 @@ uint read_bbv_voxel_from_world_pos(Buffer<uint> bbv_buffer, int3 grid_resolution
 
 
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// 効率化版レイトレース.
+// Bbvレイキャスト.
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // 呼び出し側で引数の符号なし uint3 pos に符号付きint3を渡すことでオーバーフローして最大値になるため, 0 <= pos < size の範囲内にあるかをチェックとなる.
 bool check_grid_bound(uint3 pos, uint sizeX, uint sizeY, uint sizeZ) {
     return pos.x < sizeX && pos.y < sizeY && pos.z < sizeZ;
 }
-float3 calc_inverse_ray_direction(float3 ray_dir)
-{
-    const float k_nearly_zero_threshold = 1e-7;
-    const float k_float_max = 1e20;
-    // Safety Inverse Dir.
-    return select( k_nearly_zero_threshold > abs(ray_dir), float3(k_float_max, k_float_max, k_float_max), 1.0 / ray_dir);
-}
-
-// https://github.com/dubiousconst282/VoxelRT
-float3 calc_dda_trace_ray_side_distance(float3 ray_pos, float3 ray_dir)
-{
-    float3 inv_dir = calc_inverse_ray_direction(ray_dir);
-    float3 ray_side_distance = ((floor(ray_pos) - ray_pos) + step(0.0, ray_dir)) * inv_dir;
-    return ray_side_distance;
-}
-
 // ray dir の逆数による次の境界への距離からdda用のステップ用軸選択boolマスクを計算.
 bool3 calc_dda_trace_step_mask(float3 ray_side_distance) {
     bool3 mask;
@@ -353,7 +335,6 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 invDir, inout bool
 // BitmaskBrickVoxelレイトレース.
 float4 trace_ray_vs_bitmask_brick_voxel_grid(
     out int out_hit_voxel_index,
-
     float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws, 
     float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
     int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer)
@@ -391,7 +372,6 @@ float4 trace_ray_vs_bitmask_brick_voxel_grid(
         parse_bbv_voxel_unique_data(unique_data, bbv_buffer[unique_data_addr]);
         if(0 != (unique_data.is_occupied))
         {
-            // TODO. WaveActiveCountBitsを使用して一定数以上(８割以上~等)のLaneが到達するまでcontinueすることで発散対策をすることも検討.
             const float3 mini = ((mapPos-ray_pos) + 0.5 - 0.5*float3(raySign)) * inv_dir;
             const float d = max(mini.x, max(mini.y, mini.z));
             const float3 intersect = ray_pos + ray_dir_ws*d;
@@ -408,7 +388,10 @@ float4 trace_ray_vs_bitmask_brick_voxel_grid(
                 const float3 startPos = ray_pos*k_bbv_per_voxel_resolution;
                 const float3 mini = ((finalPos-startPos) + 0.5 - 0.5*float3(raySign)) * inv_dir;
                 const float d = max(mini.x, max(mini.y, mini.z));
-                hit_t = d/k_bbv_per_voxel_resolution;
+                
+                hit_t = d * k_bbv_per_voxel_resolution_inv;
+                hit_t = max(0.0, hit_t);// ヒットしているはずなので0以上とする. ない場合はレイ始点がセル内の場合ヒット無し扱いになる.
+
                 break;
             }
         }
@@ -431,6 +414,45 @@ float4 trace_ray_vs_bitmask_brick_voxel_grid(
         return float4(hit_t_ws, hit_normal.x, hit_normal.y, hit_normal.z);
     }
     return float4(-1.0, -1.0, -1.0, -1.0);
+}
+
+
+
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+// Wcp.
+//------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+// 符号付き, 要素が-1:+1範囲のベクトルをuintにエンコード.
+uint encode_range1_vec3_to_uint(float3 v)
+{
+    // 3要素の符号を3bitに格納. 負数で1.
+    const uint sign3 = (select(v.x < 0.0, 1u, 0u) << 2) | (select(v.y < 0.0, 1u, 0u) << 1) | (select(v.z < 0.0, 1u, 0u) << 0);
+
+    // -1~1のベクトルを9bit固定小数点数に変換.
+    v = abs(v);
+    const uint x_fixed = (uint)(v.x * 511.0 + 0.5);
+    const uint y_fixed = (uint)(v.y * 511.0 + 0.5);
+    const uint z_fixed = (uint)(v.z * 511.0 + 0.5); 
+    // 符号3bitを最上位に, 9bit固定小数点数を下位に詰め込む.
+    return (sign3 << 27) | (x_fixed << 18) | (y_fixed << 9) | (z_fixed << 0);
+}
+// uintから 要素が-1:+1範囲の3要素ベクトルをデコード.
+float3 decode_uint_to_range1_vec3(uint code)
+{
+    const uint sign3 = (code >> 27) & 0x7;
+    const uint x_fixed = (code >> 18) & 0x1ff;
+    const uint y_fixed = (code >> 9) & 0x1ff;
+    const uint z_fixed = (code >> 0) & 0x1ff;
+
+    float3 v;
+    v.x = (float)x_fixed * (1.0 / 511.0);
+    v.y = (float)y_fixed * (1.0 / 511.0);
+    v.z = (float)z_fixed * (1.0 / 511.0);
+
+    // 符号.
+    v *= select(bool3((sign3 & 0x4), (sign3 & 0x2), (sign3 & 0x1)), float3(-1.0, -1.0, -1.0), float3(1.0, 1.0, 1.0));
+
+    return v;
 }
 
 

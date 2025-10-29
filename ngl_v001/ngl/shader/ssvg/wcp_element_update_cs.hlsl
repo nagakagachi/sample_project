@@ -13,7 +13,7 @@ wcp_element_update_cs.hlsl
 #include "../include/scene_view_struct.hlsli"
 
 
-#define RAY_SAMPLE_COUNT_PER_VOXEL 32
+#define RAY_SAMPLE_COUNT_PER_VOXEL 8
 #define PROBE_UPDATE_TEMPORAL_RATE  (0.1)
 
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
@@ -41,11 +41,13 @@ void main_cs(
     const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution);
     const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.wcp.grid_resolution);
 
-    float3 probe_sample_pos_ws = float3(voxel_coord) * cb_ssvg.wcp.cell_size + cb_ssvg.wcp.grid_min_pos;
-    {
-        // 仮でVoxel中心をプローブ位置にする.
-        probe_sample_pos_ws += cb_ssvg.wcp.cell_size * 0.5;
-    }
+    // Cell中心.
+    const float3 probe_cell_center = (float3(voxel_coord) + 0.5) * cb_ssvg.wcp.cell_size + cb_ssvg.wcp.grid_min_pos;
+
+    // RWWcpProbeBuffer[voxel_index].probe_offset_v3のuintからfloat3オフセット復元. Cellサイズの半分で正規化.
+    float3 prev_probe_offset = decode_uint_to_range1_vec3(RWWcpProbeBuffer[voxel_index].probe_offset_v3) * (cb_ssvg.wcp.cell_size * 0.5);
+    float3 probe_sample_pos_ws = probe_cell_center + prev_probe_offset;
+
 
     // Probeレイサンプル.
     {
@@ -94,7 +96,7 @@ void main_cs(
         }
 
         // Probe要素の更新.
-        RWWcpProbeBuffer[voxel_index].data = lerp(RWWcpProbeBuffer[voxel_index].data, ray_accum.xxx / RAY_SAMPLE_COUNT_PER_VOXEL, PROBE_UPDATE_TEMPORAL_RATE);
+        RWWcpProbeBuffer[voxel_index].avg_sky_visibility = lerp(RWWcpProbeBuffer[voxel_index].avg_sky_visibility, ray_accum / RAY_SAMPLE_COUNT_PER_VOXEL, PROBE_UPDATE_TEMPORAL_RATE);
     }
 
 }

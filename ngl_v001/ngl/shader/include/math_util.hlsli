@@ -208,8 +208,22 @@ uint noise_iqint32_orig(uint2 p)
     p ^= uint2(3333777777, 3333777777) >> (p >> 28);  
     uint n = p.x * p.y;  
     return n ^ n >> 15;  
-}  
-  
+}
+float noise_iqint32(float pos)  
+{  
+    uint value = noise_iqint32_orig(asuint(pos.xx));  
+    return value * 2.3283064365386962890625e-10;  
+}
+float noise_iqint32(float2 pos)  
+{  
+    uint value = noise_iqint32_orig(asuint(pos.xy));  
+    return value * 2.3283064365386962890625e-10;  
+}
+float noise_iqint32(float3 pos)  
+{  
+    uint value = noise_iqint32_orig(asuint(pos.xy)) + noise_iqint32_orig(asuint(pos.zz));
+    return value * 2.3283064365386962890625e-10;  
+}
 float noise_iqint32(float4 pos)  
 {  
     uint value = noise_iqint32_orig(asuint(pos.xy)) + noise_iqint32_orig(asuint(pos.zw));  
