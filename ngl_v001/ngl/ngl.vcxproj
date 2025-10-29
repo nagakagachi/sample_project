@@ -67,7 +67,7 @@
       <AdditionalLibraryDirectories>.\external\assimp\lib\$(Configuration);.\external\DirectXTex\lib\$(Configuration);</AdditionalLibraryDirectories>
     </Lib>
     <PreBuildEvent>
-      <Command>copy .\external\assimp\bin\Release\\*.dll $(TargetDir)</Command>
+      <Command>copy .\external\assimp\bin\$(Configuration)\*.dll $(TargetDir)</Command>
       <Message>third_partyのAssimpからdllをコピーする.</Message>
     </PreBuildEvent>
   </ItemDefinitionGroup>
@@ -97,7 +97,7 @@
       <AdditionalLibraryDirectories>.\external\assimp\lib\$(Configuration);.\external\DirectXTex\lib\$(Configuration);</AdditionalLibraryDirectories>
     </Lib>
     <PreBuildEvent>
-      <Command>copy .\external\assimp\bin\Release\\*.dll $(TargetDir)</Command>
+      <Command>copy .\external\assimp\bin\$(Configuration)\*.dll $(TargetDir)</Command>
       <Message>third_partyのAssimpからdllをコピーする.</Message>
     </PreBuildEvent>
   </ItemDefinitionGroup>

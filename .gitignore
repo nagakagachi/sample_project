@@ -399,3 +399,10 @@ FodyWeavers.xsd
 *.sln.iml
 
 *.code-workspace
+
+
+# model data
+!**/data/model/*/*.obj
+
+
+
