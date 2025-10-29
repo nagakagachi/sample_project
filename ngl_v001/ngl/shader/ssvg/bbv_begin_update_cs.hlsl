@@ -3,6 +3,9 @@
 
 bbv_begin_update_cs.hlsl
 
+各種バッファクリアや, 移動によって発生した領域のInValidateをする.
+Dispatchは全域としているが, 最適化としてはInvalidate領域サイズ分だけにしたい.
+
 #endif
 
 

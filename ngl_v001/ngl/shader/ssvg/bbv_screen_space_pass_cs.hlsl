@@ -1,9 +1,10 @@
 
 #if 0
 
-bbv_voxelize_cs.hlsl
+bbv_screen_space_pass_cs.hlsl
 
-ハードウェア深度バッファをもとにBitmaskBrickVoxelの更新.
+ハードウェア深度バッファをもとにBitmaskBrickVoxelの処理をする.
+可視サーフェイス上にあるBbv要素リストの生成.
 
 #endif
 

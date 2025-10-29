@@ -1,30 +1,20 @@
 
 #if 0
 
-wcp_probe_ray_sample_base.hlsli
+wcp_element_update_cs.hlsl
 
-全域Probeの粗い更新.
+全要素対象の更新処理.
+高速化のためフレーム間で更新要素をスキップするロジックがある.
 
 #endif
-
-#ifndef NGL_SHADER_WCP_RAY_SAMPLE_SAMPLE_BASE_HLSLI
-#define NGL_SHADER_WCP_RAY_SAMPLE_SAMPLE_BASE_HLSLI
 
 #include "ssvg_util.hlsli"
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
 
 
-#if !defined(RAY_SAMPLE_COUNT_PER_VOXEL)
-    // Probeの更新で発行するレイトレース数.
-    #define RAY_SAMPLE_COUNT_PER_VOXEL 8
-#endif
-
-
-#if !defined(PROBE_UPDATE_TEMPORAL_RATE)
-    #define PROBE_UPDATE_TEMPORAL_RATE  (0.1)
-#endif
-
+#define RAY_SAMPLE_COUNT_PER_VOXEL 32
+#define PROBE_UPDATE_TEMPORAL_RATE  (0.1)
 
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
 
@@ -41,7 +31,7 @@ void main_cs(
     const uint elem_count = cb_ssvg.wcp.grid_resolution.x * cb_ssvg.wcp.grid_resolution.y * cb_ssvg.wcp.grid_resolution.z;
 
     // 更新対象インデックスをフレーム毎のブロックに分けて採用する方式. こちらのほうがキャッシュ効率は有利なはず.
-    const uint per_frame_loop_cnt = WCP_FRAME_PROBE_UPDATE_SKIP_COUNT+1;
+    const uint per_frame_loop_cnt = WCP_ALL_ELEMENT_UPDATE_SKIP_COUNT+1;
     const uint per_frame_update_elem_count = (elem_count + (per_frame_loop_cnt - 1)) / per_frame_loop_cnt;
     const uint update_element_id = (((cb_ssvg.frame_count%per_frame_loop_cnt) * per_frame_update_elem_count)) + dtid.x;
     if(elem_count <= update_element_id)
@@ -79,7 +69,7 @@ void main_cs(
             // SkyVisibility raycast.
             const float trace_distance = 100.0;
             int hit_voxel_index = -1;
-            // リファクタリング版.
+            // レイキャスト.
             float4 curr_ray_t_ws = trace_ray_vs_bitmask_brick_voxel_grid(
                 hit_voxel_index,
                 sample_ray_origin, sample_ray_dir, trace_distance, 
@@ -99,13 +89,12 @@ void main_cs(
             // 境界部込のテクセル位置.
             const uint2 octmap_atlas_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + uint2(octmap_uv * k_probe_octmap_width);
 
+            // ProbeAtlasTexel書き換え.
             RWWcpProbeAtlasTex[octmap_atlas_texel_pos] = lerp(RWWcpProbeAtlasTex[octmap_atlas_texel_pos], sky_visibility, PROBE_UPDATE_TEMPORAL_RATE);
         }
 
+        // Probe要素の更新.
         RWWcpProbeBuffer[voxel_index].data = lerp(RWWcpProbeBuffer[voxel_index].data, ray_accum.xxx / RAY_SAMPLE_COUNT_PER_VOXEL, PROBE_UPDATE_TEMPORAL_RATE);
     }
 
 }
-
-
-#endif //NGL_SHADER_WCP_RAY_SAMPLE_SAMPLE_BASE_HLSLI

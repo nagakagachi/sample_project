@@ -24,7 +24,7 @@ void main_cs(
 {
     // SurfaceProbeCellListを利用するバージョン.
     const uint visible_voxel_count = SurfaceProbeCellList[0]; // 0番目にアトミックカウンタが入っている.
-    const uint update_element_index = dtid.x;//(dtid.x * (FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT+1)));
+    const uint update_element_index = (dtid.x * (WCP_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(WCP_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT+1)));
     
     if(visible_voxel_count < update_element_index)
         return;

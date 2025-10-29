@@ -40,20 +40,26 @@ cppからインクルードする場合は以下のマクロ定義を先行定�
     #define k_bbv_per_voxel_resolution_inv (1.0 / float(k_bbv_per_voxel_resolution))
     #define k_bbv_per_voxel_resolution_vec3i int3(k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution)
 
-    // probeあたりのOctMap解像度.
+    // probeあたりのOctahedralMapAtlas解像度.
     #define k_probe_octmap_width (6)
     // それぞれのOctMapの+側境界に1テクセルボーダーを追加することで全方向に1テクセルのマージンを確保する.
-    #define k_probe_octmap_width_with_border (k_probe_octmap_width+2)
+    #define k_probe_octmap_width_with_border (k_probe_octmap_width + 2)
+    // probeあたりのOctMapテクセル数.
+    #define k_per_probe_texel_count (k_probe_octmap_width * k_probe_octmap_width)
 
-    #define k_per_probe_texel_count (k_probe_octmap_width*k_probe_octmap_width)
 
-    // 可視Probe更新時のスキップ数. 0でスキップせずに可視Probeバッファのすべての要素を処理する. 1で1つ飛ばしでスキップ(半分).
-    #define FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT 0
-    // Probe全体更新のスキップ数. 0でスキップせずにProbeバッファのすべての要素を処理する. 1で1つ飛ばしでスキップ(半分).
-    #define FRAME_UPDATE_ALL_PROBE_SKIP_COUNT 16
     
-    // WCP Probe全体更新のスキップ数. 0でスキップせずにProbeバッファのすべての要素を処理する. 1で1つ飛ばしでスキップ(半分).
-    #define WCP_FRAME_PROBE_UPDATE_SKIP_COUNT 60
+    // Bbv 全体更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
+    #define BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT 60
+    // Bbv 可視Wcp要素更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
+    #define BBV_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT 0
+    
+    // Wcp 全体更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
+    #define WCP_ALL_ELEMENT_UPDATE_SKIP_COUNT 60
+    // Wcp 可視Wcp要素更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
+    #define WCP_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT 0
+
+
 
 
     // シェーダとCppで一致させる.
@@ -61,8 +67,8 @@ cppからインクルードする場合は以下のマクロ定義を先行定�
     // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.
     struct BbvOptionalData
     {
-        // ジオメトリ表面を含むVoxelまでの距離. ジオメトリ表面を含むVoxelは0, それ以外はマンハッタン距離.
-        int3 surface_distance;
+        // ジオメトリ表面を含むVoxelまでの相対ベクトル. ジオメトリ表面を含むVoxelは0, それ以外はマンハッタン距離.
+        int3 to_surface_vector;
 
         // BitmaskBrickVoxel内部でのプローブ候補位置を表す線形インデックス. 0は無効, probe_pos_code-1 が実際のインデックス. 値域は 0,k_bbv_per_voxel_bitmask_bit_count.
         uint probe_pos_code;

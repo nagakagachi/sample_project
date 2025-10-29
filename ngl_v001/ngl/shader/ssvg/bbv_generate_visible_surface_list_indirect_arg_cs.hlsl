@@ -3,6 +3,8 @@
 
 bbv_generate_visible_surface_list_indirect_arg_cs.hlsl
 
+可視サーフェイス上のBbv要素に対するIndirect命令引数生成.
+
 #endif
 
 

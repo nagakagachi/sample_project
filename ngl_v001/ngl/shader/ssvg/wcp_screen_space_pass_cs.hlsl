@@ -1,11 +1,10 @@
 
 #if 0
 
-wcp_visible_surface_proc_cs.hlsl
+wcp_screen_space_pass_cs.hlsl
 
-ハードウェア深度バッファから可視サーフェイス上の処理をする.
-
-可視サーフェイスに接するProbeのリスト生成など
+ハードウェア深度バッファをもとにWorldCacheProbeの処理をする.
+可視サーフェイス上にあるWcp要素リストの生成.
 
 #endif
 

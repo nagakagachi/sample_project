@@ -594,7 +594,7 @@ bool AppGame::Initialize()
     
     // SSVG.
     ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(16), 2.5f);
-    ngl::render::app::SsVg::dbg_view_enable_ = false;
+    ngl::render::app::SsVg::dbg_view_mode_ = -1;
 
 
 
@@ -846,8 +846,7 @@ bool AppGame::ExecuteApp()
         {
             if (ImGui::CollapsingHeader("Voxel Debug"))
             {
-                ImGui::Checkbox("Voxel Debug Enable", &ngl::render::app::SsVg::dbg_view_enable_);
-                ImGui::SliderInt("View Mode", &ngl::render::app::SsVg::dbg_view_mode_, 0, 6);
+                ImGui::SliderInt("View Mode", &ngl::render::app::SsVg::dbg_view_mode_, -1, 6);
                 ImGui::SliderFloat("Visualize Screen Rate", &dbgw_view_ssvg_voxel_rate, 0.0f, 1.0f);
             }
 
@@ -1071,7 +1070,7 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
 
                 render_frame_desc.debugview_gbuffer = dbgw_view_gbuffer;
                 render_frame_desc.debugview_dshadow = dbgw_view_dshadow;
-                render_frame_desc.debugview_ssvg_voxel = ngl::render::app::SsVg::dbg_view_enable_;
+                render_frame_desc.debugview_ssvg_voxel = (0 <= ngl::render::app::SsVg::dbg_view_mode_);
                 render_frame_desc.debugview_ssvg_voxel_rate = dbgw_view_ssvg_voxel_rate;
                 render_frame_desc.debugview_ssvg_sky_visibility = dbgw_view_ssvg_sky_visibility;
             }

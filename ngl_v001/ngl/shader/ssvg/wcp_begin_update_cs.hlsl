@@ -3,6 +3,9 @@
 
 wcp_begin_update_cs.hlsl
 
+各種バッファクリアや, 移動によって発生した領域のInValidateをする.
+Dispatchは全域としているが, 最適化としてはInvalidate領域サイズ分だけにしたい.
+
 #endif
 
 
@@ -49,8 +52,6 @@ void main_cs(
         {
             // 移動によってシフトしてきた無効領域.
             RWWcpProbeBuffer[dtid.x] = (WcpProbeData)0;
-            
-
             
             {
                 uint2 probe_2d_map_pos = uint2(dtid.x % cb_ssvg.wcp.flatten_2d_width, dtid.x / cb_ssvg.wcp.flatten_2d_width);

@@ -1,7 +1,7 @@
 /*
-    wcp_probe_debug_vs.hlsl
+    probe_debug.hlsli
 
-    Wcp Probeデバッグ描画.
+    Probeデバッグ描画.
 */
 
 

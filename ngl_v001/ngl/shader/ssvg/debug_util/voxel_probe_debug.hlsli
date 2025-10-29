@@ -163,7 +163,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
 
     if(0 == cb_ssvg.debug_bbv_probe_mode)
     {
-        const float surface_distance = length_int_vector3(voxel_optional_data.surface_distance);
+        const float surface_distance = length_int_vector3(voxel_optional_data.to_surface_vector);
         #if 1
             // 距離をグレースケールで可視化.
             float distance_color = saturate(surface_distance/8.0);

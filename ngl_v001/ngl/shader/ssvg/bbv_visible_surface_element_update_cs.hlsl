@@ -3,6 +3,8 @@
 
 bbv_visible_surface_element_update_cs.hlsl
 
+可視サーフェイス上のBbv要素に対する処理.
+
 #endif
 
 #include "ssvg_util.hlsli"
@@ -28,7 +30,7 @@ void main_cs(
 
     // VisibleCoarseVoxelListを利用するバージョン.
     const uint visible_voxel_count = VisibleVoxelList[0]; // 0番目にアトミックカウンタが入っている.
-    const uint update_element_index = (dtid.x * (FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(FRAME_UPDATE_VISIBLE_PROBE_SKIP_COUNT+1)));
+    const uint update_element_index = (dtid.x * (BBV_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(BBV_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT+1)));
     if(visible_voxel_count < update_element_index)
         return;
 
