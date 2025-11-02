@@ -10,6 +10,12 @@ hlsl/C++共通ヘッダ.
 cppからインクルードする場合は以下のマクロ定義を先行定義すること.
     #define NGL_SHADER_CPP_INCLUDE
 
+
+参考資料
+https://github.com/dubiousconst282/VoxelRT
+https://dubiousconst282.github.io/2024/10/03/voxel-ray-tracing/
+https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview/FastVoxelTraversalOverview.md
+
 #endif
 
 
