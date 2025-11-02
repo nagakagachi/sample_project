@@ -87,9 +87,10 @@ void main_cs(
             // SkyVisibility raycast.
             const float trace_distance = 100.0;
             int hit_voxel_index = -1;
+                float4 debug_ray_info;
             // リファクタリング版.
             float4 curr_ray_t_ws = trace_ray_vs_bitmask_brick_voxel_grid(
-                hit_voxel_index,
+                hit_voxel_index, debug_ray_info,
                 sample_ray_origin, sample_ray_dir, trace_distance, 
                 cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
                 cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);

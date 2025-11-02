@@ -594,7 +594,7 @@ bool AppGame::Initialize()
     
     // SSVG.
     ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(16), 2.0f);
-    ngl::render::app::SsVg::dbg_view_mode_ = -1;
+    //ngl::render::app::SsVg::dbg_view_mode_ = -1;
 
 
 
@@ -846,7 +846,7 @@ bool AppGame::ExecuteApp()
         {
             if (ImGui::CollapsingHeader("Voxel Debug"))
             {
-                ImGui::SliderInt("View Mode", &ngl::render::app::SsVg::dbg_view_mode_, -1, 6);
+                ImGui::SliderInt("View Mode", &ngl::render::app::SsVg::dbg_view_mode_, -1, 10);
                 ImGui::SliderFloat("Visualize Screen Rate", &dbgw_view_ssvg_voxel_rate, 0.0f, 1.0f);
             }
 

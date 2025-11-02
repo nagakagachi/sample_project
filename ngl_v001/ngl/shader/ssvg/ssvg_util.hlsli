@@ -268,17 +268,18 @@ bool3 calc_dda_trace_step_mask(float3 ray_side_distance) {
 
 // レイの始点終点セットアップ. 領域AABBの内部または表面から開始するための始点終点のt値( origin + dir * t) を計算.
 // aabb_min, aabb_max, ray_origin, ray_end のすべての空間が一致していればどの空間の情報でも適切な結果を返す(World空間でもCell基準空間でも).
-bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float out_aabb_clamped_end_t, out float3 out_ray_dir_inv, float3 aabb_min, float3 aabb_max, float3 ray_origin, float3 ray_end)
+bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float out_aabb_clamped_end_t, out float3 ray_dir_sign, out float3 out_ray_dir_inv, float3 aabb_min, float3 aabb_max, float3 ray_origin, float3 ray_end)
 {
     const float3 ray_d_c = ray_end - ray_origin;
     const float3 ray_dir_c = normalize(ray_d_c);
     const float ray_len_c = dot(ray_dir_c, ray_d_c);
 
-    // Inv Dir.
-    const float k_nearly_zero_threshold = 1e-7;
-    const float k_float_max = 1e20;
-    // Safety Inverse Dir.
-    out_ray_dir_inv = select( k_nearly_zero_threshold > abs(ray_dir_c), float3(k_float_max, k_float_max, k_float_max), 1.0 / ray_dir_c);
+        // Inv Dir.
+        //const float k_nearly_zero_threshold = 1e-7;
+        //const float k_float_max = 1.0/k_nearly_zero_threshold;//1e20;
+        //const bool3 ray_dir_component_nearly_zero = k_nearly_zero_threshold >= abs(ray_dir_c);
+    out_ray_dir_inv = 1.0 / ray_dir_c;// inf対策が必要な場合があるかも. -> select( ray_dir_component_nearly_zero, float3(k_float_max, k_float_max, k_float_max), 1.0 / ray_dir_c)
+    ray_dir_sign = sign(ray_dir_c);
 
     const float3 t_to_min = (aabb_min - ray_origin) * out_ray_dir_inv;
     const float3 t_to_max = (aabb_max - ray_origin) * out_ray_dir_inv;
@@ -299,7 +300,7 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
 
 // BitmaskBrickVoxel内部のビットセル単位でのレイトレース.
 // https://github.com/dubiousconst282/VoxelRT
-int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 invDir, inout bool3 stepMask, 
+int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3 invDir, inout bool3 stepMask, 
         Buffer<uint> bbv_buffer, uint voxel_index) 
 {
     rayPos = clamp(rayPos, 0.0001, float(k_bbv_per_voxel_resolution)-0.0001);
@@ -307,7 +308,7 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 invDir, inout bool
     float3 sideDist = ((floor(rayPos) - rayPos) + step(0.0, rayDir)) * invDir;
     int3 mapPos = int3(floor(rayPos));
 
-    int3 raySign = sign(rayDir);
+    int3 raySign = rayDirSign;
     #if 1
         const uint bbv_bitmask_addr = bbv_voxel_bitmask_data_addr(voxel_index);
         do {
@@ -335,6 +336,7 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 invDir, inout bool
 // BitmaskBrickVoxelレイトレース.
 float4 trace_ray_vs_bitmask_brick_voxel_grid(
     out int out_hit_voxel_index,
+    out float4 out_debug,
     float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws, 
     float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
     int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer)
@@ -344,23 +346,26 @@ float4 trace_ray_vs_bitmask_brick_voxel_grid(
     const int3 grid_box_cell_max = int3(grid_resolution - 1);
     const float cell_width_ws_inv = 1.0 / cell_width_ws;
 
-    float3 ray_pos = (ray_origin_ws - grid_min_ws) * cell_width_ws_inv;
+    out_debug = float4(0.0, 0.0, 0.0, 0.0);// デバッグ用.
 
+    const float3 ray_origin = (ray_origin_ws - grid_min_ws) * cell_width_ws_inv;
+    float3 ray_dir_sign;// ray_dirの値がゼロのコンポーネントについては 0 が格納される. これは軸並行ベクトルの場合の計算を正しく行うためのマスクとしても機能する.
+    float3 inv_dir;
     float ray_trace_begin_t_offset;
     float ray_trace_end_t_offset;
-    float3 inv_dir;
-    if(!calc_ray_t_offset_for_aabb(ray_trace_begin_t_offset, ray_trace_end_t_offset, inv_dir, grid_box_min, grid_box_max, ray_pos, (ray_pos + ray_dir_ws * (trace_distance_ws * cell_width_ws_inv))))
+    if(!calc_ray_t_offset_for_aabb(ray_trace_begin_t_offset, ray_trace_end_t_offset, ray_dir_sign, inv_dir, grid_box_min, grid_box_max, ray_origin, (ray_origin + ray_dir_ws * (trace_distance_ws * cell_width_ws_inv))))
     {
         return float4(-1.0, -1.0, -1.0, -1.0);// ヒット無し.
     }
-
-    const int3 raySign = sign(ray_dir_ws);
-    const float3 startPos = floor(ray_pos + ray_dir_ws * ray_trace_begin_t_offset);
-    float3 sideDist = ((startPos - ray_pos) + step(0.0, ray_dir_ws)) * inv_dir;
-    int3 mapPos = int3(startPos);
+    const float3 ray_component_validity = abs(ray_dir_sign);// ray_dirの値がゼロのコンポーネントについては 0 が格納される. これは軸並行ベクトルの場合の計算を正しく行うためのマスクとしても機能する.
+    const float3 clampled_start_pos = floor(ray_origin + ray_dir_ws * ray_trace_begin_t_offset);
+    float3 sideDist = ((clampled_start_pos - ray_origin) + step(0.0, ray_dir_ws)) * inv_dir;
+    int3 mapPos = int3(clampled_start_pos);
     bool3 stepMask = calc_dda_trace_step_mask(sideDist);
 
     float hit_t = -1.0;
+    // デバッグ用.
+    int debug_step_count = 0;
     for(;;)
     {
         // 読み取り用のマッピングをして読み取り.
@@ -372,23 +377,25 @@ float4 trace_ray_vs_bitmask_brick_voxel_grid(
         parse_bbv_voxel_unique_data(unique_data, bbv_buffer[unique_data_addr]);
         if(0 != (unique_data.is_occupied))
         {
-            const float3 mini = ((mapPos-ray_pos) + 0.5 - 0.5*float3(raySign)) * inv_dir;
+            // signのabsをマスクとして使用することで軸並行レイのエッジケースに対応.
+            const float3 mini = ((mapPos-ray_origin) + 0.5*ray_component_validity - 0.5*ray_dir_sign) * inv_dir;
             const float d = max(mini.x, max(mini.y, mini.z));
-            const float3 intersect = ray_pos + ray_dir_ws*d;
+            const float3 intersect = ray_origin + ray_dir_ws*d;
 
             // レイ始点がBrick内部に入っている場合のエッジケース対応.
-            const bool is_ray_origin_inner_voxel = all(mapPos == floor(ray_pos));
-            const float3 uv3d = is_ray_origin_inner_voxel ? ray_pos - mapPos : intersect - mapPos;
-
-            const int3 subp = trace_bitmask_brick(uv3d*k_bbv_per_voxel_resolution, ray_dir_ws, inv_dir, stepMask, bbv_buffer, voxel_index);
+            const bool is_ray_origin_inner_voxel = all(mapPos == floor(ray_origin));
+            const float3 uv3d = is_ray_origin_inner_voxel ? ray_origin - mapPos : intersect - mapPos;
+            // BitmaskBrickVoxel内部のビットセル単位でレイトレース.
+            const int3 subp = trace_bitmask_brick(uv3d*k_bbv_per_voxel_resolution, ray_dir_ws, ray_dir_sign, inv_dir, stepMask, bbv_buffer, voxel_index);
             // bitmaskヒット.
             if (subp.x >= 0) 
             {
                 const float3 finalPos = mapPos*k_bbv_per_voxel_resolution+subp;
-                const float3 startPos = ray_pos*k_bbv_per_voxel_resolution;
-                const float3 mini = ((finalPos-startPos) + 0.5 - 0.5*float3(raySign)) * inv_dir;
+                const float3 startPos = ray_origin*k_bbv_per_voxel_resolution;
+                // signのabsをマスクとして使用することで軸並行レイのエッジケースに対応.
+                const float3 mini = ((finalPos-startPos) + 0.5*ray_component_validity - 0.5*ray_dir_sign) * inv_dir;
                 const float d = max(mini.x, max(mini.y, mini.z));
-                
+            
                 hit_t = d * k_bbv_per_voxel_resolution_inv;
                 hit_t = max(0.0, hit_t);// ヒットしているはずなので0以上とする. ない場合はレイ始点がセル内の場合ヒット無し扱いになる.
 
@@ -398,18 +405,26 @@ float4 trace_ray_vs_bitmask_brick_voxel_grid(
 
         stepMask = calc_dda_trace_step_mask(sideDist);
         sideDist += select(stepMask, abs(inv_dir), 0);
-        const int3 mapPosDelta = select(stepMask, raySign, 0);
+        const int3 mapPosDelta = select(stepMask, ray_dir_sign, 0);
         // ここがゼロになって無限ループになる場合があるため安全break.
         if(all(mapPosDelta == 0)) {break;}
         mapPos += mapPosDelta;
 
+            ++debug_step_count;
+
         // 範囲外.
         if(!check_grid_bound(mapPos, grid_resolution.x, grid_resolution.y, grid_resolution.z)) {break;}
     }
+
+    out_debug.x = debug_step_count;
+
     if(0.0 <= hit_t)
     {
+        // ヒットセル情報.
         out_hit_voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(mapPos, bbv_grid_toroidal_offset, grid_resolution), grid_resolution);
-        const float3 hit_normal = select(stepMask, -sign(ray_dir_ws), 0.0);
+        // ヒット法線.
+        const float3 hit_normal = select(stepMask, -ray_dir_sign, 0.0);
+        // ヒットt値(ワールド空間).
         const float hit_t_ws = (hit_t + ray_trace_begin_t_offset) * cell_width_ws;
         return float4(hit_t_ws, hit_normal.x, hit_normal.y, hit_normal.z);
     }

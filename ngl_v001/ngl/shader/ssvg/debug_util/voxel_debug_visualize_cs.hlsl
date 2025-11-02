@@ -32,7 +32,7 @@ void main_cs(
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
     
 
-    if(4 == cb_ssvg.debug_view_mode)
+    if(5 == cb_ssvg.debug_view_mode)
     {
         // Voxel上面図X-Ray表示.
         const int3 bv_full_reso = cb_ssvg.bbv.grid_resolution * k_bbv_per_voxel_resolution;
@@ -55,7 +55,7 @@ void main_cs(
 
         RWTexWork[dtid.xy] = float4(write_data, write_data, write_data, 1.0);
     }
-    else if(5 == cb_ssvg.debug_view_mode)
+    else if(6 == cb_ssvg.debug_view_mode)
     {
         // Probe Atlas Textureの表示.
         const int2 texel_pos = dtid.xy * 0.1;
@@ -96,9 +96,10 @@ void main_cs(
         const float trace_distance = 10000.0;
           
         int hit_voxel_index = -1;
+                float4 debug_ray_info;
         // Trace最適化検証.
         float4 curr_ray_t_ws = trace_ray_vs_bitmask_brick_voxel_grid(
-            hit_voxel_index,
+            hit_voxel_index, debug_ray_info,
             camera_pos, ray_dir_ws, trace_distance, 
             cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
             cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
@@ -145,7 +146,7 @@ void main_cs(
                 // BitmaskBrickVoxelセルの深度を可視化.
                 debug_color.xyz = float4(saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), 1);
             }
-            else
+            else if(4 == cb_ssvg.debug_view_mode)
             {
                 // BitmaskBrickVoxelセルのヒット法線可視化.
                 const float3 bbv_cell_id = floor((camera_pos + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
