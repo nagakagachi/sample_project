@@ -58,7 +58,7 @@ void main_cs(
     else if(5 == cb_ssvg.debug_view_mode)
     {
         // Probe Atlas Textureの表示.
-        const int2 texel_pos = dtid.xy * 0.5;
+        const int2 texel_pos = dtid.xy * 0.1;
         if(any(cb_ssvg.wcp.flatten_2d_width * k_probe_octmap_width_with_border <= texel_pos))
             return;
 
@@ -72,7 +72,26 @@ void main_cs(
 	    const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
         
         const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, ngl_cb_sceneview.cb_proj_mtx);
-        const float3 ray_dir_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4(to_pixel_ray_vs, 0.0));
+        float3 ray_dir_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4(to_pixel_ray_vs, 0.0));
+
+
+                // デバッグ. 軸並行なベクトルの場合にレイキャストが失敗してヒット無しになる不具合調査.
+                #if 0
+                    const float axis_dir_threshold = 0.999;
+                    if(axis_dir_threshold < abs(ray_dir_ws.x))
+                    {
+                        ray_dir_ws = float3(sign(ray_dir_ws.x), 0.0, 0.0);
+                    }
+                    else if(axis_dir_threshold < abs(ray_dir_ws.y))
+                    {
+                        ray_dir_ws = float3(0.0, sign(ray_dir_ws.y), 0.0);
+                    }
+                    else if(axis_dir_threshold < abs(ray_dir_ws.z))
+                    {
+                        ray_dir_ws = float3(0.0, 0.0, sign(ray_dir_ws.z));
+                    }
+                #endif
+
 
         const float trace_distance = 10000.0;
           

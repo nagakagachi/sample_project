@@ -249,7 +249,6 @@ float3 fibonacci_sphere_point(uint index, uint sample_count_max)
     const float y = 1.0 - (index / float(sample_count_max - 1)) * 2.0;// ここで 1 になると後段の sqrt に 0.0 が入って計算破綻する.
     const float horizontal_radius = sqrt((1.0 - y * y) + NGL_EPSILON);// sqrtに1が入らないようにするための安全策として加算で済ませるパターン.
     const float theta = phi * index;
-
     const float x = cos(theta) * horizontal_radius;
     const float z = sin(theta) * horizontal_radius;
     return float3(x, y, z);
@@ -263,6 +262,7 @@ float2 OctWrap(float2 v)
     //return (1.0 - abs(v.yx)) * (v.xy >= 0.0 ? 1.0 : -1.0);
     return (1.0 - abs(v.yx)) * select(v.xy >= 0.0, 1.0, -1.0);
 }
+// 1,0,0 のような基底ベクトルの場合に結果のUVが 1,0 等になるため, テクセル座標として利用する場合はclampするなど注意が必要.
 float2 OctEncode(float3 n)
 {
     n /= (abs(n.x) + abs(n.y) + abs(n.z));

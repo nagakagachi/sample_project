@@ -52,7 +52,6 @@ void main_cs(
     // Probeレイサンプル.
     {
         float ray_accum = 0.0;
-
     #if 1 < RAY_SAMPLE_COUNT_PER_VOXEL
         for(int sample_index = 0; sample_index < RAY_SAMPLE_COUNT_PER_VOXEL; ++sample_index)
     #else
@@ -60,14 +59,23 @@ void main_cs(
     #endif
         {
             // 全域Probe更新.
-            // 球面Fibonacciシーケンス分布上をフルでトレースする.
-            // 同時更新されるProbeのレイ方向がほとんど同じになるためか, Probe毎に乱数でサンプルするよりも数倍速くなる模様.
-            const int num_fibonacci_point_max = 128;
-            float3 sample_ray_dir = fibonacci_sphere_point((cb_ssvg.frame_count*RAY_SAMPLE_COUNT_PER_VOXEL + sample_index)%num_fibonacci_point_max, num_fibonacci_point_max);
+            #if 1
+                // 球面Fibonacciシーケンス分布上をフルでトレースする.
+                // 同時更新されるProbeのレイ方向がほとんど同じになるためか, Probe毎に乱数でサンプルするよりも数倍速くなる模様.
+                const int num_fibonacci_point_max = 128;
+                float3 sample_ray_dir = fibonacci_sphere_point((cb_ssvg.frame_count*RAY_SAMPLE_COUNT_PER_VOXEL + sample_index)%num_fibonacci_point_max, num_fibonacci_point_max);
+            #else
+                // Probe毎にランダムな方向をサンプリングする.
+                float3 sample_ray_dir = random_unit_vector3(
+                    float2(
+                        cb_ssvg.frame_count + sample_index,
+                        update_element_id + sample_index * 37
+                    )
+                );
+            #endif
 
+            const float3 sample_ray_origin = probe_sample_pos_ws;
 
-            const float3 sample_ray_origin = probe_sample_pos_ws;            
-                
             // SkyVisibility raycast.
             const float trace_distance = 100.0;
             int hit_voxel_index = -1;
@@ -89,7 +97,7 @@ void main_cs(
             const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.wcp.flatten_2d_width, voxel_index / cb_ssvg.wcp.flatten_2d_width);
 
             // 境界部込のテクセル位置.
-            const uint2 octmap_atlas_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + uint2(octmap_uv * k_probe_octmap_width);
+            const uint2 octmap_atlas_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + clamp(uint2(octmap_uv * k_probe_octmap_width), 0, (k_probe_octmap_width - 1));
 
             // ProbeAtlasTexel書き換え.
             RWWcpProbeAtlasTex[octmap_atlas_texel_pos] = lerp(RWWcpProbeAtlasTex[octmap_atlas_texel_pos], sky_visibility, PROBE_UPDATE_TEMPORAL_RATE);

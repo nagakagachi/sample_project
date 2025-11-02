@@ -44,7 +44,7 @@ void main_cs(
         float3 probe_sample_pos_ws = probe_cell_center + prev_probe_offset;
 
         {
-            const int relocation_count = 4;
+            const int relocation_count = 8;
 
             if(read_bbv_voxel_from_world_pos(BitmaskBrickVoxel, cb_ssvg.bbv.grid_resolution, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size_inv, probe_sample_pos_ws) != 0)
             {
@@ -66,6 +66,7 @@ void main_cs(
         // Probe位置更新. Cellサイズの半分で正規化.
         RWWcpProbeBuffer[voxel_index].probe_offset_v3 = encode_range1_vec3_to_uint(((probe_sample_pos_ws - probe_cell_center) / (cb_ssvg.wcp.cell_size * 0.5)));
     #else
+        // 埋まり回避なし
         float3 probe_sample_pos_ws = probe_cell_center;
     #endif
 
@@ -101,7 +102,7 @@ void main_cs(
             const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.wcp.flatten_2d_width, voxel_index / cb_ssvg.wcp.flatten_2d_width);
 
             // 境界部込のテクセル位置.
-            const uint2 octmap_atlas_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + uint2(octmap_uv * k_probe_octmap_width);
+            const uint2 octmap_atlas_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + clamp(uint2(octmap_uv * k_probe_octmap_width), 0, (k_probe_octmap_width - 1));
             RWWcpProbeAtlasTex[octmap_atlas_texel_pos] = lerp(RWWcpProbeAtlasTex[octmap_atlas_texel_pos], sky_visibility, PROBE_UPDATE_TEMPORAL_RATE);
         }
     }

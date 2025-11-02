@@ -79,11 +79,10 @@ cppからインクルードする場合は以下のマクロ定義を先行定�
     struct WcpProbeData
     {
         uint probe_offset_v3;//signed 10bit vector3 encode.
+        uint atomic_work;// 可視要素リスト作成時の重複除去用.
         
         float avg_sky_visibility;
         uint probe_data_dummy;
-        
-        uint atomic_work;// 可視要素リスト作成時の重複除去用.
     };
 
 
