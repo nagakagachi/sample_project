@@ -229,8 +229,8 @@ uint read_bbv_voxel_from_world_pos(Buffer<uint> bbv_buffer, int3 grid_resolution
     const int3 voxel_coord = floor(voxel_coordf);
     if(all(voxel_coord >= 0) && all(voxel_coord < grid_resolution))
     {
-        int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, bbv_grid_toroidal_offset, grid_resolution);
-        uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, grid_resolution);
+        const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, bbv_grid_toroidal_offset, grid_resolution);
+        const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, grid_resolution);
 
         const uint voxel_bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
         // 占有ビットマスクの座標.

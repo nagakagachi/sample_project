@@ -66,12 +66,7 @@ void main_cs(
                 float3 sample_ray_dir = fibonacci_sphere_point((cb_ssvg.frame_count*RAY_SAMPLE_COUNT_PER_VOXEL + sample_index)%num_fibonacci_point_max, num_fibonacci_point_max);
             #else
                 // Probe毎にランダムな方向をサンプリングする.
-                float3 sample_ray_dir = random_unit_vector3(
-                    float2(
-                        cb_ssvg.frame_count + sample_index,
-                        update_element_id + sample_index * 37
-                    )
-                );
+                float3 sample_ray_dir = random_unit_vector3( float2( cb_ssvg.frame_count + sample_index, update_element_id + sample_index * 37 ) );
             #endif
 
             const float3 sample_ray_origin = probe_sample_pos_ws;
