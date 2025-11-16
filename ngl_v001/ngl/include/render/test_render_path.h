@@ -54,6 +54,7 @@ namespace ngl::test
     	gfx::RtSceneManager* p_rt_scene = {};
 
         render::app::SsVg* p_ssvg = {};
+        bool is_enable_gi_lighting = false;
 
         ngl::rhi::RefSrvDep ref_test_tex_srv = {};
 

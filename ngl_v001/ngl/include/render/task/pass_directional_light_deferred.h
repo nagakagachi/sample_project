@@ -38,6 +38,7 @@ namespace ngl::render::task
 			fwk::GfxSceneEntityId skybox_proxy_id{};
 			
             render::app::SsVg* p_ssvg = {};
+            bool is_enable_gi_lighting = false;
 
 			bool enable_feedback_blur_test{};
             bool dbg_view_ssvg_sky_visibility = false;
@@ -184,7 +185,7 @@ namespace ngl::render::task
 						p_mapped->enable_feedback_blur_test = desc_.enable_feedback_blur_test;
 						p_mapped->is_first_frame = is_first_frame ? 1 : 0;
 
-                        p_mapped->is_enable_gi = (desc_.p_ssvg != nullptr) ? 1 : 0;
+                        p_mapped->is_enable_gi = (desc_.p_ssvg != nullptr && desc_.is_enable_gi_lighting) ? 1 : 0;
                         p_mapped->dbg_view_ssvg_sky_visibility = desc_.dbg_view_ssvg_sky_visibility ? 1 : 0;
 
 						lighting_cbh->buffer_.Unmap();

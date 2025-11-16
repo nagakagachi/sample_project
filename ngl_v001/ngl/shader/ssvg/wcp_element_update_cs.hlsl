@@ -58,12 +58,23 @@ void main_cs(
         const int sample_index = 0;
     #endif
         {
-            // 全域Probe更新.
+            // Probe更新.
             #if 1
-                // 球面Fibonacciシーケンス分布上をフルでトレースする.
-                // 同時更新されるProbeのレイ方向がほとんど同じになるためか, Probe毎に乱数でサンプルするよりも数倍速くなる模様.
+                // フレーム分散で球面Fibonacciシーケンス分布上をフルでトレースする.
+                    // 同時更新されるProbeのレイ方向がほとんど同じになるためか, Probe毎に乱数でサンプルするよりも数倍速くなる模様.
                 const int num_fibonacci_point_max = 128;
                 float3 sample_ray_dir = fibonacci_sphere_point((cb_ssvg.frame_count*RAY_SAMPLE_COUNT_PER_VOXEL + sample_index)%num_fibonacci_point_max, num_fibonacci_point_max);
+                // fibonacci sample_ray_dir をy軸でランダム回転
+                const float random_angle = noise_iqint32(float2(voxel_index, cb_ssvg.frame_count)) * 6.28318530718;// 0~2π
+                const float2 cossin = float2(cos(random_angle), sin(random_angle));
+                sample_ray_dir.xz = float2(sample_ray_dir.x * cossin.x - sample_ray_dir.z * cossin.y, sample_ray_dir.x * cossin.y + sample_ray_dir.z * cossin.x);
+            #elif 0
+                // 更新対象プローブに関してはフレーム分散せずに必要な全方位トレースを実行する. サンプル数でFibonacciシーケンス分布を使用.
+                float3 sample_ray_dir = fibonacci_sphere_point(sample_index, RAY_SAMPLE_COUNT_PER_VOXEL);
+                // fibonacci sample_ray_dir をy軸でランダム回転
+                const float random_angle = noise_iqint32(float2(voxel_index, cb_ssvg.frame_count)) * 6.28318530718;// 0~2π
+                const float2 cossin = float2(cos(random_angle), sin(random_angle));
+                sample_ray_dir.xz = float2(sample_ray_dir.x * cossin.x - sample_ray_dir.z * cossin.y, sample_ray_dir.x * cossin.y + sample_ray_dir.z * cossin.x);
             #else
                 // Probe毎にランダムな方向をサンプリングする.
                 float3 sample_ray_dir = random_unit_vector3( float2( cb_ssvg.frame_count + sample_index, update_element_id + sample_index * 37 ) );
@@ -72,7 +83,7 @@ void main_cs(
             const float3 sample_ray_origin = probe_sample_pos_ws;
 
             // SkyVisibility raycast.
-            const float trace_distance = 100.0;
+            const float trace_distance = k_wcp_probe_distance_max;
             int hit_voxel_index = -1;
                 float4 debug_ray_info;
             // レイキャスト.
@@ -83,12 +94,14 @@ void main_cs(
                 cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
 
             // SkyVisibilityの方向平均を更新.
-            const float sky_visibility = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
+            //const float distance_probe_value = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
+            // Distance値.
+            const float distance_probe_value = (0.0 > curr_ray_t_ws.x) ? 1.0 : saturate(curr_ray_t_ws.x/k_wcp_probe_distance_max);
 
-            ray_accum += sky_visibility;
 
-            
-             // ProbeOctMapの更新.
+            ray_accum += distance_probe_value;
+
+            // ProbeOctMapの更新.
             const float2 octmap_uv = OctEncode(sample_ray_dir);
             const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.wcp.flatten_2d_width, voxel_index / cb_ssvg.wcp.flatten_2d_width);
 
@@ -96,7 +109,7 @@ void main_cs(
             const uint2 octmap_atlas_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + clamp(uint2(octmap_uv * k_probe_octmap_width), 0, (k_probe_octmap_width - 1));
 
             // ProbeAtlasTexel書き換え.
-            RWWcpProbeAtlasTex[octmap_atlas_texel_pos] = lerp(RWWcpProbeAtlasTex[octmap_atlas_texel_pos], sky_visibility, PROBE_UPDATE_TEMPORAL_RATE);
+            RWWcpProbeAtlasTex[octmap_atlas_texel_pos] = lerp(RWWcpProbeAtlasTex[octmap_atlas_texel_pos], distance_probe_value, PROBE_UPDATE_TEMPORAL_RATE);
         }
 
         // Probe要素の更新.

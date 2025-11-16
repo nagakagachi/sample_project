@@ -70,46 +70,49 @@ void main_cs(
         float3 probe_sample_pos_ws = probe_cell_center;
     #endif
 
-
-    // Probeレイサンプル.
-    {
-        for(int sample_index = 0; sample_index < RAY_SAMPLE_COUNT_PER_VOXEL; ++sample_index)
+    #if 0
+        // プローブデータの整理のため一旦ここでの書き込みは無効化. 全域更新のほうで検証中.
+        /*
+        // Probeレイサンプル.
         {
-            // 全域Probe更新.
-            #if 1
-                // 球面Fibonacciシーケンス分布上をフルでトレースする.
-                // 同時更新されるProbeのレイ方向がほとんど同じになるためか, Probe毎に乱数でサンプルするよりも数倍速くなる模様.
-                const int num_fibonacci_point_max = 128;
-                float3 sample_ray_dir = fibonacci_sphere_point((cb_ssvg.frame_count*RAY_SAMPLE_COUNT_PER_VOXEL + sample_index)%num_fibonacci_point_max, num_fibonacci_point_max);
-            #else
-                // Probe毎にランダムな方向をサンプリングする.
-                float3 sample_ray_dir = random_unit_vector3( float2( cb_ssvg.frame_count + sample_index, update_element_index + sample_index * 37 ) );
-            #endif
+            for(int sample_index = 0; sample_index < RAY_SAMPLE_COUNT_PER_VOXEL; ++sample_index)
+            {
+                // 全域Probe更新.
+                #if 1
+                    // 球面Fibonacciシーケンス分布上をフルでトレースする.
+                    // 同時更新されるProbeのレイ方向がほとんど同じになるためか, Probe毎に乱数でサンプルするよりも数倍速くなる模様.
+                    const int num_fibonacci_point_max = 128;
+                    float3 sample_ray_dir = fibonacci_sphere_point((cb_ssvg.frame_count*RAY_SAMPLE_COUNT_PER_VOXEL + sample_index)%num_fibonacci_point_max, num_fibonacci_point_max);
+                #else
+                    // Probe毎にランダムな方向をサンプリングする.
+                    float3 sample_ray_dir = random_unit_vector3( float2( cb_ssvg.frame_count + sample_index, update_element_index + sample_index * 37 ) );
+                #endif
 
-            const float3 sample_ray_origin = probe_sample_pos_ws;            
-                
-            // SkyVisibility raycast.
-            const float trace_distance = 100.0;
-            int hit_voxel_index = -1;
-                float4 debug_ray_info;
-            // リファクタリング版.
-            float4 curr_ray_t_ws = trace_ray_vs_bitmask_brick_voxel_grid(
-                hit_voxel_index, debug_ray_info,
-                sample_ray_origin, sample_ray_dir, trace_distance, 
-                cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
-                cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
+                const float3 sample_ray_origin = probe_sample_pos_ws;            
+                    
+                // SkyVisibility raycast.
+                const float trace_distance = k_wcp_probe_distance_max;
+                int hit_voxel_index = -1;
+                    float4 debug_ray_info;
+                // リファクタリング版.
+                float4 curr_ray_t_ws = trace_ray_vs_bitmask_brick_voxel_grid(
+                    hit_voxel_index, debug_ray_info,
+                    sample_ray_origin, sample_ray_dir, trace_distance, 
+                    cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
+                    cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
 
-            // SkyVisibilityの方向平均を更新.
-            const float sky_visibility = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
+                // SkyVisibilityの方向平均を更新.
+                const float distance_probe_value = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;
 
-             // ProbeOctMapの更新.
-            const float2 octmap_uv = OctEncode(sample_ray_dir);
-            const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.wcp.flatten_2d_width, voxel_index / cb_ssvg.wcp.flatten_2d_width);
+                    // ProbeOctMapの更新.
+                const float2 octmap_uv = OctEncode(sample_ray_dir);
+                const uint2 probe_2d_map_pos = uint2(voxel_index % cb_ssvg.wcp.flatten_2d_width, voxel_index / cb_ssvg.wcp.flatten_2d_width);
 
-            // 境界部込のテクセル位置.
-            const uint2 octmap_atlas_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + clamp(uint2(octmap_uv * k_probe_octmap_width), 0, (k_probe_octmap_width - 1));
-            RWWcpProbeAtlasTex[octmap_atlas_texel_pos] = lerp(RWWcpProbeAtlasTex[octmap_atlas_texel_pos], sky_visibility, PROBE_UPDATE_TEMPORAL_RATE);
+                // 境界部込のテクセル位置.
+                const uint2 octmap_atlas_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + clamp(uint2(octmap_uv * k_probe_octmap_width), 0, (k_probe_octmap_width - 1));
+                RWWcpProbeAtlasTex[octmap_atlas_texel_pos] = lerp(RWWcpProbeAtlasTex[octmap_atlas_texel_pos], distance_probe_value, PROBE_UPDATE_TEMPORAL_RATE);
+            }
         }
-    }
-
+        */
+    #endif
 }

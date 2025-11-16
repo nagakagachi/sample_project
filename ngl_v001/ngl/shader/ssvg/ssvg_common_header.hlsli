@@ -53,6 +53,8 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     // probeあたりのOctMapテクセル数.
     #define k_per_probe_texel_count (k_probe_octmap_width * k_probe_octmap_width)
 
+    #define k_wcp_probe_distance_max (50.0)
+    #define k_wcp_probe_distance_max_inv (1.0 / k_wcp_probe_distance_max)
 
     
     // Bbv 全体更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).

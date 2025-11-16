@@ -253,12 +253,9 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		EvalDirectionalLightStandard(dlit_diffuse, dlit_specular, lit_intensity, L, gb_normal_ws, V, gb_base_color, gb_roughness, gb_metalness);
 
 		lit_color += (dlit_diffuse + dlit_specular) * light_visibility;
-		
-		//lit_color += (dlit_diffuse) * light_visibility;// テスト.
-		//lit_color += (dlit_specular) * light_visibility;// テスト.
 	}
 
-    // GI.
+    // GIのテスト(Dynamic Sky Visibility).
     float sky_visibility = 1.0;;
     if(ngl_cb_lighting_pass.is_enable_gi)
     {
@@ -270,42 +267,39 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 
 
         const float3 voxel_coordf = (pixel_pos_ws - cb_ssvg.wcp.grid_min_pos) * cb_ssvg.wcp.cell_size_inv;
-
-        
         const int3 voxel_base_coord = floor(voxel_coordf - 0.5);
         const float3 coord_frac = frac(voxel_coordf - 0.5);
 
+            const int3 vtx_pos[8] = {
+                int3(0, 0, 0),int3(1, 0, 0),
+                int3(0, 1, 0),int3(1, 1, 0),
+                int3(0, 0, 1),int3(1, 0, 1),
+                int3(0, 1, 1),int3(1, 1, 1)
+            };
 
-        const uint voxel_index_000 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord, cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
-        const uint voxel_index_001 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 0, 0), cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
-        const uint voxel_index_010 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(0, 1, 0), cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
-        const uint voxel_index_011 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 1, 0), cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
-        const uint voxel_index_100 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(0, 0, 1), cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
-        const uint voxel_index_101 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 0, 1), cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
-        const uint voxel_index_110 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(0, 1, 1), cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
-        const uint voxel_index_111 = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + int3(1, 1, 1), cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
+            uint voxel_indexs[8];
+            float2 octmap_uvs[8];
+            for (int i = 0; i < 8; ++i)
+            {
+                voxel_indexs[i] = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + vtx_pos[i], cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
+                octmap_uvs[i] = (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_indexs[i], cb_ssvg.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
+            }
 
-        const float2 octmap_uv_000 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_000, cb_ssvg.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
-        const float2 octmap_uv_001 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_001, cb_ssvg.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
-        const float2 octmap_uv_010 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_010, cb_ssvg.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
-        const float2 octmap_uv_011 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_011, cb_ssvg.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
-        const float2 octmap_uv_100 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_100, cb_ssvg.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
-        const float2 octmap_uv_101 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_101, cb_ssvg.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
-        const float2 octmap_uv_110 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_110, cb_ssvg.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
-        const float2 octmap_uv_111 =  (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_index_111, cb_ssvg.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
+            // k_wcp_probe_distance_max で正規化された [0,1] のDistanceProbe.
+            float4 dir_d[2];
+            for (int i = 0; i < 2; ++i)
+            {
+                dir_d[i].x = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 0], 0).r;
+                dir_d[i].y = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 2], 0).r;
+                dir_d[i].z = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 4], 0).r;
+                dir_d[i].w = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 6], 0).r;
+            }
+            
+            const float4 lerp_d_x = lerp(dir_d[0], dir_d[1], coord_frac.x);// x補間
+            const float2 lerp_d_y = lerp(lerp_d_x.xz, lerp_d_x.yw, coord_frac.y);// y補間
+            const float lerp_d_z = lerp(lerp_d_y.x, lerp_d_y.y, coord_frac.z);// z補間
 
-
-        const float svx0 = lerp(WcpProbeAtlasTex.SampleLevel(samp, octmap_uv_000, 0).r, WcpProbeAtlasTex.SampleLevel(samp, octmap_uv_001, 0).r, coord_frac.x);
-        const float svx1 = lerp(WcpProbeAtlasTex.SampleLevel(samp, octmap_uv_010, 0).r, WcpProbeAtlasTex.SampleLevel(samp, octmap_uv_011, 0).r, coord_frac.x);
-        const float svx2 = lerp(WcpProbeAtlasTex.SampleLevel(samp, octmap_uv_100, 0).r, WcpProbeAtlasTex.SampleLevel(samp, octmap_uv_101, 0).r, coord_frac.x);
-        const float svx3 = lerp(WcpProbeAtlasTex.SampleLevel(samp, octmap_uv_110, 0).r, WcpProbeAtlasTex.SampleLevel(samp, octmap_uv_111, 0).r, coord_frac.x);
-
-        const float svy0 = lerp(svx0, svx1, coord_frac.y);
-        const float svy1 = lerp(svx2, svx3, coord_frac.y);
-
-        const float sv = lerp(svy0, svy1, coord_frac.z);
-
-        sky_visibility = sv;
+        sky_visibility = lerp_d_z;
     }
 	
 	// IBL.
