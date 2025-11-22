@@ -19,7 +19,7 @@ SamplerState		SmpHardwareDepth;
 
 
 // ThreadGroupタイル単位でスキップする最適化のグループタイル幅. 1より大きい数値で実行.
-#define THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH 8
+#define THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH 4
 
 // SharedMem上のタイルで簡易重複除去をする際のサイズ.(小タイルで重複処理する場合)
 #define REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH 4
@@ -71,6 +71,7 @@ void main_cs(
 
 
         // 深度バッファの手前までレイトレース.
+        // Note:ここでうまく1セル分バックトレースできれば最小限のチェックができそう
         const float trace_distance = dot(ray_dir_ws, to_pixel_vec_ws) - cb_ssvg.bbv.cell_size*k_bbv_per_voxel_resolution_inv*0.9;
             
         int hit_voxel_index = -1;
@@ -84,7 +85,7 @@ void main_cs(
 
         if(0.0 <= curr_ray_t_ws.x)
         {
-            const float3 hit_pos_ws = camera_pos + ray_dir_ws * curr_ray_t_ws.x;
+            const float3 hit_pos_ws = camera_pos + ray_dir_ws * (curr_ray_t_ws.x + 0.001);// ヒット位置は表面なので除去したいVoxelに侵入するためオフセット.
 
             // PixelWorldPosition->VoxelCoord
             const float3 voxel_coordf = (hit_pos_ws - cb_ssvg.bbv.grid_min_pos) * cb_ssvg.bbv.cell_size_inv;

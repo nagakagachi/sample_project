@@ -82,9 +82,11 @@ namespace ngl::render::app
 
 
         const u32 voxel_count = bbv_grid_updater_.Get().resolution_.x * bbv_grid_updater_.Get().resolution_.y * bbv_grid_updater_.Get().resolution_.z;
+        // サーフェイスVoxelのリスト. スクリーン上でサーフェイスとして充填された要素を詰め込む. Bbvの充填とは別で, 後処理でサーフェイスVoxelを処理するためのリスト.
         bbv_fine_update_voxel_count_max_= std::clamp(voxel_count / 50u, 64u, k_max_update_probe_work_count);
 
-        bbv_hollow_voxel_list_count_max_= 2048;//std::clamp(voxel_count / 50u, 64u, k_max_update_probe_work_count);
+        // 中空Voxelのクリアキューサイズ. スクリーン上で中空判定された要素を詰め込む.
+        bbv_hollow_voxel_list_count_max_= 1024*2;//std::clamp(voxel_count / 50u, 64u, k_max_update_probe_work_count);
 
 
         const u32 wcp_probe_cell_count = wcp_grid_updater_.Get().resolution_.x * wcp_grid_updater_.Get().resolution_.y * wcp_grid_updater_.Get().resolution_.z;
@@ -508,7 +510,7 @@ namespace ngl::render::app
                 p_command_list->ResourceUavBarrier(bbv_remove_voxel_list_.buffer.Get());
             }
             // Bbv Remove Voxel Pass.
-            // 前段で生成した中空Voxelを実際にBbvバッファ上で空にする. なおBbv単位が持つ非Emptyフラグの更新をしていないため後で問題になるかも(Note).
+            // Note:前段で生成した中空Voxelを実際にBbvバッファ上で空にする. なおBbv単位が持つ非Emptyフラグの更新をしていないため後で問題になるかも.
             if(true)
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "RemoveHollowVoxel");
