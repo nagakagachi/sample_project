@@ -19,7 +19,7 @@ SamplerState		SmpHardwareDepth;
 
 
 // ThreadGroupタイル単位でスキップする最適化のグループタイル幅. 1より大きい数値で実行.
-#define THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH 4
+#define THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH 8
 
 // SharedMem上のタイルで簡易重複除去をする際のサイズ.(小タイルで重複処理する場合)
 #define REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH 4
@@ -71,7 +71,7 @@ void main_cs(
 
 
         // 深度バッファの手前までレイトレース.
-        const float trace_distance = dot(ray_dir_ws, to_pixel_vec_ws) - cb_ssvg.bbv.cell_size*k_bbv_per_voxel_resolution_inv*2.0;
+        const float trace_distance = dot(ray_dir_ws, to_pixel_vec_ws) - cb_ssvg.bbv.cell_size*k_bbv_per_voxel_resolution_inv*0.9;
             
         int hit_voxel_index = -1;
         float4 debug_ray_info;
@@ -109,7 +109,7 @@ void main_cs(
         }
         
         GroupMemoryBarrierWithGroupSync();
-            #if 0
+        #if 0
             // シンプルに小Tile毎に最小インデックスの要素との一致をチェックしてマージと除去をする.後段のAtomic操作を減らすことが目的.
             // 小タイルの0番目が担当.
             if(0 == (gtid.x%REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH) && 0 == (gtid.y%REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH))
@@ -135,7 +135,7 @@ void main_cs(
                     }
                 }
             }
-            #else
+        #else
             // シンプルにshared_bbv_bitmask_addrを線形探索して x,zが一致する要素はマージし, インデックスが若い方のみを残す.
             //const uint k_reduce_tile_size = REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH*REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH;
             const uint k_reduce_tile_size = TILE_WIDTH*TILE_WIDTH;
@@ -162,7 +162,7 @@ void main_cs(
                     }
                 }
             }
-            #endif
+        #endif
 
         GroupMemoryBarrierWithGroupSync();
 

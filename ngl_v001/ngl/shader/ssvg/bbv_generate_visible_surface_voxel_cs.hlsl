@@ -20,7 +20,7 @@ SamplerState		SmpHardwareDepth;
 
 
 // ThreadGroupタイル単位でスキップする最適化のグループタイル幅. 1より大きい数値で実行.
-#define THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH 4
+#define THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH 0
 
 // SharedMem上のタイルで簡易重複除去をする際のサイズ.
 #define REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH 4
