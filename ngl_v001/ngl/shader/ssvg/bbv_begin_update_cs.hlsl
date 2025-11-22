@@ -32,6 +32,8 @@ void main_cs(
         // VisibleCoarseVoxelListのアトミックカウンタをクリア.
         // 0番目はアトミックカウンタ用に予約している.
         RWVisibleVoxelList[0] = 0;
+
+        RWRemoveVoxelList[0] = 0;
     }
 
     if(all(cb_ssvg.bbv.grid_move_cell_delta == int3(0,0,0)))

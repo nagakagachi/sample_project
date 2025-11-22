@@ -92,6 +92,8 @@ namespace ngl::render::app
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_clear_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_begin_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_hollow_voxel_info_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_remove_hollow_voxel_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_voxelize_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_generate_visible_voxel_indirect_arg_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_element_update_ = {};
@@ -120,11 +122,16 @@ namespace ngl::render::app
         ComputeBufferSet bbv_buffer_ = {};
         ComputeBufferSet bbv_optional_data_buffer_ = {};
 
+        ngl::u32     bbv_hollow_voxel_list_count_max_ = {};
         // 可視Voxelのみ更新用.
         ngl::u32     bbv_fine_update_voxel_count_max_ = {};
         ComputeBufferSet bbv_fine_update_voxel_list_ = {};
         ComputeBufferSet bbv_fine_update_voxel_indirect_arg_ = {};
         ComputeBufferSet bbv_fine_update_voxel_probe_buffer_ = {};
+        
+        // 除去用リスト.
+        ComputeBufferSet bbv_remove_voxel_list_ = {};
+
 
         // World Cache Probe. Wcp.
         // ----------------------------------------------------------------

@@ -67,7 +67,8 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     // Wcp 可視Wcp要素更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
     #define WCP_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT 1
 
-
+    // 非可視表面Voxel除去用スタックの1要素のコンポーネント数.
+    #define k_component_count_RemoveVoxelList 4
 
 
     // シェーダとCppで一致させる.
@@ -123,6 +124,11 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         SsvgToroidalGridParam bbv;
         int3 bbv_indirect_cs_thread_group_size;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
         int bbv_visible_voxel_buffer_size;// 更新プローブ用のワークサイズ.
+        int bbv_hollow_voxel_buffer_size;// 削除用中空Voxel情報のワークサイズ.
+
+        int dummy0;
+        int dummy1;
+        int dummy2;
 
         SsvgToroidalGridParam wcp;
         int3 wcp_indirect_cs_thread_group_size;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.

@@ -84,6 +84,8 @@ namespace ngl::render::app
         const u32 voxel_count = bbv_grid_updater_.Get().resolution_.x * bbv_grid_updater_.Get().resolution_.y * bbv_grid_updater_.Get().resolution_.z;
         bbv_fine_update_voxel_count_max_= std::clamp(voxel_count / 50u, 64u, k_max_update_probe_work_count);
 
+        bbv_hollow_voxel_list_count_max_= 2048;//std::clamp(voxel_count / 50u, 64u, k_max_update_probe_work_count);
+
 
         const u32 wcp_probe_cell_count = wcp_grid_updater_.Get().resolution_.x * wcp_grid_updater_.Get().resolution_.y * wcp_grid_updater_.Get().resolution_.z;
         wcp_visible_surface_buffer_size_ = k_max_update_probe_work_count;
@@ -108,7 +110,9 @@ namespace ngl::render::app
         {
             pso_bbv_clear_  = CreateComputePSO("ssvg/bbv_clear_voxel_cs.hlsl");
             pso_bbv_begin_update_ = CreateComputePSO("ssvg/bbv_begin_update_cs.hlsl");
-            pso_bbv_voxelize_     = CreateComputePSO("ssvg/bbv_screen_space_pass_cs.hlsl");
+            pso_bbv_hollow_voxel_info_ = CreateComputePSO("ssvg/bbv_generate_hollow_voxel_info_cs.hlsl");
+            pso_bbv_remove_hollow_voxel_ = CreateComputePSO("ssvg/bbv_remove_hollow_voxel_cs.hlsl");
+            pso_bbv_voxelize_     = CreateComputePSO("ssvg/bbv_generate_visible_surface_voxel_cs.hlsl");
             pso_bbv_generate_visible_voxel_indirect_arg_ = CreateComputePSO("ssvg/bbv_generate_visible_surface_list_indirect_arg_cs.hlsl");
             pso_bbv_element_update_ = CreateComputePSO("ssvg/bbv_element_update_cs.hlsl");
             pso_bbv_visible_surface_element_update_ = CreateComputePSO("ssvg/bbv_visible_surface_element_update_cs.hlsl");
@@ -252,6 +256,18 @@ namespace ngl::render::app
                                                .heap_type = rhi::EResourceHeapType::Default},
                                            rhi::EResourceFormat::Format_R32_FLOAT);
         }
+        
+        {
+            bbv_remove_voxel_list_.InitializeAsTyped(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(uint32_t),
+                                               .element_count     = (bbv_hollow_voxel_list_count_max_+1) * k_component_count_RemoveVoxelList,// 0番目にアトミックカウンタ用途.　格納情報にuint2相当が必要且つAtomic操作のために2倍サイズのScalarバッファとしている.
+
+                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default},
+                                           rhi::EResourceFormat::Format_R32_UINT);
+        }
+
         {
             // wcp_buffer_初期化.
             wcp_buffer_.InitializeAsStructured(p_device,
@@ -359,6 +375,7 @@ namespace ngl::render::app
 
                 p->bbv_indirect_cs_thread_group_size = math::Vec3i(pso_bbv_visible_surface_element_update_->GetThreadGroupSizeX(), pso_bbv_visible_surface_element_update_->GetThreadGroupSizeY(), pso_bbv_visible_surface_element_update_->GetThreadGroupSizeZ());
                 p->bbv_visible_voxel_buffer_size = bbv_fine_update_voxel_count_max_;
+                p->bbv_hollow_voxel_buffer_size = bbv_hollow_voxel_list_count_max_;
             }
             // Wcp
             {
@@ -441,6 +458,7 @@ namespace ngl::render::app
                 pso_bbv_begin_update_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
                 pso_bbv_begin_update_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
                 pso_bbv_begin_update_->SetView(&desc_set, "RWVisibleVoxelList", bbv_fine_update_voxel_list_.uav.Get());
+                pso_bbv_begin_update_->SetView(&desc_set, "RWRemoveVoxelList", bbv_remove_voxel_list_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_bbv_begin_update_.Get());
                 p_command_list->SetDescriptorSet(pso_bbv_begin_update_.Get(), &desc_set);
@@ -449,6 +467,7 @@ namespace ngl::render::app
                 p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_list_.buffer.Get());
+                p_command_list->ResourceUavBarrier(bbv_remove_voxel_list_.buffer.Get());
             }
                 // Wcp Begin Update Pass.
                 {
@@ -470,6 +489,40 @@ namespace ngl::render::app
                     p_command_list->ResourceUavBarrier(wcp_visible_surface_list_.buffer.Get());
                 }
 
+                
+            // Bbv Generate Remove Voxel Info.
+            // 動的な環境で中空になった可能性のあるBbvをクリアするためのリスト生成. Depthからその表面に至るまでの経路上のVoxelが中空であると仮定してリスト化.
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "GenerageHolowVoxelInfo");
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_bbv_hollow_voxel_info_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
+                pso_bbv_hollow_voxel_info_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                pso_bbv_hollow_voxel_info_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+                pso_bbv_hollow_voxel_info_->SetView(&desc_set, "RWRemoveVoxelList", bbv_remove_voxel_list_.uav.Get());
+                p_command_list->SetPipelineState(pso_bbv_hollow_voxel_info_.Get());
+                p_command_list->SetDescriptorSet(pso_bbv_hollow_voxel_info_.Get(), &desc_set);
+                pso_bbv_hollow_voxel_info_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);  // Screen処理でDispatch.
+
+                p_command_list->ResourceUavBarrier(bbv_remove_voxel_list_.buffer.Get());
+            }
+            // Bbv Remove Voxel Pass.
+            // 前段で生成した中空Voxelを実際にBbvバッファ上で空にする. なおBbv単位が持つ非Emptyフラグの更新をしていないため後で問題になるかも(Note).
+            if(true)
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "RemoveHollowVoxel");
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
+                pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "RemoveVoxelList", bbv_remove_voxel_list_.srv.Get());
+                p_command_list->SetPipelineState(pso_bbv_remove_hollow_voxel_.Get());
+                p_command_list->SetDescriptorSet(pso_bbv_remove_hollow_voxel_.Get(), &desc_set);
+                pso_bbv_remove_hollow_voxel_->DispatchHelper(p_command_list, bbv_hollow_voxel_list_count_max_, 1, 1);// 現状は最大数分Dispatch. あとでIndirectArg化.
+
+                p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
+            }
 
             // Bbv Voxelization Pass.
             {

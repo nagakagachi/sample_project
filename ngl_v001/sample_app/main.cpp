@@ -340,7 +340,7 @@ bool AppGame::Initialize()
         const char* mesh_file_box = "K:\\GitHub\\sample_projct_lib\\ngl_v001\\ngl\\external\\assimp\\test\\models\\FBX\\box.fbx";
 
         // シーンモデル.
-#if 0
+#if 1
         // Sponza.
         const char* mesh_file_sponza = "../ngl/data/model/sponza_gltf/glTF/Sponza.gltf";
         const float sponza_scale     = 1.0f;
@@ -499,7 +499,7 @@ bool AppGame::Initialize()
             }
 #endif
 
-#if 0
+#if 1
             // 適当にたくさんモデル生成.
             for (int i = 0; i < 50; ++i)
             {
@@ -517,7 +517,9 @@ bool AppGame::Initialize()
                 constexpr float placement_range = 30.0f;
 
                 ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
-                tr.SetDiagonal(ngl::math::Vec4(spider_base_scale));
+                
+                tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 4.0f));
+
                 tr = ngl::math::Mat44::RotAxisY(randroty * ngl::math::k_pi_f * 2.0f) * tr;
                 tr.SetColumn3(ngl::math::Vec4(placement_range * (randx * 2.0f - 1.0f), 20.0f * randy, placement_range * (randz * 2.0f - 1.0f), 1.0f));
 

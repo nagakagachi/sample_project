@@ -96,7 +96,7 @@ void main_cs(
         const float trace_distance = 10000.0;
           
         int hit_voxel_index = -1;
-                float4 debug_ray_info;
+        float4 debug_ray_info;
         // Trace最適化検証.
         float4 curr_ray_t_ws = trace_ray_vs_bitmask_brick_voxel_grid(
             hit_voxel_index, debug_ray_info,
