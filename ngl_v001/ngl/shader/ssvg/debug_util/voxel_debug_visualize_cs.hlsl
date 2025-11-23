@@ -31,81 +31,26 @@ void main_cs(
 	const float2 screen_size_f = float2(cb_ssvg.tex_hw_depth_size.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
     
+    // ViewRayでレイキャスト可視化.
+    const float3 camera_dir = normalize(ngl_cb_sceneview.cb_view_inv_mtx._m02_m12_m22);// InvShadowViewMtxから向きベクトルを取得.
+    const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
+    
+    const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, ngl_cb_sceneview.cb_proj_mtx);
+    const float3 ray_dir_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4(to_pixel_ray_vs, 0.0));
 
-    if(5 == cb_ssvg.debug_view_mode)
+    if(4 >= cb_ssvg.debug_view_mode)
     {
-        // Voxel上面図X-Ray表示.
-        const int3 bv_full_reso = cb_ssvg.bbv.grid_resolution * k_bbv_per_voxel_resolution;
-        const float visualize_scale = 0.5;
-        float3 read_pos_world_base = (float3(dtid.x, 0.0, cb_ssvg.tex_hw_depth_size.y-1 - dtid.y) + 0.5) * visualize_scale * cb_ssvg.bbv.cell_size/k_bbv_per_voxel_resolution;
-        read_pos_world_base += cb_ssvg.bbv.grid_min_pos;
-
-        float write_data = 0.0;
-        for(int yi = 0; yi < bv_full_reso.y; ++yi)
-        {
-            const float3 read_pos_world = read_pos_world_base + float3(0.0, yi, 0.0) * (cb_ssvg.bbv.cell_size/k_bbv_per_voxel_resolution);
-
-            const uint bit_value = read_bbv_voxel_from_world_pos(BitmaskBrickVoxel, cb_ssvg.bbv.grid_resolution, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size_inv, read_pos_world);
-
-            float occupancy = float(bit_value);
-            occupancy /= (float)bv_full_reso.y;
-
-            write_data += occupancy * 8.0;
-        }
-
-        RWTexWork[dtid.xy] = float4(write_data, write_data, write_data, 1.0);
-    }
-    else if(6 == cb_ssvg.debug_view_mode)
-    {
-        // Probe Atlas Textureの表示.
-        const int2 texel_pos = dtid.xy * 0.1;
-        if(any(cb_ssvg.wcp.flatten_2d_width * k_probe_octmap_width_with_border <= texel_pos))
-            return;
-
-        const float4 probe_data = WcpProbeAtlasTex.Load(uint3(texel_pos, 0));
-        RWTexWork[dtid.xy] = probe_data.xxxx;
-    }
-    else
-    {
-        // ViewRayでレイキャスト可視化.
-	    const float3 camera_dir = normalize(ngl_cb_sceneview.cb_view_inv_mtx._m02_m12_m22);// InvShadowViewMtxから向きベクトルを取得.
-	    const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
-        
-        const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, ngl_cb_sceneview.cb_proj_mtx);
-        float3 ray_dir_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4(to_pixel_ray_vs, 0.0));
-
-
-                // デバッグ. 軸並行なベクトルの場合にレイキャストが失敗してヒット無しになる不具合調査.
-                #if 0
-                    const float axis_dir_threshold = 0.999;
-                    if(axis_dir_threshold < abs(ray_dir_ws.x))
-                    {
-                        ray_dir_ws = float3(sign(ray_dir_ws.x), 0.0, 0.0);
-                    }
-                    else if(axis_dir_threshold < abs(ray_dir_ws.y))
-                    {
-                        ray_dir_ws = float3(0.0, sign(ray_dir_ws.y), 0.0);
-                    }
-                    else if(axis_dir_threshold < abs(ray_dir_ws.z))
-                    {
-                        ray_dir_ws = float3(0.0, 0.0, sign(ray_dir_ws.z));
-                    }
-                #endif
-
-
-        const float trace_distance = 10000.0;
-          
+        // Voxel単位Traceのテスト.
+        const float trace_distance = 10000.0;          
         int hit_voxel_index = -1;
         float4 debug_ray_info;
-        // Trace最適化検証.
-        float4 curr_ray_t_ws = trace_ray_vs_bitmask_brick_voxel_grid(
+        float4 curr_ray_t_ws = trace_bbv_dev(
             hit_voxel_index, debug_ray_info,
             camera_pos, ray_dir_ws, trace_distance, 
             cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
-            cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
+            cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel, false);
 
         float4 debug_color = float4(0, 0, 1, 0);
-
         if(0.0 <= curr_ray_t_ws.x)
         {
             const float fog_rate0 = pow(saturate((curr_ray_t_ws.x - 20.0)/100.0), 1.0/1.2);
@@ -158,5 +103,62 @@ void main_cs(
             }
         }
         RWTexWork[dtid.xy] = debug_color;
+    }
+    else if(5 == cb_ssvg.debug_view_mode)
+    {
+        // Brick単位Traceのテスト. Brickの占有フラグが適切に設定または除去されているかのテスト.
+        const float trace_distance = 10000.0;          
+        int hit_voxel_index = -1;
+        float4 debug_ray_info;
+        float4 curr_ray_t_ws = trace_bbv_dev(
+            hit_voxel_index, debug_ray_info,
+            camera_pos, ray_dir_ws, trace_distance, 
+            cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
+            cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel, true);
+            
+        float4 debug_color = float4(0, 0, 1, 0);
+        if(0.0 <= curr_ray_t_ws.x)
+        {
+            // VoxelIDを可視化.
+            debug_color.xyz = float4(noise_iqint32(hit_voxel_index), noise_iqint32(hit_voxel_index*2), noise_iqint32(hit_voxel_index*3), 1);
+            
+            // 簡易フォグ.
+            debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate((curr_ray_t_ws.x - 20.0)/100.0), 1.0/1.2) * 0.8);
+            debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), saturate((curr_ray_t_ws.x - 70.0)/500.0) * 0.8);
+        }
+        RWTexWork[dtid.xy] = debug_color;
+    }
+    if(6 == cb_ssvg.debug_view_mode)
+    {
+        // Voxel上面図X-Ray表示.
+        const int3 bv_full_reso = cb_ssvg.bbv.grid_resolution * k_bbv_per_voxel_resolution;
+        const float visualize_scale = 0.5;
+        float3 read_pos_world_base = (float3(dtid.x, 0.0, cb_ssvg.tex_hw_depth_size.y-1 - dtid.y) + 0.5) * visualize_scale * cb_ssvg.bbv.cell_size/k_bbv_per_voxel_resolution;
+        read_pos_world_base += cb_ssvg.bbv.grid_min_pos;
+
+        float write_data = 0.0;
+        for(int yi = 0; yi < bv_full_reso.y; ++yi)
+        {
+            const float3 read_pos_world = read_pos_world_base + float3(0.0, yi, 0.0) * (cb_ssvg.bbv.cell_size/k_bbv_per_voxel_resolution);
+
+            const uint bit_value = read_bbv_voxel_from_world_pos(BitmaskBrickVoxel, cb_ssvg.bbv.grid_resolution, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size_inv, read_pos_world);
+
+            float occupancy = float(bit_value);
+            occupancy /= (float)bv_full_reso.y;
+
+            write_data += occupancy * 8.0;
+        }
+
+        RWTexWork[dtid.xy] = float4(write_data, write_data, write_data, 1.0);
+    }
+    else if(7 == cb_ssvg.debug_view_mode)
+    {
+        // Probe Atlas Textureの表示.
+        const int2 texel_pos = dtid.xy * 0.1;
+        if(any(cb_ssvg.wcp.flatten_2d_width * k_probe_octmap_width_with_border <= texel_pos))
+            return;
+
+        const float4 probe_data = WcpProbeAtlasTex.Load(uint3(texel_pos, 0));
+        RWTexWork[dtid.xy] = probe_data.xxxx;
     }
 }

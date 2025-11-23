@@ -883,7 +883,7 @@ bool AppGame::ExecuteApp()
 
             auto tr    = e->GetTransform();
             auto trans = tr.GetColumn3();
-            trans.z += sin_curve * delta_sec * 3.0f;
+            trans.z += sin_curve * delta_sec * 5.0f;
             tr.SetColumn3(trans);
             e->SetTransform(tr);
         }

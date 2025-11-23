@@ -35,13 +35,16 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
     // シェーダとCppで一致させる.
     // BitmaskBrickVoxel単位の固有データ部のu32単位数.ジオメトリを表現する占有ビットマスクとは別に荒い単位で保持するデータ. レイアウトの簡易化のためビット単位ではなくu32単位.
-    #define k_bbv_common_data_u32_count (1)
+    #define k_bbv_common_data_u32_count (2)
     // BitmaskBrickVoxel単位の占有ビットマスク解像度. 2の冪でなくても良い.
     #define k_bbv_per_voxel_resolution (8)
     #define k_bbv_per_voxel_bitmask_bit_count (k_bbv_per_voxel_resolution*k_bbv_per_voxel_resolution*k_bbv_per_voxel_resolution)
     #define k_bbv_per_voxel_bitmask_u32_count ((k_bbv_per_voxel_bitmask_bit_count + 31) / 32)
-    // BitmaskBrickVoxel単位のデータサイズ(u32単位)
+    // k_bbv_per_voxel_bitmask_u32_count == 16 なら それぞれのu32コンポーネントの非ゼロフラグを管理する16bitをマスクする定義.
+    #define k_bbv_per_voxel_bitmask_u32_component_mask ((1 << k_bbv_per_voxel_bitmask_u32_count) - 1)
+    // BitmaskBrickVoxel単位が持つデータサイズ(u32単位).
     #define k_bbv_per_voxel_u32_count (k_bbv_per_voxel_bitmask_u32_count + k_bbv_common_data_u32_count)
+
 
     #define k_bbv_per_voxel_resolution_inv (1.0 / float(k_bbv_per_voxel_resolution))
     #define k_bbv_per_voxel_resolution_vec3i int3(k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution)
@@ -76,7 +79,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.
     struct BbvOptionalData
     {
-        // ジオメトリ表面を含むVoxelまでの相対ベクトル. ジオメトリ表面を含むVoxelは0, それ以外はマンハッタン距離.
+        // ジオメトリ表面を含むBrickまでの相対ベクトル. ジオメトリ表面を含むBrickは0, それ以外はマンハッタン距離.
         int3 to_surface_vector;
 
         // BitmaskBrickVoxel内部でのプローブ候補位置を表す線形インデックス. 0は無効, probe_pos_code-1 が実際のインデックス. 値域は 0,k_bbv_per_voxel_bitmask_bit_count.

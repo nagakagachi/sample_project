@@ -67,8 +67,9 @@ VS_OUTPUT main_vs(VS_INPUT input)
     const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution), cb_ssvg.bbv.grid_resolution);
 
     // Bbv固有データ.
-    BbvVoxelUniqueData unique_data;
-    parse_bbv_voxel_unique_data(unique_data, BitmaskBrickVoxel[bbv_voxel_unique_data_addr(voxel_index)]);
+    const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
+    const uint bbv_occupied_flag = BitmaskBrickVoxel[unique_data_addr + 0] & k_bbv_per_voxel_bitmask_u32_component_mask;
+    
 
     // Bbv追加データ.
     const BbvOptionalData voxel_optional_data = BitmaskBrickVoxelOptionData[voxel_index];
@@ -82,7 +83,7 @@ VS_OUTPUT main_vs(VS_INPUT input)
     // 表示位置.
     const float3 instance_pos = probe_pos_ws;
     float draw_scale = cb_ssvg.debug_probe_radius;
-    if(unique_data.is_occupied == 0)
+    if(0 == (bbv_occupied_flag))
     {
         // ジオメトリのないVoxelは小さく表示.
         draw_scale *= cb_ssvg.debug_probe_near_geom_scale;
@@ -153,10 +154,6 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     {
         component_index = (0 < normal_ws.z) ? 4 : 5;
     }
-
-    // Bbv固有データ.
-    BbvVoxelUniqueData unique_data;
-    parse_bbv_voxel_unique_data(unique_data, BitmaskBrickVoxel[bbv_voxel_unique_data_addr(voxel_index)]);
 
     // Bbv追加データ.
     const BbvOptionalData voxel_optional_data = BitmaskBrickVoxelOptionData[voxel_index];

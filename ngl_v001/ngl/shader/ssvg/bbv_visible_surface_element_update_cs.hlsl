@@ -4,6 +4,7 @@
 bbv_visible_surface_element_update_cs.hlsl
 
 可視サーフェイス上のBbv要素に対する処理.
+変更されたBbvに応じてOccupiedフラグの更新.
 
 #endif
 

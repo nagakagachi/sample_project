@@ -95,7 +95,7 @@ void main_cs(
                 int hit_voxel_index = -1;
                     float4 debug_ray_info;
                 // リファクタリング版.
-                float4 curr_ray_t_ws = trace_ray_vs_bitmask_brick_voxel_grid(
+                float4 curr_ray_t_ws = trace_bbv(
                     hit_voxel_index, debug_ray_info,
                     sample_ray_origin, sample_ray_dir, trace_distance, 
                     cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,

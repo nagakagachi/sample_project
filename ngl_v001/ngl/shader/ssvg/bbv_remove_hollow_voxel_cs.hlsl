@@ -35,9 +35,13 @@ void main_cs(
     
     const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
     const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
-    // 削除ビットを反転Andして除去.
-    InterlockedAnd(RWBitmaskBrickVoxel[bbv_addr + bitmask_u32_offset], ~clear_bitmask);
-
-    // 本当は unique_data_addr の非Emptyフラグも更新したいが一旦無しで.
-
+    // bitmask部に削除ビット反転Andを実行して除去.
+    uint old_value;
+    InterlockedAnd(RWBitmaskBrickVoxel[bbv_addr + bitmask_u32_offset], ~clear_bitmask, old_value);
+    // 前回値に操作した結果が0となった場合は対応するComponentのOccupiedフラグも落とす.
+    if(0 == (old_value & (~clear_bitmask)))
+    {
+        // Occupiedフラグの該当ビットを落とす.
+        InterlockedAnd(RWBitmaskBrickVoxel[unique_data_addr + 0], ~(1 << bitmask_u32_offset));
+    }
 }

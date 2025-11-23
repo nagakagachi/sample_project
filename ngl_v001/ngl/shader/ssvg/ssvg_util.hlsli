@@ -161,33 +161,15 @@ uint3 calc_bbv_bitcell_pos_from_bit_index(uint bit_index)
 
 
 // ------------------------------------------------------------------------------------------------------------------------
+// Bbvのユニークデータレイアウト.
 
-// Bbvのユニークデータレイアウトメモ.
-struct BbvVoxelUniqueData
-{
-    uint is_occupied;
-    uint last_visible_frame;
-};
-// 0 : からで無いなら1
-// 1-8 : 最後に可視状態になったフレーム番号. 0-255でループ.
+// uint[0]      :  brickの各u32コンポーネントそれぞれの非ゼロフラグ集約ビット. ここだけ独立してAtomic操作をしたいためuintコンポーネントを分けた.
+// uint[1].8bit : 最後に可視状態になったフレーム番号. 0-255でループ.
 
 // ユニークデータに埋め込むためのフレーム番号マスク処理.
 uint mask_bbv_voxel_unique_data_last_visible_frame(uint last_visible_frame)
 {
     return (last_visible_frame & 0xff);
-}
-// BitmaskBrickVoxelのユニークデータの構築.
-uint build_bbv_voxel_unique_data(BbvVoxelUniqueData data)
-{
-    // BitmaskBrickVoxelのユニークデータレイアウトメモに則ってuintエンコード.
-    return (data.is_occupied & 0x1) | (mask_bbv_voxel_unique_data_last_visible_frame(data.last_visible_frame) << 1);
-}
-// BitmaskBrickVoxelのユニークデータを展開.
-void parse_bbv_voxel_unique_data(out BbvVoxelUniqueData out_data, uint unique_data)
-{
-    // BitmaskBrickVoxelのユニークデータレイアウトメモに則ってuintからでコード.
-    out_data.is_occupied = (unique_data >> 0) & 0x1;
-    out_data.last_visible_frame = (unique_data >> 1) & 0xff;
 }
 
 // ------------------------------------------------------------------------------------------------------------------------
@@ -306,7 +288,9 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
 // BitmaskBrickVoxel内部のビットセル単位でのレイトレース.
 // https://github.com/dubiousconst282/VoxelRT
 int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3 invDir, inout bool3 stepMask, 
-        Buffer<uint> bbv_buffer, uint voxel_index) 
+        Buffer<uint> bbv_buffer, uint voxel_index,
+        const bool is_brick_mode // ヒットをVoxelではなくBrickで完了させるモード. Brickの占有フラグのデバッグ用.
+    ) 
 {
     rayPos = clamp(rayPos, 0.0001, float(k_bbv_per_voxel_resolution)-0.0001);
 
@@ -314,7 +298,8 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3
     int3 mapPos = int3(floor(rayPos));
 
     int3 raySign = rayDirSign;
-    #if 1
+    if(!is_brick_mode)
+    {
         const uint bbv_bitmask_addr = bbv_voxel_bitmask_data_addr(voxel_index);
         do {
             uint bitcell_u32_offset, bitcell_u32_bit_pos;
@@ -332,19 +317,24 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3
         } while (all(uint3(mapPos) < k_bbv_per_voxel_resolution));
 
         return -1;
-    #else
-        // デバッグ用に即時ヒット扱い.
+    }
+    else
+    {
+        // デバッグ用にBrick単位で即時ヒット扱いする. この関数に入る時点でBrick単位のOccupiedフラグを参照しているはず.
         return mapPos;
-    #endif
+    }
 }
-
 // BitmaskBrickVoxelレイトレース.
-float4 trace_ray_vs_bitmask_brick_voxel_grid(
+float4 trace_bbv_core(
     out int out_hit_voxel_index,
     out float4 out_debug,
+
     float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws, 
     float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
-    int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer)
+    int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer,
+
+    const bool is_brick_mode // ヒットをVoxelではなくBrickで完了させるモード. Brickの占有フラグのデバッグ用.
+)
 {
     const float3 grid_box_min = float3(0.0, 0.0, 0.0);
     const float3 grid_box_max = float3(grid_resolution);
@@ -378,9 +368,8 @@ float4 trace_ray_vs_bitmask_brick_voxel_grid(
         const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
         
         // Voxelで簡易判定.
-        BbvVoxelUniqueData unique_data;
-        parse_bbv_voxel_unique_data(unique_data, bbv_buffer[unique_data_addr]);
-        if(0 != (unique_data.is_occupied))
+        const uint bbv_occupied_flag = BitmaskBrickVoxel[unique_data_addr + 0] & k_bbv_per_voxel_bitmask_u32_component_mask;
+        if(0 != (bbv_occupied_flag))
         {
             // signのabsをマスクとして使用することで軸並行レイのエッジケースに対応.
             const float3 mini = ((mapPos-ray_origin) + 0.5*ray_component_validity - 0.5*ray_dir_sign) * inv_dir;
@@ -391,7 +380,7 @@ float4 trace_ray_vs_bitmask_brick_voxel_grid(
             const bool is_ray_origin_inner_voxel = all(mapPos == floor(ray_origin));
             const float3 uv3d = is_ray_origin_inner_voxel ? ray_origin - mapPos : intersect - mapPos;
             // BitmaskBrickVoxel内部のビットセル単位でレイトレース.
-            const int3 subp = trace_bitmask_brick(uv3d*k_bbv_per_voxel_resolution, ray_dir_ws, ray_dir_sign, inv_dir, stepMask, bbv_buffer, voxel_index);
+            const int3 subp = trace_bitmask_brick(uv3d*k_bbv_per_voxel_resolution, ray_dir_ws, ray_dir_sign, inv_dir, stepMask, bbv_buffer, voxel_index, is_brick_mode);
             // bitmaskヒット.
             if (subp.x >= 0) 
             {
@@ -434,6 +423,44 @@ float4 trace_ray_vs_bitmask_brick_voxel_grid(
         return float4(hit_t_ws, hit_normal.x, hit_normal.y, hit_normal.z);
     }
     return float4(-1.0, -1.0, -1.0, -1.0);
+}
+
+// BitmaskBrickVoxelレイトレース.
+float4 trace_bbv(
+    out int out_hit_voxel_index,
+    out float4 out_debug,
+    float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws, 
+    float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
+    int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer
+)
+{
+    return trace_bbv_core(
+        out_hit_voxel_index,
+        out_debug,
+        ray_origin_ws, ray_dir_ws, trace_distance_ws,
+        grid_min_ws, cell_width_ws, grid_resolution,
+        bbv_grid_toroidal_offset, bbv_buffer,
+        false
+    );
+}
+// BitmaskBrickVoxelレイトレース. 開発用.
+float4 trace_bbv_dev(
+    out int out_hit_voxel_index,
+    out float4 out_debug,
+    float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws, 
+    float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
+    int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer,
+    const bool is_brick_mode // ヒットをVoxelではなくBrickで完了させるモード. Brickの占有フラグのデバッグ用.
+)
+{
+    return trace_bbv_core(
+        out_hit_voxel_index,
+        out_debug,
+        ray_origin_ws, ray_dir_ws, trace_distance_ws,
+        grid_min_ws, cell_width_ws, grid_resolution,
+        bbv_grid_toroidal_offset, bbv_buffer,
+        is_brick_mode
+    );
 }
 
 

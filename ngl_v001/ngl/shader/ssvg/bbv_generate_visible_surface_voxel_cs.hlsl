@@ -110,8 +110,8 @@ void main_cs(
                     // Voxelの一致チェック.
                     if(shared_bbv_bitmask_addr[gindex].x == shared_bbv_bitmask_addr[check_index].x)
                     {
-                        //shared_bbv_bitmask_addr[gindex].y = 0;// Brick固有データの書き込みはBrick毎に一つだけで良いので, それ以外は書き込みフラグをOFF.
-                        shared_bbv_bitmask_addr[check_index].y = 0;// ↑は誤りのはず.
+                        // Brick毎の処理を最小化するためにBrick重複する他の要素はフラグを落とす.
+                        shared_bbv_bitmask_addr[check_index].y = 0;
 
                         // u32オフセットも一致する場合はビットマスクをマージ.
                         if(shared_bbv_bitmask_addr[gindex].z == shared_bbv_bitmask_addr[check_index].z)
@@ -128,7 +128,7 @@ void main_cs(
 
         // shared memからバッファ書き込み解決. ここで重複要素への書き込みをマージしてAtomic操作の衝突を最小化したい.
         const uint voxel_index = shared_bbv_bitmask_addr[gindex].x;
-        const uint valid_flag = shared_bbv_bitmask_addr[gindex].y;
+        const uint is_unique_brick_flag = shared_bbv_bitmask_addr[gindex].y;
         const uint bitmask_u32_offset = shared_bbv_bitmask_addr[gindex].z;
         const uint bitmask_append = shared_bbv_bitmask_addr[gindex].w;
         if(~uint(0) != voxel_index)
@@ -136,29 +136,21 @@ void main_cs(
             const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
             const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
         
-            // 詳細ジオメトリを占有ビット書き込み.
+            // 詳細ジオメトリをbitmask書き込み.
             InterlockedOr(RWBitmaskBrickVoxel[bbv_addr + bitmask_u32_offset], bitmask_append);
-
-            if(0 != valid_flag)
+            // 表面が存在し非ゼロbitがあるコンポーネントのビットを立てたOccupiedフラグをAtomic OR で書き込む.
+            // 中空になって占有されなくなったBrickのOccupiedフラグの除去は, bitmaskの除去といっしょに別シェーダで実行される.
+            InterlockedOr(RWBitmaskBrickVoxel[unique_data_addr + 0], (1 << bitmask_u32_offset));
+            
+            // ここから先はBrick単位で行いたい処理のAtomic操作を最小化するための分岐.
+            if(0 != is_unique_brick_flag)
             {
-                // Memo.
-                // 以下でVoxel固有データ部を更新しているが, 今後実装予定の動的オブジェクトによる占有度除去に伴う処理でも更新が必要な点に注意.
-
-                // 非Emptyフラグを0bit目, それ以降にVisible判定フレーム番号を書き込み.
-                const uint visible_check_frame_count = mask_bbv_voxel_unique_data_last_visible_frame(cb_ssvg.frame_count);
-                BbvVoxelUniqueData new_unique_data;
-                new_unique_data.is_occupied = 1;
-                new_unique_data.last_visible_frame = visible_check_frame_count;
-                const uint set_bits = build_bbv_voxel_unique_data(new_unique_data);
-                uint old_unique_bits;
-                InterlockedExchange(RWBitmaskBrickVoxel[unique_data_addr], set_bits, old_unique_bits);
-
-                // old_unique_dataを展開
-                BbvVoxelUniqueData old_unique_data;
-                parse_bbv_voxel_unique_data(old_unique_data, old_unique_bits);
-
-                // 交換前の値でVisible判定フレーム番号が現在フレームと異なるならリストへ登録. 別スレッドで同じVoxelを処理している場合の重複を除去する.
-                if(visible_check_frame_count !=  old_unique_data.last_visible_frame)
+                const uint visible_check_frame_count = mask_bbv_voxel_unique_data_last_visible_frame(cb_ssvg.frame_count);                
+                // Brickの固有データ部のフレームインデックスを最新でAtomic交換する. ここで以前の値が最新の値と異なるのであればこのスレッドがこのフレームでこのBrickに対する唯一の処理を実行する権利を得る.
+                uint old_last_visible_frame;
+                InterlockedExchange(RWBitmaskBrickVoxel[unique_data_addr + 1], visible_check_frame_count, old_last_visible_frame);
+                // bitmask書き込みがあったBrickを重複無しでリストアップするためのスタックへ追加.
+                if(visible_check_frame_count !=  old_last_visible_frame)
                 {
                     int current_visible_count;
                     InterlockedAdd(RWVisibleVoxelList[0], 1, current_visible_count);
