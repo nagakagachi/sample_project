@@ -68,7 +68,7 @@ VS_OUTPUT main_vs(VS_INPUT input)
 
     // Bbv固有データ.
     const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
-    const uint bbv_occupied_flag = BitmaskBrickVoxel[unique_data_addr + 0] & k_bbv_per_voxel_bitmask_u32_component_mask;
+    const uint bbv_occupied_flag = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_index)] & k_bbv_per_voxel_bitmask_u32_component_mask;
     
 
     // Bbv追加データ.

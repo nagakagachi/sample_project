@@ -1,10 +1,10 @@
 
 #if 0
 
-bbv_generate_visible_surface_voxel_cs.hlsl
+bbv_visible_voxel_injection_cs.hlsl
 
-ハードウェア深度バッファをもとにBitmaskBrickVoxelの処理をする.
-可視サーフェイス上にあるBbv要素リストの生成.
+深度バッファをもとに可視表面のVoxel情報をBbvに充填する.
+また, フレームでの可視Voxel処理用リストの生成.
 
 #endif
 
@@ -78,16 +78,12 @@ void main_cs(
             {
                 int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
                 uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution);
-
                 {
                     // 占有ビットマスク.
                     const float3 voxel_coord_frac = frac(voxel_coordf);
                     const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_bbv_per_voxel_resolution);
-
-                    uint bitcell_u32_offset;
-                    uint bitcell_u32_bit_pos;
+                    uint bitcell_u32_offset, bitcell_u32_bit_pos;
                     calc_bbv_bitcell_info(bitcell_u32_offset, bitcell_u32_bit_pos, voxel_coord_bitmask_pos);
-
                     shared_bbv_bitmask_addr[gindex] = uint4(voxel_index, 1, bitcell_u32_offset, (1 << bitcell_u32_bit_pos));
                 }
             }
@@ -133,14 +129,13 @@ void main_cs(
         const uint bitmask_append = shared_bbv_bitmask_addr[gindex].w;
         if(~uint(0) != voxel_index)
         {
-            const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
             const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
         
             // 詳細ジオメトリをbitmask書き込み.
             InterlockedOr(RWBitmaskBrickVoxel[bbv_addr + bitmask_u32_offset], bitmask_append);
             // 表面が存在し非ゼロbitがあるコンポーネントのビットを立てたOccupiedフラグをAtomic OR で書き込む.
             // 中空になって占有されなくなったBrickのOccupiedフラグの除去は, bitmaskの除去といっしょに別シェーダで実行される.
-            InterlockedOr(RWBitmaskBrickVoxel[unique_data_addr + 0], (1 << bitmask_u32_offset));
+            InterlockedOr(RWBitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_index)], (1 << bitmask_u32_offset));
             
             // ここから先はBrick単位で行いたい処理のAtomic操作を最小化するための分岐.
             if(0 != is_unique_brick_flag)
@@ -148,7 +143,7 @@ void main_cs(
                 const uint visible_check_frame_count = mask_bbv_voxel_unique_data_last_visible_frame(cb_ssvg.frame_count);                
                 // Brickの固有データ部のフレームインデックスを最新でAtomic交換する. ここで以前の値が最新の値と異なるのであればこのスレッドがこのフレームでこのBrickに対する唯一の処理を実行する権利を得る.
                 uint old_last_visible_frame;
-                InterlockedExchange(RWBitmaskBrickVoxel[unique_data_addr + 1], visible_check_frame_count, old_last_visible_frame);
+                InterlockedExchange(RWBitmaskBrickVoxel[bbv_voxel_brick_work_addr(voxel_index)], visible_check_frame_count, old_last_visible_frame);
                 // bitmask書き込みがあったBrickを重複無しでリストアップするためのスタックへ追加.
                 if(visible_check_frame_count !=  old_last_visible_frame)
                 {

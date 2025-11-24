@@ -62,7 +62,7 @@ ConstantBuffer<SsvgParam> cb_ssvg;
 // ------------------------------------------------------------------------------------------------------------------------
 
 
-#if 1
+#if 0
     // シンプルなインデックスフラット化.
 
     // Voxel座標からVoxelIndex計算.
@@ -116,6 +116,16 @@ uint bbv_voxel_index_to_addr(uint voxel_index)
 uint bbv_voxel_unique_data_addr(uint voxel_index)
 {
     return bbv_voxel_index_to_addr(voxel_index) + 0;
+}
+// Voxel毎のCoarseOccupancyビットマスクのアドレス計算. Voxelのu32要素毎の非ゼロ状態を集約した粗いビットマスク情報.
+uint bbv_voxel_coarse_occupancy_info_addr(uint voxel_index)
+{
+    return bbv_voxel_unique_data_addr(voxel_index) + 0;// ユニーク部の先頭に配置.
+}
+// Voxel毎の作業用データ部アドレス.
+uint bbv_voxel_brick_work_addr(uint voxel_index)
+{
+    return bbv_voxel_unique_data_addr(voxel_index) + 1;// ユニーク部の２つ目に配置.
 }
 // Voxel毎のデータ部の占有ビットマスクデータ先頭アドレス計算.
 uint bbv_voxel_bitmask_data_addr(uint voxel_index)
@@ -261,10 +271,7 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
     const float3 ray_dir_c = normalize(ray_d_c);
     const float ray_len_c = dot(ray_dir_c, ray_d_c);
 
-        // Inv Dir.
-        //const float k_nearly_zero_threshold = 1e-7;
-        //const float k_float_max = 1.0/k_nearly_zero_threshold;//1e20;
-        //const bool3 ray_dir_component_nearly_zero = k_nearly_zero_threshold >= abs(ray_dir_c);
+    // Inv Dir.
     out_ray_dir_inv = 1.0 / ray_dir_c;// inf対策が必要な場合があるかも. -> select( ray_dir_component_nearly_zero, float3(k_float_max, k_float_max, k_float_max), 1.0 / ray_dir_c)
     ray_dir_sign = sign(ray_dir_c);
 
@@ -365,10 +372,9 @@ float4 trace_bbv_core(
     {
         // 読み取り用のマッピングをして読み取り.
         const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(mapPos, bbv_grid_toroidal_offset, grid_resolution), grid_resolution);
-        const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
         
         // Voxelで簡易判定.
-        const uint bbv_occupied_flag = BitmaskBrickVoxel[unique_data_addr + 0] & k_bbv_per_voxel_bitmask_u32_component_mask;
+        const uint bbv_occupied_flag = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_index)] & k_bbv_per_voxel_bitmask_u32_component_mask;
         if(0 != (bbv_occupied_flag))
         {
             // signのabsをマスクとして使用することで軸並行レイのエッジケースに対応.
@@ -391,7 +397,7 @@ float4 trace_bbv_core(
                 const float d = max(mini.x, max(mini.y, mini.z));
             
                 hit_t = d * k_bbv_per_voxel_resolution_inv;
-                hit_t = max(0.0, hit_t);// ヒットしているはずなので0以上とする. ない場合はレイ始点がセル内の場合ヒット無し扱いになる.
+                hit_t = max(0.0, hit_t);// ヒットしているはずなので0以上とする. ない場合はレイ始点がセル内の場合ヒット無し扱いになり, アーティファクトが発生する.
 
                 break;
             }

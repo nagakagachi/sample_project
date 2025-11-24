@@ -46,9 +46,8 @@ void main_cs(
     const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
     const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution);
 
-    const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
     const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
-    const uint bbv_occupied_flag = BitmaskBrickVoxel[unique_data_addr + 0] & k_bbv_per_voxel_bitmask_u32_component_mask;
+    const uint bbv_occupied_flag = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_index)] & k_bbv_per_voxel_bitmask_u32_component_mask;
     
     BbvOptionalData voxel_optional_data = RWBitmaskBrickVoxelOptionData[voxel_index];
 
@@ -95,7 +94,7 @@ void main_cs(
     }
 
 
-    // Distance計算の検証.
+    // DistanceField的な情報の検証.
     // 実際にはマルチスレッド考慮せずに近傍情報参照しているため, 定常状態になるまでは一部正しくない距離情報が格納される場合がある近似処理に注意.
     int3 nearest_surface_dist = int3(1<<10, 1<<10, 1<<10);// 初期値は10bit範囲外としておく.
     {
@@ -142,7 +141,7 @@ void main_cs(
                 
                 const BbvOptionalData neighbor_voxel_optional_data = RWBitmaskBrickVoxelOptionData[neighbor_voxel_index];
 
-                const uint neighbor_occupied_flag = BitmaskBrickVoxel[bbv_voxel_unique_data_addr(neighbor_voxel_index) + 0] & k_bbv_per_voxel_bitmask_u32_component_mask;
+                const uint neighbor_occupied_flag = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(neighbor_voxel_index)] & k_bbv_per_voxel_bitmask_u32_component_mask;
                 if(0 != neighbor_occupied_flag)
                 {
                     if(length_int_vector3(nearest_surface_dist) > length_int_vector3(neighbor_offset[i]))

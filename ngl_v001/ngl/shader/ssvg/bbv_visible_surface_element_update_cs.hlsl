@@ -40,7 +40,7 @@ void main_cs(
     int3 voxel_coord_toroidal = index_to_voxel_coord(voxel_index, cb_ssvg.bbv.grid_resolution);
     int3 voxel_coord = voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution -cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
 
-    const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
+    const uint bbv_coarse_occupancy_info_addr = bbv_voxel_coarse_occupancy_info_addr(voxel_index);
     const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
 
     // TODO. Surface上のVoxel情報を更新するなど.

@@ -114,7 +114,7 @@ namespace ngl::render::app
             pso_bbv_begin_update_ = CreateComputePSO("ssvg/bbv_begin_update_cs.hlsl");
             pso_bbv_hollow_voxel_info_ = CreateComputePSO("ssvg/bbv_generate_hollow_voxel_info_cs.hlsl");
             pso_bbv_remove_hollow_voxel_ = CreateComputePSO("ssvg/bbv_remove_hollow_voxel_cs.hlsl");
-            pso_bbv_voxelize_     = CreateComputePSO("ssvg/bbv_generate_visible_surface_voxel_cs.hlsl");
+            pso_bbv_voxelize_     = CreateComputePSO("ssvg/bbv_visible_voxel_injection_cs.hlsl");
             pso_bbv_generate_visible_voxel_indirect_arg_ = CreateComputePSO("ssvg/bbv_generate_visible_surface_list_indirect_arg_cs.hlsl");
             pso_bbv_element_update_ = CreateComputePSO("ssvg/bbv_element_update_cs.hlsl");
             pso_bbv_visible_surface_element_update_ = CreateComputePSO("ssvg/bbv_visible_surface_element_update_cs.hlsl");

@@ -4,6 +4,7 @@
 bbv_remove_hollow_voxel_cs.hlsl
 
 中空になったBitmaskBrickVoxelを除去する.
+前段で作成した中空Voxelリストを参照して処理.
 
 #endif
 
@@ -33,7 +34,6 @@ void main_cs(
     const uint _unused = RemoveVoxelList[(element_index) + 3];
 
     
-    const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
     const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
     // bitmask部に削除ビット反転Andを実行して除去.
     uint old_value;
@@ -42,6 +42,6 @@ void main_cs(
     if(0 == (old_value & (~clear_bitmask)))
     {
         // Occupiedフラグの該当ビットを落とす.
-        InterlockedAnd(RWBitmaskBrickVoxel[unique_data_addr + 0], ~(1 << bitmask_u32_offset));
+        InterlockedAnd(RWBitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_index)], ~(1 << bitmask_u32_offset));
     }
 }
