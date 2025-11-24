@@ -71,7 +71,7 @@ void main_cs(
 
 
         // 深度バッファの手前までレイトレース.
-        // Note:ここでうまく1セル分バックトレースできれば最小限のチェックができそう
+        // Note:適当な固定値ではなく, DDA相当の計算で1セル分バックトレースしたい
         const float trace_distance = dot(ray_dir_ws, to_pixel_vec_ws) - cb_ssvg.bbv.cell_size*k_bbv_per_voxel_resolution_inv*0.9;
             
         int hit_voxel_index = -1;
