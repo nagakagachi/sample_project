@@ -340,7 +340,7 @@ bool AppGame::Initialize()
         const char* mesh_file_box = "K:\\GitHub\\sample_projct_lib\\ngl_v001\\ngl\\external\\assimp\\test\\models\\FBX\\box.fbx";
 
         // シーンモデル.
-#if 1
+#if 0
         // Sponza.
         const char* mesh_file_sponza = "../ngl/data/model/sponza_gltf/glTF/Sponza.gltf";
         const float sponza_scale     = 1.0f;

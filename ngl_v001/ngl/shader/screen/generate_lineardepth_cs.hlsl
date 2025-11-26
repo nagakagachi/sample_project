@@ -38,7 +38,7 @@ void main_cs(
 				d = 0.0;
 		#endif
 
-	float view_z = ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.x / (d * ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.y + ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.z);
+	float view_z = calc_view_z_from_ndc_z(d, ngl_cb_sceneview.cb_ndc_z_to_view_z_coef);
 
 	RWTexLinearDepth[dtid.xy] = view_z;// 現状はViewZそのまま(1以上のワールド距離単位)
 }

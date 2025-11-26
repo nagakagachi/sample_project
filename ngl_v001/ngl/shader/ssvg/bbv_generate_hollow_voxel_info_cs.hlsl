@@ -57,7 +57,7 @@ void main_cs(
 
     // ハードウェア深度取得.
     float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
-    float view_z = min(65535.0,  ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.x / (d * ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.y + ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.z));
+    float view_z = min(65535.0, calc_view_z_from_ndc_z(d, ngl_cb_sceneview.cb_ndc_z_to_view_z_coef));
 
 
 
@@ -71,6 +71,7 @@ void main_cs(
 
 
         // 深度バッファの手前までレイトレース.
+
         // Note:適当な固定値ではなく, DDA相当の計算で1セル分バックトレースしたい
         const float trace_distance = dot(ray_dir_ws, to_pixel_vec_ws) - cb_ssvg.bbv.cell_size*k_bbv_per_voxel_resolution_inv*0.9;
             

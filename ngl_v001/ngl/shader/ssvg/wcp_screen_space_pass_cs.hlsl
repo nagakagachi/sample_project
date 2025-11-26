@@ -62,7 +62,7 @@ void main_cs(
     // Tile単位で処理やAtomic書き出しをまとめることで効率化可能なはず.
 
     float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
-    float view_z = ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.x / (d * ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.y + ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.z);
+    float view_z = calc_view_z_from_ndc_z(d, ngl_cb_sceneview.cb_ndc_z_to_view_z_coef);
 
     // Skyチェック.
     if(65535.0 <= abs(view_z))

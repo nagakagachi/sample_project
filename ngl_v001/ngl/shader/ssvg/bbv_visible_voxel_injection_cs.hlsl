@@ -6,6 +6,8 @@ bbv_visible_voxel_injection_cs.hlsl
 深度バッファをもとに可視表面のVoxel情報をBbvに充填する.
 また, フレームでの可視Voxel処理用リストの生成.
 
+ViewとしてはPerspectiveなMainViewに加えてShadowMapViewも同一シェーダでInjectionしたい.
+
 #endif
 
 #define TILE_WIDTH 16
@@ -57,8 +59,8 @@ void main_cs(
     #endif
 
     float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
-    float view_z = ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.x / (d * ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.y + ngl_cb_sceneview.cb_ndc_z_to_view_z_coef.z);
-
+    float view_z = calc_view_z_from_ndc_z(d, ngl_cb_sceneview.cb_ndc_z_to_view_z_coef);
+    
 
     // 可視表面のbbv充填.
     {

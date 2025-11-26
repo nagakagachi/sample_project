@@ -32,6 +32,13 @@ struct SceneViewInfo
 	float	cb_time_sec;
 };
 
+
+float calc_view_z_from_ndc_z(float ndc_z, float4 ndc_z_to_view_z_coef)
+{
+    return ndc_z_to_view_z_coef.x / ( ndc_z * ndc_z_to_view_z_coef.y + ndc_z_to_view_z_coef.z );
+}
+
+
 // 十分なサイズ指定.
 #define k_directional_shadow_cascade_cb_max 8
 // Directional Cascade Shadow Sampling用 定数バッファ構造定義.
