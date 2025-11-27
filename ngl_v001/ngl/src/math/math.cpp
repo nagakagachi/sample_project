@@ -4,8 +4,7 @@
 namespace ngl
 {
 	namespace math
-	{
-		
+	{	
 		// View Matrix (LeftHand).
 		Mat34 CalcViewMatrix(const Vec3& camera_location, const Vec3& forward, const Vec3& up, bool is_right_hand)
 		{
@@ -114,19 +113,35 @@ namespace ngl
 		}
 		
 		// 標準平行投影.
-		Mat44 CalcStandardOrthographicMatrix(float width, float height, float near_z, float far_z, bool is_right_hand)
+		Mat44 CalcStandardOrthographicMatrix(float left, float right, float bottom, float top, float near_z, float far_z, bool is_right_hand)
 		{
-			const float w = 2.0f / width;
-			const float h = 2.0f / height;
+			const float r_w = 1.0f / (right - left);
+			const float r_h = 1.0f / (top - bottom);
 			const float range_term = 1.0f / (far_z - near_z);
 			const float z_sign = (!is_right_hand) ? 1.0f : -1.0f;
 
+			const float m_00 = (2.0f * r_w);
+			const float m_11 = (2.0f * r_h);
+			const float m_22 = z_sign * range_term;
+			
+			const float m_03 = -(left + right) * r_w;
+			const float m_13 = -(bottom + top) * r_h;
+			const float m_23 = -near_z * range_term;
+			
 			return Mat44(
-				w, 0, 0, 0,
-				0, h, 0, 0,
-				0, 0, z_sign * range_term, -near_z * range_term,
+				m_00, 0, 0, m_03,
+				0, m_11, 0, m_13,
+				0, 0, m_22, m_23,
 				0, 0, 0, 1
 			);
+		}
+		// 標準平行投影.
+		Mat44 CalcStandardOrthographicSymmetricMatrix(float width, float height, float near_z, float far_z, bool is_right_hand)
+		{
+			const float half_w = 0.5f*width;
+			const float half_h = 0.5f*height;
+			const auto m = CalcStandardOrthographicMatrix(-half_w, half_w, -half_h, half_h, near_z, far_z, is_right_hand);
+			return m;
 		}
 		// Reverse平行投影.
 		Mat44 CalcReverseOrthographicMatrix(float left, float right, float bottom, float top, float near_z, float far_z, bool is_right_hand)
@@ -152,7 +167,7 @@ namespace ngl
 			);
 		}
 		// Reverse平行投影.
-		Mat44 CalcReverseOrthographicMatrixSymmetric(float width, float height, float near_z, float far_z, bool is_right_hand)
+		Mat44 CalcReverseOrthographicSymmetricMatrix(float width, float height, float near_z, float far_z, bool is_right_hand)
 		{
 			const float half_w = 0.5f*width;
 			const float half_h = 0.5f*height;
