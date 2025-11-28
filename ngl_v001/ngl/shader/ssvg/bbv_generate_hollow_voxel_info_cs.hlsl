@@ -14,6 +14,10 @@ bbv_generate_hollow_voxel_info_cs.hlsl
 #include "../include/scene_view_struct.hlsli"
 
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
+
+// Injection元のDepthDeputhBufferのView情報.
+ConstantBuffer<BbvSurfaceInjectionViewInfo> cb_bbv_surface_injection_view_info;
+
 Texture2D			TexHardwareDepth;
 SamplerState		SmpHardwareDepth;
 
@@ -34,8 +38,9 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
-	const float3 camera_dir = normalize(ngl_cb_sceneview.cb_view_inv_mtx._m02_m12_m22);// InvShadowViewMtxから向きベクトルを取得.
-	const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
+    // メインビューの情報.
+	const float3 camera_dir = GetViewDirFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
+	const float3 camera_pos = GetViewPosFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
 
 	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
 	const float2 screen_size_f = float2(cb_ssvg.tex_hw_depth_size.xy);
@@ -57,21 +62,17 @@ void main_cs(
 
     // ハードウェア深度取得.
     float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
-    float view_z = min(65535.0, calc_view_z_from_ndc_z(d, ngl_cb_sceneview.cb_ndc_z_to_view_z_coef));
-
-
+    float view_z = min(65535.0, calc_view_z_from_ndc_z(d, cb_bbv_surface_injection_view_info.cb_ndc_z_to_view_z_coef));
 
     shared_bbv_bitmask_addr[gindex] = uint4(~uint(0), 0, 0, 0);// 初期無効値.
     
-        const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, ngl_cb_sceneview.cb_proj_mtx);
+        const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_bbv_surface_injection_view_info.cb_proj_mtx);
+        const float3 pixel_pos_ws = mul(cb_bbv_surface_injection_view_info.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
 
-        const float3 pixel_pos_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
         const float3 to_pixel_vec_ws = pixel_pos_ws - camera_pos;
         const float3 ray_dir_ws = normalize(to_pixel_vec_ws);
 
-
         // 深度バッファの手前までレイトレース.
-
         // Note:適当な固定値ではなく, DDA相当の計算で1セル分バックトレースしたい
         const float trace_distance = dot(ray_dir_ws, to_pixel_vec_ws) - cb_ssvg.bbv.cell_size*k_bbv_per_voxel_resolution_inv*0.9;
             

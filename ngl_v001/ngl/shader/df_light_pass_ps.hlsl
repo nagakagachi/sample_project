@@ -224,9 +224,8 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	float gb_material_id = gb2.w;
 	float3 gb_emissive = gb3.xyz;
 
-	
-	const float3 camera_dir = normalize(ngl_cb_sceneview.cb_view_inv_mtx._m02_m12_m22);// InvShadowViewMtxから向きベクトルを取得.
-	const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
+	const float3 camera_dir = GetViewDirFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
+	const float3 camera_pos = GetViewPosFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
 
 	// ピクセルへのワールド空間レイを計算.
 	const float3 to_pixel_ray_vs = CalcViewSpaceRay(input.uv, ngl_cb_sceneview.cb_proj_mtx);

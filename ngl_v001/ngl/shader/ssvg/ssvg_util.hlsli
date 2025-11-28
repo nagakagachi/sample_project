@@ -58,7 +58,9 @@ RWTexture2D<float>		RWWcpProbeAtlasTex;
 Buffer<uint>		SurfaceProbeCellList;
 RWBuffer<uint>		RWSurfaceProbeCellList;
 
+// ssvgのメインパラメータ.
 ConstantBuffer<SsvgParam> cb_ssvg;
+
 // ------------------------------------------------------------------------------------------------------------------------
 
 

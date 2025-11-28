@@ -52,10 +52,11 @@ VS_OUTPUT main_vs(VS_INPUT input)
 
 	VS_OUTPUT output = (VS_OUTPUT)0;
 
-	const float3 camera_dir = ngl_cb_sceneview.cb_view_inv_mtx._m02_m12_m22;// InvShadowViewMtxから向きベクトルを取得.
-    const float3 camera_up = ngl_cb_sceneview.cb_view_inv_mtx._m01_m11_m21;
-    const float3 camera_right = ngl_cb_sceneview.cb_view_inv_mtx._m00_m10_m20;
-	const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
+	const float3 camera_dir = GetViewDirFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
+    const float3 camera_up = GetViewUpDirFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
+    const float3 camera_right = GetViewRightDirFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
+	const float3 camera_pos = GetViewPosFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
+
 
     //　VertexIDからインスタンスID,三角形ID,三角形内頂点IDを計算.
     const uint instance_id = input.vertex_id / 6;

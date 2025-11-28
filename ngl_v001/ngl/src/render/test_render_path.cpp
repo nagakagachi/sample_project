@@ -54,6 +54,10 @@ namespace ngl::test
 			view_info.far_z = k_far_z;
 			view_info.camera_fov_y = render_frame_desc.camera_fov_y;
 			view_info.aspect_ratio = (float)screen_w / (float)screen_h;
+
+            view_info.view_mat = ngl::math::CalcViewMatrix(view_info.camera_pos, view_info.camera_pose.GetColumn2(), view_info.camera_pose.GetColumn1());
+            view_info.proj_mat = ngl::math::CalcReverseInfiniteFarPerspectiveMatrix(view_info.camera_fov_y, view_info.aspect_ratio, view_info.near_z);
+            view_info.ndc_z_to_view_z_coef = ngl::math::CalcViewDepthReconstructCoefFromProjectionMatrix(view_info.proj_mat);
 		}
 		
 				
@@ -61,20 +65,14 @@ namespace ngl::test
 		auto scene_cb_h = p_cb_pool->Alloc(sizeof(ngl::gfx::CbSceneView));
 		// SceneView ConstantBuffer内容更新.
 		{
-			ngl::math::Mat34 view_mat = ngl::math::CalcViewMatrix(view_info.camera_pos, view_info.camera_pose.GetColumn2(), view_info.camera_pose.GetColumn1());
-
-			// Infinite Far Reverse Perspective
-			ngl::math::Mat44 proj_mat = ngl::math::CalcReverseInfiniteFarPerspectiveMatrix(view_info.camera_fov_y, view_info.aspect_ratio, view_info.near_z);
-			ngl::math::Vec4 ndc_z_to_view_z_coef = ngl::math::CalcViewDepthReconstructCoefFromProjectionMatrix(proj_mat);
-
 			if (auto* mapped = scene_cb_h->buffer_.MapAs<ngl::gfx::CbSceneView>())
 			{
-				mapped->cb_view_mtx = view_mat;
-				mapped->cb_proj_mtx = proj_mat;
-				mapped->cb_view_inv_mtx = ngl::math::Mat34::Inverse(view_mat);
-				mapped->cb_proj_inv_mtx = ngl::math::Mat44::Inverse(proj_mat);
+				mapped->cb_view_mtx = view_info.view_mat;
+				mapped->cb_proj_mtx = view_info.proj_mat;
+				mapped->cb_view_inv_mtx = ngl::math::Mat34::Inverse(view_info.view_mat);
+				mapped->cb_proj_inv_mtx = ngl::math::Mat44::Inverse(view_info.proj_mat);
 
-				mapped->cb_ndc_z_to_view_z_coef = ndc_z_to_view_z_coef;
+				mapped->cb_ndc_z_to_view_z_coef = view_info.ndc_z_to_view_z_coef;
 
 				mapped->cb_time_sec = std::fmodf(static_cast<float>(ngl::time::Timer::Instance().GetElapsedSec("AppGameTime")), 60.0f*60.0f*24.0f);
 

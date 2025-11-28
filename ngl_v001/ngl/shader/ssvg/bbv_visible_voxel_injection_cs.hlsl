@@ -16,7 +16,12 @@ ViewとしてはPerspectiveなMainViewに加えてShadowMapViewも同一シェ�
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
 
+// MainViewの情報.
 ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
+
+// Injection元のDepthDeputhBufferのView情報.
+ConstantBuffer<BbvSurfaceInjectionViewInfo> cb_bbv_surface_injection_view_info;
+
 Texture2D			TexHardwareDepth;
 SamplerState		SmpHardwareDepth;
 
@@ -37,8 +42,10 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
-	const float3 camera_dir = normalize(ngl_cb_sceneview.cb_view_inv_mtx._m02_m12_m22);// InvShadowViewMtxから向きベクトルを取得.
-	const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
+    // メインビューの情報.
+	const float3 main_view_camera_dir = GetViewDirFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
+	const float3 main_view_camera_pos = GetViewPosFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
+
 
 	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
 	const float2 screen_size_f = float2(cb_ssvg.tex_hw_depth_size.xy);
@@ -58,9 +65,10 @@ void main_cs(
         }
     #endif
 
+
     float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
-    float view_z = calc_view_z_from_ndc_z(d, ngl_cb_sceneview.cb_ndc_z_to_view_z_coef);
-    
+    // DepthBufferに紐づいたView情報で復元.
+    float view_z = calc_view_z_from_ndc_z(d, cb_bbv_surface_injection_view_info.cb_ndc_z_to_view_z_coef);
 
     // 可視表面のbbv充填.
     {
@@ -70,8 +78,9 @@ void main_cs(
         if(65535.0 > abs(view_z))
         {
             // 深度->PixelWorldPosition
-            const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, ngl_cb_sceneview.cb_proj_mtx);
-            const float3 pixel_pos_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
+            // DepthBufferに紐づいたView情報で復元.
+            const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_bbv_surface_injection_view_info.cb_proj_mtx);
+            const float3 pixel_pos_ws = mul(cb_bbv_surface_injection_view_info.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
 
             // PixelWorldPosition->VoxelCoord
             const float3 voxel_coordf = (pixel_pos_ws - cb_ssvg.bbv.grid_min_pos) * cb_ssvg.bbv.cell_size_inv;

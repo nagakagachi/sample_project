@@ -5,9 +5,7 @@
 
 #ifndef NGL_SHADER_SCENE_VIEW_STRUCT_H
 #define NGL_SHADER_SCENE_VIEW_STRUCT_H
-
-// nglのmatrix系ははrow-majorメモリレイアウトであるための指定.
-#pragma pack_matrix( row_major )
+#include "ngl_shader_config.hlsli"
 
 
 struct SceneViewInfo

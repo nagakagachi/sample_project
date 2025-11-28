@@ -7,6 +7,7 @@
 #include "rhi/d3d12/shader.d3d12.h"
 #include "rhi/constant_buffer_pool.h"
 #include "render/app/common/render_app_common.h"
+#include "render/task/pass_common.h"
 
 namespace ngl::render::app
 {
@@ -67,7 +68,7 @@ namespace ngl::render::app
 
         void Dispatch(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
-            rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
+            const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
             rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
 
         void DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
@@ -169,7 +170,7 @@ namespace ngl::render::app
 
         void Dispatch(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
-            rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
+            const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
             rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
 
         void DebugDraw(rhi::GraphicsCommandListDep* p_command_list,

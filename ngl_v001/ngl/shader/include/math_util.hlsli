@@ -1,5 +1,6 @@
 #ifndef NGL_SHADER_MATH_UTIL_H
 #define NGL_SHADER_MATH_UTIL_H
+#include "ngl_shader_config.hlsli"
 
 #define NGL_PI (3.141592653589793)
 #define NGL_2PI (2.0*NGL_PI)
@@ -133,6 +134,27 @@ int distance_int_vector3(int3 a, int3 b)
 }
 
 
+
+// View逆行列からカメラ向きベクトルを取得.
+float3 GetViewDirFromInverseViewMatrix(float3x4 view_inv_mtx)
+{
+    return normalize(view_inv_mtx._m02_m12_m22);
+}
+// View逆行列からカメラUpDirベクトルを取得.
+float3 GetViewUpDirFromInverseViewMatrix(float3x4 view_inv_mtx)
+{
+    return normalize(view_inv_mtx._m01_m11_m21);
+}
+// View逆行列からカメラRightDirベクトルを取得.
+float3 GetViewRightDirFromInverseViewMatrix(float3x4 view_inv_mtx)
+{
+    return normalize(view_inv_mtx._m00_m10_m20);
+}
+// View逆行列からカメラ座標を取得.
+float3 GetViewPosFromInverseViewMatrix(float3x4 view_inv_mtx)
+{
+    return view_inv_mtx._m03_m13_m23;
+}
 
 
 //--------------------------------------------------------------------------------

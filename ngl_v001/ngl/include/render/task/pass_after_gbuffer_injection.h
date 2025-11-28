@@ -55,7 +55,7 @@ namespace ngl::render::task
 
 			// Render処理のLambdaをRTGに登録.
 			builder.RegisterTaskNodeRenderFunction(this,
-				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
+				[this, view_info](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
 				{
 					if(is_render_skip_debug)
 					{
@@ -74,7 +74,9 @@ namespace ngl::render::task
 
                     if (desc_.p_ssvg)
                     {
-                        desc_.p_ssvg->Dispatch(gfx_commandlist, desc_.scene_cbv, res_depth.tex_, res_depth.srv_, res_work.tex_, res_work.uav_);
+                        desc_.p_ssvg->Dispatch(gfx_commandlist, desc_.scene_cbv, 
+                            view_info, res_depth.tex_, res_depth.srv_,
+                            res_work.tex_, res_work.uav_);
                     }
 				}
 			);

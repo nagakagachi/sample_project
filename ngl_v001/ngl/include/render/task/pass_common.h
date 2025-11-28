@@ -14,6 +14,10 @@ namespace ngl::render::task
         float				far_z{};
         float				aspect_ratio{};
         float				camera_fov_y = ngl::math::Deg2Rad(60.0f);
+
+        ngl::math::Mat34    view_mat = ngl::math::Mat34::Identity();
+        ngl::math::Mat44    proj_mat = ngl::math::Mat44::Identity();
+        ngl::math::Vec4     ndc_z_to_view_z_coef = {};
     };
     
 }

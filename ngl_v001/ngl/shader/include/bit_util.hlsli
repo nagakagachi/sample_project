@@ -4,6 +4,7 @@
 
 #ifndef NGL_SHADER_BIT_UTIL_HLSLI
 #define NGL_SHADER_BIT_UTIL_HLSLI
+#include "ngl_shader_config.hlsli"
 
 // ビット操作関連のユーティリティ関数
 

@@ -1,5 +1,6 @@
 #ifndef NGL_SHADER_SSVG_COMMON_HEADER_H
 #define NGL_SHADER_SSVG_COMMON_HEADER_H
+#include "../include/ngl_shader_config.hlsli"
 
 #if 0
 
@@ -30,6 +31,9 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     using float4 = ngl::math::Vec4;
     using float3 = ngl::math::Vec3;
     using float2 = ngl::math::Vec2;
+
+    using float3x4 = ngl::math::Mat34;
+    using float4x4 = ngl::math::Mat44;
 #endif
 
 
@@ -97,6 +101,20 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         uint probe_data_dummy;
     };
 
+
+    // 可視サーフェイス情報Injection用のView情報.
+    // DepthBuffer等からInjectionする際のそのBufferのView情報を格納.
+    struct BbvSurfaceInjectionViewInfo
+    {
+        float3x4 cb_view_mtx;
+        float3x4 cb_view_inv_mtx;
+        float4x4 cb_proj_mtx;
+        float4x4 cb_proj_inv_mtx;
+
+        // 正規化デバイス座標(NDC)のZ値からView空間Z値を計算するための係数. PerspectiveProjectionMatrixの方式によってCPU側で計算される値を変えることでシェーダ側は同一コード化. xは平行投影もサポートするために利用.
+        //	for calc_view_z_from_ndc_z(ndc_z, cb_ndc_z_to_view_z_coef)
+        float4	cb_ndc_z_to_view_z_coef;
+    };
 
 
     struct SsvgToroidalGridParam
