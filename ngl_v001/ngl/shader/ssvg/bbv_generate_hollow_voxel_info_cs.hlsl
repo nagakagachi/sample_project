@@ -16,7 +16,7 @@ bbv_generate_hollow_voxel_info_cs.hlsl
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 // Injection元のDepthDeputhBufferのView情報.
-ConstantBuffer<BbvSurfaceInjectionViewInfo> cb_bbv_surface_injection_view_info;
+ConstantBuffer<BbvSurfaceInjectionViewInfo> cb_injection_src_view_info;
 
 Texture2D			TexHardwareDepth;
 SamplerState		SmpHardwareDepth;
@@ -62,12 +62,12 @@ void main_cs(
 
     // ハードウェア深度取得.
     float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
-    float view_z = min(65535.0, calc_view_z_from_ndc_z(d, cb_bbv_surface_injection_view_info.cb_ndc_z_to_view_z_coef));
+    float view_z = min(65535.0, calc_view_z_from_ndc_z(d, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef));
 
     shared_bbv_bitmask_addr[gindex] = uint4(~uint(0), 0, 0, 0);// 初期無効値.
     
-        const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_bbv_surface_injection_view_info.cb_proj_mtx);
-        const float3 pixel_pos_ws = mul(cb_bbv_surface_injection_view_info.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
+        const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_injection_src_view_info.cb_proj_mtx);
+        const float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
 
         const float3 to_pixel_vec_ws = pixel_pos_ws - camera_pos;
         const float3 ray_dir_ws = normalize(to_pixel_vec_ws);

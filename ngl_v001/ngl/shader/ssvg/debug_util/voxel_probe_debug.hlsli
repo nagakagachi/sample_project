@@ -83,9 +83,8 @@ VS_OUTPUT main_vs(VS_INPUT input)
     // 表示位置.
     const float3 instance_pos = probe_pos_ws;
     float draw_scale = cb_ssvg.debug_probe_radius;
-    if(0 == (bbv_occupied_flag))
+    if(0 != (bbv_occupied_flag))
     {
-        // ジオメトリのないVoxelは小さく表示.
         draw_scale *= cb_ssvg.debug_probe_near_geom_scale;
     }
     if(is_invalid_probe_local_pos)

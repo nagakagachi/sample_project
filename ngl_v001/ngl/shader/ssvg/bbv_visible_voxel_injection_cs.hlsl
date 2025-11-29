@@ -20,7 +20,7 @@ ViewとしてはPerspectiveなMainViewに加えてShadowMapViewも同一シェ�
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 // Injection元のDepthDeputhBufferのView情報.
-ConstantBuffer<BbvSurfaceInjectionViewInfo> cb_bbv_surface_injection_view_info;
+ConstantBuffer<BbvSurfaceInjectionViewInfo> cb_injection_src_view_info;
 
 Texture2D			TexHardwareDepth;
 SamplerState		SmpHardwareDepth;
@@ -68,7 +68,7 @@ void main_cs(
 
     float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
     // DepthBufferに紐づいたView情報で復元.
-    float view_z = calc_view_z_from_ndc_z(d, cb_bbv_surface_injection_view_info.cb_ndc_z_to_view_z_coef);
+    float view_z = calc_view_z_from_ndc_z(d, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef);
 
     // 可視表面のbbv充填.
     {
@@ -79,8 +79,8 @@ void main_cs(
         {
             // 深度->PixelWorldPosition
             // DepthBufferに紐づいたView情報で復元.
-            const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_bbv_surface_injection_view_info.cb_proj_mtx);
-            const float3 pixel_pos_ws = mul(cb_bbv_surface_injection_view_info.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
+            const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_injection_src_view_info.cb_proj_mtx);
+            const float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
 
             // PixelWorldPosition->VoxelCoord
             const float3 voxel_coordf = (pixel_pos_ws - cb_ssvg.bbv.grid_min_pos) * cb_ssvg.bbv.cell_size_inv;

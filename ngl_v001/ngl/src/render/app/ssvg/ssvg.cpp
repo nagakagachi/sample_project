@@ -112,6 +112,7 @@ namespace ngl::render::app
         {
             pso_bbv_clear_  = CreateComputePSO("ssvg/bbv_clear_voxel_cs.hlsl");
             pso_bbv_begin_update_ = CreateComputePSO("ssvg/bbv_begin_update_cs.hlsl");
+            pso_bbv_begin_view_update_ = CreateComputePSO("ssvg/bbv_begin_view_update_cs.hlsl");
             pso_bbv_hollow_voxel_info_ = CreateComputePSO("ssvg/bbv_generate_hollow_voxel_info_cs.hlsl");
             pso_bbv_remove_hollow_voxel_ = CreateComputePSO("ssvg/bbv_remove_hollow_voxel_cs.hlsl");
             pso_bbv_voxelize_     = CreateComputePSO("ssvg/bbv_visible_voxel_injection_cs.hlsl");
@@ -328,12 +329,13 @@ namespace ngl::render::app
         important_dir_   = dir;
     }
 
-    void BitmaskBrickVoxel::Dispatch(rhi::GraphicsCommandListDep* p_command_list,
+    
+    void BitmaskBrickVoxel::Dispatch_Begin(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
-                        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
-                        rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav)
+                        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
+                        )
     {
-        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "SsVg");
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "SsVg_Dispatch_Begin");
 
         auto& global_res = gfx::GlobalRenderResource::Instance();
 
@@ -399,7 +401,6 @@ namespace ngl::render::app
                 p->wcp_visible_voxel_buffer_size = wcp_visible_surface_buffer_size_;
             }
 
-
             p->tex_hw_depth_size = hw_depth_size;
             p->frame_count = frame_count_;
 
@@ -413,6 +414,71 @@ namespace ngl::render::app
             cbh_dispatch_->buffer_.Unmap();
         }
         
+        if (is_first_dispatch)
+        {
+            // 初回クリア.
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvInitClear");
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_bbv_clear_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
+                pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
+
+                p_command_list->SetPipelineState(pso_bbv_clear_.Get());
+                p_command_list->SetDescriptorSet(pso_bbv_clear_.Get(), &desc_set);
+                pso_bbv_clear_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
+
+                p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
+            }
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpInitClear");
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_wcp_clear_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                pso_wcp_clear_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+                pso_wcp_clear_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
+
+                p_command_list->SetPipelineState(pso_wcp_clear_.Get());
+                p_command_list->SetDescriptorSet(pso_wcp_clear_.Get(), &desc_set);
+                pso_wcp_clear_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
+
+                p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
+            }
+        }
+        // Bbv Begin Update Pass.
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvBeginUpdate");
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_bbv_begin_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
+            pso_bbv_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_bbv_begin_update_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
+            pso_bbv_begin_update_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_bbv_begin_update_.Get());
+            p_command_list->SetDescriptorSet(pso_bbv_begin_update_.Get(), &desc_set);
+            pso_bbv_begin_update_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
+
+            p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
+            p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
+        }
+    }
+
+    void BitmaskBrickVoxel::Dispatch_Bbv_View(rhi::GraphicsCommandListDep* p_command_list,
+                        rhi::ConstantBufferPooledHandle scene_cbv,
+                        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
+                        )
+    {
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Ssvg_Dispatch_Bbv_View");
+
+        auto& global_res = gfx::GlobalRenderResource::Instance();
+
+
+        const math::Vec2i hw_depth_size = math::Vec2i(static_cast<int>(hw_depth_tex->GetWidth()), static_cast<int>(hw_depth_tex->GetHeight()));
+
         auto cbh_injection_view_info = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(BbvSurfaceInjectionViewInfo));
         {
             auto* p = cbh_injection_view_info->buffer_.MapAs<BbvSurfaceInjectionViewInfo>();
@@ -427,306 +493,285 @@ namespace ngl::render::app
             cbh_injection_view_info->buffer_.Unmap();
         }
 
-
+        // Bbv Begin View Update Pass.
         {
-            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Main");
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvBeginViewUpdate");
 
-            if (is_first_dispatch)
-            {
-                // 初回クリア.
-                {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvInitClear");
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_bbv_begin_view_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_bbv_begin_view_update_->SetView(&desc_set, "RWVisibleVoxelList", bbv_fine_update_voxel_list_.uav.Get());
+            pso_bbv_begin_view_update_->SetView(&desc_set, "RWRemoveVoxelList", bbv_remove_voxel_list_.uav.Get());
 
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_bbv_clear_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
-                    pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
+            p_command_list->SetPipelineState(pso_bbv_begin_view_update_.Get());
+            p_command_list->SetDescriptorSet(pso_bbv_begin_view_update_.Get(), &desc_set);
+            pso_bbv_begin_view_update_->DispatchHelper(p_command_list, 1, 1, 1);
 
-                    p_command_list->SetPipelineState(pso_bbv_clear_.Get());
-                    p_command_list->SetDescriptorSet(pso_bbv_clear_.Get(), &desc_set);
-                    pso_bbv_clear_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
-
-                    p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
-                    p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
-                }
-                {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpInitClear");
-
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_wcp_clear_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_wcp_clear_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
-                    pso_wcp_clear_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
-
-                    p_command_list->SetPipelineState(pso_wcp_clear_.Get());
-                    p_command_list->SetDescriptorSet(pso_wcp_clear_.Get(), &desc_set);
-                    pso_wcp_clear_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
-
-                    p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
-                    p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
-                }
-            }
-            // Bbv Begin Update Pass.
-            {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvBeginUpdate");
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_bbv_begin_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
-                pso_bbv_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_bbv_begin_update_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
-                pso_bbv_begin_update_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
-                pso_bbv_begin_update_->SetView(&desc_set, "RWVisibleVoxelList", bbv_fine_update_voxel_list_.uav.Get());
-                pso_bbv_begin_update_->SetView(&desc_set, "RWRemoveVoxelList", bbv_remove_voxel_list_.uav.Get());
-
-                p_command_list->SetPipelineState(pso_bbv_begin_update_.Get());
-                p_command_list->SetDescriptorSet(pso_bbv_begin_update_.Get(), &desc_set);
-                pso_bbv_begin_update_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
-
-                p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
-                p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
-                p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_list_.buffer.Get());
-                p_command_list->ResourceUavBarrier(bbv_remove_voxel_list_.buffer.Get());
-            }
-            // Wcp Begin Update Pass.
-            {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpBeginUpdate");
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_wcp_begin_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
-                pso_wcp_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
-                pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
-                pso_wcp_begin_update_->SetView(&desc_set, "RWSurfaceProbeCellList", wcp_visible_surface_list_.uav.Get());
-
-                p_command_list->SetPipelineState(pso_wcp_begin_update_.Get());
-                p_command_list->SetDescriptorSet(pso_wcp_begin_update_.Get(), &desc_set);
-                pso_wcp_begin_update_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
-
-                p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
-                p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
-                p_command_list->ResourceUavBarrier(wcp_visible_surface_list_.buffer.Get());
-            }
-
-                
-            // Bbv Generate Remove Voxel Info.
-            // 動的な環境で中空になった可能性のあるBbvをクリアするためのリスト生成. Depthからその表面に至るまでの経路上のVoxelが中空であると仮定してリスト化.
-            {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "GenerageHolowVoxelInfo");
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_bbv_hollow_voxel_info_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
-                pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
-                pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_bbv_surface_injection_view_info", &cbh_injection_view_info->cbv_);
-                pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_bbv_hollow_voxel_info_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                pso_bbv_hollow_voxel_info_->SetView(&desc_set, "RWRemoveVoxelList", bbv_remove_voxel_list_.uav.Get());
-                p_command_list->SetPipelineState(pso_bbv_hollow_voxel_info_.Get());
-                p_command_list->SetDescriptorSet(pso_bbv_hollow_voxel_info_.Get(), &desc_set);
-                pso_bbv_hollow_voxel_info_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);  // Screen処理でDispatch.
-
-                p_command_list->ResourceUavBarrier(bbv_remove_voxel_list_.buffer.Get());
-            }
-            // Bbv Remove Voxel Pass.
-            // Note:前段で生成した中空Voxelを実際にBbvバッファ上で空にする. なおBbv単位が持つ非Emptyフラグの更新をしていないため後で問題になるかも.
-            if(true)
-            {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "RemoveHollowVoxel");
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
-                pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "RemoveVoxelList", bbv_remove_voxel_list_.srv.Get());
-                p_command_list->SetPipelineState(pso_bbv_remove_hollow_voxel_.Get());
-                p_command_list->SetDescriptorSet(pso_bbv_remove_hollow_voxel_.Get(), &desc_set);
-                pso_bbv_remove_hollow_voxel_->DispatchHelper(p_command_list, bbv_hollow_voxel_list_count_max_, 1, 1);// 現状は最大数分Dispatch. あとでIndirectArg化.
-
-                p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
-            }
-
-            // Bbv Voxelization Pass.
-            {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BitmaskBrickVoxelInjection");
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_bbv_voxelize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
-                
-                pso_bbv_voxelize_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
-                pso_bbv_voxelize_->SetView(&desc_set, "cb_bbv_surface_injection_view_info", &cbh_injection_view_info->cbv_);
-                pso_bbv_voxelize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-
-                pso_bbv_voxelize_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
-                pso_bbv_voxelize_->SetView(&desc_set, "RWVisibleVoxelList", bbv_fine_update_voxel_list_.uav.Get());
-
-                p_command_list->SetPipelineState(pso_bbv_voxelize_.Get());
-                p_command_list->SetDescriptorSet(pso_bbv_voxelize_.Get(), &desc_set);
-                pso_bbv_voxelize_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);  // Screen処理でDispatch.
-
-                p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
-                p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_list_.buffer.Get());
-            }
-            // VisibleVoxel IndirectArg生成.
-            {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "GenerateVisibleElementIndirectArg");
-                
-                bbv_fine_update_voxel_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_bbv_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_bbv_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
-                pso_bbv_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "RWVisibleVoxelIndirectArg", bbv_fine_update_voxel_indirect_arg_.uav.Get());
-
-                p_command_list->SetPipelineState(pso_bbv_generate_visible_voxel_indirect_arg_.Get());
-                p_command_list->SetDescriptorSet(pso_bbv_generate_visible_voxel_indirect_arg_.Get(), &desc_set);
-                pso_bbv_generate_visible_voxel_indirect_arg_->DispatchHelper(p_command_list, 1, 1, 1);
-
-                bbv_fine_update_voxel_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::IndirectArgument);
-            }
-            // Voxel Update.
-            {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ProbeCommonUpdate");
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_bbv_element_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
-                pso_bbv_element_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_bbv_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                pso_bbv_element_update_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
-
-                p_command_list->SetPipelineState(pso_bbv_element_update_.Get());
-                p_command_list->SetDescriptorSet(pso_bbv_element_update_.Get(), &desc_set);
-                //pso_bbv_element_update_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
-                pso_bbv_element_update_->DispatchHelper(p_command_list, (bbv_grid_updater_.Get().total_count + (BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT)) / (BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT+1), 1, 1);
-
-                p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
-            }
-
-            // Visible Surface Voxel Update Pass.
-            {
-                {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "VisibleSurfaceVoxelUpdate");
-
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_bbv_visible_surface_element_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
-                    pso_bbv_visible_surface_element_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_bbv_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                    pso_bbv_visible_surface_element_update_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
-
-                    pso_bbv_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
-
-                    pso_bbv_visible_surface_element_update_->SetView(&desc_set, "RWUpdateProbeWork", bbv_fine_update_voxel_probe_buffer_.uav.Get());
-
-                    p_command_list->SetPipelineState(pso_bbv_visible_surface_element_update_.Get());
-                    p_command_list->SetDescriptorSet(pso_bbv_visible_surface_element_update_.Get(), &desc_set);
-
-                    p_command_list->DispatchIndirect(bbv_fine_update_voxel_indirect_arg_.buffer.Get());// こちらは可視VoxelのIndirect.
-
-
-                    p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_probe_buffer_.buffer.Get());
-                }
-            }
-            
-            
-                // Wcp Visible Surface Processing Pass.
-                {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpVisibleSurfaceProcessing");
-
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_wcp_visible_surface_proc_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
-                    pso_wcp_visible_surface_proc_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
-                    pso_wcp_visible_surface_proc_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_wcp_visible_surface_proc_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
-                    pso_wcp_visible_surface_proc_->SetView(&desc_set, "RWSurfaceProbeCellList", wcp_visible_surface_list_.uav.Get());
-
-                    p_command_list->SetPipelineState(pso_wcp_visible_surface_proc_.Get());
-                    p_command_list->SetDescriptorSet(pso_wcp_visible_surface_proc_.Get(), &desc_set);
-                    pso_wcp_visible_surface_proc_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);  // Screen処理でDispatch.
-
-                    p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
-                    p_command_list->ResourceUavBarrier(wcp_visible_surface_list_.buffer.Get());
-                }
-                // Wcp VisibleSurfaceList IndirectArg生成.
-                {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpGenerateVisibleSurfaceListIndirectArg");
-                    
-                    wcp_visible_surface_list_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
-
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_wcp_generate_visible_surface_list_indirect_arg_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_wcp_generate_visible_surface_list_indirect_arg_->SetView(&desc_set, "SurfaceProbeCellList", wcp_visible_surface_list_.srv.Get());
-                    pso_wcp_generate_visible_surface_list_indirect_arg_->SetView(&desc_set, "RWVisibleSurfaceListIndirectArg", wcp_visible_surface_list_indirect_arg_.uav.Get());
-
-                    p_command_list->SetPipelineState(pso_wcp_generate_visible_surface_list_indirect_arg_.Get());
-                    p_command_list->SetDescriptorSet(pso_wcp_generate_visible_surface_list_indirect_arg_.Get(), &desc_set);
-                    pso_wcp_generate_visible_surface_list_indirect_arg_->DispatchHelper(p_command_list, 1, 1, 1);
-
-                    wcp_visible_surface_list_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::IndirectArgument);
-                }
-                // Wcp Visible Surface Element RaySample Pass.
-                {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpVisibleSurfaceElementRaySample");
-
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_wcp_visible_surface_element_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
-                    pso_wcp_visible_surface_element_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_wcp_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-
-                    pso_wcp_visible_surface_element_update_->SetView(&desc_set, "SurfaceProbeCellList", wcp_visible_surface_list_.srv.Get());
-                    pso_wcp_visible_surface_element_update_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
-                    pso_wcp_visible_surface_element_update_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
-
-
-                    p_command_list->SetPipelineState(pso_wcp_visible_surface_element_update_.Get());
-                    p_command_list->SetDescriptorSet(pso_wcp_visible_surface_element_update_.Get(), &desc_set);
-
-                    p_command_list->DispatchIndirect(wcp_visible_surface_list_indirect_arg_.buffer.Get());// 可視SurfaceListDispatch.
-
-
-                    p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
-                    p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
-                }
-                // Wcp Coarse Probe RaySample Pass.
-                {
-                    {
-                        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpCoarseProbeRaySample");
-
-                        ngl::rhi::DescriptorSetDep desc_set = {};
-                        pso_wcp_coarse_ray_sample_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
-                        pso_wcp_coarse_ray_sample_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                        pso_wcp_coarse_ray_sample_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-
-                        pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
-                        pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
-
-                        p_command_list->SetPipelineState(pso_wcp_coarse_ray_sample_.Get());
-                        p_command_list->SetDescriptorSet(pso_wcp_coarse_ray_sample_.Get(), &desc_set);
-                        // 全Probe更新のスキップ要素分考慮したDispatch.
-                        pso_wcp_coarse_ray_sample_->DispatchHelper(p_command_list, (wcp_grid_updater_.Get().total_count + (WCP_ALL_ELEMENT_UPDATE_SKIP_COUNT)) / (WCP_ALL_ELEMENT_UPDATE_SKIP_COUNT+1), 1, 1);
-
-                        p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
-                        p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
-                    }
-                }
-                // Wcp Octahedral Map Border Fill Pass.
-                {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpFillProbeOctmapAtlasBorder");
-
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_wcp_fill_probe_octmap_atlas_border_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_wcp_fill_probe_octmap_atlas_border_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
-
-                    p_command_list->SetPipelineState(pso_wcp_fill_probe_octmap_atlas_border_.Get());
-                    p_command_list->SetDescriptorSet(pso_wcp_fill_probe_octmap_atlas_border_.Get(), &desc_set);
-
-                    // 全Probe更新のスキップ要素分考慮したDispatch.
-                    pso_wcp_fill_probe_octmap_atlas_border_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
-
-                    p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
-                }
+            p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_list_.buffer.Get());
+            p_command_list->ResourceUavBarrier(bbv_remove_voxel_list_.buffer.Get());
         }
+        
+        // Bbv Generate Remove Voxel Info.
+        // 動的な環境で中空になった可能性のあるBbvをクリアするためのリスト生成. Depthからその表面に至るまでの経路上のVoxelが中空であると仮定してリスト化.
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "GenerateHollowVoxelInfo");
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_bbv_hollow_voxel_info_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
+            pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
+            pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv_);
+            pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_bbv_hollow_voxel_info_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+            pso_bbv_hollow_voxel_info_->SetView(&desc_set, "RWRemoveVoxelList", bbv_remove_voxel_list_.uav.Get());
+            p_command_list->SetPipelineState(pso_bbv_hollow_voxel_info_.Get());
+            p_command_list->SetDescriptorSet(pso_bbv_hollow_voxel_info_.Get(), &desc_set);
+            pso_bbv_hollow_voxel_info_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);  // Screen処理でDispatch.
+
+            p_command_list->ResourceUavBarrier(bbv_remove_voxel_list_.buffer.Get());
+        }
+        // Bbv Remove Voxel Pass.
+        // Note:前段で生成した中空Voxelを実際にBbvバッファ上で空にする. なおBbv単位が持つ非Emptyフラグの更新をしていないため後で問題になるかも.
+        if(true)
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "RemoveHollowVoxel");
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
+            pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "RemoveVoxelList", bbv_remove_voxel_list_.srv.Get());
+            p_command_list->SetPipelineState(pso_bbv_remove_hollow_voxel_.Get());
+            p_command_list->SetDescriptorSet(pso_bbv_remove_hollow_voxel_.Get(), &desc_set);
+            pso_bbv_remove_hollow_voxel_->DispatchHelper(p_command_list, bbv_hollow_voxel_list_count_max_, 1, 1);// 現状は最大数分Dispatch. あとでIndirectArg化.
+
+            p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
+        }
+
+        // Bbv Voxelization Pass.
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvInjection");
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_bbv_voxelize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
+            
+            pso_bbv_voxelize_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
+            pso_bbv_voxelize_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv_);
+            pso_bbv_voxelize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+
+            pso_bbv_voxelize_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
+            pso_bbv_voxelize_->SetView(&desc_set, "RWVisibleVoxelList", bbv_fine_update_voxel_list_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_bbv_voxelize_.Get());
+            p_command_list->SetDescriptorSet(pso_bbv_voxelize_.Get(), &desc_set);
+            pso_bbv_voxelize_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);  // Screen処理でDispatch.
+
+            p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
+            p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_list_.buffer.Get());
+        }
+        // VisibleVoxel IndirectArg生成.
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "GenerateVisibleElementIndirectArg");
+            
+            bbv_fine_update_voxel_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_bbv_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_bbv_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
+            pso_bbv_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "RWVisibleVoxelIndirectArg", bbv_fine_update_voxel_indirect_arg_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_bbv_generate_visible_voxel_indirect_arg_.Get());
+            p_command_list->SetDescriptorSet(pso_bbv_generate_visible_voxel_indirect_arg_.Get(), &desc_set);
+            pso_bbv_generate_visible_voxel_indirect_arg_->DispatchHelper(p_command_list, 1, 1, 1);
+
+            bbv_fine_update_voxel_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::IndirectArgument);
+        }
+
+        // Visible Surface Voxel Update Pass.
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvVisibleSurfaceVoxelUpdate");
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_bbv_visible_surface_element_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
+            pso_bbv_visible_surface_element_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_bbv_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+            pso_bbv_visible_surface_element_update_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
+
+            pso_bbv_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
+
+            pso_bbv_visible_surface_element_update_->SetView(&desc_set, "RWUpdateProbeWork", bbv_fine_update_voxel_probe_buffer_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_bbv_visible_surface_element_update_.Get());
+            p_command_list->SetDescriptorSet(pso_bbv_visible_surface_element_update_.Get(), &desc_set);
+
+            p_command_list->DispatchIndirect(bbv_fine_update_voxel_indirect_arg_.buffer.Get());// こちらは可視VoxelのIndirect.
+
+            p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_probe_buffer_.buffer.Get());
+        }
+    }
+    
+    void BitmaskBrickVoxel::Dispatch_Bbv_Main(rhi::GraphicsCommandListDep* p_command_list,
+                        rhi::ConstantBufferPooledHandle scene_cbv
+                        )
+    {
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Ssvg_Dispatch_Bbv_Main");
+
+        auto& global_res = gfx::GlobalRenderResource::Instance();
+
+        // Voxel Update.
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvCommonUpdate");
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_bbv_element_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
+            pso_bbv_element_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_bbv_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+            pso_bbv_element_update_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_bbv_element_update_.Get());
+            p_command_list->SetDescriptorSet(pso_bbv_element_update_.Get(), &desc_set);
+            pso_bbv_element_update_->DispatchHelper(p_command_list, (bbv_grid_updater_.Get().total_count + (BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT)) / (BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT+1), 1, 1);
+
+            p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
+        }
+    }
+    
+    void BitmaskBrickVoxel::Dispatch_Wcp(rhi::GraphicsCommandListDep* p_command_list,
+                        rhi::ConstantBufferPooledHandle scene_cbv,
+                        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
+                        )
+    {
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Ssvg_Dispatch_Wcp");
+
+        auto& global_res = gfx::GlobalRenderResource::Instance();
+
+        const math::Vec2i hw_depth_size = math::Vec2i(static_cast<int>(hw_depth_tex->GetWidth()), static_cast<int>(hw_depth_tex->GetHeight()));
+
+        // Wcp Begin Update Pass.
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpBeginUpdate");
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_wcp_begin_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
+            pso_wcp_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+            pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
+            pso_wcp_begin_update_->SetView(&desc_set, "RWSurfaceProbeCellList", wcp_visible_surface_list_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_wcp_begin_update_.Get());
+            p_command_list->SetDescriptorSet(pso_wcp_begin_update_.Get(), &desc_set);
+            pso_wcp_begin_update_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
+
+            p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+            p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
+            p_command_list->ResourceUavBarrier(wcp_visible_surface_list_.buffer.Get());
+        }
+        
+        // Wcp Visible Surface Processing Pass.
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpVisibleSurfaceProcessing");
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_wcp_visible_surface_proc_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
+            pso_wcp_visible_surface_proc_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
+            pso_wcp_visible_surface_proc_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_wcp_visible_surface_proc_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+            pso_wcp_visible_surface_proc_->SetView(&desc_set, "RWSurfaceProbeCellList", wcp_visible_surface_list_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_wcp_visible_surface_proc_.Get());
+            p_command_list->SetDescriptorSet(pso_wcp_visible_surface_proc_.Get(), &desc_set);
+            pso_wcp_visible_surface_proc_->DispatchHelper(p_command_list, hw_depth_size.x, hw_depth_size.y, 1);  // Screen処理でDispatch.
+
+            p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+            p_command_list->ResourceUavBarrier(wcp_visible_surface_list_.buffer.Get());
+        }
+        // Wcp VisibleSurfaceList IndirectArg生成.
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpGenerateVisibleSurfaceListIndirectArg");
+            
+            wcp_visible_surface_list_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_wcp_generate_visible_surface_list_indirect_arg_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_wcp_generate_visible_surface_list_indirect_arg_->SetView(&desc_set, "SurfaceProbeCellList", wcp_visible_surface_list_.srv.Get());
+            pso_wcp_generate_visible_surface_list_indirect_arg_->SetView(&desc_set, "RWVisibleSurfaceListIndirectArg", wcp_visible_surface_list_indirect_arg_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_wcp_generate_visible_surface_list_indirect_arg_.Get());
+            p_command_list->SetDescriptorSet(pso_wcp_generate_visible_surface_list_indirect_arg_.Get(), &desc_set);
+            pso_wcp_generate_visible_surface_list_indirect_arg_->DispatchHelper(p_command_list, 1, 1, 1);
+
+            wcp_visible_surface_list_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::IndirectArgument);
+        }
+        // Wcp Visible Surface Element RaySample Pass.
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpVisibleSurfaceElementRaySample");
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_wcp_visible_surface_element_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
+            pso_wcp_visible_surface_element_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_wcp_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+
+            pso_wcp_visible_surface_element_update_->SetView(&desc_set, "SurfaceProbeCellList", wcp_visible_surface_list_.srv.Get());
+            pso_wcp_visible_surface_element_update_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+            pso_wcp_visible_surface_element_update_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
+
+
+            p_command_list->SetPipelineState(pso_wcp_visible_surface_element_update_.Get());
+            p_command_list->SetDescriptorSet(pso_wcp_visible_surface_element_update_.Get(), &desc_set);
+
+            p_command_list->DispatchIndirect(wcp_visible_surface_list_indirect_arg_.buffer.Get());// 可視SurfaceListDispatch.
+
+
+            p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+            p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
+        }
+        // Wcp Coarse Probe RaySample Pass.
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpCoarseProbeRaySample");
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_wcp_coarse_ray_sample_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
+            pso_wcp_coarse_ray_sample_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_wcp_coarse_ray_sample_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+
+            pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+            pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_wcp_coarse_ray_sample_.Get());
+            p_command_list->SetDescriptorSet(pso_wcp_coarse_ray_sample_.Get(), &desc_set);
+            // 全Probe更新のスキップ要素分考慮したDispatch.
+            pso_wcp_coarse_ray_sample_->DispatchHelper(p_command_list, (wcp_grid_updater_.Get().total_count + (WCP_ALL_ELEMENT_UPDATE_SKIP_COUNT)) / (WCP_ALL_ELEMENT_UPDATE_SKIP_COUNT+1), 1, 1);
+
+            p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+            p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
+        }
+        // Wcp Octahedral Map Border Fill Pass.
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpFillProbeOctmapAtlasBorder");
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_wcp_fill_probe_octmap_atlas_border_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_wcp_fill_probe_octmap_atlas_border_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_wcp_fill_probe_octmap_atlas_border_.Get());
+            p_command_list->SetDescriptorSet(pso_wcp_fill_probe_octmap_atlas_border_.Get(), &desc_set);
+
+            // 全Probe更新のスキップ要素分考慮したDispatch.
+            pso_wcp_fill_probe_octmap_atlas_border_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
+
+            p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
+        }
+    }
+    
+    void BitmaskBrickVoxel::Dispatch_Debug(rhi::GraphicsCommandListDep* p_command_list,
+                        rhi::ConstantBufferPooledHandle scene_cbv,
+                        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
+                        rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav)
+    {
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "SsVg_Dispatch_Debug");
+
+        auto& global_res = gfx::GlobalRenderResource::Instance();
 
         // デバッグ描画.
         if(0 <= SsVg::dbg_view_mode_)
         {
-            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Debug");
-
             const math::Vec2i work_tex_size = math::Vec2i(static_cast<int>(work_tex->GetWidth()), static_cast<int>(work_tex->GetHeight()));
 
             ngl::rhi::DescriptorSetDep desc_set = {};
@@ -751,7 +796,7 @@ namespace ngl::render::app
         rhi::RefTextureDep hw_depth_tex, rhi::RefDsvDep hw_depth_dsv,
         rhi::RefTextureDep lighting_tex, rhi::RefRtvDep lighting_rtv)
     {
-        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Debug");
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Ssvg_Debug");
 
         
         // Viewport.
@@ -855,7 +900,15 @@ namespace ngl::render::app
     {
         if(ssvg_instance_)
         {
-            ssvg_instance_->Dispatch(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv, work_tex, work_uav);
+            ssvg_instance_->Dispatch_Begin(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
+
+            ssvg_instance_->Dispatch_Bbv_View(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
+
+            ssvg_instance_->Dispatch_Bbv_Main(p_command_list, scene_cbv);
+
+            ssvg_instance_->Dispatch_Wcp(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
+            
+            ssvg_instance_->Dispatch_Debug(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv, work_tex, work_uav);
         }
     }
 
