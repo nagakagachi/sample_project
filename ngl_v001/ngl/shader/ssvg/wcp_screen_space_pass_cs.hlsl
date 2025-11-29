@@ -14,7 +14,7 @@ wcp_screen_space_pass_cs.hlsl
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
 
-ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
+ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 Texture2D			TexHardwareDepth;
 SamplerState		SmpHardwareDepth;
 
@@ -35,8 +35,8 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
-	const float3 camera_dir = GetViewDirFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
-	const float3 camera_pos = GetViewPosFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
+	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+	const float3 camera_pos = GetViewPosFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
 	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
 	const float2 screen_size_f = float2(cb_ssvg.tex_hw_depth_size.xy);
@@ -62,7 +62,7 @@ void main_cs(
     // Tile単位で処理やAtomic書き出しをまとめることで効率化可能なはず.
 
     float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
-    float view_z = calc_view_z_from_ndc_z(d, ngl_cb_sceneview.cb_ndc_z_to_view_z_coef);
+    float view_z = calc_view_z_from_ndc_z(d, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
 
     // Skyチェック.
     if(65535.0 <= abs(view_z))
@@ -71,8 +71,8 @@ void main_cs(
     shared_work[gindex] = uint2(~uint(0), 0);// 初期無効値.
         
     // 深度->PixelWorldPosition
-    const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, ngl_cb_sceneview.cb_proj_mtx);
-    const float3 pixel_pos_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
+    const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_ngl_sceneview.cb_proj_mtx);
+    const float3 pixel_pos_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
 
     // PixelWorldPosition->VoxelCoord
     const float3 voxel_coordf = (pixel_pos_ws - cb_ssvg.wcp.grid_min_pos) * cb_ssvg.wcp.cell_size_inv;

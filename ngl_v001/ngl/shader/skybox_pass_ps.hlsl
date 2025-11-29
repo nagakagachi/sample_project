@@ -13,7 +13,7 @@ struct VS_OUTPUT
 
 #include "include/math_util.hlsli"
 #include "include/scene_view_struct.hlsli"
-ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
+ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 struct CbSkyBox
 {
@@ -32,8 +32,8 @@ SamplerState samp;
 
 float4 main_ps(VS_OUTPUT input) : SV_TARGET
 {
-	float3 ray_vs = CalcViewSpaceRay(input.uv, ngl_cb_sceneview.cb_proj_mtx);
-	float3 ray_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4(ray_vs, 0));
+	float3 ray_vs = CalcViewSpaceRay(input.uv, cb_ngl_sceneview.cb_proj_mtx);
+	float3 ray_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(ray_vs, 0));
 
 	float4 tex_color = (float4)0;
 	if(0 == cb_skybox.panorama_mode)

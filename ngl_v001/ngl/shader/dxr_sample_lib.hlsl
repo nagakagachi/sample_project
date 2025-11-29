@@ -36,7 +36,7 @@
 
 // SceneView定数バッファ構造定義.
 #include "include/scene_view_struct.hlsli"
-ConstantBuffer<SceneViewInfo> ngl_cb_sceneview : register(b0);
+ConstantBuffer<SceneViewInfo> cb_ngl_sceneview : register(b0);
 
 struct RaytraceInfo
 {
@@ -47,7 +47,7 @@ struct RaytraceInfo
 
 	int padding[3];
 };
-ConstantBuffer<RaytraceInfo> ngl_cb_raytrace : register(b1);
+ConstantBuffer<RaytraceInfo> cb_ngl_raytrace : register(b1);
 
 // Global Srv.
 // システム供給のASはGlobalRootで衝突しないと思われるレジスタで供給.
@@ -77,20 +77,20 @@ void rayGen()
 
 	float3 ray_dir_ws;
 	{
-		float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, ngl_cb_sceneview.cb_proj_mtx);
-		ray_dir_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4(to_pixel_ray_vs, 0.0));
+		float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_ngl_sceneview.cb_proj_mtx);
+		ray_dir_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(to_pixel_ray_vs, 0.0));
 	}
 
 	const int ray_flag = 0;
 	// BLAS中のSubGeometryIndexに乗算される値(PrimaryとShadowの2つのHitgroupがある場合は 2). 結果はHitGroupIndex計算時に加算される.
-	const int multiplier_for_subgeometry_index = ngl_cb_raytrace.num_ray_type;
+	const int multiplier_for_subgeometry_index = cb_ngl_raytrace.num_ray_type;
 	const int hitgroup_debug_index = (launch_index.x/512+launch_index.y/512)&1;
 	// HItGroupIndex計算時に加算される値. Primary=0, Shadow=1 のシェーダを切り替える際のインデックスに使うなど.
 	const int ray_contribution_to_hitgroup = hitgroup_debug_index;//1;
 	const int miss_shader_debug_index = (launch_index.x/20+launch_index.y/20)&1;//0;// ２つMissShaderが登録されている体で適当に切り替え.
 
 	RayDesc ray;
-	ray.Origin = float3(ngl_cb_sceneview.cb_view_inv_mtx._m03, ngl_cb_sceneview.cb_view_inv_mtx._m13, ngl_cb_sceneview.cb_view_inv_mtx._m23);// View逆行列からRay始点取得.
+	ray.Origin = float3(cb_ngl_sceneview.cb_view_inv_mtx._m03, cb_ngl_sceneview.cb_view_inv_mtx._m13, cb_ngl_sceneview.cb_view_inv_mtx._m23);// View逆行列からRay始点取得.
 	ray.Direction = ray_dir_ws;
 	ray.TMin = 0.0;
 	ray.TMax = 1e38;

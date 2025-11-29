@@ -470,7 +470,7 @@ namespace ngl::render::app
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvBeginUpdate");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_bbv_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                pso_bbv_begin_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
                 pso_bbv_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                 pso_bbv_begin_update_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
                 pso_bbv_begin_update_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
@@ -491,7 +491,7 @@ namespace ngl::render::app
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpBeginUpdate");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_wcp_begin_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                pso_wcp_begin_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
                 pso_wcp_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                 pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
                 pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
@@ -514,7 +514,7 @@ namespace ngl::render::app
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_bbv_hollow_voxel_info_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
-                pso_bbv_hollow_voxel_info_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
                 pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_bbv_surface_injection_view_info", &cbh_injection_view_info->cbv_);
                 pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                 pso_bbv_hollow_voxel_info_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
@@ -549,7 +549,7 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_bbv_voxelize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
                 
-                pso_bbv_voxelize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                pso_bbv_voxelize_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
                 pso_bbv_voxelize_->SetView(&desc_set, "cb_bbv_surface_injection_view_info", &cbh_injection_view_info->cbv_);
                 pso_bbv_voxelize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
 
@@ -585,7 +585,7 @@ namespace ngl::render::app
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ProbeCommonUpdate");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_bbv_element_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                pso_bbv_element_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
                 pso_bbv_element_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                 pso_bbv_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                 pso_bbv_element_update_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
@@ -604,7 +604,7 @@ namespace ngl::render::app
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "VisibleSurfaceVoxelUpdate");
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_bbv_visible_surface_element_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                    pso_bbv_visible_surface_element_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
                     pso_bbv_visible_surface_element_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_bbv_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                     pso_bbv_visible_surface_element_update_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
@@ -630,7 +630,7 @@ namespace ngl::render::app
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
                     pso_wcp_visible_surface_proc_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
-                    pso_wcp_visible_surface_proc_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                    pso_wcp_visible_surface_proc_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
                     pso_wcp_visible_surface_proc_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_wcp_visible_surface_proc_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
                     pso_wcp_visible_surface_proc_->SetView(&desc_set, "RWSurfaceProbeCellList", wcp_visible_surface_list_.uav.Get());
@@ -664,7 +664,7 @@ namespace ngl::render::app
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpVisibleSurfaceElementRaySample");
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_wcp_visible_surface_element_update_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                    pso_wcp_visible_surface_element_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
                     pso_wcp_visible_surface_element_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_wcp_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
 
@@ -688,7 +688,7 @@ namespace ngl::render::app
                         NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpCoarseProbeRaySample");
 
                         ngl::rhi::DescriptorSetDep desc_set = {};
-                        pso_wcp_coarse_ray_sample_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+                        pso_wcp_coarse_ray_sample_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
                         pso_wcp_coarse_ray_sample_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                         pso_wcp_coarse_ray_sample_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
 
@@ -731,7 +731,7 @@ namespace ngl::render::app
 
             ngl::rhi::DescriptorSetDep desc_set = {};
             pso_bbv_debug_visualize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+            pso_bbv_debug_visualize_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
             pso_bbv_debug_visualize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
@@ -770,7 +770,7 @@ namespace ngl::render::app
             p_command_list->SetPipelineState(pso_bbv_debug_probe_.Get());
             ngl::rhi::DescriptorSetDep desc_set = {};
 
-            pso_bbv_debug_probe_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+            pso_bbv_debug_probe_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
             
             pso_bbv_debug_probe_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
             pso_bbv_debug_probe_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
@@ -790,7 +790,7 @@ namespace ngl::render::app
             p_command_list->SetPipelineState(pso_wcp_debug_probe_.Get());
             ngl::rhi::DescriptorSetDep desc_set = {};
 
-            pso_wcp_debug_probe_->SetView(&desc_set, "ngl_cb_sceneview", &scene_cbv->cbv_);
+            pso_wcp_debug_probe_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
 
             pso_wcp_debug_probe_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
             pso_wcp_debug_probe_->SetView(&desc_set, "WcpProbeBuffer", wcp_buffer_.srv.Get());

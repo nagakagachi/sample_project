@@ -8,7 +8,7 @@
 #include "../ssvg_util.hlsli"
 #include "../../include/scene_view_struct.hlsli"
 
-ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
+ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 SamplerState        SmpLinearClamp;
 
@@ -52,10 +52,10 @@ VS_OUTPUT main_vs(VS_INPUT input)
 
 	VS_OUTPUT output = (VS_OUTPUT)0;
 
-	const float3 camera_dir = GetViewDirFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
-    const float3 camera_up = GetViewUpDirFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
-    const float3 camera_right = GetViewRightDirFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
-	const float3 camera_pos = GetViewPosFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
+	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+    const float3 camera_up = GetViewUpDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+    const float3 camera_right = GetViewRightDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+	const float3 camera_pos = GetViewPosFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
 
     //　VertexIDからインスタンスID,三角形ID,三角形内頂点IDを計算.
@@ -84,11 +84,11 @@ VS_OUTPUT main_vs(VS_INPUT input)
     const int vtx_index = particle_quad_index[ instance_vtx_id ];
     float3 quad_vtx_pos = particle_quad_pos[vtx_index] * draw_scale;
     // ビルボード
-    quad_vtx_pos = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4(quad_vtx_pos, 0.0)).xyz;
+    quad_vtx_pos = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(quad_vtx_pos, 0.0)).xyz;
 
     float3 pos_ws = quad_vtx_pos + instance_pos;
-    float3 pos_vs = mul(ngl_cb_sceneview.cb_view_mtx, float4(pos_ws, 1.0));
-    float4 pos_cs = mul(ngl_cb_sceneview.cb_proj_mtx, float4(pos_vs, 1.0));
+    float3 pos_vs = mul(cb_ngl_sceneview.cb_view_mtx, float4(pos_ws, 1.0));
+    float4 pos_cs = mul(cb_ngl_sceneview.cb_proj_mtx, float4(pos_vs, 1.0));
 
     output.pos = pos_cs;
     output.uv = particle_quad_uv[vtx_index];
@@ -104,8 +104,8 @@ VS_OUTPUT main_vs(VS_INPUT input)
 
 float4 main_ps(VS_OUTPUT input) : SV_TARGET0
 {
-    const float3 camera_up = ngl_cb_sceneview.cb_view_inv_mtx._m01_m11_m21;
-	const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
+    const float3 camera_up = cb_ngl_sceneview.cb_view_inv_mtx._m01_m11_m21;
+	const float3 camera_pos = cb_ngl_sceneview.cb_view_inv_mtx._m03_m13_m23;
 
     const float2 unit_dist = (input.uv - float2(0.5,0.5)) * float2(2.0, -2.0);
     const float unit_dist_len_sq = dot(unit_dist, unit_dist);

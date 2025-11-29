@@ -176,7 +176,7 @@ namespace ngl::render::task
                     command_list->SetPipelineState(pso_.Get());
                     ngl::rhi::DescriptorSetDep desc_set = {};
 
-                    pso_->SetView(&desc_set, "ngl_cb_sceneview", &setup_desc_.scene_cbv->cbv_);
+                    pso_->SetView(&desc_set, "cb_ngl_sceneview", &setup_desc_.scene_cbv->cbv_);
                     pso_->SetView(&desc_set, "cb_skybox", &cbh->cbv_);
                     pso_->SetView(&desc_set, "tex_skybox_cube", cube_srv);
                     

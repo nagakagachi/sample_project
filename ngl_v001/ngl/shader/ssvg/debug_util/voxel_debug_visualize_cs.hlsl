@@ -13,7 +13,7 @@ ss_voxel_debug_visualize_cs.hlsl
 // SceneView定数バッファ構造定義.
 #include "../../include/scene_view_struct.hlsli"
 
-ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
+ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 RWTexture2D<float4>	RWTexWork;
 
@@ -31,11 +31,11 @@ void main_cs(
 	const float2 screen_size_f = float2(cb_ssvg.tex_hw_depth_size.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
     
-	const float3 camera_dir = GetViewDirFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
-	const float3 camera_pos = GetViewPosFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
+	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+	const float3 camera_pos = GetViewPosFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
     
-    const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, ngl_cb_sceneview.cb_proj_mtx);
-    const float3 ray_dir_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4(to_pixel_ray_vs, 0.0));
+    const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_ngl_sceneview.cb_proj_mtx);
+    const float3 ray_dir_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(to_pixel_ray_vs, 0.0));
 
     if(4 >= cb_ssvg.debug_view_mode)
     {

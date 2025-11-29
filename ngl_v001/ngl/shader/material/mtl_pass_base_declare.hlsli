@@ -34,7 +34,7 @@
 
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
-ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
+ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 // ShadowPass向け
 // Directional Cascade Shadow Rendering用 定数バッファ構造定義.
@@ -45,7 +45,7 @@ struct SceneDirectionalShadowRenderInfo
     float4x4 cb_shadow_proj_mtx;
     float4x4 cb_shadow_proj_inv_mtx;
 };
-ConstantBuffer<SceneDirectionalShadowRenderInfo> ngl_cb_shadowview;
+ConstantBuffer<SceneDirectionalShadowRenderInfo> cb_ngl_shadowview;
 
 
 // ------------------------------------------------------

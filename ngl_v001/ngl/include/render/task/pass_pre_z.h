@@ -60,7 +60,7 @@ namespace ngl::render::task
                     ngl::gfx::helper::SetFullscreenViewportAndScissor(commandlist, res_depth.tex_->GetWidth(), res_depth.tex_->GetHeight());
                     gfx::RenderMeshResource render_mesh_res = {};
                     {
-                        render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", &desc_.scene_cbv->cbv_};
+                        render_mesh_res.cbv_sceneview = {"cb_ngl_sceneview", &desc_.scene_cbv->cbv_};
                     }
                     
                     ngl::gfx::RenderMeshWithMaterial(*commandlist, gfx::MaterialPassPsoCreator_depth::k_name, desc_.gfx_scene, *desc_.p_mesh_proxy_id_array_, render_mesh_res);

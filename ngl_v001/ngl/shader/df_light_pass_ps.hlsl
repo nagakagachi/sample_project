@@ -15,8 +15,8 @@ struct VS_OUTPUT
 };
 
 #include "include/scene_view_struct.hlsli"
-ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
-ConstantBuffer<SceneDirectionalShadowSampleInfo> ngl_cb_shadowview;
+ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
+ConstantBuffer<SceneDirectionalShadowSampleInfo> cb_ngl_shadowview;
 
 struct CbLightingPass
 {
@@ -26,7 +26,7 @@ struct CbLightingPass
     int is_enable_gi;
     int dbg_view_ssvg_sky_visibility;
 };
-ConstantBuffer<CbLightingPass> ngl_cb_lighting_pass;
+ConstantBuffer<CbLightingPass> cb_ngl_lighting_pass;
 
 Texture2D tex_lineardepth;// Linear View Depth.
 Texture2D tex_gbuffer0;
@@ -105,10 +105,10 @@ float EvalDirectionalShadow(Texture2D tex_cascade_shadowmap, SamplerComparisonSt
 {
 	// Cascade Index.
 	const float view_depth = dot(pixel_pos_ws - camera_pos, camera_dir);
-	int sample_cascade_index = ngl_cb_shadowview.cb_valid_cascade_count - 1;
-	for(int i = 0; i < ngl_cb_shadowview.cb_valid_cascade_count ; ++i)
+	int sample_cascade_index = cb_ngl_shadowview.cb_valid_cascade_count - 1;
+	for(int i = 0; i < cb_ngl_shadowview.cb_valid_cascade_count ; ++i)
 	{
-		if(view_depth < ngl_cb_shadowview.cb_cascade_far_distance4[i/4][i%4])
+		if(view_depth < cb_ngl_shadowview.cb_cascade_far_distance4[i/4][i%4])
 		{
 			sample_cascade_index = i;
 			break;
@@ -124,19 +124,19 @@ float EvalDirectionalShadow(Texture2D tex_cascade_shadowmap, SamplerComparisonSt
 	
 
 	// 補間用の次のCascade.
-	const int cascade_blend_count = max(2, ngl_cb_shadowview.cb_valid_cascade_count - sample_cascade_index);
+	const int cascade_blend_count = max(2, cb_ngl_shadowview.cb_valid_cascade_count - sample_cascade_index);
 	//const int cascade_blend_count = 1;// デバッグ用. ブレンドしない.
 
 	// 近い方のCascadeの末端で, 次のCascadeとブレンドする.
 	const float cascade_blend_rate =
-		(1 < cascade_blend_count)? 1.0 - saturate((ngl_cb_shadowview.cb_cascade_far_distance4[sample_cascade_index/4][sample_cascade_index%4] - view_depth) / k_cascade_blend_range_ws) : 0.0;
+		(1 < cascade_blend_count)? 1.0 - saturate((cb_ngl_shadowview.cb_cascade_far_distance4[sample_cascade_index/4][sample_cascade_index%4] - view_depth) / k_cascade_blend_range_ws) : 0.0;
 	
 	// ブレンド対象のCascade2つに関するLitVisibility. デフォルトは影なし(1.0).
 	float2 cascade_blend_lit_sample = float2(1.0, 1.0);
 	for(int cascade_i = 0; cascade_i < cascade_blend_count; ++cascade_i)
 	{
 		const int cascade_index = sample_cascade_index + cascade_i;
-		const float cascade_size_rate_based_on_c0 = (ngl_cb_shadowview.cb_cascade_far_distance4[cascade_index/4][cascade_index%4]) / ngl_cb_shadowview.cb_cascade_far_distance4[0][0];
+		const float cascade_size_rate_based_on_c0 = (cb_ngl_shadowview.cb_cascade_far_distance4[cascade_index/4][cascade_index%4]) / cb_ngl_shadowview.cb_cascade_far_distance4[0][0];
 	
 		const float slope_rate = (1.0 - saturate(dot(L, normal)));
 		const float slope_bias_ws = k_coef_slope_bias_ws * slope_rate;
@@ -146,12 +146,12 @@ float EvalDirectionalShadow(Texture2D tex_cascade_shadowmap, SamplerComparisonSt
 		float3 shadow_sample_bias_vec_ws = (L * shadow_sample_bias) + (normal * normal_bias_ws);
 		shadow_sample_bias_vec_ws *= cascade_size_rate_based_on_c0;// Cascadeのサイズによる補正項.
 	
-		const float3 pixel_pos_shadow_vs = mul(ngl_cb_shadowview.cb_shadow_view_mtx[cascade_index], float4(pixel_pos_ws + shadow_sample_bias_vec_ws, 1.0));
-		const float4 pixel_pos_shadow_cs = mul(ngl_cb_shadowview.cb_shadow_proj_mtx[cascade_index], float4(pixel_pos_shadow_vs, 1.0));
+		const float3 pixel_pos_shadow_vs = mul(cb_ngl_shadowview.cb_shadow_view_mtx[cascade_index], float4(pixel_pos_ws + shadow_sample_bias_vec_ws, 1.0));
+		const float4 pixel_pos_shadow_cs = mul(cb_ngl_shadowview.cb_shadow_proj_mtx[cascade_index], float4(pixel_pos_shadow_vs, 1.0));
 		const float3 pixel_pos_shadow_cs_pd = pixel_pos_shadow_cs.xyz;;
 		
-		const float2 cascade_uv_lt = ngl_cb_shadowview.cb_cascade_tile_uvoffset_uvscale[cascade_index].xy;
-		const float2 cascade_uv_size = ngl_cb_shadowview.cb_cascade_tile_uvoffset_uvscale[cascade_index].zw;
+		const float2 cascade_uv_lt = cb_ngl_shadowview.cb_cascade_tile_uvoffset_uvscale[cascade_index].xy;
+		const float2 cascade_uv_size = cb_ngl_shadowview.cb_cascade_tile_uvoffset_uvscale[cascade_index].zw;
 	
 		float2 pixel_pos_shadow_uv = pixel_pos_shadow_cs_pd.xy * 0.5 + 0.5;
 		pixel_pos_shadow_uv.y = 1.0 - pixel_pos_shadow_uv.y;// Y反転.
@@ -224,18 +224,18 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	float gb_material_id = gb2.w;
 	float3 gb_emissive = gb3.xyz;
 
-	const float3 camera_dir = GetViewDirFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
-	const float3 camera_pos = GetViewPosFromInverseViewMatrix(ngl_cb_sceneview.cb_view_inv_mtx);
+	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+	const float3 camera_pos = GetViewPosFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
 	// ピクセルへのワールド空間レイを計算.
-	const float3 to_pixel_ray_vs = CalcViewSpaceRay(input.uv, ngl_cb_sceneview.cb_proj_mtx);
-	const float3 pixel_pos_ws = mul(ngl_cb_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * ld, 1.0));
+	const float3 to_pixel_ray_vs = CalcViewSpaceRay(input.uv, cb_ngl_sceneview.cb_proj_mtx);
+	const float3 pixel_pos_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * ld, 1.0));
 	const float3 to_pixel_vec_ws = pixel_pos_ws - camera_pos;
 	const float3 to_pixel_ray_ws = normalize(to_pixel_vec_ws);
 
 	
 	const float3 lit_intensity = float3(1.0, 1.0, 1.0) * NGL_PI * 1.5;
-	const float3 lit_dir = normalize(ngl_cb_shadowview.cb_shadow_view_inv_mtx[0]._m02_m12_m22);// InvShadowViewMtxから向きベクトルを取得.
+	const float3 lit_dir = normalize(cb_ngl_shadowview.cb_shadow_view_inv_mtx[0]._m02_m12_m22);// InvShadowViewMtxから向きベクトルを取得.
 
 
 	const float3 V = -to_pixel_ray_ws;
@@ -256,7 +256,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 
     // GIのテスト(Dynamic Sky Visibility).
     float sky_visibility = 1.0;;
-    if(ngl_cb_lighting_pass.is_enable_gi)
+    if(cb_ngl_lighting_pass.is_enable_gi)
     {
         uint tex_width, tex_height;
         WcpProbeAtlasTex.GetDimensions(tex_width, tex_height);
@@ -332,7 +332,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
     // ------------------------------------------------------------------------------
 
 	// 過去フレームを使ったフィードバックブラーテスト.
-	if(ngl_cb_lighting_pass.enable_feedback_blur_test)
+	if(cb_ngl_lighting_pass.enable_feedback_blur_test)
 	{
 		// 画面端でテスト用のフィードバックブラー.
 		const float2 dist_from_center = (input.uv - 0.5);
@@ -346,7 +346,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
     // デバッグ表示.
     // ------------------------------------------------------------------------------
         // sky_visibilityテスト.
-        if(ngl_cb_lighting_pass.dbg_view_ssvg_sky_visibility)
+        if(cb_ngl_lighting_pass.dbg_view_ssvg_sky_visibility)
         {
             lit_color = sky_visibility;
         }

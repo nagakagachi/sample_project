@@ -13,7 +13,7 @@ bbv_element_update_cs.hlsl
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
 
-ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
+ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
@@ -24,7 +24,7 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
-	const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
+	const float3 camera_pos = cb_ngl_sceneview.cb_view_inv_mtx._m03_m13_m23;
 
     const uint elem_count = cb_ssvg.bbv.grid_resolution.x * cb_ssvg.bbv.grid_resolution.y * cb_ssvg.bbv.grid_resolution.z;
 

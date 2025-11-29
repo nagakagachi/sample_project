@@ -16,7 +16,7 @@ wcp_element_update_cs.hlsl
 #define RAY_SAMPLE_COUNT_PER_VOXEL 8
 #define PROBE_UPDATE_TEMPORAL_RATE  (0.1)
 
-ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
+ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(
@@ -26,7 +26,7 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
-	const float3 camera_pos = ngl_cb_sceneview.cb_view_inv_mtx._m03_m13_m23;
+	const float3 camera_pos = cb_ngl_sceneview.cb_view_inv_mtx._m03_m13_m23;
 
     const uint elem_count = cb_ssvg.wcp.grid_resolution.x * cb_ssvg.wcp.grid_resolution.y * cb_ssvg.wcp.grid_resolution.z;
 

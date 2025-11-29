@@ -88,8 +88,8 @@
         const float3x4 instance_mtx_cofactor = NglGetInstanceTransformCofactor(0);
         
         float3 pos_ws = mul(instance_mtx, float4(input_wrap.pos, 1.0)).xyz;
-        float3 pos_vs = mul(ngl_cb_sceneview.cb_view_mtx, float4(pos_ws, 1.0));
-        float4 pos_cs = mul(ngl_cb_sceneview.cb_proj_mtx, float4(pos_vs, 1.0));
+        float3 pos_vs = mul(cb_ngl_sceneview.cb_view_mtx, float4(pos_ws, 1.0));
+        float4 pos_cs = mul(cb_ngl_sceneview.cb_proj_mtx, float4(pos_vs, 1.0));
 
         // TangetnFrameの内, Normalは逆転置行列transpose(inverse(M)) または 余因子行列cofactor(M) で変換する.
         //      https://github.com/graphitemaster/normals_revisited
@@ -128,16 +128,16 @@
                 pos_ws = pos_ws + mtl_output.position_offset_ws;
                 // 再計算.
                 // Shadowの場合はMaterial計算用はSceneView, 最終的な変換はShadowViewで変換する.
-                pos_vs = mul(ngl_cb_shadowview.cb_shadow_view_mtx, float4(pos_ws, 1.0));
-                pos_cs = mul(ngl_cb_shadowview.cb_shadow_proj_mtx, float4(pos_vs, 1.0));
+                pos_vs = mul(cb_ngl_shadowview.cb_shadow_view_mtx, float4(pos_ws, 1.0));
+                pos_cs = mul(cb_ngl_shadowview.cb_shadow_proj_mtx, float4(pos_vs, 1.0));
             }
         #else
             // DepthPrePass, GBUfferPass用.
             {
                 pos_ws = pos_ws + mtl_output.position_offset_ws;
                 // 再計算.
-                pos_vs = mul(ngl_cb_sceneview.cb_view_mtx, float4(pos_ws, 1.0));
-                pos_cs = mul(ngl_cb_sceneview.cb_proj_mtx, float4(pos_vs, 1.0));
+                pos_vs = mul(cb_ngl_sceneview.cb_view_mtx, float4(pos_ws, 1.0));
+                pos_cs = mul(cb_ngl_sceneview.cb_proj_mtx, float4(pos_vs, 1.0));
             }
         #endif
         // ---------------------------------------------------------------

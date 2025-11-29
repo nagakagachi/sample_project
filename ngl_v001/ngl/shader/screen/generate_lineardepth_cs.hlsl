@@ -12,7 +12,7 @@ generate_lineardepth_cs.hlsl
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
 
-ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
+ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 Texture2D			TexHardwareDepth;
 SamplerState		SmpHardwareDepth;
@@ -38,7 +38,7 @@ void main_cs(
 				d = 0.0;
 		#endif
 
-	float view_z = calc_view_z_from_ndc_z(d, ngl_cb_sceneview.cb_ndc_z_to_view_z_coef);
+	float view_z = calc_view_z_from_ndc_z(d, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
 
 	RWTexLinearDepth[dtid.xy] = view_z;// 現状はViewZそのまま(1以上のワールド距離単位)
 }

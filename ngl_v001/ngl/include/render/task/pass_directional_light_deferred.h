@@ -203,9 +203,9 @@ namespace ngl::render::task
 					gfx_commandlist->SetPipelineState(pso_.Get());
 					ngl::rhi::DescriptorSetDep desc_set = {};
 
-					pso_->SetView(&desc_set, "ngl_cb_sceneview", &desc_.scene_cbv->cbv_);
-					pso_->SetView(&desc_set, "ngl_cb_shadowview", &desc_.ref_shadow_cbv->cbv_);
-					pso_->SetView(&desc_set, "ngl_cb_lighting_pass", &lighting_cbh->cbv_);
+					pso_->SetView(&desc_set, "cb_ngl_sceneview", &desc_.scene_cbv->cbv_);
+					pso_->SetView(&desc_set, "cb_ngl_shadowview", &desc_.ref_shadow_cbv->cbv_);
+					pso_->SetView(&desc_set, "cb_ngl_lighting_pass", &lighting_cbh->cbv_);
 						
 					pso_->SetView(&desc_set, "tex_lineardepth", res_linear_depth.srv_.Get());
 					pso_->SetView(&desc_set, "tex_gbuffer0", res_gb0.srv_.Get());

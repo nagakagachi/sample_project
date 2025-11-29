@@ -14,7 +14,7 @@ Dispatchは全域としているが, 最適化としてはInvalidate領域サイ
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
 
-ConstantBuffer<SceneViewInfo> ngl_cb_sceneview;
+ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 // DepthBufferに対してDispatch.
 [numthreads(96, 1, 1)]
