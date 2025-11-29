@@ -42,9 +42,11 @@ void main_cs(
 	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 	const float3 camera_pos = GetViewPosFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
-	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
-	const float2 screen_size_f = float2(cb_ssvg.tex_hw_depth_size.xy);
-	const float2 screen_uv = (screen_pos_f / screen_size_f);
+    // 範囲チェック.
+    if(any(dtid.xy >= cb_injection_src_view_info.cb_view_depth_buffer_offset_size.zw))
+    {
+        return;
+    }
 
     #if 1 < THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH
         // Tile単位処理スキップ軽量化.
@@ -60,140 +62,141 @@ void main_cs(
         }
     #endif
 
-    // ハードウェア深度取得.
-    float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
+    // ハードウェア深度取得. AtlasTexture対応のためオフセット考慮.
+    float d = TexHardwareDepth.Load(int3(dtid.xy + cb_injection_src_view_info.cb_view_depth_buffer_offset_size.xy, 0)).r;
     float view_z = min(65535.0, calc_view_z_from_ndc_z(d, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef));
 
     shared_bbv_bitmask_addr[gindex] = uint4(~uint(0), 0, 0, 0);// 初期無効値.
     
-        const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_injection_src_view_info.cb_proj_mtx);
-        const float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
+    const float2 screen_uv = (float2(dtid.xy) + float2(0.5, 0.5)) / float2(cb_injection_src_view_info.cb_view_depth_buffer_offset_size.zw);
+    const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_injection_src_view_info.cb_proj_mtx);
+    const float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
 
-        const float3 to_pixel_vec_ws = pixel_pos_ws - camera_pos;
-        const float3 ray_dir_ws = normalize(to_pixel_vec_ws);
+    const float3 to_pixel_vec_ws = pixel_pos_ws - camera_pos;
+    const float3 ray_dir_ws = normalize(to_pixel_vec_ws);
 
-        // 深度バッファの手前までレイトレース.
-        // Note:適当な固定値ではなく, DDA相当の計算で1セル分バックトレースしたい
-        const float trace_distance = dot(ray_dir_ws, to_pixel_vec_ws) - cb_ssvg.bbv.cell_size*k_bbv_per_voxel_resolution_inv*0.9;
-            
-        int hit_voxel_index = -1;
-        float4 debug_ray_info;
-        // Trace最適化検証.
-        float4 curr_ray_t_ws = trace_bbv(
-            hit_voxel_index, debug_ray_info,
-            camera_pos, ray_dir_ws, trace_distance, 
-            cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
-            cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
-
-        if(0.0 <= curr_ray_t_ws.x)
-        {
-            const float3 hit_pos_ws = camera_pos + ray_dir_ws * (curr_ray_t_ws.x + 0.001);// ヒット位置は表面なので除去したいVoxelに侵入するためオフセット.
-
-            // PixelWorldPosition->VoxelCoord
-            const float3 voxel_coordf = (hit_pos_ws - cb_ssvg.bbv.grid_min_pos) * cb_ssvg.bbv.cell_size_inv;
-            const int3 voxel_coord = floor(voxel_coordf);
-            if(all(voxel_coord >= 0) && all(voxel_coord < cb_ssvg.bbv.grid_resolution))
-            {
-                int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
-                uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution);
-
-                {
-                    // 占有ビットマスク.
-                    const float3 voxel_coord_frac = frac(voxel_coordf);
-                    const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_bbv_per_voxel_resolution);
-
-                    uint bitcell_u32_offset;
-                    uint bitcell_u32_bit_pos;
-                    calc_bbv_bitcell_info(bitcell_u32_offset, bitcell_u32_bit_pos, voxel_coord_bitmask_pos);
-
-                    shared_bbv_bitmask_addr[gindex] = uint4(voxel_index, 1, bitcell_u32_offset, (1 << bitcell_u32_bit_pos));
-                }
-            }
-        }
+    // 深度バッファの手前までレイトレース.
+    // Note:適当な固定値ではなく, DDA相当の計算で1セル分バックトレースしたい
+    const float trace_distance = dot(ray_dir_ws, to_pixel_vec_ws) - cb_ssvg.bbv.cell_size*k_bbv_per_voxel_resolution_inv*0.9;
         
-        GroupMemoryBarrierWithGroupSync();
-        #if 0
-            // シンプルに小Tile毎に最小インデックスの要素との一致をチェックしてマージと除去をする.後段のAtomic操作を減らすことが目的.
-            // 小タイルの0番目が担当.
-            if(0 == (gtid.x%REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH) && 0 == (gtid.y%REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH))
-            {
-                for(int ix = 0; ix < REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH; ++ix)
-                {
-                    for(int iy = 0; iy < REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH; ++iy)
-                    {
-                        const uint check_index = (gtid.y + iy)*TILE_WIDTH + (gtid.x + ix);
-                        if(check_index == gindex || check_index >= (TILE_WIDTH*TILE_WIDTH))
-                            continue;
-                        
-                        // Voxelの一致チェック.
-                        if(shared_bbv_bitmask_addr[gindex].x == shared_bbv_bitmask_addr[check_index].x)
-                        {
-                            // u32オフセットも一致する場合はビットマスクをマージ.
-                            if(shared_bbv_bitmask_addr[gindex].z == shared_bbv_bitmask_addr[check_index].z)
-                            {
-                                shared_bbv_bitmask_addr[gindex].w |= shared_bbv_bitmask_addr[check_index].w;// マージ.
-                                shared_bbv_bitmask_addr[check_index].x = ~uint(0);// Voxelも書き込みu32オフセットも一致するため完全にマージして無効化.
-                            }
-                        }   
-                    }
-                }
-            }
-        #else
-            // シンプルにshared_bbv_bitmask_addrを線形探索して x,zが一致する要素はマージし, インデックスが若い方のみを残す.
-            //const uint k_reduce_tile_size = REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH*REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH;
-            const uint k_reduce_tile_size = TILE_WIDTH*TILE_WIDTH;
-            if(0 == (gindex%(k_reduce_tile_size)))
-            {
-                for(int i = gindex; i < k_reduce_tile_size-1; ++i)
-                {
-                    const uint base_voxel_index = shared_bbv_bitmask_addr[i].x;
-                    const uint base_bitmask_u32_offset = shared_bbv_bitmask_addr[i].z;
-                    if(~uint(0) == base_voxel_index)
-                        continue;
+    int hit_voxel_index = -1;
+    float4 debug_ray_info;
+    // Trace最適化検証.
+    float4 curr_ray_t_ws = trace_bbv(
+        hit_voxel_index, debug_ray_info,
+        camera_pos, ray_dir_ws, trace_distance, 
+        cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
+        cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
 
-                    for(int j = i + 1; j < k_reduce_tile_size; ++j)
-                    {
-                        // VoxelIndex, u32オフセットが一致する場合はマージ.
-                        if((base_voxel_index == shared_bbv_bitmask_addr[j].x) &&
-                           (base_bitmask_u32_offset == shared_bbv_bitmask_addr[j].z))
-                        {
-                            // マージ.
-                            shared_bbv_bitmask_addr[i].w |= shared_bbv_bitmask_addr[j].w;
-                            // 無効化.
-                            shared_bbv_bitmask_addr[j].x = ~uint(0);
-                        }
-                    }
-                }
-            }
-        #endif
+    if(0.0 <= curr_ray_t_ws.x)
+    {
+        const float3 hit_pos_ws = camera_pos + ray_dir_ws * (curr_ray_t_ws.x + 0.001);// ヒット位置は表面なので除去したいVoxelに侵入するためオフセット.
 
-        GroupMemoryBarrierWithGroupSync();
-
-        // shared memからバッファ書き込み解決. ここで重複要素への書き込みをマージしてAtomic操作の衝突を最小化したい.
-        const uint voxel_index = shared_bbv_bitmask_addr[gindex].x;
-        //const uint valid_flag = shared_bbv_bitmask_addr[gindex].y;
-        const uint bitmask_u32_offset = shared_bbv_bitmask_addr[gindex].z;
-        const uint bitmask_append = shared_bbv_bitmask_addr[gindex].w;
-
-        // スタックに追加.
-        if(~uint(0) != voxel_index)
+        // PixelWorldPosition->VoxelCoord
+        const float3 voxel_coordf = (hit_pos_ws - cb_ssvg.bbv.grid_min_pos) * cb_ssvg.bbv.cell_size_inv;
+        const int3 voxel_coord = floor(voxel_coordf);
+        if(all(voxel_coord >= 0) && all(voxel_coord < cb_ssvg.bbv.grid_resolution))
         {
-            int current_visible_count;
-            InterlockedAdd(RWRemoveVoxelList[0], 1, current_visible_count);
-            if(cb_ssvg.bbv_hollow_voxel_buffer_size > current_visible_count)
+            int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
+            uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution);
+
             {
-                // 登録位置はindex0のカウンタを除いた位置(+1).
-                const int target_index = (current_visible_count + 1) * k_component_count_RemoveVoxelList;
-                // 追加可能であれば登録.
-                RWRemoveVoxelList[(target_index)] = voxel_index;
-                RWRemoveVoxelList[(target_index) + 1] = bitmask_u32_offset;
-                RWRemoveVoxelList[(target_index) + 2] = bitmask_append;
-                RWRemoveVoxelList[(target_index) + 3] = 0;// 予備.
-            }
-            else
-            {
-                // サイズオーバーの場合はカウンタを戻す.
-                InterlockedAdd(RWRemoveVoxelList[0], -1);
+                // 占有ビットマスク.
+                const float3 voxel_coord_frac = frac(voxel_coordf);
+                const uint3 voxel_coord_bitmask_pos = uint3(voxel_coord_frac * k_bbv_per_voxel_resolution);
+
+                uint bitcell_u32_offset;
+                uint bitcell_u32_bit_pos;
+                calc_bbv_bitcell_info(bitcell_u32_offset, bitcell_u32_bit_pos, voxel_coord_bitmask_pos);
+
+                shared_bbv_bitmask_addr[gindex] = uint4(voxel_index, 1, bitcell_u32_offset, (1u << bitcell_u32_bit_pos));
             }
         }
+    }
+    
+    GroupMemoryBarrierWithGroupSync();
+    #if 0
+        // シンプルに小Tile毎に最小インデックスの要素との一致をチェックしてマージと除去をする.後段のAtomic操作を減らすことが目的.
+        // 小タイルの0番目が担当.
+        if(0 == (gtid.x%REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH) && 0 == (gtid.y%REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH))
+        {
+            for(int ix = 0; ix < REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH; ++ix)
+            {
+                for(int iy = 0; iy < REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH; ++iy)
+                {
+                    const uint check_index = (gtid.y + iy)*TILE_WIDTH + (gtid.x + ix);
+                    if(check_index == gindex || check_index >= (TILE_WIDTH*TILE_WIDTH))
+                        continue;
+                    
+                    // Voxelの一致チェック.
+                    if(shared_bbv_bitmask_addr[gindex].x == shared_bbv_bitmask_addr[check_index].x)
+                    {
+                        // u32オフセットも一致する場合はビットマスクをマージ.
+                        if(shared_bbv_bitmask_addr[gindex].z == shared_bbv_bitmask_addr[check_index].z)
+                        {
+                            shared_bbv_bitmask_addr[gindex].w |= shared_bbv_bitmask_addr[check_index].w;// マージ.
+                            shared_bbv_bitmask_addr[check_index].x = ~uint(0);// Voxelも書き込みu32オフセットも一致するため完全にマージして無効化.
+                        }
+                    }   
+                }
+            }
+        }
+    #else
+        // シンプルにshared_bbv_bitmask_addrを線形探索して x,zが一致する要素はマージし, インデックスが若い方のみを残す.
+        //const uint k_reduce_tile_size = REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH*REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH;
+        const uint k_reduce_tile_size = TILE_WIDTH*TILE_WIDTH;
+        if(0 == (gindex%(k_reduce_tile_size)))
+        {
+            for(int i = gindex; i < k_reduce_tile_size-1; ++i)
+            {
+                const uint base_voxel_index = shared_bbv_bitmask_addr[i].x;
+                const uint base_bitmask_u32_offset = shared_bbv_bitmask_addr[i].z;
+                if(~uint(0) == base_voxel_index)
+                    continue;
+
+                for(int j = i + 1; j < k_reduce_tile_size; ++j)
+                {
+                    // VoxelIndex, u32オフセットが一致する場合はマージ.
+                    if((base_voxel_index == shared_bbv_bitmask_addr[j].x) &&
+                        (base_bitmask_u32_offset == shared_bbv_bitmask_addr[j].z))
+                    {
+                        // マージ.
+                        shared_bbv_bitmask_addr[i].w |= shared_bbv_bitmask_addr[j].w;
+                        // 無効化.
+                        shared_bbv_bitmask_addr[j].x = ~uint(0);
+                    }
+                }
+            }
+        }
+    #endif
+
+    GroupMemoryBarrierWithGroupSync();
+
+    // shared memからバッファ書き込み解決. ここで重複要素への書き込みをマージしてAtomic操作の衝突を最小化したい.
+    const uint voxel_index = shared_bbv_bitmask_addr[gindex].x;
+    //const uint valid_flag = shared_bbv_bitmask_addr[gindex].y;
+    const uint bitmask_u32_offset = shared_bbv_bitmask_addr[gindex].z;
+    const uint bitmask_append = shared_bbv_bitmask_addr[gindex].w;
+
+    // スタックに追加.
+    if(~uint(0) != voxel_index)
+    {
+        int current_visible_count;
+        InterlockedAdd(RWRemoveVoxelList[0], 1, current_visible_count);
+        if(cb_ssvg.bbv_hollow_voxel_buffer_size > current_visible_count)
+        {
+            // 登録位置はindex0のカウンタを除いた位置(+1).
+            const int target_index = (current_visible_count + 1) * k_component_count_RemoveVoxelList;
+            // 追加可能であれば登録.
+            RWRemoveVoxelList[(target_index)] = voxel_index;
+            RWRemoveVoxelList[(target_index) + 1] = bitmask_u32_offset;
+            RWRemoveVoxelList[(target_index) + 2] = bitmask_append;
+            RWRemoveVoxelList[(target_index) + 3] = 0;// 予備.
+        }
+        else
+        {
+            // サイズオーバーの場合はカウンタを戻す.
+            InterlockedAdd(RWRemoveVoxelList[0], -1);
+        }
+    }
 }

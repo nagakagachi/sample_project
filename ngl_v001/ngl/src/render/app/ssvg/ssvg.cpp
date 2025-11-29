@@ -401,7 +401,7 @@ namespace ngl::render::app
                 p->wcp_visible_voxel_buffer_size = wcp_visible_surface_buffer_size_;
             }
 
-            p->tex_hw_depth_size = hw_depth_size;
+            p->tex_main_view_depth_size = hw_depth_size;
             p->frame_count = frame_count_;
 
             p->debug_view_mode = SsVg::dbg_view_mode_;
@@ -489,6 +489,13 @@ namespace ngl::render::app
                 p->cb_proj_inv_mtx = ngl::math::Mat44::Inverse(main_view_info.proj_mat);
 
                 p->cb_ndc_z_to_view_z_coef = main_view_info.ndc_z_to_view_z_coef;
+
+                // ViewDepthBufferの他, ShadowMapによるInjectionもしたいのでShadowMapAtlas用にオフセット考慮.
+                p->cb_view_depth_buffer_offset_size = math::Vec4i(
+                    0,0,
+                    hw_depth_size.x,
+                    hw_depth_size.y
+                );
             }
             cbh_injection_view_info->buffer_.Unmap();
         }
@@ -529,7 +536,6 @@ namespace ngl::render::app
             p_command_list->ResourceUavBarrier(bbv_remove_voxel_list_.buffer.Get());
         }
         // Bbv Remove Voxel Pass.
-        // Note:前段で生成した中空Voxelを実際にBbvバッファ上で空にする. なおBbv単位が持つ非Emptyフラグの更新をしていないため後で問題になるかも.
         if(true)
         {
             NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "RemoveHollowVoxel");
@@ -545,7 +551,7 @@ namespace ngl::render::app
             p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
         }
 
-        // Bbv Voxelization Pass.
+        // Bbv Surface Voxel Injection Pass.
         {
             NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvInjection");
 

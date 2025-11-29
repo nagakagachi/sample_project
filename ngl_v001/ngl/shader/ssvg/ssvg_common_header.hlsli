@@ -114,6 +114,9 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         // 正規化デバイス座標(NDC)のZ値からView空間Z値を計算するための係数. PerspectiveProjectionMatrixの方式によってCPU側で計算される値を変えることでシェーダ側は同一コード化. xは平行投影もサポートするために利用.
         //	for calc_view_z_from_ndc_z(ndc_z, cb_ndc_z_to_view_z_coef)
         float4	cb_ndc_z_to_view_z_coef;
+
+        // xy: ターゲットDepthBuffer上のオフセット, zw: サイズ.
+        int4    cb_view_depth_buffer_offset_size;
     };
 
 
@@ -155,7 +158,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int3 wcp_indirect_cs_thread_group_size;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
         int wcp_visible_voxel_buffer_size;// 更新プローブ用のワークサイズ.
 
-        int2 tex_hw_depth_size;
+        int2 tex_main_view_depth_size;// MainViewのDepthBuffer解像度.
         uint frame_count;
         int dummy3;
 

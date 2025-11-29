@@ -39,7 +39,7 @@ void main_cs(
 	const float3 camera_pos = GetViewPosFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
 	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
-	const float2 screen_size_f = float2(cb_ssvg.tex_hw_depth_size.xy);
+	const float2 screen_size_f = float2(cb_ssvg.tex_main_view_depth_size.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
 
     #if 1 < THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH

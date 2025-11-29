@@ -46,10 +46,11 @@ void main_cs(
 	const float3 main_view_camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 	const float3 main_view_camera_pos = GetViewPosFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
-
-	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
-	const float2 screen_size_f = float2(cb_ssvg.tex_hw_depth_size.xy);
-	const float2 screen_uv = (screen_pos_f / screen_size_f);
+    // 範囲チェック.
+    if(any(dtid.xy >= cb_injection_src_view_info.cb_view_depth_buffer_offset_size.zw))
+    {
+        return;
+    }
 
     #if 1 < THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH
         // Tile単位処理スキップ軽量化.
@@ -66,7 +67,8 @@ void main_cs(
     #endif
 
 
-    float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
+    // ハードウェア深度取得. AtlasTexture対応のためオフセット考慮.
+    float d = TexHardwareDepth.Load(int3(dtid.xy + cb_injection_src_view_info.cb_view_depth_buffer_offset_size.xy, 0)).r;
     // DepthBufferに紐づいたView情報で復元.
     float view_z = calc_view_z_from_ndc_z(d, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef);
 
@@ -79,6 +81,7 @@ void main_cs(
         {
             // 深度->PixelWorldPosition
             // DepthBufferに紐づいたView情報で復元.
+	        const float2 screen_uv = (float2(dtid.xy) + float2(0.5, 0.5)) / float2(cb_injection_src_view_info.cb_view_depth_buffer_offset_size.zw);
             const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_injection_src_view_info.cb_proj_mtx);
             const float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
 

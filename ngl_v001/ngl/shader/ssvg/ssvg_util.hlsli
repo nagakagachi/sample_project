@@ -239,7 +239,7 @@ uint read_bbv_voxel_from_world_pos(Buffer<uint> bbv_buffer, int3 grid_resolution
         uint bitcell_u32_offset;
         uint bitcell_u32_bit_pos;
         calc_bbv_bitcell_info(bitcell_u32_offset, bitcell_u32_bit_pos, voxel_coord_bitmask_pos);
-        const uint bitmask_append = (1 << bitcell_u32_bit_pos);
+        const uint bitmask_append = (1u << bitcell_u32_bit_pos);
         // 読み取り.
         return (bbv_buffer[voxel_bbv_addr + bitcell_u32_offset] & bitmask_append) ? 1 : 0;
     }
@@ -276,6 +276,8 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
     // Inv Dir.
     out_ray_dir_inv = 1.0 / ray_dir_c;// inf対策が必要な場合があるかも. -> select( ray_dir_component_nearly_zero, float3(k_float_max, k_float_max, k_float_max), 1.0 / ray_dir_c)
     ray_dir_sign = sign(ray_dir_c);
+    out_aabb_clamped_origin_t = 0.0;
+    out_aabb_clamped_end_t = ray_len_c;
 
     const float3 t_to_min = (aabb_min - ray_origin) * out_ray_dir_inv;
     const float3 t_to_max = (aabb_max - ray_origin) * out_ray_dir_inv;
@@ -289,8 +291,9 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
         return false;
 
     // 結果を返す. このt値で origin + dir * t を計算すればそれぞれ始点と終点がAABB空間内にクランプされた座標になる.
-    out_aabb_clamped_origin_t = max(0.0, t_near);
-    out_aabb_clamped_end_t = min(ray_len_c, t_far);
+    out_aabb_clamped_origin_t = max(out_aabb_clamped_origin_t, t_near);
+    out_aabb_clamped_end_t = min(out_aabb_clamped_end_t, t_far);
+
     return true;
 };
 
@@ -313,7 +316,7 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3
         do {
             uint bitcell_u32_offset, bitcell_u32_bit_pos;
             calc_bbv_bitcell_info(bitcell_u32_offset, bitcell_u32_bit_pos, mapPos);
-            bool is_hit = bbv_buffer[bbv_bitmask_addr + bitcell_u32_offset] & (1 << bitcell_u32_bit_pos);
+            bool is_hit = bbv_buffer[bbv_bitmask_addr + bitcell_u32_offset] & (1u << bitcell_u32_bit_pos);
 
             if(is_hit) { return mapPos; }
 
@@ -350,6 +353,7 @@ float4 trace_bbv_core(
     const int3 grid_box_cell_max = int3(grid_resolution - 1);
     const float cell_width_ws_inv = 1.0 / cell_width_ws;
 
+    out_hit_voxel_index = -1;
     out_debug = float4(0.0, 0.0, 0.0, 0.0);// デバッグ用.
 
     const float3 ray_origin = (ray_origin_ws - grid_min_ws) * cell_width_ws_inv;

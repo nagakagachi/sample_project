@@ -3,7 +3,7 @@
 
 bbv_begin_view_update_cs.hlsl
 
-BbvのView毎の処理の開始用処理.
+BbvのView毎の処理の開始用処理. ViewのDepthBufferから復元した表面Voxelを格納するリストのカウンタリセット.
 
 #endif
 

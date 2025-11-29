@@ -94,9 +94,10 @@ void main_cs(
     }
 
 
-    // DistanceField的な情報の検証.
+    // DistanceField的な情報の検証. 一旦無効化.
     // 実際にはマルチスレッド考慮せずに近傍情報参照しているため, 定常状態になるまでは一部正しくない距離情報が格納される場合がある近似処理に注意.
     int3 nearest_surface_dist = int3(1<<10, 1<<10, 1<<10);// 初期値は10bit範囲外としておく.
+    /*
     {
         if(0 != bbv_occupied_flag)
         {
@@ -167,6 +168,7 @@ void main_cs(
             }
         }
     }
+    */
 
     
     // Voxel追加データ更新.

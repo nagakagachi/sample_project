@@ -28,7 +28,7 @@ void main_cs(
 )
 {
 	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
-	const float2 screen_size_f = float2(cb_ssvg.tex_hw_depth_size.xy);
+	const float2 screen_size_f = float2(cb_ssvg.tex_main_view_depth_size.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
     
 	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
@@ -132,7 +132,7 @@ void main_cs(
         // Voxel上面図X-Ray表示.
         const int3 bv_full_reso = cb_ssvg.bbv.grid_resolution * k_bbv_per_voxel_resolution;
         const float visualize_scale = 0.5;
-        float3 read_pos_world_base = (float3(dtid.x, 0.0, cb_ssvg.tex_hw_depth_size.y-1 - dtid.y) + 0.5) * visualize_scale * cb_ssvg.bbv.cell_size/k_bbv_per_voxel_resolution;
+        float3 read_pos_world_base = (float3(dtid.x, 0.0, cb_ssvg.tex_main_view_depth_size.y-1 - dtid.y) + 0.5) * visualize_scale * cb_ssvg.bbv.cell_size/k_bbv_per_voxel_resolution;
         read_pos_world_base += cb_ssvg.bbv.grid_min_pos;
 
         float write_data = 0.0;
