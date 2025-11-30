@@ -158,7 +158,7 @@ float3 GetViewPosFromInverseViewMatrix(float3x4 view_inv_mtx)
 
 
 //--------------------------------------------------------------------------------
-// スクリーンピクセルへのView空間レイベクトルを計算
+// スクリーンピクセルへのView空間レイベクトルを計算. Perspective用.
 //  ピクセルのスクリーン上UVとProjection行列から計算する.
 //  このレイベクトルとViewZを利用してView空間座標を復元する場合は, zが1になるように修正して計算が必要な点に注意( pos_vs.z == ViewZ となるようにする必要がある).
 //		pos_view = ViewSpaceRay.xyz/abs(ViewSpaceRay.z) * ViewZ
@@ -172,6 +172,31 @@ float3 CalcViewSpaceRay(float2 screen_uv, float4x4 proj_mtx)
     const float3 ray_dir_view = normalize( float3(ndc_xy.x / inv_tan_horizontal, ndc_xy.y / inv_tan_vertical, 1.0) );
     // View空間でのRay方向. World空間へ変換する場合は InverseViewMatrix * ray_dir_view とすること.
     return ray_dir_view;
+}
+
+//--------------------------------------------------------------------------------
+// スクリーンピクセルのView空間座標を計算. Perspective Otrtho両対応.
+//  CalcViewSpaceRay()はPerspective用であるため, MainViewとShadowMap等のOrthoもあり得るコードで座標復元をする場合に利用.
+float3 CalcViewSpacePosition(float2 screen_uv, float view_z, float4x4 proj_mtx)
+{
+    /* Orthoでは動作 Perspectiveでは不具合あり.
+    float2 ndc_xy = (screen_uv * 2.0 - 1.0) * float2(1.0, -1.0);
+    const float inv_tan_horizontal = proj_mtx._m00; // m00 = 1/tan(fov_x*0.5)
+    const float inv_tan_vertical = proj_mtx._m11; // m11 = 1/tan(fov_y*0.5)
+    const float offset_horizontal = -proj_mtx._m03 * (1.0 / inv_tan_horizontal); // m03 = -(right + left)/(right - left)
+    const float offset_vertical = -proj_mtx._m13 * (1.0 / inv_tan_vertical);   // m13 = -(top + bottom)/(top - bottom)
+
+    return float3(ndc_xy.x / inv_tan_horizontal + offset_horizontal, ndc_xy.y / inv_tan_vertical + offset_vertical, view_z);
+    */
+   
+    float2 ndc_xy = (screen_uv * 2.0 - 1.0) * float2(1.0, -1.0);
+    const float tan_horizontal = 1.0/proj_mtx._m00; // m00 = 1/tan(fov_x*0.5)
+    const float tan_vertical = 1.0/proj_mtx._m11; // m11 = 1/tan(fov_y*0.5)
+    const float offset_horizontal = -proj_mtx._m03 * tan_horizontal; // m03 = -(right + left)/(right - left)
+    const float offset_vertical = -proj_mtx._m13 * tan_vertical;   // m13 = -(top + bottom)/(top - bottom)
+    const float relation_perspective = (0.0 == proj_mtx._m33)? view_z : 1.0; // m33 = 0 for Perspective, 1 for Ortho
+
+    return float3((ndc_xy.x * relation_perspective) * tan_horizontal + offset_horizontal, (ndc_xy.y * relation_perspective) * tan_vertical + offset_vertical, view_z);
 }
 
 // ワールド空間レイ方向からパノラマイメージUVへのマッピング.

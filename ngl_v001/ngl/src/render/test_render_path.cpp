@@ -227,12 +227,8 @@ namespace ngl::test
                         setup_desc.h = screen_h;
                         
                         setup_desc.scene_cbv = scene_cb_h;
-
-                        setup_desc.p_ssvg = render_frame_desc.p_ssvg;
                     }
                     task_after_gbuffer_injection->Setup(rtg_builder, p_device, view_info, task_depth->h_depth_, setup_desc);
-                    // Renderをスキップテスト.
-                    //task_after_gbuffer_injection->is_render_skip_debug = k_force_skip_all_pass_render;
                 }
 				
 				// ----------------------------------------
@@ -307,6 +303,85 @@ namespace ngl::test
 					task_d_shadow->is_render_skip_debug = k_force_skip_all_pass_render;
 				}
 					
+                
+                    
+                    // Ssvg Begin Pass.
+                    auto* task_ssvg_begin = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskSsvgBegin>();
+                    {
+                        ngl::render::app::RenderTaskSsvgBegin::SetupDesc setup_desc{};
+                        {
+                            setup_desc.w = screen_w;
+                            setup_desc.h = screen_h;
+                            
+                            setup_desc.scene_cbv = scene_cb_h;
+
+                            setup_desc.p_ssvg = render_frame_desc.p_ssvg;
+                        }
+                        task_ssvg_begin->Setup(rtg_builder, p_device, view_info, setup_desc);
+                    }
+                    // Ssvg View Voxel Injection Pass.
+                    auto* task_ssvg_view_voxel_injection = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskSsvgViewVoxelInjection>();
+                    {
+                        ngl::render::app::RenderTaskSsvgViewVoxelInjection::SetupDesc setup_desc{};
+                        {
+                            setup_desc.w = screen_w;
+                            setup_desc.h = screen_h;
+                            
+                            setup_desc.scene_cbv = scene_cb_h;
+                            setup_desc.p_ssvg = render_frame_desc.p_ssvg;
+
+                            // main view DepthBuffer登録.
+                            {
+                                setup_desc.depth_buffer_info.primary.view_mat = view_info.view_mat;
+                                setup_desc.depth_buffer_info.primary.proj_mat = view_info.proj_mat;
+                                setup_desc.depth_buffer_info.primary.atlas_offset = math::Vec2i(0,0);
+                                setup_desc.depth_buffer_info.primary.atlas_resolution = math::Vec2i(screen_w, screen_h);
+                                setup_desc.depth_buffer_info.primary.h_depth = task_depth->h_depth_;
+
+                                setup_desc.depth_buffer_info.primary.is_enable_injection_pass = true;// Voxel充填利用するか.
+                                setup_desc.depth_buffer_info.primary.is_enable_removal_pass = true;// Voxel除去に利用するか.
+                            }
+
+                            // ShadowMapのDepthBuffer登録.
+                            for( int cascade_idx = 0; cascade_idx < task_d_shadow->csm_param_.k_cascade_count; ++cascade_idx )
+                            {
+                                ngl::render::app::InjectionSourceDepthBufferViewInfo shadow_depth_info{};
+                                {
+                                    shadow_depth_info.view_mat = task_d_shadow->csm_param_.light_view_mtx[cascade_idx];
+                                    shadow_depth_info.proj_mat = task_d_shadow->csm_param_.light_ortho_mtx[cascade_idx];
+                                    shadow_depth_info.atlas_offset = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_offset_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_offset_y[cascade_idx]);
+                                    shadow_depth_info.atlas_resolution = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_size_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_size_y[cascade_idx]);
+                                    shadow_depth_info.h_depth = task_d_shadow->h_shadow_depth_atlas_;
+                                    
+                                    shadow_depth_info.is_enable_injection_pass = true;// Voxel充填に利用するか.
+                                    shadow_depth_info.is_enable_removal_pass = false;// Voxel除去に利用するか.
+                                }
+
+                                setup_desc.depth_buffer_info.sub_array.push_back(shadow_depth_info);
+                            }   
+                        }
+                        task_ssvg_view_voxel_injection->Setup(rtg_builder, p_device, view_info, setup_desc);
+                    }
+                    // Ssvg Update.
+                    auto* task_ssvg_update = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskSsvgUpdate>();
+                    {
+                        ngl::render::app::RenderTaskSsvgUpdate::SetupDesc setup_desc{};
+                        {
+                            setup_desc.w = screen_w;
+                            setup_desc.h = screen_h;
+                            
+                            setup_desc.scene_cbv = scene_cb_h;
+
+                            setup_desc.p_ssvg = render_frame_desc.p_ssvg;
+                            
+                            // main view.
+                            setup_desc.h_depth = task_depth->h_depth_;
+                        }
+                        task_ssvg_update->Setup(rtg_builder, p_device, view_info, setup_desc);
+                    }
+
+
+
 				// ----------------------------------------
 				// Deferred Lighting Pass.
 				auto* task_light = rtg_builder.AppendTaskNode<ngl::render::task::TaskLightPass>();
@@ -406,7 +481,9 @@ namespace ngl::test
 							render_frame_desc.h_other_graph_out_tex, h_rt_result,
 							debug_gbuffer0, debug_gbuffer1, debug_gbuffer2, debug_gbuffer3,
 							debug_dshadow,
-                            task_after_gbuffer_injection->h_work_,
+
+                            //task_after_gbuffer_injection->h_work_,
+                            task_ssvg_update->h_work_,
 
 							render_frame_desc.ref_test_tex_srv,
 

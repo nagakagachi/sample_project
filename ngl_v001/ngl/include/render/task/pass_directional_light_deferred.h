@@ -227,7 +227,7 @@ namespace ngl::render::task
 
                     if(desc_.p_ssvg)
                     {
-                        desc_.p_ssvg->SetDescriptorCascade0(pso_.Get(), &desc_set);
+                        desc_.p_ssvg->SetDescriptor(pso_.Get(), &desc_set);
                     }
 
 						

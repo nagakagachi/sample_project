@@ -69,9 +69,10 @@ void main_cs(
     shared_bbv_bitmask_addr[gindex] = uint4(~uint(0), 0, 0, 0);// 初期無効値.
     
     const float2 screen_uv = (float2(dtid.xy) + float2(0.5, 0.5)) / float2(cb_injection_src_view_info.cb_view_depth_buffer_offset_size.zw);
-    const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_injection_src_view_info.cb_proj_mtx);
-    const float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
+    // Orthoも含めて対応するためPositionを直接復元.
+    const float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4(CalcViewSpacePosition(screen_uv, view_z, cb_injection_src_view_info.cb_proj_mtx), 1.0));
 
+    // Note. ShadowMap等のOrthoでは投影ベクトルのほうが正しいので後で修正する.
     const float3 to_pixel_vec_ws = pixel_pos_ws - camera_pos;
     const float3 ray_dir_ws = normalize(to_pixel_vec_ws);
 

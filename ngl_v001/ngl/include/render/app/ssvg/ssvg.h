@@ -8,6 +8,7 @@
 #include "rhi/constant_buffer_pool.h"
 #include "render/app/common/render_app_common.h"
 #include "render/task/pass_common.h"
+#include "gfx/rtg/graph_builder.h"
 
 namespace ngl::render::app
 {
@@ -48,6 +49,29 @@ namespace ngl::render::app
         ToroidalGridArea grid_;
     };
 
+
+    struct InjectionSourceDepthBufferViewInfo
+    {
+        math::Mat34 view_mat{};
+        math::Mat44 proj_mat{};
+
+        math::Vec2i atlas_offset{};
+        math::Vec2i atlas_resolution{};
+
+        rtg::RtgResourceHandle h_depth{};// セットアップフェーズ用.
+        rhi::RefSrvDep hw_depth_srv{};// レンダリングフェーズ用.
+
+        bool is_enable_injection_pass{true};
+        bool is_enable_removal_pass{true};
+    };
+    struct InjectionSourceDepthBufferInfo
+    {
+        InjectionSourceDepthBufferViewInfo primary{};
+        std::vector<InjectionSourceDepthBufferViewInfo> sub_array{};
+    };
+
+
+
     // BitmaskBrickVoxel:Bbv.
     class BitmaskBrickVoxel
     {
@@ -69,12 +93,12 @@ namespace ngl::render::app
         
         void Dispatch_Begin(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
-            const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
+            const ngl::render::task::RenderPassViewInfo& main_view_info, const math::Vec2i& render_resolution
             );
 
         void Dispatch_Bbv_View(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
-            const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
+            const ngl::render::task::RenderPassViewInfo& main_view_info, const InjectionSourceDepthBufferInfo& depth_buffer_info
             );
             
         void Dispatch_Bbv_Main(rhi::GraphicsCommandListDep* p_command_list,
@@ -189,7 +213,18 @@ namespace ngl::render::app
         // 破棄
         void Finalize();
 
-        void Dispatch(rhi::GraphicsCommandListDep* p_command_list,
+        void DispatchBegin(rhi::GraphicsCommandListDep* p_command_list,
+            rhi::ConstantBufferPooledHandle scene_cbv, 
+            const ngl::render::task::RenderPassViewInfo& main_view_info, const math::Vec2i& render_resolution);
+            
+
+        void DispatchViewVoxelInjection(rhi::GraphicsCommandListDep* p_command_list,
+            rhi::ConstantBufferPooledHandle scene_cbv, 
+            const ngl::render::task::RenderPassViewInfo& main_view_info,
+            
+            const InjectionSourceDepthBufferInfo& depth_buffer_info);
+            
+        void DispatchUpdate(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
             rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
@@ -202,11 +237,184 @@ namespace ngl::render::app
 
         void SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir);
 
-        void SetDescriptorCascade0(rhi::PipelineStateBaseDep* p_pso, rhi::DescriptorSetDep* p_desc_set) const;
+        void SetDescriptor(rhi::PipelineStateBaseDep* p_pso, rhi::DescriptorSetDep* p_desc_set) const;
 
     private:
             bool is_initialized_ = false;
             BitmaskBrickVoxel* ssvg_instance_;
     };
+
+
+
+
+	struct RenderTaskSsvgBegin : public ngl::rtg::IGraphicsTaskNode
+	{
+		struct SetupDesc
+		{
+			int w{};
+			int h{};
+			
+			rhi::ConstantBufferPooledHandle scene_cbv{};
+            render::app::SsVg* p_ssvg = {};
+		};
+		SetupDesc desc_{};
+		
+		// リソースとアクセスを定義するプリプロセス.
+		void Setup(ngl::rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const ngl::render::task::RenderPassViewInfo& view_info,
+			const SetupDesc& desc)
+		{
+            if(!desc.p_ssvg)
+                return;
+
+			desc_ = desc;
+            
+            // ssvgへの情報直接設定をBeginで実行.
+            desc_.p_ssvg->SetImportantPointInfo(view_info.camera_pos, view_info.camera_pose.GetColumn2());
+
+			// Render処理のLambdaをRTGに登録.
+			builder.RegisterTaskNodeRenderFunction(this,
+				[this, view_info](ngl::rtg::RenderTaskGraphBuilder& builder, ngl::rtg::TaskGraphicsCommandListAllocator command_list_allocator)
+				{
+					command_list_allocator.Alloc(1);
+					auto gfx_commandlist = command_list_allocator.GetOrCreate(0);
+					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RenderTaskSsvgBegin");
+
+                    desc_.p_ssvg->DispatchBegin(gfx_commandlist, desc_.scene_cbv, 
+                        view_info, math::Vec2i(desc_.w, desc_.h));
+				}
+			);
+		}
+	};
+    
+
+	struct RenderTaskSsvgViewVoxelInjection : public ngl::rtg::IGraphicsTaskNode
+	{
+		struct SetupDesc
+		{
+			int w{};
+			int h{};
+			
+			rhi::ConstantBufferPooledHandle scene_cbv{};
+            render::app::SsVg* p_ssvg = {};
+
+            //ngl::rtg::RtgResourceHandle h_depth{};
+
+            InjectionSourceDepthBufferInfo depth_buffer_info{};
+		};
+		SetupDesc desc_{};
+		
+		// リソースとアクセスを定義するプリプロセス.
+		void Setup(ngl::rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const ngl::render::task::RenderPassViewInfo& view_info,
+			const SetupDesc& desc)
+		{
+            if(!desc.p_ssvg)
+                return;
+
+			desc_ = desc;// コピー.
+			// Rtgリソースセットアップ.
+			{
+				// リソースアクセス定義.
+				desc_.depth_buffer_info.primary.h_depth = builder.RecordResourceAccess(*this, desc_.depth_buffer_info.primary.h_depth, ngl::rtg::access_type::SHADER_READ);
+
+                for(int i = 0; i < desc_.depth_buffer_info.sub_array.size(); ++i)
+                {
+                    // ハンドルへのアクセスレコード(ハンドル変わる可能性があるので更新).
+                    desc_.depth_buffer_info.sub_array[i].h_depth = builder.RecordResourceAccess(*this, desc_.depth_buffer_info.sub_array[i].h_depth, ngl::rtg::access_type::SHADER_READ);
+                }
+			}
+			// Render処理のLambdaをRTGに登録.
+			builder.RegisterTaskNodeRenderFunction(this,
+				[this, view_info](ngl::rtg::RenderTaskGraphBuilder& builder, ngl::rtg::TaskGraphicsCommandListAllocator command_list_allocator)
+				{
+					command_list_allocator.Alloc(1);
+					auto gfx_commandlist = command_list_allocator.GetOrCreate(0);
+					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RenderTaskSsvgViewVoxelInjection");
+
+                    InjectionSourceDepthBufferInfo injection_depth_buffer_info{};
+                    {
+                        {
+                            auto res_depth = builder.GetAllocatedResource(this, desc_.depth_buffer_info.primary.h_depth);
+                            assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
+                            
+                            injection_depth_buffer_info.primary = desc_.depth_buffer_info.primary;// copy.
+                            injection_depth_buffer_info.primary.hw_depth_srv = res_depth.srv_;// リソース設定.
+
+                            for(int i = 0; i < desc_.depth_buffer_info.sub_array.size(); ++i)
+                            {
+                                auto res_sub_depth = builder.GetAllocatedResource(this, desc_.depth_buffer_info.sub_array[i].h_depth);
+                                assert(res_sub_depth.tex_.IsValid() && res_sub_depth.srv_.IsValid());
+
+                                InjectionSourceDepthBufferViewInfo sub_view_info = desc_.depth_buffer_info.sub_array[i];// copy.
+                                sub_view_info.hw_depth_srv = res_sub_depth.srv_;// リソース設定.
+
+                                injection_depth_buffer_info.sub_array.push_back(sub_view_info);
+                            }
+                        }
+                    }
+
+                    
+                    desc_.p_ssvg->DispatchViewVoxelInjection(gfx_commandlist, desc_.scene_cbv, view_info, injection_depth_buffer_info);
+				}
+			);
+		}
+	};
+
+	struct RenderTaskSsvgUpdate : public ngl::rtg::IGraphicsTaskNode
+	{
+		ngl::rtg::RtgResourceHandle h_depth_{};
+		ngl::rtg::RtgResourceHandle h_work_{};
+
+		struct SetupDesc
+		{
+			int w{};
+			int h{};
+			
+			rhi::ConstantBufferPooledHandle scene_cbv{};
+            render::app::SsVg* p_ssvg = {};
+
+            ngl::rtg::RtgResourceHandle h_depth{};
+		};
+		SetupDesc desc_{};
+		
+		// リソースとアクセスを定義するプリプロセス.
+		void Setup(ngl::rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const ngl::render::task::RenderPassViewInfo& view_info,
+			const SetupDesc& desc)
+		{
+            if(!desc.p_ssvg)
+                return;
+
+			desc_ = desc;
+			
+			// Rtgリソースセットアップ.
+			{
+				// リソース定義.
+				ngl::rtg::RtgResourceDesc2D work_desc = ngl::rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R32G32B32A32_FLOAT);
+
+				// リソースアクセス定義.
+				h_depth_ = builder.RecordResourceAccess(*this, desc.h_depth, rtg::access_type::SHADER_READ);
+                h_work_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_desc), rtg::access_type::UAV);
+			}
+
+			// Render処理のLambdaをRTGに登録.
+			builder.RegisterTaskNodeRenderFunction(this,
+				[this, view_info](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
+				{
+					command_list_allocator.Alloc(1);
+					auto gfx_commandlist = command_list_allocator.GetOrCreate(0);
+					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RenderTaskSsvgUpdate");
+
+					// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
+					auto res_depth = builder.GetAllocatedResource(this, h_depth_);
+                    auto res_work = builder.GetAllocatedResource(this, h_work_);
+					assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
+                    assert(res_work.tex_.IsValid() && res_work.uav_.IsValid());
+
+                    desc_.p_ssvg->DispatchUpdate(gfx_commandlist, desc_.scene_cbv, 
+                        view_info, res_depth.tex_, res_depth.srv_,
+                        res_work.tex_, res_work.uav_);
+				}
+			);
+		}
+	};
 
 }  // namespace ngl::render::app

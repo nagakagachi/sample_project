@@ -241,10 +241,24 @@ namespace ngl
 					node_handle_usage_list_[&node] = {};// Node用のMap要素追加.
 				}
 
-				NodeHandleUsageInfo push_info = {};
-				push_info.handle = res_handle;
-				push_info.access = access_type;
-				node_handle_usage_list_[&node].push_back(push_info);// NodeからHandleへのアクセス情報を記録.
+                // 同一リソース同一アクセスの場合は登録スキップする
+                //  同じPassで同じリソースに異なるアクセスは許可しないのでそちらはassertしても良いかも.
+                const bool is_duplicate_access = 
+                (node_handle_usage_list_[&node].end() != 
+                std::find_if(node_handle_usage_list_[&node].begin(), node_handle_usage_list_[&node].end(),
+                    [&](const NodeHandleUsageInfo& info)
+                    {
+                        return (info.handle == res_handle) && (info.access == access_type);
+                    })
+                );
+
+                if(!is_duplicate_access)
+                {
+                    NodeHandleUsageInfo push_info = {};
+                    push_info.handle = res_handle;
+                    push_info.access = access_type;
+                    node_handle_usage_list_[&node].push_back(push_info);// NodeからHandleへのアクセス情報を記録.
+                }
 			}
 
 			// Passメンバに保持するコードを短縮するためHandleをそのままリターン.
@@ -298,9 +312,11 @@ namespace ngl
 					{
 						for(int j = i + 1; j < node_handle_usage_list_[p_node].size(); ++j)
 						{
-							if(node_handle_usage_list_[p_node][i].handle == node_handle_usage_list_[p_node][j].handle)
+							if(node_handle_usage_list_[p_node][i].handle == node_handle_usage_list_[p_node][j].handle
+                                && node_handle_usage_list_[p_node][i].access != node_handle_usage_list_[p_node][j].access
+                            )
 							{
-								std::cout << "[RenderTaskGraphBuilder][Validation Error] 同一リソースへの重複アクセス登録." << std::endl;
+								std::cout << "[RenderTaskGraphBuilder][Validation Error] Task内で同一リソースへの異なるアクセスレコードは許可されません." << std::endl;
 								assert(false);
 							}
 						}

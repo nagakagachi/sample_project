@@ -69,21 +69,22 @@ void main_cs(
 
     // ハードウェア深度取得. AtlasTexture対応のためオフセット考慮.
     float d = TexHardwareDepth.Load(int3(dtid.xy + cb_injection_src_view_info.cb_view_depth_buffer_offset_size.xy, 0)).r;
-    // DepthBufferに紐づいたView情報で復元.
-    float view_z = calc_view_z_from_ndc_z(d, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef);
 
     // 可視表面のbbv充填.
     {
         shared_bbv_bitmask_addr[gindex] = uint4(~uint(0), 0, 0, 0);// 初期無効値.
         
-        // 空ではない場合のみ.
-        if(65535.0 > abs(view_z))
+        // 無限遠ピクセルのチェック. ReverseZを考慮して0 < d < 1.
+        if(0.0 < d && d < 1.0)
         {
+            // DepthBufferに紐づいたView情報で復元.
+            float view_z = calc_view_z_from_ndc_z(d, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef);
+            
             // 深度->PixelWorldPosition
             // DepthBufferに紐づいたView情報で復元.
 	        const float2 screen_uv = (float2(dtid.xy) + float2(0.5, 0.5)) / float2(cb_injection_src_view_info.cb_view_depth_buffer_offset_size.zw);
-            const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_injection_src_view_info.cb_proj_mtx);
-            const float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
+            // Orthoも含めて対応するためPositionを直接復元.
+            const float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4(CalcViewSpacePosition(screen_uv, view_z, cb_injection_src_view_info.cb_proj_mtx), 1.0));
 
             // PixelWorldPosition->VoxelCoord
             const float3 voxel_coordf = (pixel_pos_ws - cb_ssvg.bbv.grid_min_pos) * cb_ssvg.bbv.cell_size_inv;
