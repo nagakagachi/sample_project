@@ -478,12 +478,17 @@ namespace ngl::render::app
 
         auto& global_res = gfx::GlobalRenderResource::Instance();
 
-        // 与えられたDepthBuffer分だけInjection処理をDispatch.
-        for(int i = 0; i < (1 + depth_buffer_info.sub_array.size()); ++i)
+        const int num_depth_buffer = 1 + depth_buffer_info.sub_array.size();
+        for(int i = 0; i < num_depth_buffer; ++i)
         {
-            // 0番はPrimary, それ以降はSubかを参照.
-            const InjectionSourceDepthBufferViewInfo& target_depth_info = (i == 0) ? depth_buffer_info.primary : depth_buffer_info.sub_array[i - 1];
-
+            #if 1
+                // 0番はPrimary, それ以降はSubかを参照.
+                const InjectionSourceDepthBufferViewInfo& target_depth_info = (i == 0) ? depth_buffer_info.primary : depth_buffer_info.sub_array[i - 1];
+            #else
+                // 最期にPrimaryを実行するように順序入れ替え. Primaryで可視な表面のInjectionが最優先になるようにするため.
+                const InjectionSourceDepthBufferViewInfo& target_depth_info = (i == (num_depth_buffer - 1)) ? depth_buffer_info.primary : depth_buffer_info.sub_array[i];
+            #endif
+            
             if(!target_depth_info.is_enable_injection_pass && !target_depth_info.is_enable_removal_pass)
                 continue;
 

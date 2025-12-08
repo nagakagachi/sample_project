@@ -43,8 +43,8 @@ void main_cs(
 )
 {
     // メインビューの情報.
-	const float3 main_view_camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
-	const float3 main_view_camera_pos = GetViewPosFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+	//const float3 main_view_camera_dir = GetViewDirFromInverseViewMatrix(cb_view_inv_mtx);
+	//const float3 main_view_camera_pos = GetViewPosFromInverseViewMatrix(cb_view_inv_mtx);
 
     // 範囲チェック.
     if(any(dtid.xy >= cb_injection_src_view_info.cb_view_depth_buffer_offset_size.zw))

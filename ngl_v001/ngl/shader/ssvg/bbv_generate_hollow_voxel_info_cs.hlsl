@@ -38,9 +38,10 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
-    // メインビューの情報.
-	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
-	const float3 camera_pos = GetViewPosFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+    // DepthBuffer描画のカメラ情報. 
+    // TODO FIXME ShadowのLightViewは座標自体は原点なのでこれだとうまくいかない. PixelWorldPosからカメラへのベクトルをPerspective|Orthoで切り替えでそこからカメラ位置を再現するほうが良いかも.
+	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_injection_src_view_info.cb_view_inv_mtx);
+    const float3 camera_pos = GetViewPosFromInverseViewMatrix(cb_injection_src_view_info.cb_view_inv_mtx);
 
     // 範囲チェック.
     if(any(dtid.xy >= cb_injection_src_view_info.cb_view_depth_buffer_offset_size.zw))

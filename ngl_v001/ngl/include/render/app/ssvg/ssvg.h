@@ -61,8 +61,8 @@ namespace ngl::render::app
         rtg::RtgResourceHandle h_depth{};// セットアップフェーズ用.
         rhi::RefSrvDep hw_depth_srv{};// レンダリングフェーズ用.
 
-        bool is_enable_injection_pass{true};
-        bool is_enable_removal_pass{true};
+        bool is_enable_injection_pass{true};// Voxel充填利用するか.
+        bool is_enable_removal_pass{true};// Voxel除去に利用するか.
     };
     struct InjectionSourceDepthBufferInfo
     {
