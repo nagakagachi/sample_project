@@ -169,8 +169,9 @@ https://github.com/nagakagachi/sample_projct/blob/2517e77d16df00e03a779febc52884
 レンダリングパイプラインの構築と実行は以下.<br/>
 https://github.com/nagakagachi/sample_projct/blob/2517e77d16df00e03a779febc52884ade85293eb/ngl_v001/ngl/src/render/test_render_path.cpp#L76
 
-# Concurrent Binary Trees Based Software Tessellation Demo
-CBT based ComputeShader Tessellation の検証コードが含まれます.</br>
+# Addaptive Software Tessellation with Concurrent Binary Trees
+Concurrent Binary Trees(CBT) をアロケータとして利用する適応的Tessellationの検証コードが含まれます.</br>
+(Concurrent Binary Trees for Large-Scale Game Components) を参考 <br/>
 既定で2-Triの矩形メッシュを対象としていますが, 任意メッシュに利用可能です.</br>
 CBTをメモリアロケータとして利用し, HalfEdge/Bisectorベースで細分化をするソフトウェアテッセレーション手法です.</br>
 任意のメッシュに適応可能で, T-Junctionを発生させない分割等の特徴があります.</br>
