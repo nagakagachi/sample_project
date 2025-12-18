@@ -32,12 +32,12 @@ void main_cs(
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
     
 	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
-	const float3 camera_pos = GetViewPosFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+	const float3 view_origin = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
     
     const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_ngl_sceneview.cb_proj_mtx);
     const float3 ray_dir_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(to_pixel_ray_vs, 0.0));
 
-    if(4 >= cb_ssvg.debug_view_mode)
+    if(6 >= cb_ssvg.debug_view_mode)
     {
         // Voxel単位Traceのテスト.
         const float trace_distance = 10000.0;          
@@ -45,7 +45,7 @@ void main_cs(
         float4 debug_ray_info;
         float4 curr_ray_t_ws = trace_bbv_dev(
             hit_voxel_index, debug_ray_info,
-            camera_pos, ray_dir_ws, trace_distance, 
+            view_origin, ray_dir_ws, trace_distance, 
             cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
             cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel, false);
 
@@ -60,7 +60,7 @@ void main_cs(
             if(0 == cb_ssvg.debug_view_mode)
             {
                 // bbvセル可視化
-                const float3 bbv_cell_id = floor((camera_pos + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
+                const float3 bbv_cell_id = floor((view_origin + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
                 debug_color.xyz = float4(noise_iqint32(bbv_cell_id.xyzz), noise_iqint32(bbv_cell_id.xzyy), noise_iqint32(bbv_cell_id.xyzx), 1);
 
                 // 簡易フォグ.
@@ -93,17 +93,25 @@ void main_cs(
             else if(4 == cb_ssvg.debug_view_mode)
             {
                 // BitmaskBrickVoxelセルのヒット法線可視化.
-                const float3 bbv_cell_id = floor((camera_pos + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
+                const float3 bbv_cell_id = floor((view_origin + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
                 debug_color.xyz = abs(curr_ray_t_ws.yzw);
                 
                 // 簡易フォグ.
                 debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
                 debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
             }
+            else if(5 == cb_ssvg.debug_view_mode)
+            {
+                debug_color.xyz = debug_ray_info.xyz;
+            }
+            else if(6 == cb_ssvg.debug_view_mode)
+            {
+                debug_color.xyz = debug_ray_info.w;
+            }
         }
         RWTexWork[dtid.xy] = debug_color;
     }
-    else if(5 == cb_ssvg.debug_view_mode)
+    else if(7 == cb_ssvg.debug_view_mode)
     {
         // Brick単位Traceのテスト. Brickの占有フラグが適切に設定または除去されているかのテスト.
         const float trace_distance = 10000.0;          
@@ -111,7 +119,7 @@ void main_cs(
         float4 debug_ray_info;
         float4 curr_ray_t_ws = trace_bbv_dev(
             hit_voxel_index, debug_ray_info,
-            camera_pos, ray_dir_ws, trace_distance, 
+            view_origin, ray_dir_ws, trace_distance, 
             cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
             cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel, true);
             
@@ -127,7 +135,7 @@ void main_cs(
         }
         RWTexWork[dtid.xy] = debug_color;
     }
-    if(6 == cb_ssvg.debug_view_mode)
+    if(8 == cb_ssvg.debug_view_mode)
     {
         // Voxel上面図X-Ray表示.
         const int3 bv_full_reso = cb_ssvg.bbv.grid_resolution * k_bbv_per_voxel_resolution;
@@ -150,7 +158,7 @@ void main_cs(
 
         RWTexWork[dtid.xy] = float4(write_data, write_data, write_data, 1.0);
     }
-    else if(7 == cb_ssvg.debug_view_mode)
+    else if(9 == cb_ssvg.debug_view_mode)
     {
         // Probe Atlas Textureの表示.
         const int2 texel_pos = dtid.xy * 0.1;

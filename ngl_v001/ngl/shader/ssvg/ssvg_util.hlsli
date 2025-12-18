@@ -44,6 +44,9 @@ RWBuffer<uint>		RWVisibleVoxelList;
 Buffer<uint>		RemoveVoxelList;
 RWBuffer<uint>		RWRemoveVoxelList;
 
+RWBuffer<float>		RWRemoveVoxelDebugList;
+
+
 Buffer<float>		UpdateProbeWork;
 RWBuffer<float>		RWUpdateProbeWork;
 
@@ -365,10 +368,16 @@ float4 trace_bbv_core(
     {
         return float4(-1.0, -1.0, -1.0, -1.0);// ヒット無し.
     }
-    const float3 ray_component_validity = abs(ray_dir_sign);// ray_dirの値がゼロのコンポーネントについては 0 が格納される. これは軸並行ベクトルの場合の計算を正しく行うためのマスクとしても機能する.
-    const float3 clampled_start_pos = floor(ray_origin + ray_dir_ws * ray_trace_begin_t_offset);
-    float3 sideDist = ((clampled_start_pos - ray_origin) + step(0.0, ray_dir_ws)) * inv_dir;
-    int3 mapPos = int3(clampled_start_pos);
+    const float3 ray_component_validity = abs(ray_dir_sign);
+    // ここ以降でray_originを使用していたが, AABB外からのレイの場合に不具合が発生していた. 正しく動作させるためにClampされた始点をray_originの代わりに使うように修正. 
+    const float3 clampled_start_pos = ray_origin + ray_dir_ws * ray_trace_begin_t_offset;
+    const float3 clampled_start_pos_i = floor(clampled_start_pos);
+    
+    //float3 sideDist = ((clampled_start_pos_i - ray_origin) + step(0.0, ray_dir_ws)) * inv_dir;
+    // 2025/12/18 AABB外からのレイの不具合修正中. ここのray_originもclampled_start_posにするのが正しそうなので修正, 動作しているが一応確認のためコードを残す.
+    float3 sideDist = ((clampled_start_pos_i - clampled_start_pos) + step(0.0, ray_dir_ws)) * inv_dir;
+
+    int3 mapPos = int3(clampled_start_pos_i);
     bool3 stepMask = calc_dda_trace_step_mask(sideDist);
 
     float hit_t = -1.0;
@@ -384,20 +393,20 @@ float4 trace_bbv_core(
         if(0 != (bbv_occupied_flag))
         {
             // signのabsをマスクとして使用することで軸並行レイのエッジケースに対応.
-            const float3 mini = ((mapPos-ray_origin) + 0.5*ray_component_validity - 0.5*ray_dir_sign) * inv_dir;
+            const float3 mini = ((mapPos-clampled_start_pos) + 0.5*ray_component_validity - 0.5*ray_dir_sign) * inv_dir;
             const float d = max(mini.x, max(mini.y, mini.z));
-            const float3 intersect = ray_origin + ray_dir_ws*d;
+            const float3 intersect = clampled_start_pos + ray_dir_ws*d;
 
             // レイ始点がBrick内部に入っている場合のエッジケース対応.
-            const bool is_ray_origin_inner_voxel = all(mapPos == floor(ray_origin));
-            const float3 uv3d = is_ray_origin_inner_voxel ? ray_origin - mapPos : intersect - mapPos;
+            const bool is_ray_origin_inner_voxel = all(mapPos == floor(clampled_start_pos));
+            const float3 uv3d = is_ray_origin_inner_voxel ? clampled_start_pos - mapPos : intersect - mapPos;
             // BitmaskBrickVoxel内部のビットセル単位でレイトレース.
             const int3 subp = trace_bitmask_brick(uv3d*k_bbv_per_voxel_resolution, ray_dir_ws, ray_dir_sign, inv_dir, stepMask, bbv_buffer, voxel_index, is_brick_mode);
-            // bitmaskヒット.
-            if (subp.x >= 0) 
+            // bitmaskヒット. 未ヒットなら何れかの要素が-1の結果が返ってくる.
+            if (subp.x >= 0)
             {
                 const float3 finalPos = mapPos*k_bbv_per_voxel_resolution+subp;
-                const float3 startPos = ray_origin*k_bbv_per_voxel_resolution;
+                const float3 startPos = clampled_start_pos*k_bbv_per_voxel_resolution;
                 // signのabsをマスクとして使用することで軸並行レイのエッジケースに対応.
                 const float3 mini = ((finalPos-startPos) + 0.5*ray_component_validity - 0.5*ray_dir_sign) * inv_dir;
                 const float d = max(mini.x, max(mini.y, mini.z));
@@ -422,7 +431,9 @@ float4 trace_bbv_core(
         if(!check_grid_bound(mapPos, grid_resolution.x, grid_resolution.y, grid_resolution.z)) {break;}
     }
 
-    out_debug.x = debug_step_count;
+    //out_debug.x = debug_step_count;
+    out_debug.xyz = clampled_start_pos;
+    out_debug.w = ray_trace_begin_t_offset;
 
     if(0.0 <= hit_t)
     {

@@ -38,11 +38,6 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
-    // DepthBuffer描画のカメラ情報. 
-    // TODO FIXME ShadowのLightViewは座標自体は原点なのでこれだとうまくいかない. PixelWorldPosからカメラへのベクトルをPerspective|Orthoで切り替えでそこからカメラ位置を再現するほうが良いかも.
-	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_injection_src_view_info.cb_view_inv_mtx);
-    const float3 camera_pos = GetViewPosFromInverseViewMatrix(cb_injection_src_view_info.cb_view_inv_mtx);
-
     // 範囲チェック.
     if(any(dtid.xy >= cb_injection_src_view_info.cb_view_depth_buffer_offset_size.zw))
     {
@@ -63,9 +58,11 @@ void main_cs(
         }
     #endif
 
+    const float2 near_far_plane_d = GetNearFarPlaneDepthFromProjectionMatrix(cb_injection_src_view_info.cb_proj_mtx);
+
     // ハードウェア深度取得. AtlasTexture対応のためオフセット考慮.
-    float d = TexHardwareDepth.Load(int3(dtid.xy + cb_injection_src_view_info.cb_view_depth_buffer_offset_size.xy, 0)).r;
-    float view_z = min(65535.0, calc_view_z_from_ndc_z(d, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef));
+    const float d = TexHardwareDepth.Load(int3(dtid.xy + cb_injection_src_view_info.cb_view_depth_buffer_offset_size.xy, 0)).r;
+    const float view_z = min(65535.0, calc_view_z_from_ndc_z(d, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef));
 
     shared_bbv_bitmask_addr[gindex] = uint4(~uint(0), 0, 0, 0);// 初期無効値.
     
@@ -73,26 +70,28 @@ void main_cs(
     // Orthoも含めて対応するためPositionを直接復元.
     const float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4(CalcViewSpacePosition(screen_uv, view_z, cb_injection_src_view_info.cb_proj_mtx), 1.0));
 
-    // Note. ShadowMap等のOrthoでは投影ベクトルのほうが正しいので後で修正する.
-    const float3 to_pixel_vec_ws = pixel_pos_ws - camera_pos;
-    const float3 ray_dir_ws = normalize(to_pixel_vec_ws);
+    const float near_plane_view_z = min(65535.0, calc_view_z_from_ndc_z(near_far_plane_d.x, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef));
+    const float3 view_ray_origin = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4(CalcViewSpacePosition(screen_uv, near_plane_view_z, cb_injection_src_view_info.cb_proj_mtx), 1.0));
 
+    const float3 to_pixel_vec_ws = pixel_pos_ws - view_ray_origin;
+    const float3 ray_dir_ws = normalize(to_pixel_vec_ws);
     // 深度バッファの手前までレイトレース.
     // Note:適当な固定値ではなく, DDA相当の計算で1セル分バックトレースしたい
     const float trace_distance = dot(ray_dir_ws, to_pixel_vec_ws) - cb_ssvg.bbv.cell_size*k_bbv_per_voxel_resolution_inv*0.9;
-        
+
+
     int hit_voxel_index = -1;
     float4 debug_ray_info;
     // Trace最適化検証.
     float4 curr_ray_t_ws = trace_bbv(
         hit_voxel_index, debug_ray_info,
-        camera_pos, ray_dir_ws, trace_distance, 
+        view_ray_origin, ray_dir_ws, trace_distance, 
         cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
         cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
 
     if(0.0 <= curr_ray_t_ws.x)
     {
-        const float3 hit_pos_ws = camera_pos + ray_dir_ws * (curr_ray_t_ws.x + 0.001);// ヒット位置は表面なので除去したいVoxelに侵入するためオフセット.
+        const float3 hit_pos_ws = view_ray_origin + ray_dir_ws * (curr_ray_t_ws.x + 0.001);// ヒット位置は表面なので除去したいVoxelに侵入するためオフセット.
 
         // PixelWorldPosition->VoxelCoord
         const float3 voxel_coordf = (hit_pos_ws - cb_ssvg.bbv.grid_min_pos) * cb_ssvg.bbv.cell_size_inv;
@@ -194,6 +193,19 @@ void main_cs(
             RWRemoveVoxelList[(target_index) + 1] = bitmask_u32_offset;
             RWRemoveVoxelList[(target_index) + 2] = bitmask_append;
             RWRemoveVoxelList[(target_index) + 3] = 0;// 予備.
+
+
+                // FIXME. デバッグ.
+                const int debug_target_index = (current_visible_count + 1) * k_component_count_RemoveVoxelList*2;
+                const float3 debug_hit_pos_ws = view_ray_origin + ray_dir_ws * (curr_ray_t_ws.x + 0.001);
+                RWRemoveVoxelDebugList[(debug_target_index) + 0] = view_ray_origin.y;
+                RWRemoveVoxelDebugList[(debug_target_index) + 1] = pixel_pos_ws.y;
+                RWRemoveVoxelDebugList[(debug_target_index) + 2] = trace_distance;
+                RWRemoveVoxelDebugList[(debug_target_index) + 3] = curr_ray_t_ws.x;
+                RWRemoveVoxelDebugList[(debug_target_index) + 4] = d;
+                RWRemoveVoxelDebugList[(debug_target_index) + 5] = 0;
+                RWRemoveVoxelDebugList[(debug_target_index) + 6] = 0;
+                RWRemoveVoxelDebugList[(debug_target_index) + 7] = 0;
         }
         else
         {

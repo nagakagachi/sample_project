@@ -55,7 +55,7 @@ VS_OUTPUT main_vs(VS_INPUT input)
 	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
     const float3 camera_up = GetViewUpDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
     const float3 camera_right = GetViewRightDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
-	const float3 camera_pos = GetViewPosFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+	const float3 view_origin = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
 
     //　VertexIDからインスタンスID,三角形ID,三角形内頂点IDを計算.
@@ -105,7 +105,7 @@ VS_OUTPUT main_vs(VS_INPUT input)
 float4 main_ps(VS_OUTPUT input) : SV_TARGET0
 {
     const float3 camera_up = cb_ngl_sceneview.cb_view_inv_mtx._m01_m11_m21;
-	const float3 camera_pos = cb_ngl_sceneview.cb_view_inv_mtx._m03_m13_m23;
+	const float3 view_origin = cb_ngl_sceneview.cb_view_inv_mtx._m03_m13_m23;
 
     const float2 unit_dist = (input.uv - float2(0.5,0.5)) * float2(2.0, -2.0);
     const float unit_dist_len_sq = dot(unit_dist, unit_dist);
@@ -115,7 +115,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     }
     const int voxel_index = input.voxel_index;
 
-    const float3 dir_to_camera = normalize(camera_pos - input.voxel_probe_pos_ws);
+    const float3 dir_to_camera = normalize(view_origin - input.voxel_probe_pos_ws);
     const float3 quad_pose_side = normalize(cross(camera_up, -dir_to_camera));
     const float3 quad_pose_up = normalize(cross(-dir_to_camera, quad_pose_side));
 

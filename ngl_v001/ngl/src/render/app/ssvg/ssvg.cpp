@@ -270,6 +270,17 @@ namespace ngl::render::app
                                                .heap_type = rhi::EResourceHeapType::Default},
                                            rhi::EResourceFormat::Format_R32_UINT);
         }
+        
+        {
+            bbv_remove_voxel_debug_list_.InitializeAsTyped(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(float),
+                                               .element_count     = (bbv_hollow_voxel_list_count_max_+1) * k_component_count_RemoveVoxelList*2,// 0番目にアトミックカウンタ用途.　格納情報にuint2相当が必要且つAtomic操作のために2倍サイズのScalarバッファとしている.
+
+                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default},
+                                           rhi::EResourceFormat::Format_R32_FLOAT);
+        }
 
         {
             // wcp_buffer_初期化.
@@ -350,10 +361,15 @@ namespace ngl::render::app
         #else
             const math::Vec3 modified_important_point = important_point_;
         #endif
+
+        #if 1
         {
             bbv_grid_updater_.UpdateGrid(modified_important_point);
             wcp_grid_updater_.UpdateGrid(modified_important_point);
         }
+        #else
+            // FIXME. デバッグ. gridの移動を止めて外部からレイトレースをした場合のデバッグ等.
+        #endif
 
         const math::Vec2i hw_depth_size = render_resolution;
 
@@ -544,11 +560,14 @@ namespace ngl::render::app
                     pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                     pso_bbv_hollow_voxel_info_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                     pso_bbv_hollow_voxel_info_->SetView(&desc_set, "RWRemoveVoxelList", bbv_remove_voxel_list_.uav.Get());
+                    pso_bbv_hollow_voxel_info_->SetView(&desc_set, "RWRemoveVoxelDebugList", bbv_remove_voxel_debug_list_.uav.Get());
+
                     p_command_list->SetPipelineState(pso_bbv_hollow_voxel_info_.Get());
                     p_command_list->SetDescriptorSet(pso_bbv_hollow_voxel_info_.Get(), &desc_set);
                     pso_bbv_hollow_voxel_info_->DispatchHelper(p_command_list, target_depth_info.atlas_resolution.x, target_depth_info.atlas_resolution.y, 1);  // Screen処理でDispatch.
 
                     p_command_list->ResourceUavBarrier(bbv_remove_voxel_list_.buffer.Get());
+                    p_command_list->ResourceUavBarrier(bbv_remove_voxel_debug_list_.buffer.Get());
                 }
                 // リストに則って実際に除去するパス.
                 {

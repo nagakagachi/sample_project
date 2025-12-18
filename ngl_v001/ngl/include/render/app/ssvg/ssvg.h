@@ -177,6 +177,7 @@ namespace ngl::render::app
         
         // 除去用リスト.
         ComputeBufferSet bbv_remove_voxel_list_ = {};
+        ComputeBufferSet bbv_remove_voxel_debug_list_ = {};
 
 
         // World Cache Probe. Wcp.

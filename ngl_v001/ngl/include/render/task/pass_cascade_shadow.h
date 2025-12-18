@@ -162,15 +162,15 @@ namespace ngl::render::task
 
 				math::Vec3 split_frustum_near4_far4_ws[] =
 				{
-					frustum_corners.corner_vec[0] * near_dist_ws + frustum_corners.view_pos,
-					frustum_corners.corner_vec[1] * near_dist_ws + frustum_corners.view_pos,
-					frustum_corners.corner_vec[2] * near_dist_ws + frustum_corners.view_pos,
-					frustum_corners.corner_vec[3] * near_dist_ws + frustum_corners.view_pos,
+					frustum_corners.corner_vec[0] * near_dist_ws + frustum_corners.view_origin,
+					frustum_corners.corner_vec[1] * near_dist_ws + frustum_corners.view_origin,
+					frustum_corners.corner_vec[2] * near_dist_ws + frustum_corners.view_origin,
+					frustum_corners.corner_vec[3] * near_dist_ws + frustum_corners.view_origin,
 					
-					frustum_corners.corner_vec[0] * far_dist_ws + frustum_corners.view_pos,
-					frustum_corners.corner_vec[1] * far_dist_ws + frustum_corners.view_pos,
-					frustum_corners.corner_vec[2] * far_dist_ws + frustum_corners.view_pos,
-					frustum_corners.corner_vec[3] * far_dist_ws + frustum_corners.view_pos,
+					frustum_corners.corner_vec[0] * far_dist_ws + frustum_corners.view_origin,
+					frustum_corners.corner_vec[1] * far_dist_ws + frustum_corners.view_origin,
+					frustum_corners.corner_vec[2] * far_dist_ws + frustum_corners.view_origin,
+					frustum_corners.corner_vec[3] * far_dist_ws + frustum_corners.view_origin,
 				};
 
 				// LightViewでのAABBからOrthoを計算しようとしている.

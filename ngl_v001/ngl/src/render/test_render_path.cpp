@@ -342,7 +342,7 @@ namespace ngl::test
                                 setup_desc.depth_buffer_info.primary.is_enable_removal_pass = true;// Voxel除去に利用するか.
                             }
 
-                            // ShadowMapのDepthBuffer登録.
+                            // ShadowMapのDepthBuffer登録. 高速化のためにフレーム毎にカスケードスキップするのもありかもしれない.
                             for( int cascade_idx = 0; cascade_idx < task_d_shadow->csm_param_.k_cascade_count; ++cascade_idx )
                             {
                                 ngl::render::app::InjectionSourceDepthBufferViewInfo shadow_depth_info{};
@@ -354,7 +354,7 @@ namespace ngl::test
                                     shadow_depth_info.h_depth = task_d_shadow->h_shadow_depth_atlas_;
                                     
                                     shadow_depth_info.is_enable_injection_pass = true;// Voxel充填に利用するか.
-                                    shadow_depth_info.is_enable_removal_pass = false;// Voxel除去に利用するか.
+                                    shadow_depth_info.is_enable_removal_pass = true;// Voxel除去に利用するか.
                                 }
 
                                 setup_desc.depth_buffer_info.sub_array.push_back(shadow_depth_info);

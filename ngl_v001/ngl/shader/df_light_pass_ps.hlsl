@@ -101,10 +101,10 @@ void EvalIblDiffuseStandard
 	out_specular = irradiance_specular * (F * specular_dfg.x + specular_dfg.y);
 }
 
-float EvalDirectionalShadow(Texture2D tex_cascade_shadowmap, SamplerComparisonState comp_samp, float3 L, float3 pixel_pos_ws, float3 normal, float3 camera_pos, float3 camera_dir)
+float EvalDirectionalShadow(Texture2D tex_cascade_shadowmap, SamplerComparisonState comp_samp, float3 L, float3 pixel_pos_ws, float3 normal, float3 view_origin, float3 camera_dir)
 {
 	// Cascade Index.
-	const float view_depth = dot(pixel_pos_ws - camera_pos, camera_dir);
+	const float view_depth = dot(pixel_pos_ws - view_origin, camera_dir);
 	int sample_cascade_index = cb_ngl_shadowview.cb_valid_cascade_count - 1;
 	for(int i = 0; i < cb_ngl_shadowview.cb_valid_cascade_count ; ++i)
 	{
@@ -225,12 +225,12 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	float3 gb_emissive = gb3.xyz;
 
 	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
-	const float3 camera_pos = GetViewPosFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+	const float3 view_origin = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
 	// ピクセルへのワールド空間レイを計算.
 	const float3 to_pixel_ray_vs = CalcViewSpaceRay(input.uv, cb_ngl_sceneview.cb_proj_mtx);
 	const float3 pixel_pos_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * ld, 1.0));
-	const float3 to_pixel_vec_ws = pixel_pos_ws - camera_pos;
+	const float3 to_pixel_vec_ws = pixel_pos_ws - view_origin;
 	const float3 to_pixel_ray_ws = normalize(to_pixel_vec_ws);
 
 	
@@ -242,7 +242,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	const float3 L = -lit_dir;
 	
 	// Directional Shadow.
-	float light_visibility = EvalDirectionalShadow(tex_shadowmap, samp_shadow, L, pixel_pos_ws, gb_normal_ws, camera_pos, camera_dir);
+	float light_visibility = EvalDirectionalShadow(tex_shadowmap, samp_shadow, L, pixel_pos_ws, gb_normal_ws, view_origin, camera_dir);
 
 	float3 lit_color = (float3)0;
 

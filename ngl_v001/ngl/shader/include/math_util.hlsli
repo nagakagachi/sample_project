@@ -151,9 +151,21 @@ float3 GetViewRightDirFromInverseViewMatrix(float3x4 view_inv_mtx)
     return normalize(view_inv_mtx._m00_m10_m20);
 }
 // View逆行列からカメラ座標を取得.
-float3 GetViewPosFromInverseViewMatrix(float3x4 view_inv_mtx)
+float3 GetViewOriginFromInverseViewMatrix(float3x4 view_inv_mtx)
 {
     return view_inv_mtx._m03_m13_m23;
+}
+
+// Projection行列がReverseなら真.
+bool IsReverseProjectionMatrix(float4x4 proj_mtx)
+{
+    // [2][3]が正ならReverseZ.
+    return proj_mtx._m23 > 0.0;
+}
+// Projection行列からReverseZモードも考慮してNear,FarのDepth値(0, 1)を取得. Reverseなら(1,0), Standardなら(0, 1).
+float2 GetNearFarPlaneDepthFromProjectionMatrix(float4x4 proj_mtx)
+{
+    return IsReverseProjectionMatrix(proj_mtx)? float2(1.0, 0.0) : float2(0.0, 1.0);
 }
 
 
