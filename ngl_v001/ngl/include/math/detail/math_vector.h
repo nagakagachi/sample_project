@@ -7,6 +7,20 @@ namespace ngl
 {
     namespace math
     {
+        namespace local {
+            constexpr float abs(float x) {
+                return x < 0 ? -x : x;
+            }
+
+            constexpr double abs(double x) {
+                return x < 0 ? -x : x;
+            }
+
+            constexpr long double abs(long double x) {
+                return x < 0 ? -x : x;
+            }
+        }
+
 
         template <typename T, int N>
         struct VecComponentT
@@ -234,6 +248,16 @@ namespace ngl
             {
                 return VecN<T, 2>(this->x, this->y, 0, 0);
             }
+            // インデックスアクセスオペレータ.
+            constexpr T Component(int index) const
+            {
+                return this->data[index];
+            }
+            // インデックスアクセスオペレータ.
+            constexpr T& Component(int index)
+            {
+                return this->data[index];
+            }
 
             bool operator==(const VecN& v) const
             {
@@ -366,6 +390,12 @@ namespace ngl
             {
                 constexpr auto func = [](T e)
                 { return std::ceil(e); };
+                return VecN(v.data, func);
+            }
+            static constexpr VecN Abs(const VecN& v)
+            {
+                constexpr auto func = [](T e)
+                { return local::abs(e); };
                 return VecN(v.data, func);
             }
         };

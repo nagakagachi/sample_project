@@ -362,6 +362,7 @@ namespace ngl::render::app
             const math::Vec3 modified_important_point = important_point_;
         #endif
 
+        
         #if 1
         {
             bbv_grid_updater_.UpdateGrid(modified_important_point);
@@ -498,11 +499,11 @@ namespace ngl::render::app
         for(int i = 0; i < num_depth_buffer; ++i)
         {
             #if 1
-                // 0番はPrimary, それ以降はSubかを参照.
-                const InjectionSourceDepthBufferViewInfo& target_depth_info = (i == 0) ? depth_buffer_info.primary : depth_buffer_info.sub_array[i - 1];
-            #else
                 // 最期にPrimaryを実行するように順序入れ替え. Primaryで可視な表面のInjectionが最優先になるようにするため.
                 const InjectionSourceDepthBufferViewInfo& target_depth_info = (i == (num_depth_buffer - 1)) ? depth_buffer_info.primary : depth_buffer_info.sub_array[i];
+            #else
+                // 0番はPrimary, それ以降はSubかを参照.
+                const InjectionSourceDepthBufferViewInfo& target_depth_info = (i == 0) ? depth_buffer_info.primary : depth_buffer_info.sub_array[i - 1];
             #endif
             
             if(!target_depth_info.is_enable_injection_pass && !target_depth_info.is_enable_removal_pass)

@@ -44,6 +44,7 @@ RWBuffer<uint>		RWVisibleVoxelList;
 Buffer<uint>		RemoveVoxelList;
 RWBuffer<uint>		RWRemoveVoxelList;
 
+// RemoveVoxelのデバッグ用情報を格納するリスト. RemoveVoxelListと同じ要素数と運用.
 RWBuffer<float>		RWRemoveVoxelDebugList;
 
 
@@ -259,7 +260,7 @@ uint read_bbv_voxel_from_world_pos(Buffer<uint> bbv_buffer, int3 grid_resolution
 bool check_grid_bound(uint3 pos, uint sizeX, uint sizeY, uint sizeZ) {
     return pos.x < sizeX && pos.y < sizeY && pos.z < sizeZ;
 }
-// ray dir の逆数による次の境界への距離からdda用のステップ用軸選択boolマスクを計算.
+// ray dir の逆数による次の境界への距離からdda用のステップ用の最小距離の軸選択boolマスクを計算.
 bool3 calc_dda_trace_step_mask(float3 ray_side_distance) {
     bool3 mask;
     mask.x = ray_side_distance.x < ray_side_distance.y && ray_side_distance.x < ray_side_distance.z;
@@ -267,38 +268,6 @@ bool3 calc_dda_trace_step_mask(float3 ray_side_distance) {
     mask.z = !mask.x && !mask.y;
     return mask;
 }
-
-// レイの始点終点セットアップ. 領域AABBの内部または表面から開始するための始点終点のt値( origin + dir * t) を計算.
-// aabb_min, aabb_max, ray_origin, ray_end のすべての空間が一致していればどの空間の情報でも適切な結果を返す(World空間でもCell基準空間でも).
-bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float out_aabb_clamped_end_t, out float3 ray_dir_sign, out float3 out_ray_dir_inv, float3 aabb_min, float3 aabb_max, float3 ray_origin, float3 ray_end)
-{
-    const float3 ray_d_c = ray_end - ray_origin;
-    const float3 ray_dir_c = normalize(ray_d_c);
-    const float ray_len_c = dot(ray_dir_c, ray_d_c);
-
-    // Inv Dir.
-    out_ray_dir_inv = 1.0 / ray_dir_c;// inf対策が必要な場合があるかも. -> select( ray_dir_component_nearly_zero, float3(k_float_max, k_float_max, k_float_max), 1.0 / ray_dir_c)
-    ray_dir_sign = sign(ray_dir_c);
-    out_aabb_clamped_origin_t = 0.0;
-    out_aabb_clamped_end_t = ray_len_c;
-
-    const float3 t_to_min = (aabb_min - ray_origin) * out_ray_dir_inv;
-    const float3 t_to_max = (aabb_max - ray_origin) * out_ray_dir_inv;
-    const float3 t_near_v3 = min(t_to_min, t_to_max);
-    const float3 t_far_v3 = max(t_to_min, t_to_max);
-    const float t_near = max(t_near_v3.x, max(t_near_v3.y, t_near_v3.z));
-    const float t_far = min(t_far_v3.x, min(t_far_v3.y, t_far_v3.z));
-
-    // GridBoxとの交点が存在しなければ早期終了. t_farが負-> 遠方点から外向きで外れ, t_farよりt_nearのほうが大きい->直線が交差していない, t_nearがレイの長さより大きい->届いていない.
-    if (t_far < 0.0 || t_far <= t_near || ray_len_c < t_near)
-        return false;
-
-    // 結果を返す. このt値で origin + dir * t を計算すればそれぞれ始点と終点がAABB空間内にクランプされた座標になる.
-    out_aabb_clamped_origin_t = max(out_aabb_clamped_origin_t, t_near);
-    out_aabb_clamped_end_t = min(out_aabb_clamped_end_t, t_far);
-
-    return true;
-};
 
 // BitmaskBrickVoxel内部のビットセル単位でのレイトレース.
 // https://github.com/dubiousconst282/VoxelRT
@@ -339,7 +308,31 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3
         return mapPos;
     }
 }
-// BitmaskBrickVoxelレイトレース.
+
+
+// レイの始点終点セットアップ. 領域AABBの内部または表面から開始するための始点終点のt値( origin + dir * t) を計算.
+// aabb_min, aabb_max, ray_origin, ray_end のすべての空間が一致していればどの空間の情報でも適切な結果を返す(World空間でもCell基準空間でも).
+bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float out_aabb_clamped_end_t, float3 aabb_min, float3 aabb_max, float3 ray_origin, float3 ray_dir, float3 ray_dir_inv, float ray_len)
+{
+    out_aabb_clamped_origin_t = 0.0;
+    out_aabb_clamped_end_t = ray_len;
+
+    const float3 t_to_min = (aabb_min - ray_origin) * ray_dir_inv;
+    const float3 t_to_max = (aabb_max - ray_origin) * ray_dir_inv;
+    const float t_near = Max3(min(t_to_min, t_to_max));
+    const float t_far = Min3(max(t_to_min, t_to_max));
+
+    // GridBoxとの交点が存在しなければ早期終了. t_farが負-> 遠方点から外向きで外れ, t_farよりt_nearのほうが大きい->直線が交差していない, t_nearがレイの長さより大きい->届いていない.
+    if (t_far < 0.0 || t_far <= t_near || ray_len < t_near)
+        return false;
+
+    // 結果を返す. このt値で origin + dir * t を計算すればそれぞれ始点と終点がAABB空間内にクランプされた座標になる.
+    out_aabb_clamped_origin_t = max(out_aabb_clamped_origin_t, t_near);
+    out_aabb_clamped_end_t = min(out_aabb_clamped_end_t, t_far);
+
+    return true;
+};
+// BitmaskBrickVoxelレイトレース. 高速化検証.
 float4 trace_bbv_core(
     out int out_hit_voxel_index,
     out float4 out_debug,
@@ -353,18 +346,18 @@ float4 trace_bbv_core(
 {
     const float3 grid_box_min = float3(0.0, 0.0, 0.0);
     const float3 grid_box_max = float3(grid_resolution);
-    const int3 grid_box_cell_max = int3(grid_resolution - 1);
     const float cell_width_ws_inv = 1.0 / cell_width_ws;
 
     out_hit_voxel_index = -1;
     out_debug = float4(0.0, 0.0, 0.0, 0.0);// デバッグ用.
 
+    const float3 ray_dir_inv = 1.0 / ray_dir_ws;// inf対策が必要な場合があるかも. -> select( ray_dir_component_nearly_zero, float3(k_float_max, k_float_max, k_float_max), 1.0 / ray_dir_c)
+    const float3 ray_dir_sign = sign(ray_dir_ws);// ray_dirの値がゼロのコンポーネントについては 0 が格納される. これは軸並行ベクトルの場合の計算を正しく行うためのマスクとしても機能する.
+
     const float3 ray_origin = (ray_origin_ws - grid_min_ws) * cell_width_ws_inv;
-    float3 ray_dir_sign;// ray_dirの値がゼロのコンポーネントについては 0 が格納される. これは軸並行ベクトルの場合の計算を正しく行うためのマスクとしても機能する.
-    float3 inv_dir;
     float ray_trace_begin_t_offset;
     float ray_trace_end_t_offset;
-    if(!calc_ray_t_offset_for_aabb(ray_trace_begin_t_offset, ray_trace_end_t_offset, ray_dir_sign, inv_dir, grid_box_min, grid_box_max, ray_origin, (ray_origin + ray_dir_ws * (trace_distance_ws * cell_width_ws_inv))))
+    if(!calc_ray_t_offset_for_aabb(ray_trace_begin_t_offset, ray_trace_end_t_offset, grid_box_min, grid_box_max, ray_origin, ray_dir_ws, ray_dir_inv, trace_distance_ws * cell_width_ws_inv))
     {
         return float4(-1.0, -1.0, -1.0, -1.0);// ヒット無し.
     }
@@ -373,16 +366,14 @@ float4 trace_bbv_core(
     const float3 clampled_start_pos = ray_origin + ray_dir_ws * ray_trace_begin_t_offset;
     const float3 clampled_start_pos_i = floor(clampled_start_pos);
     
-    //float3 sideDist = ((clampled_start_pos_i - ray_origin) + step(0.0, ray_dir_ws)) * inv_dir;
-    // 2025/12/18 AABB外からのレイの不具合修正中. ここのray_originもclampled_start_posにするのが正しそうなので修正, 動作しているが一応確認のためコードを残す.
-    float3 sideDist = ((clampled_start_pos_i - clampled_start_pos) + step(0.0, ray_dir_ws)) * inv_dir;
 
+    float3 sideDist = ((clampled_start_pos_i - clampled_start_pos) + step(0.0, ray_dir_ws)) * ray_dir_inv;
     int3 mapPos = int3(clampled_start_pos_i);
     bool3 stepMask = calc_dda_trace_step_mask(sideDist);
-
     float hit_t = -1.0;
     // デバッグ用.
     int debug_step_count = 0;
+    // トレースループ.
     for(;;)
     {
         // 読み取り用のマッピングをして読み取り.
@@ -393,33 +384,32 @@ float4 trace_bbv_core(
         if(0 != (bbv_occupied_flag))
         {
             // signのabsをマスクとして使用することで軸並行レイのエッジケースに対応.
-            const float3 mini = ((mapPos-clampled_start_pos) + 0.5*ray_component_validity - 0.5*ray_dir_sign) * inv_dir;
-            const float d = max(mini.x, max(mini.y, mini.z));
+            const float3 mini = ((mapPos-clampled_start_pos) + 0.5*ray_component_validity - 0.5*ray_dir_sign) * ray_dir_inv;
+            const float d = Max3(mini);
             const float3 intersect = clampled_start_pos + ray_dir_ws*d;
 
             // レイ始点がBrick内部に入っている場合のエッジケース対応.
             const bool is_ray_origin_inner_voxel = all(mapPos == floor(clampled_start_pos));
             const float3 uv3d = is_ray_origin_inner_voxel ? clampled_start_pos - mapPos : intersect - mapPos;
             // BitmaskBrickVoxel内部のビットセル単位でレイトレース.
-            const int3 subp = trace_bitmask_brick(uv3d*k_bbv_per_voxel_resolution, ray_dir_ws, ray_dir_sign, inv_dir, stepMask, bbv_buffer, voxel_index, is_brick_mode);
+            const int3 subp = trace_bitmask_brick(uv3d*k_bbv_per_voxel_resolution, ray_dir_ws, ray_dir_sign, ray_dir_inv, stepMask, bbv_buffer, voxel_index, is_brick_mode);
             // bitmaskヒット. 未ヒットなら何れかの要素が-1の結果が返ってくる.
             if (subp.x >= 0)
             {
                 const float3 finalPos = mapPos*k_bbv_per_voxel_resolution+subp;
                 const float3 startPos = clampled_start_pos*k_bbv_per_voxel_resolution;
                 // signのabsをマスクとして使用することで軸並行レイのエッジケースに対応.
-                const float3 mini = ((finalPos-startPos) + 0.5*ray_component_validity - 0.5*ray_dir_sign) * inv_dir;
+                const float3 mini = ((finalPos-startPos) + 0.5*ray_component_validity - 0.5*ray_dir_sign) * ray_dir_inv;
                 const float d = max(mini.x, max(mini.y, mini.z));
-            
-                hit_t = d * k_bbv_per_voxel_resolution_inv;
-                hit_t = max(0.0, hit_t);// ヒットしているはずなので0以上とする. ない場合はレイ始点がセル内の場合ヒット無し扱いになり, アーティファクトが発生する.
-
+                
+                // ヒットしているはずなので0以上とする. ない場合はレイ始点がセル内の場合ヒット無し扱いになり, アーティファクトが発生する.
+                hit_t = max(0.0, d * k_bbv_per_voxel_resolution_inv);
                 break;
             }
         }
 
         stepMask = calc_dda_trace_step_mask(sideDist);
-        sideDist += select(stepMask, abs(inv_dir), 0);
+        sideDist += select(stepMask, abs(ray_dir_inv), 0);
         const int3 mapPosDelta = select(stepMask, ray_dir_sign, 0);
         // ここがゼロになって無限ループになる場合があるため安全break.
         if(all(mapPosDelta == 0)) {break;}
@@ -447,6 +437,11 @@ float4 trace_bbv_core(
     }
     return float4(-1.0, -1.0, -1.0, -1.0);
 }
+
+
+
+
+
 
 // BitmaskBrickVoxelレイトレース.
 float4 trace_bbv(

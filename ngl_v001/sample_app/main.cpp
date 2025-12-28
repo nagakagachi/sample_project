@@ -188,6 +188,7 @@ static void TestEntry()
     ngl::thread::TestFixedSizeLockFreeStack();
     ngl::thread::TestStaticSizeLockFreeStack();
 
+    ngl::math::math_test();
 
     ngl::render::app::ConcurrentBinaryTreeU32::Test();
 }

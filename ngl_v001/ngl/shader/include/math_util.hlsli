@@ -8,6 +8,13 @@
 
 #define NGL_EPSILON 0.00001
 
+
+
+float Max3(float3 v) { return max(v.x, max(v.y, v.z)); }
+float Max3(float a, float b, float c) { return max(a, max(b, c)); }
+float Min3(float3 v) { return min(v.x, min(v.y, v.z)); }
+float Min3(float a, float b, float c) { return min(a, min(b, c)); }
+
 //--------------------------------------------------------------------------------
 float Matrix2x2_Determinant(float2x2 m)
 {
@@ -256,6 +263,27 @@ int calc_principal_axis_component_index(float3 v)
     if(v.x >= v.y && v.x >= v.z) return 0;
     if(v.y >= v.x && v.y >= v.z) return 1;
     return 2;
+}
+// ベクトルの各成分が昇順で何番目の絶対値の大きさかを格納したVec3iを返す.
+// 例えば入力Vec3( -5.0f, 2.0f, 3.0f )ならば、絶対値の大きさ順は (2, 0, 1) なので、戻り値は Vec3i(2,0,1) となる.
+int3 GetVec3ComponentOrderByMagnitude(float3 v)
+{
+    v = abs(v);
+    const int x_order = int(v.x > v.y) + int(v.x > v.z);
+    const int y_order = int(v.y >= v.x) + int(v.y > v.z);
+    const int z_order = int(v.z >= v.x) + int(v.z >= v.y);
+    return int3(x_order, y_order, z_order);
+}
+// ベクトルの各成分が昇順で並べ直すためのインデックスベクトルを返す.
+// 例えば入力Vec3( -5.0f, 2.0f, 3.0f )ならば、絶対値の大きさ順は (2, 0, 1) なので、戻り値は Vec3i(1,2,0) となる.
+int3 GetVec3ComponentReorderIndexByMagnitude(float3 v)
+{
+    const int3 order = GetVec3ComponentOrderByMagnitude(v);
+    int3 index_vec;
+    index_vec[order.x] = 0;
+    index_vec[order.y] = 1;
+    index_vec[order.z] = 2;
+    return index_vec;
 }
 
 

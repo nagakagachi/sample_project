@@ -78,8 +78,9 @@ void main_cs(
             }
             else if(2 == cb_ssvg.debug_view_mode)
             {
-                // VoxelIDを可視化.
-                debug_color.xyz = float4(frac(hit_voxel_index / 64.0), frac(hit_voxel_index / 256.0), frac(hit_voxel_index / 1024.0), 1);
+                // BitmaskBrickVoxelセルのヒット法線可視化.
+                const float3 bbv_cell_id = floor((view_origin + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
+                debug_color.xyz = abs(curr_ray_t_ws.yzw);
                 
                 // 簡易フォグ.
                 debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
@@ -92,21 +93,12 @@ void main_cs(
             }
             else if(4 == cb_ssvg.debug_view_mode)
             {
-                // BitmaskBrickVoxelセルのヒット法線可視化.
-                const float3 bbv_cell_id = floor((view_origin + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
-                debug_color.xyz = abs(curr_ray_t_ws.yzw);
-                
-                // 簡易フォグ.
-                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
-                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
             }
             else if(5 == cb_ssvg.debug_view_mode)
             {
-                debug_color.xyz = debug_ray_info.xyz;
             }
             else if(6 == cb_ssvg.debug_view_mode)
             {
-                debug_color.xyz = debug_ray_info.w;
             }
         }
         RWTexWork[dtid.xy] = debug_color;
@@ -167,5 +159,8 @@ void main_cs(
 
         const float4 probe_data = WcpProbeAtlasTex.Load(uint3(texel_pos, 0));
         RWTexWork[dtid.xy] = probe_data.xxxx;
+    }
+    else if(10 == cb_ssvg.debug_view_mode)
+    {
     }
 }
