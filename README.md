@@ -11,6 +11,7 @@ https://nagakagachi.notion.site/RenderGraph-54f0cf4284c7466697b99cc0df81be80
 
 # Build
   - clone
+  - git submodule update --init --recursive
   - build third_party/assimp (cmake)
     - cd assimp
     - cmake CMakeLists.txt 
