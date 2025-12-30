@@ -86,7 +86,8 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         // ジオメトリ表面を含むBrickまでの相対ベクトル. ジオメトリ表面を含むBrickは0, それ以外はマンハッタン距離.
         int3 to_surface_vector;
 
-        // BitmaskBrickVoxel内部でのプローブ候補位置を表す線形インデックス. 0は無効, probe_pos_code-1 が実際のインデックス. 値域は 0,k_bbv_per_voxel_bitmask_bit_count.
+        // 現在未使用.
+        // BitmaskBrickVoxel内部でのプローブ候補位置を表す線形インデックス.
         uint probe_pos_code;
     };
 
@@ -94,7 +95,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     // WorldCacheProbeのデータ.
     struct WcpProbeData
     {
-        uint probe_offset_v3;//signed 10bit vector3 encode.
+        uint probe_offset_v3;//signed 10bit vector3 encode. Bbv上でのプローブ埋まり回避のためのオフセット.
         uint atomic_work;// 可視要素リスト作成時の重複除去用.
         
         float avg_sky_visibility;
