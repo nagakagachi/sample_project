@@ -332,6 +332,7 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
     return true;
 };
 
+
 // BitmaskBrickVoxelレイトレース.
 float4 trace_bbv_core(
     out int out_hit_voxel_index,
@@ -344,8 +345,6 @@ float4 trace_bbv_core(
     const bool is_brick_mode // ヒットをVoxelではなくBrickで完了させるモード. Brickの占有フラグのデバッグ用.
 )
 {
-    const float3 grid_box_min = float3(0.0, 0.0, 0.0);
-    const float3 grid_box_max = float3(grid_resolution);
     const float cell_width_ws_inv = 1.0 / cell_width_ws;
 
     out_hit_voxel_index = -1;
@@ -357,18 +356,21 @@ float4 trace_bbv_core(
     const float3 ray_origin = (ray_origin_ws - grid_min_ws) * cell_width_ws_inv;
     float ray_trace_begin_t_offset;
     float ray_trace_end_t_offset;
-    if(!calc_ray_t_offset_for_aabb(ray_trace_begin_t_offset, ray_trace_end_t_offset, grid_box_min, grid_box_max, ray_origin, ray_dir_ws, ray_dir_inv, trace_distance_ws * cell_width_ws_inv))
+    if(!calc_ray_t_offset_for_aabb(ray_trace_begin_t_offset, ray_trace_end_t_offset, float3(0.0, 0.0, 0.0), float3(grid_resolution), ray_origin, ray_dir_ws, ray_dir_inv, trace_distance_ws * cell_width_ws_inv))
     {
         return float4(-1.0, -1.0, -1.0, -1.0);// ヒット無し.
     }
     const float3 ray_component_validity = abs(ray_dir_sign);
     // ここ以降でray_originを使用していたが, AABB外からのレイの場合に不具合が発生していた. 正しく動作させるためにClampされた始点をray_originの代わりに使うように修正. 
     const float3 clampled_start_pos = ray_origin + ray_dir_ws * ray_trace_begin_t_offset;
-    const float3 clampled_start_pos_i = floor(clampled_start_pos);
+    const int3 clampled_start_pos_i = floor(clampled_start_pos);
+    const int3 clampled_end_pos_i = floor(ray_origin + ray_dir_ws * ray_trace_end_t_offset);
     
+    const int3 trace_cell_min = min(clampled_start_pos_i, clampled_end_pos_i);
+    const int3 trace_cell_max = max(clampled_start_pos_i, clampled_end_pos_i);
 
-    float3 sideDist = ((clampled_start_pos_i - clampled_start_pos) + step(0.0, ray_dir_ws)) * ray_dir_inv;
-    int3 mapPos = int3(clampled_start_pos_i);
+    float3 sideDist = ((float3(clampled_start_pos_i) - clampled_start_pos) + step(0.0, ray_dir_ws)) * ray_dir_inv;
+    int3 mapPos = clampled_start_pos_i;
     bool3 stepMask = calc_dda_trace_step_mask(sideDist);
     int3 subMapPos = int3(-1, -1, -1);
     // トレースループ.
@@ -382,9 +384,8 @@ float4 trace_bbv_core(
         {
             // Brick内部の詳細判定.
             const float3 mini = ((mapPos-clampled_start_pos) + 0.5*ray_component_validity - 0.5*ray_dir_sign) * ray_dir_inv;
-            const float d = Max3(mini);
-            const float3 intersect = clampled_start_pos + ray_dir_ws*d;
-            const float3 uv3d = all(mapPos == clampled_start_pos_i) ? clampled_start_pos - mapPos : intersect - mapPos; // レイ始点がBrick内部に入っている場合のエッジケース対応.
+            const float d = max(0.0, Max3(mini));
+            const float3 uv3d = (clampled_start_pos + ray_dir_ws*d) - mapPos; // all(mapPos == clampled_start_pos_i) の場合のエッジケース対応でカレント位置を clampled_start_pos に置き換える対応は, dの0クランプで代替している.
 
             subMapPos = trace_bitmask_brick(uv3d*k_bbv_per_voxel_resolution, ray_dir_ws, ray_dir_sign, ray_dir_inv, stepMask, bbv_buffer, voxel_index, is_brick_mode);
             // bitmaskヒット. 未ヒットなら何れかの要素が-1の結果が返ってくる.
@@ -395,15 +396,11 @@ float4 trace_bbv_core(
         stepMask = calc_dda_trace_step_mask(sideDist);
         sideDist += select(stepMask, abs(ray_dir_inv), 0);
         const int3 mapPosDelta = select(stepMask, ray_dir_sign, 0);
-        // ここがゼロになって無限ループになる場合があるため安全break.
-        if(all(mapPosDelta == 0)) {break;}
         mapPos += mapPosDelta;
-
-        // 範囲外.
-        if(!check_grid_bound(mapPos, grid_resolution.x, grid_resolution.y, grid_resolution.z)) {break;}
+        // 範囲外チェックおよび進行ステップゼロのチェックでブレーク.
+        if((any(mapPos < trace_cell_min) || any(mapPos > trace_cell_max)) || all(mapPosDelta == 0)) {break;}
     }
 
-    
     // Brick内ヒットから情報復元.
     if(subMapPos.x >= 0)
     {
@@ -431,8 +428,6 @@ float4 trace_bbv_core(
 
     return float4(-1.0, -1.0, -1.0, -1.0);
 }
-
-
 
 
 
