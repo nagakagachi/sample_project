@@ -78,7 +78,7 @@ void main_cs(
             }
             else if(2 == cb_ssvg.debug_view_mode)
             {
-                // BitmaskBrickVoxelセルのヒット法線可視化.
+                // Bbvセルのヒット法線可視化.
                 const float3 bbv_cell_id = floor((view_origin + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
                 debug_color.xyz = abs(curr_ray_t_ws.yzw);
                 
@@ -88,7 +88,7 @@ void main_cs(
             }
             else if(3 == cb_ssvg.debug_view_mode)
             {
-                // BitmaskBrickVoxelセルの深度を可視化.
+                // Bbvセルの深度を可視化.
                 debug_color.xyz = float4(saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), 1);
             }
             else if(4 == cb_ssvg.debug_view_mode)

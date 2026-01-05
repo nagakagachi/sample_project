@@ -3,7 +3,7 @@
 
 bbv_generate_hollow_voxel_info_cs.hlsl
 
-ハードウェア深度バッファより手前にある中空になったBitmaskBrickVoxelを除去するための情報を生成する.
+ハードウェア深度バッファより手前にある中空になったBbvCellを除去するための情報を生成する.
 
 #endif
 

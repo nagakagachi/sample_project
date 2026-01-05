@@ -24,13 +24,13 @@ ssvg_util.hlsli
 
 
 // ------------------------------------------------------------------------------------------------------------------------
-// BitmaskBrickVoxel. bbv.
+// Bbv. bbv.
 // uint UniqueData + uint[brick数分] OccupancyBitMask.
 // UniqueData : 0bit:空ではないなら1, 1-31: 最後に可視状態になったフレーム番号.
 Buffer<uint>		BitmaskBrickVoxel;
 RWBuffer<uint>		RWBitmaskBrickVoxel;
 
-// BitmaskBrickVoxel毎の追加データ.
+// Bbv毎の追加データ.
 StructuredBuffer<BbvOptionalData>		BitmaskBrickVoxelOptionData;
 RWStructuredBuffer<BbvOptionalData>	RWBitmaskBrickVoxelOptionData;
 
@@ -111,7 +111,7 @@ int3 voxel_coord_toroidal_mapping(int3 voxel_coord, int3 toroidal_offset, int3 r
     return (voxel_coord + toroidal_offset) % resolution;
 }
 
-// BitmaskBrickVoxelの取り扱い.
+// Bbvの取り扱い.
 // ------------------------------------------------------------------------------------------------------------------------
 // VoxelIndexからアドレス計算. Buffer上の該当Voxelデータの先頭アドレスを返す.
 uint bbv_voxel_index_to_addr(uint voxel_index)
@@ -145,7 +145,7 @@ uint bbv_voxel_bitmask_uint_count()
     return k_bbv_per_voxel_bitmask_u32_count;
 }
 
-// BitmaskBrickVoxelの内部座標を元にリニアインデックスを計算.
+// Bbvの内部座標を元にリニアインデックスを計算.
 uint calc_bbv_bitcell_index(uint3 bitcell_pos)
 {
     // 現状はX,Y,Z順のリニアレイアウト.
@@ -157,7 +157,7 @@ void calc_bbv_bitcell_info_from_bitcell_index(out uint out_u32_offset, out uint 
     out_u32_offset = bitcell_index / 32;// 何番目のuintか.
     out_bit_location = bitcell_index - (out_u32_offset * 32);// uint内の何番目のビットか.
 }
-// BitmaskBrickVoxelの内部座標を元にバッファの該当Voxelブロック内のオフセットと読み取りビット位置を計算.
+// Bbvの内部座標を元にバッファの該当Voxelブロック内のオフセットと読み取りビット位置を計算.
 void calc_bbv_bitcell_info(out uint out_u32_offset, out uint out_bit_location, uint3 bitcell_pos)
 {
     // 現状はX,Y,Z順のリニアレイアウト.
@@ -166,7 +166,7 @@ void calc_bbv_bitcell_info(out uint out_u32_offset, out uint out_bit_location, u
     calc_bbv_bitcell_info_from_bitcell_index(out_u32_offset, out_bit_location, bitcell_index);
 }
 
-// BitmaskBrickVoxelのビットセルインデックスから k_bbv_per_voxel_resolution^3 ボクセル内位置を計算.
+// Bbvのビットセルインデックスから k_bbv_per_voxel_resolution^3 ボクセル内位置を計算.
 // bit_index : 0 〜 k_bbv_per_voxel_bitmask_bit_count-1
 uint3 calc_bbv_bitcell_pos_from_bit_index(uint bit_index)
 {
@@ -189,7 +189,7 @@ uint mask_bbv_voxel_unique_data_last_visible_frame(uint last_visible_frame)
 }
 
 // ------------------------------------------------------------------------------------------------------------------------
-// BitmaskBrickVoxelの追加データ構造の操作.
+// Bbvの追加データ構造の操作.
 
 // Bbv. probe_bitcell_index : -1なら空セル無し, 0〜k_bbv_per_voxel_bitmask_bit_count-1
 void set_bbv_probe_bitcell_index(inout BbvOptionalData voxel_data, int probe_bitcell_index)
@@ -269,10 +269,10 @@ bool3 calc_dda_trace_step_mask(float3 ray_side_distance) {
     return mask;
 }
 
-// BitmaskBrickVoxel内部のビットセル単位でのレイトレース.
+// Bbv内部のビットセル単位でのレイトレース.
 // https://github.com/dubiousconst282/VoxelRT
 int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3 invDir, inout bool3 stepMask, 
-        Buffer<uint> bbv_buffer, uint voxel_index,
+        Buffer<uint> bbv_buffer, uint bbv_bitmask_addr,
         const bool is_brick_mode // ヒットをVoxelではなくBrickで完了させるモード. Brickの占有フラグのデバッグ用.
     ) 
 {
@@ -284,7 +284,6 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3
     int3 raySign = rayDirSign;
     if(!is_brick_mode)
     {
-        const uint bbv_bitmask_addr = bbv_voxel_bitmask_data_addr(voxel_index);
         do {
             uint bitcell_u32_offset, bitcell_u32_bit_pos;
             calc_bbv_bitcell_info(bitcell_u32_offset, bitcell_u32_bit_pos, mapPos);
@@ -295,7 +294,7 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3
             sideDist += select(stepMask, abs(invDir), 0);
             const int3 mapPosDelta = select(stepMask, raySign, 0);
             mapPos += mapPosDelta;
-            if(all(mapPosDelta == 0)) {break;}// ここがゼロになって無限ループになる場合がある???  ため安全break.
+            //if(all(mapPosDelta == 0)) {break;}// 外側のBrick単位ループではこのチェックが必要だがここでは不要そう.
             
         } while (all(uint3(mapPos) < k_bbv_per_voxel_resolution));
 
@@ -303,8 +302,7 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3
     }
     else
     {
-        // デバッグ用にBrick単位で即時ヒット扱いする. この関数に入る時点でBrick単位のOccupiedフラグを参照しているはず.
-        return mapPos;
+        return mapPos;// デバッグ用にBrick単位で即時ヒット扱いする. この関数に入る時点でBrick単位のOccupiedフラグを参照しているはず.
     }
 }
 
@@ -333,7 +331,7 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
 };
 
 
-// BitmaskBrickVoxelレイトレース.
+// Bbvレイトレース.
 float4 trace_bbv_core(
     out int out_hit_voxel_index,
     out float4 out_debug,
@@ -378,16 +376,16 @@ float4 trace_bbv_core(
     {
         // 読み取り用のマッピングをして読み取り.
         const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(mapPos, bbv_grid_toroidal_offset, grid_resolution), grid_resolution);
-        const uint bbv_occupied_flag = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_index)] & k_bbv_per_voxel_bitmask_u32_component_mask;
+        const uint bbv_occupied_flag = bbv_buffer[bbv_voxel_coarse_occupancy_info_addr(voxel_index)] & k_bbv_per_voxel_bitmask_u32_component_mask;
         // Brick単位の簡易判定.
         if(0 != (bbv_occupied_flag))
         {
             // Brick内部の詳細判定.
             const float3 mini = ((mapPos-clampled_start_pos) + 0.5*ray_component_validity - 0.5*ray_dir_sign) * ray_dir_inv;
             const float d = max(0.0, Max3(mini));
-            const float3 uv3d = (clampled_start_pos + ray_dir_ws*d) - mapPos; // all(mapPos == clampled_start_pos_i) の場合のエッジケース対応でカレント位置を clampled_start_pos に置き換える対応は, dの0クランプで代替している.
+            const float3 pos_in_brick = ((clampled_start_pos + ray_dir_ws*d) - mapPos) * k_bbv_per_voxel_resolution;// all(mapPos == clampled_start_pos_i)のエッジケース対応で clampled_start_pos に置き換える対応は, dの0クランプで代替している.
 
-            subMapPos = trace_bitmask_brick(uv3d*k_bbv_per_voxel_resolution, ray_dir_ws, ray_dir_sign, ray_dir_inv, stepMask, bbv_buffer, voxel_index, is_brick_mode);
+            subMapPos = trace_bitmask_brick(pos_in_brick, ray_dir_ws, ray_dir_sign, ray_dir_inv, stepMask, bbv_buffer, bbv_voxel_bitmask_data_addr(voxel_index), is_brick_mode);
             // bitmaskヒット. 未ヒットなら何れかの要素が-1の結果が返ってくる.
             if (subMapPos.x >= 0)
                 break;
@@ -401,18 +399,16 @@ float4 trace_bbv_core(
         if((any(mapPos < trace_cell_min) || any(mapPos > trace_cell_max)) || all(mapPosDelta == 0)) {break;}
     }
 
-    // Brick内ヒットから情報復元.
+    // トレースループの結果から返却情報生成.
     if(subMapPos.x >= 0)
     {
-        float hit_t = -1.0;
-
         const float3 finalPos = mapPos*k_bbv_per_voxel_resolution+subMapPos;
         const float3 startPos = clampled_start_pos*k_bbv_per_voxel_resolution;
         // signのabsをマスクとして使用することで軸並行レイのエッジケースに対応.
         const float3 mini = ((finalPos-startPos) + 0.5*ray_component_validity - 0.5*ray_dir_sign) * ray_dir_inv;
-        const float d = Max3(mini);
+        const float d = Max3(mini); // bitmask voxel解像度でのhit t.
         // ヒットしているはずなので0クランプ. クランプしない場合はレイ始点がセル内の場合ヒット無し扱いになり, アーティファクトが発生する.
-        hit_t = max(0.0, d * k_bbv_per_voxel_resolution_inv);
+        float hit_t = max(0.0, d * k_bbv_per_voxel_resolution_inv);
 
         // 返却情報計算.
         {
@@ -432,7 +428,7 @@ float4 trace_bbv_core(
 
 
 
-// BitmaskBrickVoxelレイトレース.
+// Bbvレイトレース.
 float4 trace_bbv(
     out int out_hit_voxel_index,
     out float4 out_debug,
@@ -450,7 +446,7 @@ float4 trace_bbv(
         false
     );
 }
-// BitmaskBrickVoxelレイトレース. 開発用.
+// Bbvレイトレース. 開発用.
 float4 trace_bbv_dev(
     out int out_hit_voxel_index,
     out float4 out_debug,

@@ -38,15 +38,15 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
 
     // シェーダとCppで一致させる.
-    // BitmaskBrickVoxel単位の固有データ部のu32単位数.ジオメトリを表現する占有ビットマスクとは別に荒い単位で保持するデータ. レイアウトの簡易化のためビット単位ではなくu32単位.
+    // Bbv単位の固有データ部のu32単位数.ジオメトリを表現する占有ビットマスクとは別に荒い単位で保持するデータ. レイアウトの簡易化のためビット単位ではなくu32単位.
     #define k_bbv_common_data_u32_count (2)
-    // BitmaskBrickVoxel単位の占有ビットマスク解像度. 2の冪でなくても良い.
+    // Bbv単位の占有ビットマスク解像度. 2の冪でなくても良い.
     #define k_bbv_per_voxel_resolution (8)
     #define k_bbv_per_voxel_bitmask_bit_count (k_bbv_per_voxel_resolution*k_bbv_per_voxel_resolution*k_bbv_per_voxel_resolution)
     #define k_bbv_per_voxel_bitmask_u32_count ((k_bbv_per_voxel_bitmask_bit_count + 31) / 32)
     // k_bbv_per_voxel_bitmask_u32_count == 16 なら それぞれのu32コンポーネントの非ゼロフラグを管理する16bitをマスクする定義.
     #define k_bbv_per_voxel_bitmask_u32_component_mask ((1 << k_bbv_per_voxel_bitmask_u32_count) - 1)
-    // BitmaskBrickVoxel単位が持つデータサイズ(u32単位).
+    // Bbv単位が持つデータサイズ(u32単位).
     #define k_bbv_per_voxel_u32_count (k_bbv_per_voxel_bitmask_u32_count + k_bbv_common_data_u32_count)
 
 
@@ -79,7 +79,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
 
     // シェーダとCppで一致させる.
-    // Voxel追加データバッファ. BitmaskBrickVoxel一つ毎の外部データ.
+    // Voxel追加データバッファ. Bbv一つ毎の外部データ.
     // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.
     struct BbvOptionalData
     {
@@ -87,7 +87,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int3 to_surface_vector;
 
         // 現在未使用.
-        // BitmaskBrickVoxel内部でのプローブ候補位置を表す線形インデックス.
+        // Bbv内部でのプローブ候補位置を表す線形インデックス.
         uint probe_pos_code;
     };
 

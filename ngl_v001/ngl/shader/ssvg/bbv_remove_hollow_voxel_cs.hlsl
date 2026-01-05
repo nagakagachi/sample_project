@@ -3,7 +3,7 @@
 
 bbv_remove_hollow_voxel_cs.hlsl
 
-中空になったBitmaskBrickVoxelを除去する.
+中空になったBbvを除去する.
 前段で作成した中空Voxelリストを参照して処理.
 
 #endif
