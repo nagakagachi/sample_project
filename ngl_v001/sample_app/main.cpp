@@ -586,7 +586,7 @@ bool AppGame::Initialize()
         }
     }
 
-    #if 0
+    #if 1
         // Raytrace. 初期化しなければ描画パスでも処理されなくなる.
         //	TLAS構築時にShaderTableの最大Hitgroup数が必要な設計であるため初期化時に最大数指定する. PrimayとShadowの2種であれば 2.
         constexpr int k_system_hitgroup_count_max = 3;
@@ -596,7 +596,7 @@ bool AppGame::Initialize()
         }
     #endif
     
-    #if 1
+    #if 0
         // SSVG.
         ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f);
         //ngl::render::app::SsVg::dbg_view_mode_ = -1;
