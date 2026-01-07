@@ -72,10 +72,7 @@ VS_OUTPUT main_vs(VS_INPUT input)
     
 
     // Bbv追加データ.
-    const BbvOptionalData voxel_optional_data = BitmaskBrickVoxelOptionData[voxel_index];
-    const bool is_invalid_probe_local_pos = (0 == voxel_optional_data.probe_pos_code);
-    const int3 probe_coord_in_voxel = (is_invalid_probe_local_pos) ? int3(k_bbv_per_voxel_resolution.xxx * 0.5) : calc_bbv_bitcell_pos_from_bit_index(calc_bbv_probe_bitcell_index(voxel_optional_data));
-    const float3 probe_pos_ws = (float3(voxel_coord) + (float3(probe_coord_in_voxel) + 0.5) / float(k_bbv_per_voxel_resolution)) * cb_ssvg.bbv.cell_size + cb_ssvg.bbv.grid_min_pos;
+    const float3 probe_pos_ws = (float3(voxel_coord) + 0.5) * cb_ssvg.bbv.cell_size + cb_ssvg.bbv.grid_min_pos;
 
 
     float4 color = float4(1,1,1,1);
@@ -86,11 +83,6 @@ VS_OUTPUT main_vs(VS_INPUT input)
     if(0 != (bbv_occupied_flag))
     {
         draw_scale *= cb_ssvg.debug_probe_near_geom_scale;
-    }
-    if(is_invalid_probe_local_pos)
-    {
-        // 埋まり回避プローブ位置が無い場合は色変え.
-        color = float4(0,0,1,1);
     }
 
     const int vtx_index = particle_quad_index[ instance_vtx_id ];

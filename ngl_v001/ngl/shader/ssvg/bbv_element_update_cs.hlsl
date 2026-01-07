@@ -173,7 +173,6 @@ void main_cs(
     
     // Voxel追加データ更新.
     {
-        set_bbv_probe_bitcell_index(voxel_optional_data, candidate_probe_bitcell_index);
         voxel_optional_data.to_surface_vector = nearest_surface_dist;
     }
     // Voxel追加データ書き込み.

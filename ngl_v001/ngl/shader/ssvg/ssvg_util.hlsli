@@ -189,23 +189,6 @@ uint mask_bbv_voxel_unique_data_last_visible_frame(uint last_visible_frame)
 }
 
 // ------------------------------------------------------------------------------------------------------------------------
-// Bbvの追加データ構造の操作.
-
-// Bbv. probe_bitcell_index : -1なら空セル無し, 0〜k_bbv_per_voxel_bitmask_bit_count-1
-void set_bbv_probe_bitcell_index(inout BbvOptionalData voxel_data, int probe_bitcell_index)
-{
-     // 0は空セル無しのフラグとして予約.
-    voxel_data.probe_pos_code = (0 <= probe_bitcell_index)? probe_bitcell_index + 1 : 0;
-}
-// Bbv. Bitmask Brick Voxelのビットセルインデックスからk_bbv_per_voxel_resolution^3 ボクセル内位置を計算.
-// bit_index : 0 〜 k_bbv_per_voxel_bitmask_bit_count-1
-int calc_bbv_probe_bitcell_index(BbvOptionalData voxel_data)
-{
-    return voxel_data.probe_pos_code-1;
-}
-
-
-// ------------------------------------------------------------------------------------------------------------------------
 // Bbv. Voxelデータクリア.
 void clear_voxel_data(RWBuffer<uint> bbv_buffer, uint voxel_index)
 {

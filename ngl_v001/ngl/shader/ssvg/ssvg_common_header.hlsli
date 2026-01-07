@@ -85,10 +85,8 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     {
         // ジオメトリ表面を含むBrickまでの相対ベクトル. ジオメトリ表面を含むBrickは0, それ以外はマンハッタン距離.
         int3 to_surface_vector;
-
         // 現在未使用.
-        // Bbv内部でのプローブ候補位置を表す線形インデックス.
-        uint probe_pos_code;
+        uint dummy;
     };
 
 

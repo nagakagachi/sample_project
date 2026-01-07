@@ -596,9 +596,11 @@ bool AppGame::Initialize()
         }
     #endif
     
-    // SSVG.
-    ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f);
-    //ngl::render::app::SsVg::dbg_view_mode_ = -1;
+    #if 1
+        // SSVG.
+        ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f);
+        //ngl::render::app::SsVg::dbg_view_mode_ = -1;
+    #endif
 
 
 
