@@ -105,7 +105,7 @@ MtlVsOutput MtlVsEntryPoint(MtlVsInput input)
     MtlVsOutput output = (MtlVsOutput)0;
 
     // テスト
-    //output.position_offset_ws = input.normal_ws * abs(sin(ngl_cb_sceneview.cb_time_sec / 1.0f)) * 0.05;
+    //output.position_offset_ws = input.normal_ws * abs(sin(cb_ngl_sceneview.cb_time_sec / 1.0f)) * 0.05;
     
     return output;
 }

@@ -44,13 +44,13 @@ namespace ngl
 
 				void SetupAsConstantBuffer(ngl::u32 size) 
 				{
+					element_byte_size = size;
+					element_count = 1;
+
+					bind_flag = (int)ngl::rhi::ResourceBindFlag::ConstantBuffer;
 					// CBは大抵CPU書き込みをするため Upload.
 					heap_type = rhi::EResourceHeapType::Upload;
 					initial_state = rhi::EResourceState::General;// 初期ステートでConstantBuffer指定. (Generic_Read開始でないといけないかもしれない).
-
-					bind_flag = (int)ngl::rhi::ResourceBindFlag::ConstantBuffer;
-					element_byte_size = size;
-					element_count = 1;
 				}
 			};
 

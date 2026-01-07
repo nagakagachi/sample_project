@@ -17,13 +17,13 @@ namespace ngl::render::app
     class CBTGpuResources
     {
     public:
-        RhiBufferSet cbt_buffer;
-        RhiBufferSet bisector_pool_buffer;
-        RhiBufferSet index_cache_buffer;
-        RhiBufferSet alloc_counter_buffer;
-        RhiBufferSet indirect_dispatch_arg_for_bisector_buffer;
-        RhiBufferSet indirect_dispatch_arg_for_index_cache_buffer;
-        RhiBufferSet draw_indirect_arg_buffer;
+        ComputeBufferSet cbt_buffer;
+        ComputeBufferSet bisector_pool_buffer;
+        ComputeBufferSet index_cache_buffer;
+        ComputeBufferSet alloc_counter_buffer;
+        ComputeBufferSet indirect_dispatch_arg_for_bisector_buffer;
+        ComputeBufferSet indirect_dispatch_arg_for_index_cache_buffer;
+        ComputeBufferSet draw_indirect_arg_buffer;
 
         // CBT Constants
         struct CBTConstants

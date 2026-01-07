@@ -104,7 +104,7 @@ namespace ngl::render::task
                         desc.depth_stencil_state.depth_func = rhi::ECompFunc::GreaterEqual;// ReverseZでPreZ描画されていない最遠方ピクセルのみ描画.
                     }
                 }
-                pso_ = new rhi::GraphicsPipelineStateDep();
+                pso_.Reset(new rhi::GraphicsPipelineStateDep());
                 if (!pso_->Initialize(p_device, desc))
                 {
                     assert(false);
@@ -176,7 +176,7 @@ namespace ngl::render::task
                     command_list->SetPipelineState(pso_.Get());
                     ngl::rhi::DescriptorSetDep desc_set = {};
 
-                    pso_->SetView(&desc_set, "ngl_cb_sceneview", &setup_desc_.scene_cbv->cbv_);
+                    pso_->SetView(&desc_set, "cb_ngl_sceneview", &setup_desc_.scene_cbv->cbv_);
                     pso_->SetView(&desc_set, "cb_skybox", &cbh->cbv_);
                     pso_->SetView(&desc_set, "tex_skybox_cube", cube_srv);
                     

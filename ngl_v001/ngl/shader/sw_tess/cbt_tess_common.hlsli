@@ -105,6 +105,7 @@
     
 
 #include "bisector.hlsli"
+#include "../include/math_util.hlsli"
 
 // CBT操作定数（32bit uint リーフ特化）
 #define CBT_UINT32_BIT_WIDTH 32
@@ -225,15 +226,6 @@ uint GetCBTBit(RWBuffer<uint> cbt, uint bit_position)
     uint leaf_index = GetCBTLeafOffset() + GetCBTLeafIndex(bit_position);
     uint bit_mask = GetCBTBitMask(bit_position);
     return (cbt[leaf_index] & bit_mask) != 0 ? 1 : 0;
-}
-
-// ビットカウント関数
-uint CountBits32(uint value)
-{
-    // ハミング重み計算
-    value = value - ((value >> 1) & 0x55555555);
-    value = (value & 0x33333333) + ((value >> 2) & 0x33333333);
-    return (((value + (value >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
 }
 
 // CBT検索関数 - i番目の1ビットの位置を検索（完全二分木ビットシフト最適化版）

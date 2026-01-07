@@ -75,7 +75,7 @@ namespace ngl
 			// 無効なリソースチェック.
 			if (!swapchain.IsValid() && !tex.IsValid())
 			{
-				std::cout << u8"[RenderTaskGraphBuilder][RegisterExternalResource] 外部リソース登録のResourceが不正です." << std::endl;
+				std::cout << "[RenderTaskGraphBuilder][RegisterExternalResource] 外部リソース登録のResourceが不正です." << std::endl;
 				assert(false);
 			}
 
@@ -88,7 +88,7 @@ namespace ngl
 					if(e.tex_.Get() == tex.Get())
 					{
 						// 二重登録されているのでERROR.
-						std::cout << u8"[RenderTaskGraphBuilder][RegisterExternalResource] 外部リソースの二重登録が検出されました(texture). " << tex.Get() << std::endl;
+						std::cout << "[RenderTaskGraphBuilder][RegisterExternalResource] 外部リソースの二重登録が検出されました(texture). " << tex.Get() << std::endl;
 						assert(false);
 						return {};
 					}
@@ -101,7 +101,7 @@ namespace ngl
 					if(e.swapchain_.Get() == swapchain.Get())
 					{
 						// 二重登録されているのでERROR.
-						std::cout << u8"[RenderTaskGraphBuilder][RegisterExternalResource] 外部リソースの二重登録が検出されました(swapchain). " << swapchain.Get() << std::endl;
+						std::cout << "[RenderTaskGraphBuilder][RegisterExternalResource] 外部リソースの二重登録が検出されました(swapchain). " << swapchain.Get() << std::endl;
 						assert(false);
 						return {};
 					}
@@ -210,7 +210,7 @@ namespace ngl
 		{
 			if(!IsRecordable())
 			{
-				std::cout <<  u8"[ERROR] このBuilderはRecordできません. すでにCompile済み, 又はExecute済みのBuilderは破棄して新規Builderを利用してください." << std::endl;
+				std::cout <<  "[ERROR] このBuilderはRecordできません. すでにCompile済み, 又はExecute済みのBuilderは破棄して新規Builderを利用してください." << std::endl;
 				assert(false);
 				return {};
 			}
@@ -227,7 +227,7 @@ namespace ngl
 						access_type != access_type::UAV
 						)
 					{
-						std::cout <<  u8"[ERROR] AsyncComputeTaskで許可されないアクセスタイプを検出しました. 許可されるアクセスタイプは ShaderRead と UAV のみです." << std::endl;
+						std::cout <<  "[ERROR] AsyncComputeTaskで許可されないアクセスタイプを検出しました. 許可されるアクセスタイプは ShaderRead と UAV のみです." << std::endl;
 						assert(false);
 						return {};
 					}
@@ -241,10 +241,24 @@ namespace ngl
 					node_handle_usage_list_[&node] = {};// Node用のMap要素追加.
 				}
 
-				NodeHandleUsageInfo push_info = {};
-				push_info.handle = res_handle;
-				push_info.access = access_type;
-				node_handle_usage_list_[&node].push_back(push_info);// NodeからHandleへのアクセス情報を記録.
+                // 同一リソース同一アクセスの場合は登録スキップする
+                //  同じPassで同じリソースに異なるアクセスは許可しないのでそちらはassertしても良いかも.
+                const bool is_duplicate_access = 
+                (node_handle_usage_list_[&node].end() != 
+                std::find_if(node_handle_usage_list_[&node].begin(), node_handle_usage_list_[&node].end(),
+                    [&](const NodeHandleUsageInfo& info)
+                    {
+                        return (info.handle == res_handle) && (info.access == access_type);
+                    })
+                );
+
+                if(!is_duplicate_access)
+                {
+                    NodeHandleUsageInfo push_info = {};
+                    push_info.handle = res_handle;
+                    push_info.access = access_type;
+                    node_handle_usage_list_[&node].push_back(push_info);// NodeからHandleへのアクセス情報を記録.
+                }
 			}
 
 			// Passメンバに保持するコードを短縮するためHandleをそのままリターン.
@@ -274,7 +288,7 @@ namespace ngl
 			// Compile可能チェック.
 			if(!IsCompilable())
 			{
-				std::cout <<  u8"[ERROR] このBuilderはCompileできません. すでにCompile済み, 又はExecute済みの可能性があります." << std::endl;
+				std::cout <<  "[ERROR] このBuilderはCompileできません. すでにCompile済み, 又はExecute済みの可能性があります." << std::endl;
 				assert(false);
 				return false;
 			}
@@ -298,9 +312,11 @@ namespace ngl
 					{
 						for(int j = i + 1; j < node_handle_usage_list_[p_node].size(); ++j)
 						{
-							if(node_handle_usage_list_[p_node][i].handle == node_handle_usage_list_[p_node][j].handle)
+							if(node_handle_usage_list_[p_node][i].handle == node_handle_usage_list_[p_node][j].handle
+                                && node_handle_usage_list_[p_node][i].access != node_handle_usage_list_[p_node][j].access
+                            )
 							{
-								std::cout << u8"[RenderTaskGraphBuilder][Validation Error] 同一リソースへの重複アクセス登録." << std::endl;
+								std::cout << "[RenderTaskGraphBuilder][Validation Error] Task内で同一リソースへの異なるアクセスレコードは許可されません." << std::endl;
 								assert(false);
 							}
 						}
@@ -513,7 +529,7 @@ namespace ngl
 						handle_access.access_pattern_[access_type::DEPTH_TARGET]
 						)
 					{
-						std::cout << u8"RenderTarget と DepthStencilTarget を同時に指定することは不許可." << std::endl;
+						std::cout << "RenderTarget と DepthStencilTarget を同時に指定することは不許可." << std::endl;
 						assert(false);
 						return false;
 					}
@@ -658,7 +674,7 @@ namespace ngl
 						{
 							// 初回フレーム等で前回からの伝搬ができていない伝搬リソースハンドルの可能性がある.
 							// それらはリソース割当失敗として -1 のまま処理を進める.
-							std::cout << u8"ハンドルへのリソース割当に失敗. 無効なHandleや伝搬指定をしていない前回フレームのハンドルの可能性があります. " << u8"(handle unique_id = " << res_handle.detail.unique_id << u8")" << std::endl;
+							std::cout << "ハンドルへのリソース割当に失敗. 無効なHandleや伝搬指定をしていない前回フレームのハンドルの可能性があります. " << "(handle unique_id = " << res_handle.detail.unique_id << ")" << std::endl;
 						}
 					}
 
@@ -888,7 +904,7 @@ namespace ngl
 			// Compileされていないかチェック.
 			if (state_ != EBuilderState::COMPILED)
 			{
-				std::cout <<  u8"[ERROR] このBuilderはCompileされていません." << std::endl;
+				std::cout <<  "[ERROR] このBuilderはCompileされていません." << std::endl;
 				assert(false);
 				return {};
 			}
@@ -970,7 +986,7 @@ namespace ngl
 			// Compileされていないチェック.
 			if(!IsExecutable())
 			{
-				std::cout <<  u8"[ERROR] このBuilderはExecuteできません. Record, Compileしてください." << std::endl;
+				std::cout <<  "[ERROR] このBuilderはExecuteできません. Record, Compileしてください." << std::endl;
 				assert(false);
 				return;
 			}
@@ -1204,7 +1220,8 @@ namespace ngl
 						}
 						if(!sync_fences[e.fence_id].IsValid())
 						{
-							ngl::rhi::RhiRef<ngl::rhi::FenceDep> fence = new ngl::rhi::FenceDep();
+							ngl::rhi::RhiRef<ngl::rhi::FenceDep> fence;
+							fence.Reset(new ngl::rhi::FenceDep());
 							fence->Initialize(p_compiled_manager_->p_device_);
 
 							fence->IncrementHelperFenceValue();// Fence値を加算してWaitが即完了しないようにする.
@@ -1264,7 +1281,8 @@ namespace ngl
 								// さらにこのGraphicsComamndをComputeが待機する必要があるためFence追加.
 								{
 									// 現状ではFenceはその場で生成して使い捨て.
-									ngl::rhi::RhiRef<ngl::rhi::FenceDep> fence = new ngl::rhi::FenceDep();
+									ngl::rhi::RhiRef<ngl::rhi::FenceDep> fence;
+									fence.Reset(new ngl::rhi::FenceDep());
 									fence->Initialize(p_compiled_manager_->p_device_);
 
 									const u64 state_transition_fenec_value = fence->GetHelperFenceValue() + 1;//現在の値+1
@@ -1452,9 +1470,9 @@ namespace ngl
 				}
 			}
 			// 終了時にPoolのサイズと有効なリソース数のデバッグ表示.
-			std::cout << u8"<RenderTaskGraphManager>" << std::endl;
-			std::cout << u8"	valid internal resource count / resource pool size = " << valid_resource_count << u8" / " << internal_resource_pool_.size() << std::endl;
-			std::cout << u8"</RenderTaskGraphManager>" << std::endl;
+			std::cout << "<RenderTaskGraphManager>" << std::endl;
+			std::cout << "	valid internal resource count / resource pool size = " << valid_resource_count << " / " << internal_resource_pool_.size() << std::endl;
+			std::cout << "</RenderTaskGraphManager>" << std::endl;
 		}
 		// 初期化.
 		bool RenderTaskGraphManager::Init(rhi::DeviceDep* p_device, int job_thread_count)
@@ -1526,7 +1544,7 @@ namespace ngl
 			// Compile可能チェック.
 			if(!builder.IsCompilable())
 			{
-				std::cout <<  u8"[ERROR] このBuilderはCompileできません. すでにCompile済み, 又はExecute済みの可能性があります." << std::endl;
+				std::cout <<  "[ERROR] このBuilderはCompileできません. すでにCompile済み, 又はExecute済みの可能性があります." << std::endl;
 				assert(false);
 				return false;
 			}
@@ -1585,7 +1603,7 @@ namespace ngl
 			if (0 == s_res_handle_id_counter_)
 			{
 				// IDが一周したことを一応チェックする.
-				std::cout << u8"[RenderTaskGraphManager] HandleIDが一周." << std::endl;
+				std::cout << "[RenderTaskGraphManager] HandleIDが一周." << std::endl;
 				
 				++s_res_handle_id_counter_;// 0は無効ID扱いのためスキップ.
 			}
@@ -1699,7 +1717,7 @@ namespace ngl
 				rhi::RefSrvDep new_srv = {};
 
 				// Texture.
-				new_tex = new rhi::TextureDep();
+				new_tex.Reset(new rhi::TextureDep());
 				if (!new_tex->Initialize(p_device_, desc))
 				{
 					assert(false);
@@ -1708,7 +1726,7 @@ namespace ngl
 				// Rtv.
 				if(key.usage_ & access_type_mask::RENDER_TARGET)
 				{
-					new_rtv = new rhi::RenderTargetViewDep();
+					new_rtv.Reset(new rhi::RenderTargetViewDep());
 					if (!new_rtv->Initialize(p_device_, new_tex.Get(), 0, 0, 1))
 					{
 						assert(false);
@@ -1718,7 +1736,7 @@ namespace ngl
 				// Dsv.
 				if(key.usage_ & access_type_mask::DEPTH_TARGET)
 				{
-					new_dsv = new rhi::DepthStencilViewDep();
+					new_dsv.Reset(new rhi::DepthStencilViewDep());
 					if (!new_dsv->Initialize(p_device_, new_tex.Get(), 0, 0, 1))
 					{
 						assert(false);
@@ -1728,7 +1746,7 @@ namespace ngl
 				// Uav.
 				if(key.usage_ & access_type_mask::UAV)
 				{
-					new_uav = new rhi::UnorderedAccessViewDep();
+					new_uav.Reset(new rhi::UnorderedAccessViewDep());
 					if (!new_uav->InitializeRwTexture(p_device_, new_tex.Get(), 0, 0, 1))
 					{
 						assert(false);
@@ -1738,7 +1756,7 @@ namespace ngl
 				// Srv.
 				if(key.usage_ & access_type_mask::SHADER_READ)
 				{
-					new_srv = new rhi::ShaderResourceViewDep();
+					new_srv.Reset(new rhi::ShaderResourceViewDep());
 					if (!new_srv->InitializeAsTexture(p_device_, new_tex.Get(), 0, 1, 0, 1))
 					{
 						assert(false);

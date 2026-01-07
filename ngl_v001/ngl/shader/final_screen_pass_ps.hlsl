@@ -21,18 +21,22 @@ struct CbFinalScreenPass
 	int enable_raytrace_result;
 	int enable_gbuffer;
 	int enable_dshadow;
+
+	int enable_ssvg;
+    float ssvg_voxel_rate;
 };
 ConstantBuffer<CbFinalScreenPass> cb_final_screen_pass;
 
 Texture2D tex_light;
 
 Texture2D tex_rt;// テクスチャデバッグ.
-Texture2D tex_res_data;// テクスチャデバッグ.
 Texture2D tex_gbuffer0;// テクスチャデバッグ.
 Texture2D tex_gbuffer1;// テクスチャデバッグ.
 Texture2D tex_gbuffer2;// テクスチャデバッグ.
 Texture2D tex_gbuffer3;// テクスチャデバッグ.
 Texture2D tex_dshadow;// テクスチャデバッグ.
+Texture2D tex_res_data;// テクスチャデバッグ.
+Texture2D tex_ssvg;// テクスチャデバッグ.
 
 SamplerState samp;
 
@@ -153,6 +157,15 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 				sample_shadow = sample_shadow*sample_shadow*sample_shadow;
 				return sample_shadow*2.0;
 			}
+		}
+		if(cb_final_screen_pass.enable_ssvg)
+		{
+            // スライダで画面全体をボクセル可視化に切り替え.
+			float4 ssvg_voxel_vis = tex_ssvg.SampleLevel(samp, input.uv, 0);
+            if(input.uv.x <= cb_final_screen_pass.ssvg_voxel_rate)
+            {
+                color.rgb = lerp(color.rgb, ssvg_voxel_vis.rgb, 1.0);
+            }
 		}
 		
 	}

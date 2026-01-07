@@ -58,7 +58,7 @@ namespace ngl::render::task
 				
 				ngl::rhi::ComputePipelineStateDep::Desc pso_desc = {};
 				pso_desc.cs = &res_shader->data_;
-				pso_ = new rhi::ComputePipelineStateDep();
+				pso_.Reset(new rhi::ComputePipelineStateDep());
 				if (!pso_->Initialize(p_device, pso_desc))
 				{
 					assert(false);
@@ -91,7 +91,7 @@ namespace ngl::render::task
 					// Samplerを設定するテスト. シェーダコード側ではほぼ意味はない.
 					pso_->SetView(&desc_set, "SmpHardwareDepth", global_res.default_resource_.sampler_shadow_point.Get());
 					pso_->SetView(&desc_set, "RWTexLinearDepth", res_linear_depth.uav_.Get());
-					pso_->SetView(&desc_set, "ngl_cb_sceneview", &desc_.scene_cbv->cbv_);
+					pso_->SetView(&desc_set, "cb_ngl_sceneview", &desc_.scene_cbv->cbv_);
 						
 					gfx_commandlist->SetPipelineState(pso_.Get());
 					gfx_commandlist->SetDescriptorSet(pso_.Get(), &desc_set);

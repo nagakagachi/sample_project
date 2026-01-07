@@ -162,15 +162,15 @@ namespace ngl::render::task
 
 				math::Vec3 split_frustum_near4_far4_ws[] =
 				{
-					frustum_corners.corner_vec[0] * near_dist_ws + frustum_corners.view_pos,
-					frustum_corners.corner_vec[1] * near_dist_ws + frustum_corners.view_pos,
-					frustum_corners.corner_vec[2] * near_dist_ws + frustum_corners.view_pos,
-					frustum_corners.corner_vec[3] * near_dist_ws + frustum_corners.view_pos,
+					frustum_corners.corner_vec[0] * near_dist_ws + frustum_corners.view_origin,
+					frustum_corners.corner_vec[1] * near_dist_ws + frustum_corners.view_origin,
+					frustum_corners.corner_vec[2] * near_dist_ws + frustum_corners.view_origin,
+					frustum_corners.corner_vec[3] * near_dist_ws + frustum_corners.view_origin,
 					
-					frustum_corners.corner_vec[0] * far_dist_ws + frustum_corners.view_pos,
-					frustum_corners.corner_vec[1] * far_dist_ws + frustum_corners.view_pos,
-					frustum_corners.corner_vec[2] * far_dist_ws + frustum_corners.view_pos,
-					frustum_corners.corner_vec[3] * far_dist_ws + frustum_corners.view_pos,
+					frustum_corners.corner_vec[0] * far_dist_ws + frustum_corners.view_origin,
+					frustum_corners.corner_vec[1] * far_dist_ws + frustum_corners.view_origin,
+					frustum_corners.corner_vec[2] * far_dist_ws + frustum_corners.view_origin,
+					frustum_corners.corner_vec[3] * far_dist_ws + frustum_corners.view_origin,
 				};
 
 				// LightViewでのAABBからOrthoを計算しようとしている.
@@ -311,8 +311,8 @@ namespace ngl::render::task
 						// Mesh Rendering.
 						gfx::RenderMeshResource render_mesh_res = {};
 						{
-							render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", &desc_.scene_cbv->cbv_};
-							render_mesh_res.cbv_d_shadowview = {"ngl_cb_shadowview", &shadow_cb_h->cbv_};
+							render_mesh_res.cbv_sceneview = {"cb_ngl_sceneview", &desc_.scene_cbv->cbv_};
+							render_mesh_res.cbv_d_shadowview = {"cb_ngl_shadowview", &shadow_cb_h->cbv_};
 						}
 
 						ngl::gfx::RenderMeshWithMaterial(*thread_command_list, gfx::MaterialPassPsoCreator_d_shadow::k_name, desc_.gfx_scene, *desc_.p_mesh_proxy_id_array_, render_mesh_res);

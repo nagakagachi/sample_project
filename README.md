@@ -17,13 +17,16 @@ https://nagakagachi.notion.site/RenderGraph-54f0cf4284c7466697b99cc0df81be80
 
 # Build
   - clone
-  - build third_party/assimp (cmake)
+  - git submodule update --init --recursive
+  - build external/assimp (cmake)
     - cd assimp
     - cmake CMakeLists.txt 
     - cmake --build . --config Release
-  - build third_party/DirectXTex (cmake)
+  - build external/DirectXTex (cmake)
     - cd DirectXTex
-    - cmake CMakeLists.txt 
+    - mkdir out
+    - cd out
+    - cmake ../CMakeLists.txt 
     - cmake --build . --config Release
   - build ngl_v001.sln (Visual Studio 2022)
 
@@ -210,6 +213,7 @@ Concurrent Binary Trees for Large-Scale Game Components. </br>
 - https://google.github.io/filament/Filament.html
 - https://github.com/EpicGames/UnrealEngine
 - https://sites.google.com/site/monshonosuana/directx%E3%81%AE%E8%A9%B1
+- https://github.com/dubiousconst282/VoxelRT/tree/alt-renderers
   
 
 

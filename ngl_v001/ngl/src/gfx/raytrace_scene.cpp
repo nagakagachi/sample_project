@@ -952,7 +952,7 @@ namespace ngl
 			attribute_byte_size_ = attribute_byte_size;
 			max_trace_recursion_ = max_trace_recursion;
 
-			ref_shader_object_set_ = new RtDxrObjectHolder();
+			ref_shader_object_set_.Reset(new RtDxrObjectHolder());
 			ref_shader_object_set_->Initialize(p_device);
 
 			std::unordered_map<const rhi::ShaderDep*, int> shader_map;
@@ -1905,16 +1905,15 @@ namespace ngl
 #if 1
 			// Infinite Far Reverse Perspective
 			math::Mat44 proj_mat = math::CalcReverseInfiniteFarPerspectiveMatrix(fov_y, aspect_ratio, 0.1f);
-			math::Vec4 ndc_z_to_view_z_coef = math::CalcViewDepthReconstructCoefForInfiniteFarReversePerspective(near_z);
 #elif 0
 			// Reverse Perspective
 			math::Mat44 proj_mat = math::CalcReversePerspectiveMatrix(fov_y, aspect_ratio, 0.1f, far_z);
-			math::Vec4 ndc_z_to_view_z_coef = math::CalcViewDepthReconstructCoefForReversePerspective(near_z, far_z);
 #else
 			// 標準Perspective
 			math::Mat44 proj_mat = math::CalcStandardPerspectiveMatrix(fov_y, aspect_ratio, 0.1f, far_z);
-			math::Vec4 ndc_z_to_view_z_coef = math::CalcViewDepthReconstructCoefForStandardPerspective(near_z, far_z);
 #endif
+			math::Vec4 ndc_z_to_view_z_coef = math::CalcViewDepthReconstructCoefFromProjectionMatrix(proj_mat);
+
 			// 定数バッファ更新.
 			{
 				const auto cb_index = frame_count_ % std::size(cbh_scene_view);

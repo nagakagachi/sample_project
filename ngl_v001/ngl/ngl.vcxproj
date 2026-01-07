@@ -55,7 +55,7 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>.\include;.\external\assimp\include;.\external\DirectXTex;.\external\imgui;.\external\tinyxml2;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <ForcedIncludeFiles>pch.h</ForcedIncludeFiles>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -64,7 +64,7 @@
     </Link>
     <Lib>
       <AdditionalDependencies>assimp-vc143-mtd.lib;DirectXTex.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>.\external\assimp\lib\$(Configuration);.\external\DirectXTex\lib\$(Configuration);</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>.\external\assimp\lib\$(Configuration);.\external\DirectXTex\out\lib\$(Configuration);</AdditionalLibraryDirectories>
     </Lib>
     <PreBuildEvent>
       <Command>copy .\external\assimp\bin\$(Configuration)\*.dll $(TargetDir)</Command>
@@ -83,7 +83,7 @@
       <PrecompiledHeaderFile>pch.h</PrecompiledHeaderFile>
       <AdditionalIncludeDirectories>.\include;.\external\assimp\include;.\external\DirectXTex;.\external\imgui;.\external\tinyxml2;</AdditionalIncludeDirectories>
       <ForcedIncludeFiles>pch.h</ForcedIncludeFiles>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>stdcpp20</LanguageStandard>
     </ClCompile>
     <Link>
       <SubSystem>
@@ -94,7 +94,7 @@
     </Link>
     <Lib>
       <AdditionalDependencies>assimp-vc143-mt.lib;DirectXTex.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>.\external\assimp\lib\$(Configuration);.\external\DirectXTex\lib\$(Configuration);</AdditionalLibraryDirectories>
+      <AdditionalLibraryDirectories>.\external\assimp\lib\$(Configuration);.\external\DirectXTex\out\lib\$(Configuration);</AdditionalLibraryDirectories>
     </Lib>
     <PreBuildEvent>
       <Command>copy .\external\assimp\bin\$(Configuration)\*.dll $(TargetDir)</Command>

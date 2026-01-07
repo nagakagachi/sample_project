@@ -468,7 +468,7 @@ namespace ngl
 		TaskCommandListAllocator<COMMAND_LIST_TYPE>::TaskCommandListAllocator(std::vector<rhi::CommandListBaseDep*>* task_command_list_buffer, int user_command_list_offset, RenderTaskGraphManager* manager)
 			: command_list_array_(task_command_list_buffer), user_command_list_array_offset_(user_command_list_offset), manager_(manager)
 		{
-			assert(task_command_list_buffer && manager && u8"初期化引数エラー");
+			assert(task_command_list_buffer && manager && "初期化引数エラー");
 		}
 		template<typename COMMAND_LIST_TYPE>
 		void TaskCommandListAllocator<COMMAND_LIST_TYPE>::Alloc(int num_command_list)
@@ -487,7 +487,7 @@ namespace ngl
 		template<typename COMMAND_LIST_TYPE>
 		COMMAND_LIST_TYPE* TaskCommandListAllocator<COMMAND_LIST_TYPE>::GetOrCreate(int index)
 		{
-			assert(NumAllocatedCommandList() > index && u8"CommandListが必要分確保されていない. Alloc() で必要分確保すること.");
+			assert(NumAllocatedCommandList() > index && "CommandListが必要分確保されていない. Alloc() で必要分確保すること.");
 			
 			const int command_list_index = index + user_command_list_array_offset_;// オフセット分をスキップした位置にアクセス.
 			if(nullptr == command_list_array_->at(command_list_index))

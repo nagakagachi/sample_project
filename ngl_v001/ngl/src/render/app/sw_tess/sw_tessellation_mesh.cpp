@@ -220,7 +220,7 @@ namespace ngl::render::app
         for (int i = 0; i < half_edge_mesh_array_.size(); ++i)
         {
             // Shape単位.
-            half_edge_buffer_array_[i] = new rhi::BufferDep();
+            half_edge_buffer_array_[i].Reset(new rhi::BufferDep());
             {
                 rhi::BufferDep::Desc desc = {};
                 desc.heap_type            = rhi::EResourceHeapType::Upload;
@@ -237,7 +237,7 @@ namespace ngl::render::app
                     half_edge_buffer_array_[i]->Unmap();
                 }
             }
-            half_edge_srv_array_[i] = new rhi::ShaderResourceViewDep();
+            half_edge_srv_array_[i].Reset(new rhi::ShaderResourceViewDep());
             {
                 if (!half_edge_srv_array_[i]->InitializeAsStructured(p_device, half_edge_buffer_array_[i].Get(), sizeof(HalfEdge), 0, static_cast<u32>(half_edge_mesh_array_[i].half_edge_.size())))
                 {
@@ -379,22 +379,19 @@ namespace ngl::render::app
         // command_listに対するシェーダディスパッチなどをする.
         auto* command_list = arg.command_list;
 
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(command_list, "SwTessellationMesh");
+
+        
         const int cur_local_frame_render_index_ = local_frame_render_index_;
         ++local_frame_render_index_;
         
-
-
-
         // 定数バッファを毎フレーム更新（ConstantBufferPoolから確保）
         const auto shape_count = half_edge_mesh_array_.size();
         cbt_constant_handles_.clear();
         cbt_constant_handles_.reserve(shape_count);
         
-
-
         const bool cur_update_enable = tessellation_update_on_render_;
         tessellation_update_on_render_ = tessellation_update_;
-
 
         for (size_t shape_idx = 0; shape_idx < shape_count; ++shape_idx)
         {
@@ -408,8 +405,8 @@ namespace ngl::render::app
             auto cb_handle = cbt_gpu_resources_array_[shape_idx].UpdateConstants(command_list->GetDevice(), object_to_world, important_point_world, cur_update_enable, tessellation_split_threshold_, fixed_subdivision_level_, debug_bisector_neighbor_, debug_target_bisector_id_, debug_target_bisector_depth_);
             cbt_constant_handles_.push_back(cb_handle);
         }
-        
-        // 9. Sum Reduction Pass
+
+        // SumReductionコマンド用Lambda.
         auto execute_sum_reduction_cs = [this](rhi::GraphicsCommandListDep* command_list, size_t shape_idx)
         {
             #if 1

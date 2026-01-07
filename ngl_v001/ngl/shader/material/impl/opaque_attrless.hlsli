@@ -73,7 +73,7 @@ float iqint2(float4 pos)
         // 処理対象のBisectorを取得
         Bisector bisector = bisector_pool[bisector_index];
 
-        const uint3 local_tri_vtx_indices = (bisector.bs_depth & 1)? uint3(1, 0, 2) : uint3(0, 1, 2);
+        const uint3 local_tri_vtx_indices = ((bisector.bs_depth - cbt_mesh_minimum_tree_depth) & 1)? uint3(1, 0, 2) : uint3(0, 1, 2);
 
         // Bisectorの基本頂点インデックスを取得 (curr, next, prev)（共通関数を使用）
         int3 base_vertex_indices = CalcRootBisectorBaseVertex(bisector.bs_id, bisector.bs_depth);
@@ -176,7 +176,7 @@ MtlVsOutput MtlVsEntryPoint(MtlVsInput input)
     MtlVsOutput output = (MtlVsOutput)0;
 
     // テスト
-    //output.position_offset_ws = input.normal_ws * abs(sin(ngl_cb_sceneview.cb_time_sec / 1.0f)) * 0.05;
+    //output.position_offset_ws = input.normal_ws * abs(sin(cb_ngl_sceneview.cb_time_sec / 1.0f)) * 0.05;
 
     #if 1
         // 重要点からの距離に基づく変位を計算

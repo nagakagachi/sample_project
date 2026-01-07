@@ -154,7 +154,7 @@ namespace ngl::gfx::scene
                     auto* device = command_list->GetDevice();
 
                     // Mip書き込み作業用に使い捨てUAV生成.
-                    rhi::RefUavDep mip_uav = new rhi::UnorderedAccessViewDep();
+                    rhi::RefUavDep mip_uav(new rhi::UnorderedAccessViewDep());
                     if (!mip_uav->InitializeRwTexture(device, conv_ggx_specular_cubemap_.Get(), target_mip_level, 0, k_cubemap_plane_count))
                         assert(false);
                     
@@ -241,7 +241,7 @@ namespace ngl::gfx::scene
                 
                 const bool is_need_uav = (nullptr != out_mip0_uav);
                 
-                (*out_cubemap) = new rhi::TextureDep();
+                (*out_cubemap).Reset(new rhi::TextureDep());
                 {
                     rhi::TextureDep::Desc cubemap_desc{};
                     rhi::TextureDep::Desc::InitializeAsCubemap(cubemap_desc, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT, resolution, resolution, false, is_need_uav);
@@ -254,14 +254,14 @@ namespace ngl::gfx::scene
 
                 if (out_mip0_srv)
                 {
-                    (*out_mip0_srv) = new rhi::ShaderResourceViewDep();
+                    (*out_mip0_srv).Reset(new rhi::ShaderResourceViewDep());
                     if (!(*out_mip0_srv)->InitializeAsTexture(p_device, (*out_cubemap).Get(), 0, gen_mip_count, 0, 1))
                         assert(false);
                 }
                 // UavはMip0について作成.
                 if (out_mip0_uav)
                 {
-                    (*out_mip0_uav) = new rhi::UnorderedAccessViewDep();
+                    (*out_mip0_uav).Reset(new rhi::UnorderedAccessViewDep());
                     if (!(*out_mip0_uav)->InitializeRwTexture(p_device, (*out_cubemap).Get(), 0, 0, k_cubemap_plane_count))
                         assert(false);
                 }
@@ -279,7 +279,7 @@ namespace ngl::gfx::scene
             // IBL DFG LUT.
             {
                 const int k_dfg_lut_resolution = 128;
-                conv_ggx_dfg_lut_ = new rhi::TextureDep();
+                conv_ggx_dfg_lut_.Reset(new rhi::TextureDep());
                 {
                     const auto lut_format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
                     //const auto lut_format = rhi::EResourceFormat::Format_R32G32B32A32_FLOAT;
@@ -292,11 +292,11 @@ namespace ngl::gfx::scene
                         assert(false);
                 }
 
-                conv_ggx_dfg_lut_srv_ = new rhi::ShaderResourceViewDep();
+                conv_ggx_dfg_lut_srv_.Reset(new rhi::ShaderResourceViewDep());
                 if (!conv_ggx_dfg_lut_srv_->InitializeAsTexture(p_device, conv_ggx_dfg_lut_.Get(), 0, 1, 0, 1))
                     assert(false);
 
-                conv_ggx_dfg_lut_uav_ = new rhi::UnorderedAccessViewDep();
+                conv_ggx_dfg_lut_uav_.Reset(new rhi::UnorderedAccessViewDep());
                 if (!conv_ggx_dfg_lut_uav_->InitializeRwTexture(p_device, conv_ggx_dfg_lut_.Get(), 0, 0, 1))
                     assert(false);
             }
@@ -304,7 +304,7 @@ namespace ngl::gfx::scene
             
             // PSOセットアップ.
             {
-                pso_panorama_to_cube_ = new rhi::ComputePipelineStateDep();
+                pso_panorama_to_cube_.Reset(new rhi::ComputePipelineStateDep());
                 {
                     gfx::ResShader::LoadDesc loaddesc{};
                     {
@@ -323,7 +323,7 @@ namespace ngl::gfx::scene
                         assert(false);
                 }
                 
-                pso_conv_cube_diffuse_ = new rhi::ComputePipelineStateDep();
+                pso_conv_cube_diffuse_.Reset(new rhi::ComputePipelineStateDep());
                 {
                     gfx::ResShader::LoadDesc loaddesc{};
                     {
@@ -342,7 +342,7 @@ namespace ngl::gfx::scene
                         assert(false);
                 }
                 
-                pso_conv_cube_ggx_specular_ = new rhi::ComputePipelineStateDep();
+                pso_conv_cube_ggx_specular_.Reset(new rhi::ComputePipelineStateDep());
                 {
                     gfx::ResShader::LoadDesc loaddesc{};
                     {
@@ -361,7 +361,7 @@ namespace ngl::gfx::scene
                         assert(false);
                 }
 
-                pso_conv_dfg_lut_ = new rhi::ComputePipelineStateDep();
+                pso_conv_dfg_lut_.Reset(new rhi::ComputePipelineStateDep());
                 {
                     gfx::ResShader::LoadDesc loaddesc{};
                     {

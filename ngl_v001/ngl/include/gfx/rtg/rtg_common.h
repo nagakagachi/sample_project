@@ -217,6 +217,9 @@ namespace ngl::rtg
 		int step_ = 0;
 		
 		constexpr TaskStage() = default;
+        constexpr TaskStage(int step)
+		: step_(step){
+        };
 
 		// Stage 0 に対して常に前となるようなStage. リソースプール側リソースのリセットや新規生成リソースのステージとして利用.
 		static constexpr TaskStage k_frontmost_stage()

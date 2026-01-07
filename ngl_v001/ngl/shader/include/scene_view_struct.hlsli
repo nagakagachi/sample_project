@@ -1,8 +1,11 @@
+/*
+    scene_view_struct.hlsli
+    SceneView定数バッファ構造定義.
+*/
+
 #ifndef NGL_SHADER_SCENE_VIEW_STRUCT_H
 #define NGL_SHADER_SCENE_VIEW_STRUCT_H
-
-// nglのmatrix系ははrow-majorメモリレイアウトであるための指定.
-#pragma pack_matrix( row_major )
+#include "ngl_shader_config.hlsli"
 
 
 struct SceneViewInfo
@@ -12,20 +15,27 @@ struct SceneViewInfo
 	float4x4 cb_proj_mtx;
 	float4x4 cb_proj_inv_mtx;
 
-	// 正規化デバイス座標(NDC)のZ値からView空間Z値を計算するための係数. PerspectiveProjectionMatrixの方式によってCPU側で計算される値を変えることでシェーダ側は同一コード化.
-	//	view_z = cb_ndc_z_to_view_z_coef.x / ( ndc_z * cb_ndc_z_to_view_z_coef.y + cb_ndc_z_to_view_z_coef.z )
-	//
-	//		cb_ndc_z_to_view_z_coef = 
-	//			Standard RH: (-far_z * near_z, near_z - far_z, far_z, 0.0)
-	//			Standard LH: ( far_z * near_z, near_z - far_z, far_z, 0.0)
-	//			Reverse RH: (-far_z * near_z, far_z - near_z, near_z, 0.0)
-	//			Reverse LH: ( far_z * near_z, far_z - near_z, near_z, 0.0)
-	//			Infinite Far Reverse RH: (-near_z, 1.0, 0.0, 0.0)
-	//			Infinite Far Reverse RH: ( near_z, 1.0, 0.0, 0.0)
+    // 正規化デバイス座標(NDC)のZ値からView空間Z値を計算するための係数. PerspectiveProjectionMatrixの方式によってCPU側で計算される値を変えることでシェーダ側は同一コード化. xは平行投影もサポートするために利用.
+    //	for calc_view_z_from_ndc_z(ndc_z, cb_ndc_z_to_view_z_coef)
 	float4	cb_ndc_z_to_view_z_coef;
 
 	float	cb_time_sec;
 };
+
+// PerspectiveとOrthogonalの両方に同じ係数同じ計算で対応するため, 分子の乗算と加算, 分母の乗算と加算のパラメータをそれぞれ指定.
+//	view_z = (ndc_z * cb_ndc_z_to_view_z_coef.x + cb_ndc_z_to_view_z_coef.y) / ( ndc_z * cb_ndc_z_to_view_z_coef.z + cb_ndc_z_to_view_z_coef.w )
+//		ndc_z_to_view_z_coef = 
+//			Standard RH: (0.0, -far_z * near_z, near_z - far_z, far_z)
+//			Standard LH: (0.0, far_z * near_z, near_z - far_z, far_z)
+//			Reverse RH: (0.0, -far_z * near_z, far_z - near_z, near_z)
+//			Reverse LH: (0.0, far_z * near_z, far_z - near_z, near_z)
+//			Infinite Far Reverse RH: (0.0, -near_z, 1.0, 0.0)
+//			Infinite Far Reverse RH: (0.0, near_z, 1.0, 0.0)
+float calc_view_z_from_ndc_z(float ndc_z, float4 ndc_z_to_view_z_coef)
+{
+    return (ndc_z * ndc_z_to_view_z_coef.x + ndc_z_to_view_z_coef.y) / ( ndc_z * ndc_z_to_view_z_coef.z + ndc_z_to_view_z_coef.w );
+}
+
 
 // 十分なサイズ指定.
 #define k_directional_shadow_cascade_cb_max 8

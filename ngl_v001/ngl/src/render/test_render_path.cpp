@@ -15,14 +15,16 @@
 #include "render/task/pass_cascade_shadow.h"
 #include "render/task/pass_linear_depth.h"
 #include "render/task/pass_directional_light_deferred.h"
+#include "render/task/pass_after_lighting.h"
 #include "render/task/pass_final_composite.h"
+
+#include "render/task/pass_after_gbuffer_injection.h"
 
 #include "render/task/pass_skybox.h"
 
 #include "render/task/pass_async_compute_test.h"
 #include "render/task/pass_raytrace_test.h"
 
-#include "render/task/pass_after_gbuffer_injection.h"
 
 namespace ngl::test
 {
@@ -52,6 +54,10 @@ namespace ngl::test
 			view_info.far_z = k_far_z;
 			view_info.camera_fov_y = render_frame_desc.camera_fov_y;
 			view_info.aspect_ratio = (float)screen_w / (float)screen_h;
+
+            view_info.view_mat = ngl::math::CalcViewMatrix(view_info.camera_pos, view_info.camera_pose.GetColumn2(), view_info.camera_pose.GetColumn1());
+            view_info.proj_mat = ngl::math::CalcReverseInfiniteFarPerspectiveMatrix(view_info.camera_fov_y, view_info.aspect_ratio, view_info.near_z);
+            view_info.ndc_z_to_view_z_coef = ngl::math::CalcViewDepthReconstructCoefFromProjectionMatrix(view_info.proj_mat);
 		}
 		
 				
@@ -59,20 +65,14 @@ namespace ngl::test
 		auto scene_cb_h = p_cb_pool->Alloc(sizeof(ngl::gfx::CbSceneView));
 		// SceneView ConstantBuffer内容更新.
 		{
-			ngl::math::Mat34 view_mat = ngl::math::CalcViewMatrix(view_info.camera_pos, view_info.camera_pose.GetColumn2(), view_info.camera_pose.GetColumn1());
-
-			// Infinite Far Reverse Perspective
-			ngl::math::Mat44 proj_mat = ngl::math::CalcReverseInfiniteFarPerspectiveMatrix(view_info.camera_fov_y, view_info.aspect_ratio, view_info.near_z);
-			ngl::math::Vec4 ndc_z_to_view_z_coef = ngl::math::CalcViewDepthReconstructCoefForInfiniteFarReversePerspective(view_info.near_z);
-
 			if (auto* mapped = scene_cb_h->buffer_.MapAs<ngl::gfx::CbSceneView>())
 			{
-				mapped->cb_view_mtx = view_mat;
-				mapped->cb_proj_mtx = proj_mat;
-				mapped->cb_view_inv_mtx = ngl::math::Mat34::Inverse(view_mat);
-				mapped->cb_proj_inv_mtx = ngl::math::Mat44::Inverse(proj_mat);
+				mapped->cb_view_mtx = view_info.view_mat;
+				mapped->cb_proj_mtx = view_info.proj_mat;
+				mapped->cb_view_inv_mtx = ngl::math::Mat34::Inverse(view_info.view_mat);
+				mapped->cb_proj_inv_mtx = ngl::math::Mat44::Inverse(view_info.proj_mat);
 
-				mapped->cb_ndc_z_to_view_z_coef = ndc_z_to_view_z_coef;
+				mapped->cb_ndc_z_to_view_z_coef = view_info.ndc_z_to_view_z_coef;
 
 				mapped->cb_time_sec = std::fmodf(static_cast<float>(ngl::time::Timer::Instance().GetElapsedSec("AppGameTime")), 60.0f*60.0f*24.0f);
 
@@ -229,8 +229,6 @@ namespace ngl::test
                         setup_desc.scene_cbv = scene_cb_h;
                     }
                     task_after_gbuffer_injection->Setup(rtg_builder, p_device, view_info, task_depth->h_depth_, setup_desc);
-                    // Renderをスキップテスト.
-                    //task_after_gbuffer_injection->is_render_skip_debug = k_force_skip_all_pass_render;
                 }
 				
 				// ----------------------------------------
@@ -305,6 +303,85 @@ namespace ngl::test
 					task_d_shadow->is_render_skip_debug = k_force_skip_all_pass_render;
 				}
 					
+                
+                    
+                    // Ssvg Begin Pass.
+                    auto* task_ssvg_begin = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskSsvgBegin>();
+                    {
+                        ngl::render::app::RenderTaskSsvgBegin::SetupDesc setup_desc{};
+                        {
+                            setup_desc.w = screen_w;
+                            setup_desc.h = screen_h;
+                            
+                            setup_desc.scene_cbv = scene_cb_h;
+
+                            setup_desc.p_ssvg = render_frame_desc.p_ssvg;
+                        }
+                        task_ssvg_begin->Setup(rtg_builder, p_device, view_info, setup_desc);
+                    }
+                    // Ssvg View Voxel Injection Pass.
+                    auto* task_ssvg_view_voxel_injection = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskSsvgViewVoxelInjection>();
+                    {
+                        ngl::render::app::RenderTaskSsvgViewVoxelInjection::SetupDesc setup_desc{};
+                        {
+                            setup_desc.w = screen_w;
+                            setup_desc.h = screen_h;
+                            
+                            setup_desc.scene_cbv = scene_cb_h;
+                            setup_desc.p_ssvg = render_frame_desc.p_ssvg;
+
+                            // main view DepthBuffer登録.
+                            {
+                                setup_desc.depth_buffer_info.primary.view_mat = view_info.view_mat;
+                                setup_desc.depth_buffer_info.primary.proj_mat = view_info.proj_mat;
+                                setup_desc.depth_buffer_info.primary.atlas_offset = math::Vec2i(0,0);
+                                setup_desc.depth_buffer_info.primary.atlas_resolution = math::Vec2i(screen_w, screen_h);
+                                setup_desc.depth_buffer_info.primary.h_depth = task_depth->h_depth_;
+
+                                setup_desc.depth_buffer_info.primary.is_enable_injection_pass = true;// Voxel充填利用するか.
+                                setup_desc.depth_buffer_info.primary.is_enable_removal_pass = true;// Voxel除去に利用するか.
+                            }
+
+                            // ShadowMapのDepthBuffer登録. 高速化のためにフレーム毎にカスケードスキップするのもありかもしれない.
+                            for( int cascade_idx = 0; cascade_idx < task_d_shadow->csm_param_.k_cascade_count; ++cascade_idx )
+                            {
+                                ngl::render::app::InjectionSourceDepthBufferViewInfo shadow_depth_info{};
+                                {
+                                    shadow_depth_info.view_mat = task_d_shadow->csm_param_.light_view_mtx[cascade_idx];
+                                    shadow_depth_info.proj_mat = task_d_shadow->csm_param_.light_ortho_mtx[cascade_idx];
+                                    shadow_depth_info.atlas_offset = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_offset_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_offset_y[cascade_idx]);
+                                    shadow_depth_info.atlas_resolution = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_size_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_size_y[cascade_idx]);
+                                    shadow_depth_info.h_depth = task_d_shadow->h_shadow_depth_atlas_;
+                                    
+                                    shadow_depth_info.is_enable_injection_pass = true;// Voxel充填に利用するか.
+                                    shadow_depth_info.is_enable_removal_pass = true;// Voxel除去に利用するか.
+                                }
+
+                                setup_desc.depth_buffer_info.sub_array.push_back(shadow_depth_info);
+                            }   
+                        }
+                        task_ssvg_view_voxel_injection->Setup(rtg_builder, p_device, view_info, setup_desc);
+                    }
+                    // Ssvg Update.
+                    auto* task_ssvg_update = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskSsvgUpdate>();
+                    {
+                        ngl::render::app::RenderTaskSsvgUpdate::SetupDesc setup_desc{};
+                        {
+                            setup_desc.w = screen_w;
+                            setup_desc.h = screen_h;
+                            
+                            setup_desc.scene_cbv = scene_cb_h;
+
+                            setup_desc.p_ssvg = render_frame_desc.p_ssvg;
+                            
+                            // main view.
+                            setup_desc.h_depth = task_depth->h_depth_;
+                        }
+                        task_ssvg_update->Setup(rtg_builder, p_device, view_info, setup_desc);
+                    }
+
+
+
 				// ----------------------------------------
 				// Deferred Lighting Pass.
 				auto* task_light = rtg_builder.AppendTaskNode<ngl::render::task::TaskLightPass>();
@@ -320,6 +397,10 @@ namespace ngl::test
 						setup_desc.scene = p_scene->gfx_scene_;
 						setup_desc.skybox_proxy_id = p_scene->skybox_proxy_id_;
 						
+                        setup_desc.p_ssvg = render_frame_desc.p_ssvg;
+                        setup_desc.is_enable_gi_lighting = render_frame_desc.is_enable_gi_lighting;
+                        setup_desc.dbg_view_ssvg_sky_visibility = render_frame_desc.debugview_ssvg_sky_visibility;
+                        
 						setup_desc.enable_feedback_blur_test = render_frame_desc.debugview_enable_feedback_blur_test;
 					}
 					task_light->Setup(rtg_builder, p_device, view_info,
@@ -331,6 +412,26 @@ namespace ngl::test
 						setup_desc);
 					// Renderをスキップテスト.
 					task_light->is_render_skip_debug = k_force_skip_all_pass_render;
+				}
+
+				// ----------------------------------------
+				// After Lighting Pass.
+				auto* task_after_light = rtg_builder.AppendTaskNode<ngl::render::task::TaskAfterLightPass>();
+				{
+					ngl::render::task::TaskAfterLightPass::SetupDesc setup_desc{};
+					{
+						setup_desc.w = screen_w;
+						setup_desc.h = screen_h;
+						
+						setup_desc.scene_cbv = scene_cb_h;
+
+                        setup_desc.p_ssvg = render_frame_desc.p_ssvg;
+					}
+					task_after_light->Setup(rtg_builder, p_device, view_info,
+					task_light->h_light_, task_depth->h_depth_,
+						setup_desc);
+					// Renderをスキップテスト.
+					task_after_light->is_render_skip_debug = k_force_skip_all_pass_render;
 				}
 
 				// ----------------------------------------
@@ -350,9 +451,7 @@ namespace ngl::test
 							debug_gbuffer0 = task_gbuffer->h_gb0_;
 							debug_gbuffer1 = task_gbuffer->h_gb1_;
 							debug_gbuffer2 = task_gbuffer->h_gb2_;
-							
-                            //debug_gbuffer3 = task_gbuffer->h_gb3_;
-                            debug_gbuffer3 = task_after_gbuffer_injection->h_work_;
+							debug_gbuffer3 = task_gbuffer->h_gb3_;
 						}
 						rtg::RtgResourceHandle debug_dshadow = {};
 						if(render_frame_desc.debugview_dshadow)
@@ -373,6 +472,8 @@ namespace ngl::test
 
 							setup_desc.debugview_gbuffer = render_frame_desc.debugview_gbuffer;
 							setup_desc.debugview_dshadow = render_frame_desc.debugview_dshadow;
+                            setup_desc.debugview_ssvg_voxel = render_frame_desc.debugview_ssvg_voxel;
+                            setup_desc.debugview_ssvg_voxel_rate = render_frame_desc.debugview_ssvg_voxel_rate;
 						}
 						
 						task_final->Setup(rtg_builder, p_device, view_info, h_swapchain,
@@ -380,6 +481,9 @@ namespace ngl::test
 							render_frame_desc.h_other_graph_out_tex, h_rt_result,
 							debug_gbuffer0, debug_gbuffer1, debug_gbuffer2, debug_gbuffer3,
 							debug_dshadow,
+
+                            //task_after_gbuffer_injection->h_work_,
+                            task_ssvg_update->h_work_,
 
 							render_frame_desc.ref_test_tex_srv,
 

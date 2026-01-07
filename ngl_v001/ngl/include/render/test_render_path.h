@@ -5,10 +5,24 @@
 #include "gfx/command_helper.h"
 
 
-namespace ngl::gfx
+namespace ngl
+{
+namespace gfx
 {
 	class SceneRepresentation;
 	class RtSceneManager;
+}
+}
+
+namespace ngl
+{
+namespace render
+{
+    namespace app
+    {
+        class SsVg;
+    }
+}
 }
 
 namespace ngl::test
@@ -39,6 +53,9 @@ namespace ngl::test
     	// RaytraceScene.
     	gfx::RtSceneManager* p_rt_scene = {};
 
+        render::app::SsVg* p_ssvg = {};
+        bool is_enable_gi_lighting = false;
+
         ngl::rhi::RefSrvDep ref_test_tex_srv = {};
 
     	// 前フレームでの結果ヒストリ.
@@ -55,6 +72,10 @@ namespace ngl::test
     	bool debugview_raytrace_result = false;
     	bool debugview_gbuffer = false;
     	bool debugview_dshadow = false;
+
+        bool debugview_ssvg_voxel = false;
+        float debugview_ssvg_voxel_rate = 0.5f;
+    	bool debugview_ssvg_sky_visibility = false;
     };
 	// RenderPathが生成した出力リソース.
 	//	このRenderPathとは異なるRtgや次フレームのRtgでアクセス可能.

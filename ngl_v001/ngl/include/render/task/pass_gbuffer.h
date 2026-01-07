@@ -122,7 +122,7 @@ namespace ngl::render::task
 					// Mesh Rendering.
 					gfx::RenderMeshResource render_mesh_res = {};
 					{
-						render_mesh_res.cbv_sceneview = {"ngl_cb_sceneview", &desc_.scene_cbv->cbv_};
+						render_mesh_res.cbv_sceneview = {"cb_ngl_sceneview", &desc_.scene_cbv->cbv_};
 					}
                     ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_gbuffer::k_name, desc_.gfx_scene, *desc_.p_mesh_proxy_id_array_, render_mesh_res);
 				}

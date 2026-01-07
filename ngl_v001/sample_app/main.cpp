@@ -57,8 +57,15 @@ static bool dbgw_enable_raytrace_pass             = false;
 static bool dbgw_view_half_dot_gray               = false;
 static bool dbgw_view_gbuffer                     = false;
 static bool dbgw_view_dshadow                     = false;
+
+//static bool dbgw_view_ssvg_voxel                  = true;
+static float dbgw_view_ssvg_voxel_rate            = 0.5f;
+static bool dbgw_view_ssvg_sky_visibility         = false;
+static bool dbgw_enable_gi_lighting                = true;
+
 static float dbgw_dlit_angle_v                    = 0.4f;
 static float dbgw_dlit_angle_h                    = 4.1f;
+static float dbgw_camera_speed                    = 5.0f;//10.0f;
 
 static float dbgw_stat_primary_rtg_construct = {};
 static float dbgw_stat_primary_rtg_compile   = {};
@@ -116,7 +123,7 @@ private:
 private:
     struct RenderParam
     {
-        ngl::math::Vec3 camera_pos   = {0.0f, 2.0f, -1.0f};
+        ngl::math::Vec3 camera_pos   = {0.0f, 0.0f, 0.0f};
         ngl::math::Mat33 camera_pose = ngl::math::Mat33::Identity();
         float camera_fov_y           = ngl::math::Deg2Rad(60.0f);  // not half fov.
 
@@ -143,8 +150,9 @@ private:
     ngl::fwk::GraphicsFramework gfxfw_{};
     std::vector<ngl::rhi::EResourceState> swapchain_resource_state_;
 
-    ngl::math::Vec3 camera_pos_   = {-9.0f, 15.0f, -5.0f};
-    ngl::math::Mat33 camera_pose_ = ngl::math::Mat33::Identity();
+    //ngl::math::Vec3 camera_pos_   = {0.368f, 1.237f, 0.453f};//{0.0f, 2.0f, -5.0f};
+    ngl::math::Vec3 camera_pos_   = {1.871f, 1.347f, 1.399f};//{0.0f, 2.0f, -5.0f};
+    ngl::math::Mat33 camera_pose_ = ngl::math::Mat33::RotAxisY(ngl::math::Deg2Rad(-90.0f));// ngl::math::Mat33::Identity();
     float camera_fov_y            = ngl::math::Deg2Rad(60.0f);  // not half fov.
     PlayerController player_controller{};
 
@@ -180,6 +188,7 @@ static void TestEntry()
     ngl::thread::TestFixedSizeLockFreeStack();
     ngl::thread::TestStaticSizeLockFreeStack();
 
+    ngl::math::math_test();
 
     ngl::render::app::ConcurrentBinaryTreeU32::Test();
 }
@@ -202,6 +211,7 @@ AppGame::~AppGame()
         skybox_.FinalizeGfx();
 
         rt_scene_ = {};
+        ssvg_.Finalize();
 
         // リソース参照クリア.
         mesh_entity_array_.clear();
@@ -281,19 +291,19 @@ bool AppGame::Initialize()
         desc.height        = scree_h;
         desc.initial_state = ngl::rhi::EResourceState::ShaderRead;
 
-        tex_rw_ = new ngl::rhi::TextureDep();
+        tex_rw_.Reset(new ngl::rhi::TextureDep());
         if (!tex_rw_->Initialize(&device, desc))
         {
             std::cout << "[ERROR] Create RW Texture Initialize" << std::endl;
             assert(false);
         }
-        tex_rw_srv_ = new ngl::rhi::ShaderResourceViewDep();
+        tex_rw_srv_.Reset(new ngl::rhi::ShaderResourceViewDep());
         if (!tex_rw_srv_->InitializeAsTexture(&device, tex_rw_.Get(), 0, 1, 0, 1))
         {
             std::cout << "[ERROR] Create RW SRV" << std::endl;
             assert(false);
         }
-        tex_rw_uav_ = new ngl::rhi::UnorderedAccessViewDep();
+        tex_rw_uav_.Reset(new ngl::rhi::UnorderedAccessViewDep());
         if (!tex_rw_uav_->InitializeRwTexture(&device, tex_rw_.Get(), 0, 0, 1))
         {
             std::cout << "[ERROR] Create RW UAV" << std::endl;
@@ -347,15 +357,14 @@ bool AppGame::Initialize()
         const float target_scene_base_scale = bistro_scale;
 #endif
 
-
         std::shared_ptr<ngl::gfx::MeshData> procedural_mesh_data = std::make_shared<ngl::gfx::MeshData>();
         {
             const float mesh_scale = 10.0f;
             ngl::math::Vec3 quad_pos[4] = {
                 ngl::math::Vec3(-1.0f, 0.0f, -1.0f) * mesh_scale,
-                ngl::math::Vec3(1.0f, 0.0f, -1.0f) * mesh_scale,
+                ngl::math::Vec3(-1.0f, 0.0f, 1.0f) * mesh_scale,
                 ngl::math::Vec3(1.0f, 0.0f, 1.0f) * mesh_scale,
-                ngl::math::Vec3(-1.0f, 0.0f, 1.0f) * mesh_scale
+                ngl::math::Vec3(1.0f, 0.0f, -1.0f) * mesh_scale
             };
             ngl::math::Vec3 quad_normal[4] = {
                 ngl::math::Vec3(0.0f, 1.0f, 0.0f),
@@ -412,9 +421,10 @@ bool AppGame::Initialize()
         auto& ResourceMan = ngl::res::ResourceManager::Instance();
         // SceneMesh.
         {
-            // 基本シーンモデル読み込み.
+#if 1
             if (true)
             {
+                // メイン背景.
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
 
@@ -427,8 +437,9 @@ bool AppGame::Initialize()
             }
 
             // その他モデル.
-            if (true)
+            if (0)
             {
+                // クモ
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
@@ -442,8 +453,9 @@ bool AppGame::Initialize()
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
 
-            if (true)
+            if (0)
             {
+                // ウサギ
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
@@ -456,8 +468,9 @@ bool AppGame::Initialize()
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
-            if (true)
+            if (0)
             {
+                // ウサギ
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
@@ -470,8 +483,9 @@ bool AppGame::Initialize()
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
-            if (true)
+            if (0)
             {
+                // ウサギ
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
@@ -484,10 +498,11 @@ bool AppGame::Initialize()
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
+#endif
 
 #if 1
             // 適当にたくさんモデル生成.
-            for (int i = 0; i < 100; ++i)
+            for (int i = 0; i < 50; ++i)
             {
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
@@ -503,7 +518,9 @@ bool AppGame::Initialize()
                 constexpr float placement_range = 30.0f;
 
                 ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
-                tr.SetDiagonal(ngl::math::Vec4(spider_base_scale));
+                
+                tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 4.0f));
+
                 tr = ngl::math::Mat44::RotAxisY(randroty * ngl::math::k_pi_f * 2.0f) * tr;
                 tr.SetColumn3(ngl::math::Vec4(placement_range * (randx * 2.0f - 1.0f), 20.0f * randy, placement_range * (randz * 2.0f - 1.0f), 1.0f));
 
@@ -513,9 +530,10 @@ bool AppGame::Initialize()
                 test_move_mesh_entity_array_.push_back(mc.get());
             }
 #endif
-            if (true)
+
+            // SwTessellationのテスト.
+            if (0)
             {
-                // SwTessellationのテスト.
                 auto mc = std::make_shared<ngl::render::app::SwTessellationMesh>();
                 mesh_entity_array_.push_back(mc);
                 
@@ -529,7 +547,7 @@ bool AppGame::Initialize()
                 #if 0
                 // 蜘蛛
                 constexpr int tessellation_level = 4;  // 0で無効、1以上で有効.
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), tessellation_level);
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), {}, tessellation_level);
                 tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 3.0f, 1.0f));
                 #else
                 constexpr int tessellation_level = 9;
@@ -541,22 +559,50 @@ bool AppGame::Initialize()
                         tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
                     #endif
                 #endif
-                tr.SetColumn3(ngl::math::Vec4(-24.0f, 10.0f, 12.0f, 0.0f));
+                tr.SetColumn3(ngl::math::Vec4(0.0f, 10.0f, 0.0f, 0.0f));
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
+
+            // 単純形状テスト.
+            if(0)
+            {
+                auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
+                mesh_entity_array_.push_back(mc);
+                
+                ngl::gfx::ResMeshData::LoadDesc loaddesc{};
+                
+                ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
+                
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), procedural_mesh_data);
+
+                //tr.SetColumn3(ngl::math::Vec4(0.0f, 0.0f, 0.0f, 0.0f));
+                //tr.SetColumn3(ngl::math::Vec4(0.0f, 0.5f, 0.5f, 0.0f));
+                
+                mc->SetTransform(ngl::math::Mat34(tr));
+            }
+
+
         }
     }
 
-    // Raytrace.
-    //	TLAS構築時にShaderTableの最大Hitgroup数が必要な設計であるため初期化時に最大数指定する. PrimayとShadowの2種であれば 2.
-    constexpr int k_system_hitgroup_count_max = 3;
-    if (!rt_scene_.Initialize(&device, k_system_hitgroup_count_max))
-    {
-        std::cout << "[ERROR] Initialize gfx::RtSceneManager" << std::endl;
-    }
+    #if 1
+        // Raytrace. 初期化しなければ描画パスでも処理されなくなる.
+        //	TLAS構築時にShaderTableの最大Hitgroup数が必要な設計であるため初期化時に最大数指定する. PrimayとShadowの2種であれば 2.
+        constexpr int k_system_hitgroup_count_max = 3;
+        if (!rt_scene_.Initialize(&device, k_system_hitgroup_count_max))
+        {
+            std::cout << "[ERROR] Initialize gfx::RtSceneManager" << std::endl;
+        }
+    #endif
+    
+    #if 0
+        // SSVG.
+        ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f);
+        //ngl::render::app::SsVg::dbg_view_mode_ = -1;
+    #endif
 
-    ssvg_.Initialize(&device);
+
 
     // Texture Rexource読み込みのテスト.
     ngl::gfx::ResTexture::LoadDesc tex_load_desc{};
@@ -679,6 +725,8 @@ bool AppGame::ExecuteApp()
         {
             ImGui::Text("Camera Dir:			%.3f, %.3f, %.3f", camera_pose_.GetColumn2().x, camera_pose_.GetColumn2().y, camera_pose_.GetColumn2().z);
             ImGui::Text("Camera Pos:			%.3f, %.3f, %.3f", camera_pos_.x, camera_pos_.y, camera_pos_.z );
+
+            ImGui::SliderFloat("Camera Speed", &dbgw_camera_speed, 0.5f, 100.0f);
         }
 
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
@@ -721,6 +769,9 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("View GBuffer", &dbgw_view_gbuffer);
             ImGui::Checkbox("View Directional Shadow Atlas", &dbgw_view_dshadow);
             ImGui::Checkbox("View Half Dot Gray", &dbgw_view_half_dot_gray);
+            // sky visibilityデバッグ.
+            ImGui::Checkbox("View Ssvg Sky Visibility", &dbgw_view_ssvg_sky_visibility);
+            ImGui::Checkbox("Enable GI Lighting", &dbgw_enable_gi_lighting);
         }
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Directional Light"))
@@ -761,6 +812,8 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("Enable SubView Render", &dbgw_enable_sub_view_path);
         }
 
+
+        
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("SwTessellation Mesh"))
         {
@@ -793,7 +846,26 @@ bool AppGame::ExecuteApp()
                 sw_tess_debug_bisector_depth = -1;
                 sw_tess_debug_bisector_neighbor = -1;
             }
-            
+        }
+
+        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
+        if (ImGui::CollapsingHeader("Ssvg"))
+        {
+            if (ImGui::CollapsingHeader("Voxel Debug"))
+            {
+                ImGui::SliderInt("View Mode", &ngl::render::app::SsVg::dbg_view_mode_, -1, 10);
+                ImGui::SliderFloat("Visualize Screen Rate", &dbgw_view_ssvg_voxel_rate, 0.0f, 1.0f);
+            }
+
+            if (ImGui::CollapsingHeader("Probe Debug"))
+            {
+                ImGui::SliderInt("Wcp Probe Mode", &ngl::render::app::SsVg::dbg_wcp_probe_debug_mode_, -1, 10);
+                ImGui::SliderInt("Bbv Probe Mode", &ngl::render::app::SsVg::dbg_bbv_probe_debug_mode_, -1, 10);
+                
+                ImGui::SliderFloat("Probe Scale", &ngl::render::app::SsVg::dbg_probe_scale_, 0.01f, 10.0f);
+                ImGui::SliderFloat("Probe Near Geometry Scale", &ngl::render::app::SsVg::dbg_probe_near_geom_scale_, 0.01f, 10.0f);
+            }
+
         }
 
         ImGui::End();
@@ -806,12 +878,15 @@ bool AppGame::ExecuteApp()
         for (int i = 0; i < test_move_mesh_entity_array_.size(); ++i)
         {
             auto* e               = test_move_mesh_entity_array_[i];
+            if (nullptr == e)
+                continue;
+
             float move_range      = (i % 10) / 10.0f;
             const float sin_curve = sinf((float)app_sec_ * 2.0f * ngl::math::k_pi_f * 0.1f * (move_range + 1.0f));
 
             auto tr    = e->GetTransform();
             auto trans = tr.GetColumn3();
-            trans.z += sin_curve * delta_sec * 3.0f;
+            trans.z += sin_curve * delta_sec * 5.0f;
             tr.SetColumn3(trans);
             e->SetTransform(tr);
         }
@@ -845,6 +920,9 @@ bool AppGame::ExecuteApp()
     {
         for (auto& e : mesh_entity_array_)
         {
+            if(nullptr == e.get())
+                continue;
+
             // Render更新.
             e->UpdateForRender();
 
@@ -978,6 +1056,13 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
                 // デバッグメニューからRaytracePassの有無切り替え.
                 render_frame_desc.p_rt_scene = &rt_scene_;
             }
+
+            if(ssvg_.IsValid())
+            {
+                render_frame_desc.p_ssvg = &ssvg_;
+                render_frame_desc.is_enable_gi_lighting = (true) && dbgw_enable_gi_lighting;
+            }
+
             render_frame_desc.ref_test_tex_srv      = res_texture_->ref_view_;
             render_frame_desc.h_prev_lit            = h_prev_light;  // MainViewはヒストリ有効.
             render_frame_desc.h_other_graph_out_tex = subview_render_frame_out.h_propagate_lit;
@@ -993,6 +1078,9 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
 
                 render_frame_desc.debugview_gbuffer = dbgw_view_gbuffer;
                 render_frame_desc.debugview_dshadow = dbgw_view_dshadow;
+                render_frame_desc.debugview_ssvg_voxel = (0 <= ngl::render::app::SsVg::dbg_view_mode_);
+                render_frame_desc.debugview_ssvg_voxel_rate = dbgw_view_ssvg_voxel_rate;
+                render_frame_desc.debugview_ssvg_sky_visibility = dbgw_view_ssvg_sky_visibility;
             }
         }
 
@@ -1017,7 +1105,7 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
 
 void PlayerController::UpdateFrame(ngl::platform::CoreWindow& window, float delta_sec, const ngl::math::Mat33& prev_camera_pose, const ngl::math::Vec3& prev_camera_pos)
 {
-    float camera_translate_speed = 10.0f;
+    float camera_translate_speed = dbgw_camera_speed;
 
     const auto mouse_pos       = window.Dep().GetMousePosition();
     const auto mouse_pos_delta = window.Dep().GetMousePositionDelta();
