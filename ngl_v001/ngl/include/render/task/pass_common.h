@@ -1,4 +1,8 @@
-﻿#pragma once
+﻿/*
+    共通パス定義.
+*/
+
+#pragma once
 
 #include "math/math.h"
 #include "text/hash_text.h"

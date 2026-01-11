@@ -22,8 +22,8 @@ struct CbFinalScreenPass
 	int enable_gbuffer;
 	int enable_dshadow;
 
-	int enable_ssvg;
-    float ssvg_voxel_rate;
+	int enable_general_debug;
+    float general_debug_rate;
 };
 ConstantBuffer<CbFinalScreenPass> cb_final_screen_pass;
 
@@ -36,7 +36,7 @@ Texture2D tex_gbuffer2;// テクスチャデバッグ.
 Texture2D tex_gbuffer3;// テクスチャデバッグ.
 Texture2D tex_dshadow;// テクスチャデバッグ.
 Texture2D tex_res_data;// テクスチャデバッグ.
-Texture2D tex_ssvg;// テクスチャデバッグ.
+Texture2D tex_general_debug;// テクスチャデバッグ.
 
 SamplerState samp;
 
@@ -158,14 +158,24 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 				return sample_shadow*2.0;
 			}
 		}
-		if(cb_final_screen_pass.enable_ssvg)
+        // 全画面にスライダでデバッグテクスチャ表示する汎用機能. レンダラCpp側でtex_general_debugに設定するものを切り替える.
+		if(0 <= cb_final_screen_pass.enable_general_debug)
 		{
-            // スライダで画面全体をボクセル可視化に切り替え.
-			float4 ssvg_voxel_vis = tex_ssvg.SampleLevel(samp, input.uv, 0);
-            if(input.uv.x <= cb_final_screen_pass.ssvg_voxel_rate)
+            // スライダで画面全体を可視化に切り替え.
+            const float slider_fill_step = (input.uv.x <= cb_final_screen_pass.general_debug_rate)? 1.0 : 0.0;
+
+			float4 general_debug_vis = float4(0,0,0,1);
+            // チャンネル切り替え.
+            if(0 == cb_final_screen_pass.enable_general_debug)
             {
-                color.rgb = lerp(color.rgb, ssvg_voxel_vis.rgb, 1.0);
+                general_debug_vis = tex_general_debug.SampleLevel(samp, input.uv, 0);
             }
+            else if(1 == cb_final_screen_pass.enable_general_debug)
+            {
+                general_debug_vis = tex_general_debug.SampleLevel(samp, input.uv, 0).aaaa;
+            }
+            
+            color.rgb = lerp(color.rgb, general_debug_vis.rgb, slider_fill_step);
 		}
 		
 	}

@@ -1,4 +1,8 @@
-﻿#pragma once
+﻿/*
+    Directional Light Deferred Lighting Pass.
+*/
+
+#pragma once
 
 #include "pass_common.h"
 
@@ -42,8 +46,7 @@ namespace ngl::render::task
 
 			bool enable_feedback_blur_test{};
             bool dbg_view_ssvg_sky_visibility = false;
-		};
-		SetupDesc desc_{};
+		} desc_{};
 		bool is_render_skip_debug{};
 		
 		// リソースとアクセスを定義するプリプロセス.

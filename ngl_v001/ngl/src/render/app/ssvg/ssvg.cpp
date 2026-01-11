@@ -816,7 +816,7 @@ namespace ngl::render::app
 
         auto& global_res = gfx::GlobalRenderResource::Instance();
 
-        // デバッグ描画.
+        // デバッグ描画準備.
         if(0 <= SsVg::dbg_view_mode_)
         {
             const math::Vec2i work_tex_size = math::Vec2i(static_cast<int>(work_tex->GetWidth()), static_cast<int>(work_tex->GetHeight()));

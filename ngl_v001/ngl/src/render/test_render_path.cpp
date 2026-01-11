@@ -14,6 +14,7 @@
 #include "render/task/pass_gbuffer.h"
 #include "render/task/pass_cascade_shadow.h"
 #include "render/task/pass_linear_depth.h"
+#include "render/task/pass_ss_depth_technique.h"
 #include "render/task/pass_directional_light_deferred.h"
 #include "render/task/pass_after_lighting.h"
 #include "render/task/pass_final_composite.h"
@@ -177,6 +178,22 @@ namespace ngl::test
 					// Renderをスキップテスト.
 					task_linear_depth->is_render_skip_debug = k_force_skip_all_pass_render;
 				}
+
+
+                // ----------------------------------------
+                // Screen Space Depth Technique Pass.
+                auto* task_ss_depth_technique = rtg_builder.AppendTaskNode<ngl::render::task::TaskScreenSpaceDepthTechniquePass>();
+                {
+                    ngl::render::task::TaskScreenSpaceDepthTechniquePass::SetupDesc setup_desc{};
+                    {
+                        setup_desc.w = screen_w;
+                        setup_desc.h = screen_h;
+                        
+                        setup_desc.scene_cbv = scene_cb_h;
+                    }
+                    task_ss_depth_technique->Setup(rtg_builder, p_device, view_info, setup_desc, task_depth->h_depth_, task_linear_depth->h_linear_depth_);
+                }
+
 				
 				ngl::rtg::RtgResourceHandle async_compute_tex1 = {};
 #if ASYNC_COMPUTE_TEST1
@@ -446,7 +463,7 @@ namespace ngl::test
 						rtg::RtgResourceHandle debug_gbuffer1 = {};
 						rtg::RtgResourceHandle debug_gbuffer2 = {};
 						rtg::RtgResourceHandle debug_gbuffer3 = {};
-						if(render_frame_desc.debugview_gbuffer)
+						if(render_frame_desc.debugview_gbuffer || (0<=render_frame_desc.debugview_general_debug_buffer))
 						{
 							debug_gbuffer0 = task_gbuffer->h_gb0_;
 							debug_gbuffer1 = task_gbuffer->h_gb1_;
@@ -454,7 +471,7 @@ namespace ngl::test
 							debug_gbuffer3 = task_gbuffer->h_gb3_;
 						}
 						rtg::RtgResourceHandle debug_dshadow = {};
-						if(render_frame_desc.debugview_dshadow)
+						if(render_frame_desc.debugview_dshadow || (0<=render_frame_desc.debugview_general_debug_buffer))
 						{
 							debug_dshadow = task_d_shadow->h_shadow_depth_atlas_;
 						}
@@ -472,18 +489,52 @@ namespace ngl::test
 
 							setup_desc.debugview_gbuffer = render_frame_desc.debugview_gbuffer;
 							setup_desc.debugview_dshadow = render_frame_desc.debugview_dshadow;
-                            setup_desc.debugview_ssvg_voxel = render_frame_desc.debugview_ssvg_voxel;
-                            setup_desc.debugview_ssvg_voxel_rate = render_frame_desc.debugview_ssvg_voxel_rate;
+
+                            setup_desc.debugview_general_debug_buffer = render_frame_desc.debugview_general_debug_buffer;
+                            setup_desc.debugview_general_debug_channel = render_frame_desc.debugview_general_debug_channel;
+                            setup_desc.debugview_general_debug_rate = render_frame_desc.debugview_general_debug_rate;
 						}
 						
+                        rtg::RtgResourceHandle general_debug_tex = {};
+                        {
+                            // 汎用デバッグテクスチャ指定.
+                            switch(render_frame_desc.debugview_general_debug_buffer)
+                            {
+                            case 0:
+                                general_debug_tex = debug_gbuffer0;
+                                break;
+                            case 1:
+                                general_debug_tex = debug_gbuffer1;
+                                break;
+                            case 2:
+                                general_debug_tex = debug_gbuffer2;
+                                break;
+                            case 3:
+                                general_debug_tex = debug_gbuffer3;
+                                break;
+                            case 4:
+                                general_debug_tex = debug_dshadow;
+                                break;
+
+                            case 5:
+                                general_debug_tex = task_ss_depth_technique->h_bent_normal_;
+                                break;
+                            case 6:
+                                general_debug_tex = task_ssvg_update->h_work_;
+                                break;
+                            default:
+                                break;
+                            }
+                        }
+                        
+
 						task_final->Setup(rtg_builder, p_device, view_info, h_swapchain,
 							task_gbuffer->h_depth_, task_linear_depth->h_linear_depth_, task_light->h_light_,
 							render_frame_desc.h_other_graph_out_tex, h_rt_result,
 							debug_gbuffer0, debug_gbuffer1, debug_gbuffer2, debug_gbuffer3,
 							debug_dshadow,
 
-                            //task_after_gbuffer_injection->h_work_,
-                            task_ssvg_update->h_work_,
+                            general_debug_tex,
 
 							render_frame_desc.ref_test_tex_srv,
 

@@ -1,4 +1,8 @@
-﻿#pragma once
+﻿/*
+    Raytracing Pass.
+*/
+
+#pragma once
 
 #include "pass_common.h"
 
@@ -23,8 +27,7 @@ namespace ngl::render::task
 			int h{};
 			
 			class gfx::RtSceneManager* p_rt_scene{};
-		};
-		SetupDesc desc_{};
+		} desc_{};
 		bool is_render_skip_debug{};
 		
 		// リソースとアクセスを定義するプリプロセス.

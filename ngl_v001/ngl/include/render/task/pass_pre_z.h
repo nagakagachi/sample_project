@@ -1,4 +1,8 @@
-﻿#pragma once
+﻿/*
+    PreZパス.
+*/
+
+#pragma once
 
 #include "pass_common.h"
 
@@ -26,8 +30,7 @@ namespace ngl::render::task
 
             fwk::GfxScene* gfx_scene{};
             const std::vector<fwk::GfxSceneEntityId>* p_mesh_proxy_id_array_{};
-        };
-        SetupDesc desc_{};
+        } desc_{};
         bool is_render_skip_debug{};
 			
         // リソースとアクセスを定義するプリプロセス.

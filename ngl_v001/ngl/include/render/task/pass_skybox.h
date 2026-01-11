@@ -1,4 +1,8 @@
-﻿#pragma once
+﻿/*
+    Skybox Rendering Pass.
+*/
+
+#pragma once
 
 #include "pass_common.h"
 
@@ -32,8 +36,7 @@ namespace ngl::render::task
 
             EDebugMode  debug_mode = EDebugMode::None;
             float       debug_mip_bias = 0.0f;
-        };
-        SetupDesc setup_desc_{};
+        } setup_desc_{};
         
         rtg::RtgResourceHandle h_depth_{};
         rtg::RtgResourceHandle h_light_{};

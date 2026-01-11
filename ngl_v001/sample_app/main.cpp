@@ -58,8 +58,11 @@ static bool dbgw_view_half_dot_gray               = false;
 static bool dbgw_view_gbuffer                     = false;
 static bool dbgw_view_dshadow                     = false;
 
+static int dbgw_view_general_debug_buffer            = -1;
+static int dbgw_view_general_debug_channel            = 0;
+static float dbgw_view_general_debug_rate            = 0.5f;
+
 //static bool dbgw_view_ssvg_voxel                  = true;
-static float dbgw_view_ssvg_voxel_rate            = 0.5f;
 static bool dbgw_view_ssvg_sky_visibility         = false;
 static bool dbgw_enable_gi_lighting                = true;
 
@@ -586,7 +589,7 @@ bool AppGame::Initialize()
         }
     }
 
-    #if 1
+    #if 0
         // Raytrace. 初期化しなければ描画パスでも処理されなくなる.
         //	TLAS構築時にShaderTableの最大Hitgroup数が必要な設計であるため初期化時に最大数指定する. PrimayとShadowの2種であれば 2.
         constexpr int k_system_hitgroup_count_max = 3;
@@ -596,7 +599,7 @@ bool AppGame::Initialize()
         }
     #endif
     
-    #if 0
+    #if 1
         // SSVG.
         ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f);
         //ngl::render::app::SsVg::dbg_view_mode_ = -1;
@@ -753,15 +756,6 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("Enable MultiThread RenderPass", &dbgw_multithread_render_pass);
             ImGui::Checkbox("Enable MultiThread CascadeShadow", &dbgw_multithread_cascade_shadow);
         }
-        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("RHI"))
-        {
-            const auto free_dynamic_descriptor_count = gfxfw_.device_.GeDynamicDescriptorManager()->GetFreeDescriptorCount();
-            const auto max_dynamic_descriptor_count  = gfxfw_.device_.GeDynamicDescriptorManager()->GetMaxDescriptorCount();
-            // Dynamic Descriptorの残量.
-            ImGui::Text("DynamicDescriptor Free Count : %d / %d (%.2f)",
-                        free_dynamic_descriptor_count, max_dynamic_descriptor_count, 100.0f * (float)free_dynamic_descriptor_count / (float)max_dynamic_descriptor_count);
-        }
 
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Debug View"))
@@ -772,6 +766,12 @@ bool AppGame::ExecuteApp()
             // sky visibilityデバッグ.
             ImGui::Checkbox("View Ssvg Sky Visibility", &dbgw_view_ssvg_sky_visibility);
             ImGui::Checkbox("Enable GI Lighting", &dbgw_enable_gi_lighting);
+
+            ImGui::Separator();
+            ImGui::Text("Debug Buffer Visualize");
+            ImGui::SliderInt("Buffer Index", &dbgw_view_general_debug_buffer, -1, 10);
+            ImGui::SliderInt("Channel", &dbgw_view_general_debug_channel, 0, 10);
+            ImGui::SliderFloat("Slider Rate", &dbgw_view_general_debug_rate, 0.0f, 1.0f);
         }
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Directional Light"))
@@ -780,7 +780,7 @@ bool AppGame::ExecuteApp()
             ImGui::SliderFloat("DirectionalLight Angle H", &dbgw_dlit_angle_h, 0.0f, ngl::math::k_pi_f * 2.0f);
         }
 
-        ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Sky"))
         {
             if (ImGui::CollapsingHeader("IBL"))
@@ -812,7 +812,23 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("Enable SubView Render", &dbgw_enable_sub_view_path);
         }
 
+        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
+        if (ImGui::CollapsingHeader("Ssvg"))
+        {
+            if (ImGui::CollapsingHeader("Voxel Debug"))
+            {
+                ImGui::SliderInt("Debug Texture Mode", &ngl::render::app::SsVg::dbg_view_mode_, -1, 10);
+            }
 
+            if (ImGui::CollapsingHeader("Probe Debug"))
+            {
+                ImGui::SliderInt("Wcp Probe Mode", &ngl::render::app::SsVg::dbg_wcp_probe_debug_mode_, -1, 10);
+                ImGui::SliderInt("Bbv Probe Mode", &ngl::render::app::SsVg::dbg_bbv_probe_debug_mode_, -1, 10);
+                
+                ImGui::SliderFloat("Probe Scale", &ngl::render::app::SsVg::dbg_probe_scale_, 0.01f, 10.0f);
+                ImGui::SliderFloat("Probe Near Geometry Scale", &ngl::render::app::SsVg::dbg_probe_near_geom_scale_, 0.01f, 10.0f);
+            }
+        }
         
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("SwTessellation Mesh"))
@@ -849,23 +865,13 @@ bool AppGame::ExecuteApp()
         }
 
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("Ssvg"))
+        if (ImGui::CollapsingHeader("RHI"))
         {
-            if (ImGui::CollapsingHeader("Voxel Debug"))
-            {
-                ImGui::SliderInt("View Mode", &ngl::render::app::SsVg::dbg_view_mode_, -1, 10);
-                ImGui::SliderFloat("Visualize Screen Rate", &dbgw_view_ssvg_voxel_rate, 0.0f, 1.0f);
-            }
-
-            if (ImGui::CollapsingHeader("Probe Debug"))
-            {
-                ImGui::SliderInt("Wcp Probe Mode", &ngl::render::app::SsVg::dbg_wcp_probe_debug_mode_, -1, 10);
-                ImGui::SliderInt("Bbv Probe Mode", &ngl::render::app::SsVg::dbg_bbv_probe_debug_mode_, -1, 10);
-                
-                ImGui::SliderFloat("Probe Scale", &ngl::render::app::SsVg::dbg_probe_scale_, 0.01f, 10.0f);
-                ImGui::SliderFloat("Probe Near Geometry Scale", &ngl::render::app::SsVg::dbg_probe_near_geom_scale_, 0.01f, 10.0f);
-            }
-
+            const auto free_dynamic_descriptor_count = gfxfw_.device_.GeDynamicDescriptorManager()->GetFreeDescriptorCount();
+            const auto max_dynamic_descriptor_count  = gfxfw_.device_.GeDynamicDescriptorManager()->GetMaxDescriptorCount();
+            // Dynamic Descriptorの残量.
+            ImGui::Text("DynamicDescriptor Free Count : %d / %d (%.2f)",
+                        free_dynamic_descriptor_count, max_dynamic_descriptor_count, 100.0f * (float)free_dynamic_descriptor_count / (float)max_dynamic_descriptor_count);
         }
 
         ImGui::End();
@@ -1078,9 +1084,9 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
 
                 render_frame_desc.debugview_gbuffer = dbgw_view_gbuffer;
                 render_frame_desc.debugview_dshadow = dbgw_view_dshadow;
-                render_frame_desc.debugview_ssvg_voxel = (0 <= ngl::render::app::SsVg::dbg_view_mode_);
-                render_frame_desc.debugview_ssvg_voxel_rate = dbgw_view_ssvg_voxel_rate;
-                render_frame_desc.debugview_ssvg_sky_visibility = dbgw_view_ssvg_sky_visibility;
+                render_frame_desc.debugview_general_debug_buffer = dbgw_view_general_debug_buffer;
+                render_frame_desc.debugview_general_debug_channel = dbgw_view_general_debug_channel;
+                render_frame_desc.debugview_general_debug_rate = dbgw_view_general_debug_rate;
             }
         }
 

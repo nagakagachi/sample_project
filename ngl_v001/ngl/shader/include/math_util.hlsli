@@ -3,8 +3,11 @@
 #include "ngl_shader_config.hlsli"
 
 #define NGL_PI (3.141592653589793)
-#define NGL_2PI (2.0*NGL_PI)
+#define NGL_2PI (2.0*NGL_PI) // Tau
 #define NGL_HALF_PI (0.5*NGL_PI)
+
+#define NGL_PHI (1.618034033988749895) // 黄金比
+#define NGL_GOLDEN_ANGLE (NGL_2PI * (2.0 - NGL_PHI)) // 2.39996 radians
 
 #define NGL_EPSILON 0.00001
 
@@ -140,6 +143,12 @@ int distance_int_vector3(int3 a, int3 b)
     return length_int_vector3(a - b);
 }
 
+// 二乗値計算.
+float CalcSquare(float v)
+{
+    return v * v;
+}
+
 
 
 // View逆行列からカメラ向きベクトルを取得.
@@ -175,6 +184,21 @@ float2 GetNearFarPlaneDepthFromProjectionMatrix(float4x4 proj_mtx)
     return IsReverseProjectionMatrix(proj_mtx)? float2(1.0, 0.0) : float2(0.0, 1.0);
 }
 
+// fromベクトルをtoベクトルへ回転する行列を計算
+// 参考: "The Shortest Arc Quaternion" by Stan Melax
+float3x3 RotFromToMatrix(float3 from, float3 to)
+{
+    const float3 v = cross(from, to);
+    const float c = dot(from, to);
+    const float k = 1.0 / (1.0 + c);
+    
+    // v * v^T * k の各要素を計算して回転行列を直接構築
+    return float3x3(
+        v.x * v.x * k + c,      v.x * v.y * k - v.z,    v.x * v.z * k + v.y,
+        v.y * v.x * k + v.z,    v.y * v.y * k + c,      v.y * v.z * k - v.x,
+        v.z * v.x * k - v.y,    v.z * v.y * k + v.x,    v.z * v.z * k + c
+    );
+}
 
 //--------------------------------------------------------------------------------
 // スクリーンピクセルへのView空間レイベクトルを計算. Perspective用.
@@ -330,9 +354,9 @@ float3 random_unit_vector3(float2 seed)
 
 // Fibonacci球面分布方向を取得.
 // indexのmoduloは呼び出し側の責任とする.
-float3 fibonacci_sphere_point(uint index, uint sample_count_max)
+float3 fibonacci_sphere_point(int index, int sample_count_max)
 {
-    const float phi = 3.14159265359 * (3.0 - sqrt(5.0)); // 黄金角
+    const float phi = NGL_GOLDEN_ANGLE;//NGL_PI * (3.0 - sqrt(5.0)); // 黄金角
     const float y = 1.0 - (index / float(sample_count_max - 1)) * 2.0;// ここで 1 になると後段の sqrt に 0.0 が入って計算破綻する.
     const float horizontal_radius = sqrt((1.0 - y * y) + NGL_EPSILON);// sqrtに1が入らないようにするための安全策として加算で済ませるパターン.
     const float theta = phi * index;
@@ -340,7 +364,45 @@ float3 fibonacci_sphere_point(uint index, uint sample_count_max)
     const float z = sin(theta) * horizontal_radius;
     return float3(x, y, z);
 }
+// Fibonacci螺旋分布のサンプルポイントを計算.
+float2 fibonacci_spiral_point(int index, int sample_count_max)
+{
+    const float2 sample_dir = cos(float(index) * NGL_GOLDEN_ANGLE + float2(0, NGL_HALF_PI));// cos, sin は90度オフセットで得られる.
+    const float2 sample_offset = sample_dir * sqrt(float(index)/float(sample_count_max));
+    return sample_offset;
+}
 
+// Interleaved Gradient Noise
+// テクセル座標から疑似ランダムノイズを生成
+// Jorge Jimenez, "Next Generation Post Processing in Call of Duty: Advanced Warfare"
+// http://www.iryoku.com/next-generation-post-processing-in-call-of-duty-advanced-warfare
+float InterleavedGradientNoise(float2 pixel_coord)
+{
+    const float3 magic = float3(0.06711056, 0.00583715, 52.9829189);
+    return frac(magic.z * frac(dot(pixel_coord, magic.xy)));
+}
+// Golden Noise
+// https://www.shadertoy.com/view/ltB3zD
+// Optimized hash function for golden ratio based noise
+float GoldenNoise(float2 xy, float seed)
+{
+    return frac(tan(distance(xy * NGL_PHI, xy) * seed) * xy.x);
+}
+
+float GoldenNoise(float2 xy)
+{
+    return GoldenNoise(xy, 1.0);
+}
+
+float GoldenNoise(float3 xyz, float seed)
+{
+    return frac(tan(distance(xyz.xy * NGL_PHI, xyz.yz) * seed) * xyz.x);
+}
+
+float GoldenNoise(float3 xyz)
+{
+    return GoldenNoise(xyz, 1.0);
+}
 
 
 // Octahedron Mapping.

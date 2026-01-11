@@ -1,4 +1,8 @@
-﻿#pragma once
+﻿/*
+    GBuffer後の追加処理パス.
+*/
+
+#pragma once
 
 #include "pass_common.h"
 
@@ -18,8 +22,7 @@ namespace ngl::render::task
 			int h{};
 			
 			rhi::ConstantBufferPooledHandle scene_cbv{};
-		};
-		SetupDesc desc_{};
+		} desc_{};
 		
 		// リソースとアクセスを定義するプリプロセス.
 		void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,

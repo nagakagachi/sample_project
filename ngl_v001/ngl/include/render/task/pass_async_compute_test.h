@@ -1,4 +1,8 @@
-﻿#pragma once
+﻿/*
+    AsyncComputeテスト用パス.
+*/
+
+#pragma once
 
 #include "pass_common.h"
 
@@ -20,8 +24,7 @@ namespace ngl::render::task
 			int h{};
 			
 			rhi::ConstantBufferPooledHandle scene_cbv{};
-		};
-		SetupDesc desc_{};
+		} desc_{};
 		bool is_render_skip_debug{};
 		
 		// リソースとアクセスを定義するプリプロセス.

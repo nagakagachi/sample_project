@@ -1,4 +1,8 @@
-﻿#pragma once
+﻿/*
+    AfterLightingパス.
+*/
+
+#pragma once
 
 #include "pass_common.h"
 
@@ -22,8 +26,7 @@ namespace ngl::render::task
 			rhi::ConstantBufferPooledHandle scene_cbv{};
 
             render::app::SsVg* p_ssvg = {};
-		};
-		SetupDesc desc_{};
+		} desc_{};
 		bool is_render_skip_debug{};
 		
 		// リソースとアクセスを定義するプリプロセス.

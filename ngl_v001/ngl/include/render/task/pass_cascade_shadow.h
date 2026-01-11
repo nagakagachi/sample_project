@@ -1,4 +1,8 @@
-﻿#pragma once
+﻿/*
+    Directional Cascade Shadow Map Rendering Pass.
+*/
+
+#pragma once
 
 #include <thread>
 
@@ -79,8 +83,7 @@ namespace ngl::render::task
 			math::Vec3 directional_light_dir{};
 
 			bool		dbg_per_cascade_multithread = true;
-		};
-		SetupDesc desc_{};
+		} desc_{};
 		bool is_render_skip_debug{};
 		
 		// リソースとアクセスを定義するプリプロセス.

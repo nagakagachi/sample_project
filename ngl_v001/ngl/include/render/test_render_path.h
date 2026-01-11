@@ -73,8 +73,9 @@ namespace ngl::test
     	bool debugview_gbuffer = false;
     	bool debugview_dshadow = false;
 
-        bool debugview_ssvg_voxel = false;
-        float debugview_ssvg_voxel_rate = 0.5f;
+        int debugview_general_debug_buffer = -1;
+        int debugview_general_debug_channel = 0;
+        float debugview_general_debug_rate = 0.5f;
     	bool debugview_ssvg_sky_visibility = false;
     };
 	// RenderPathが生成した出力リソース.
