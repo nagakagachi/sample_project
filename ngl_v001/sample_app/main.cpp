@@ -44,6 +44,13 @@
 // imguiのシステム処理Wrapper.
 #include "imgui/imgui_interface.h"
 
+
+// レイトレデモ機能の有効化
+#define NGL_TEST_RAYTRACING_ENABLE 0
+// SwTessellationデモ機能の有効化
+#define NGL_TEST_SWTESSELLATION_ENABLE 0
+
+
 // ImGui.
 static bool dbgw_test_window_enable = true;
 
@@ -532,8 +539,21 @@ bool AppGame::Initialize()
             }
 #endif
 
-            // SwTessellationのテスト.
+            // 単純形状のプログラム生成メッシュを登録するテスト.
             if (0)
+            {
+                auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
+                mesh_entity_array_.push_back(mc);
+
+                ngl::gfx::ResMeshData::LoadDesc loaddesc{};
+
+                ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), procedural_mesh_data);
+                mc->SetTransform(ngl::math::Mat34(tr));
+            }
+
+            // SwTessellationのテスト.
+#if NGL_TEST_SWTESSELLATION_ENABLE
             {
                 auto mc = std::make_shared<ngl::render::app::SwTessellationMesh>();
                 mesh_entity_array_.push_back(mc);
@@ -563,35 +583,20 @@ bool AppGame::Initialize()
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
+#endif
 
-            // 単純形状テスト.
-            if (0)
-            {
-                auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
-                mesh_entity_array_.push_back(mc);
-
-                ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-
-                ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
-
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), procedural_mesh_data);
-
-                // tr.SetColumn3(ngl::math::Vec4(0.0f, 0.0f, 0.0f, 0.0f));
-                // tr.SetColumn3(ngl::math::Vec4(0.0f, 0.5f, 0.5f, 0.0f));
-
-                mc->SetTransform(ngl::math::Mat34(tr));
-            }
         }
     }
 
-#if 0
-        // Raytrace. 初期化しなければ描画パスでも処理されなくなる.
-        //	TLAS構築時にShaderTableの最大Hitgroup数が必要な設計であるため初期化時に最大数指定する. PrimayとShadowの2種であれば 2.
-        constexpr int k_system_hitgroup_count_max = 3;
-        if (!rt_scene_.Initialize(&device, k_system_hitgroup_count_max))
-        {
-            std::cout << "[ERROR] Initialize gfx::RtSceneManager" << std::endl;
-        }
+    // Raytrace. 
+    //  初期化しなければ描画パスでも処理されなくなる.
+#if NGL_TEST_RAYTRACING_ENABLE
+    //	TLAS構築時にShaderTableの最大Hitgroup数が必要な設計であるため初期化時に最大数指定する. PrimayとShadowの2種であれば 2.
+    constexpr int k_system_hitgroup_count_max = 3;
+    if (!rt_scene_.Initialize(&device, k_system_hitgroup_count_max))
+    {
+        std::cout << "[ERROR] Initialize gfx::RtSceneManager" << std::endl;
+    }
 #endif
 
 #if 1
