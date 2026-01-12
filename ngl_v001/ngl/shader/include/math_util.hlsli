@@ -365,9 +365,9 @@ float3 fibonacci_sphere_point(int index, int sample_count_max)
     return float3(x, y, z);
 }
 // Fibonacci螺旋分布のサンプルポイントを計算.
-float2 fibonacci_spiral_point(int index, int sample_count_max)
+float2 fibonacci_spiral_point(int index, int sample_count_max, float angle_offset)
 {
-    const float2 sample_dir = cos(float(index) * NGL_GOLDEN_ANGLE + float2(0, NGL_HALF_PI));// cos, sin は90度オフセットで得られる.
+    const float2 sample_dir = cos(float(index) * NGL_GOLDEN_ANGLE + angle_offset + float2(0, NGL_HALF_PI));// cos, sin は90度オフセットで得られる.
     const float2 sample_offset = sample_dir * sqrt(float(index)/float(sample_count_max));
     return sample_offset;
 }

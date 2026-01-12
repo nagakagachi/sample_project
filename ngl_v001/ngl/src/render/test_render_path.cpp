@@ -188,8 +188,9 @@ namespace ngl::test
                     {
                         setup_desc.w = screen_w;
                         setup_desc.h = screen_h;
-                        
                         setup_desc.scene_cbv = scene_cb_h;
+
+                        setup_desc.enable_gtao_demo = render_frame_desc.feature_config.gtao_demo.enable;
                     }
                     task_ss_depth_technique->Setup(rtg_builder, p_device, view_info, setup_desc, task_depth->h_depth_, task_linear_depth->h_linear_depth_);
                 }
@@ -311,7 +312,7 @@ namespace ngl::test
 						setup_desc.p_mesh_proxy_id_array_ = &p_scene->mesh_proxy_id_array_;
 						
 						// Directionalのライト方向テスト.
-						setup_desc.directional_light_dir = ngl::math::Vec3::Normalize(render_frame_desc.directional_light_dir);
+						setup_desc.directional_light_dir = ngl::math::Vec3::Normalize(render_frame_desc.feature_config.lighting.directional_light_dir);
 
 						setup_desc.dbg_per_cascade_multithread = render_frame_desc.debug_multithread_cascade_shadow;
 					}
@@ -332,7 +333,7 @@ namespace ngl::test
                             
                             setup_desc.scene_cbv = scene_cb_h;
 
-                            setup_desc.p_ssvg = render_frame_desc.p_ssvg;
+                            setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
                         }
                         task_ssvg_begin->Setup(rtg_builder, p_device, view_info, setup_desc);
                     }
@@ -345,7 +346,7 @@ namespace ngl::test
                             setup_desc.h = screen_h;
                             
                             setup_desc.scene_cbv = scene_cb_h;
-                            setup_desc.p_ssvg = render_frame_desc.p_ssvg;
+                            setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
 
                             // main view DepthBuffer登録.
                             {
@@ -389,7 +390,7 @@ namespace ngl::test
                             
                             setup_desc.scene_cbv = scene_cb_h;
 
-                            setup_desc.p_ssvg = render_frame_desc.p_ssvg;
+                            setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
                             
                             // main view.
                             setup_desc.h_depth = task_depth->h_depth_;
@@ -414,8 +415,9 @@ namespace ngl::test
 						setup_desc.scene = p_scene->gfx_scene_;
 						setup_desc.skybox_proxy_id = p_scene->skybox_proxy_id_;
 						
-                        setup_desc.p_ssvg = render_frame_desc.p_ssvg;
-                        setup_desc.is_enable_gi_lighting = render_frame_desc.is_enable_gi_lighting;
+                        setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
+                        setup_desc.is_enable_gi_lighting = render_frame_desc.feature_config.gi.enable_gi_lighting;
+                        setup_desc.gi_probe_sample_offset_distance = render_frame_desc.feature_config.gi.probe_sample_offset_distance;
                         setup_desc.dbg_view_ssvg_sky_visibility = render_frame_desc.debugview_ssvg_sky_visibility;
                         
 						setup_desc.enable_feedback_blur_test = render_frame_desc.debugview_enable_feedback_blur_test;
@@ -426,6 +428,7 @@ namespace ngl::test
 						task_gbuffer->h_velocity_, task_linear_depth->h_linear_depth_, render_frame_desc.h_prev_lit,
 						task_d_shadow->h_shadow_depth_atlas_,
 						async_compute_tex1,
+                        task_ss_depth_technique->h_bent_normal_,
 						setup_desc);
 					// Renderをスキップテスト.
 					task_light->is_render_skip_debug = k_force_skip_all_pass_render;
@@ -442,7 +445,7 @@ namespace ngl::test
 						
 						setup_desc.scene_cbv = scene_cb_h;
 
-                        setup_desc.p_ssvg = render_frame_desc.p_ssvg;
+                        setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
 					}
 					task_after_light->Setup(rtg_builder, p_device, view_info,
 					task_light->h_light_, task_depth->h_depth_,
@@ -500,26 +503,33 @@ namespace ngl::test
                             // 汎用デバッグテクスチャ指定.
                             switch(render_frame_desc.debugview_general_debug_buffer)
                             {
-                            case 0:
+                            case EDebugBufferMode::GBuffer0:
                                 general_debug_tex = debug_gbuffer0;
                                 break;
-                            case 1:
+                            case EDebugBufferMode::GBuffer1:
                                 general_debug_tex = debug_gbuffer1;
                                 break;
-                            case 2:
+                            case EDebugBufferMode::GBuffer2:
                                 general_debug_tex = debug_gbuffer2;
                                 break;
-                            case 3:
+                            case EDebugBufferMode::GBuffer3:
                                 general_debug_tex = debug_gbuffer3;
                                 break;
-                            case 4:
-                                general_debug_tex = debug_dshadow;
+                            case EDebugBufferMode::HardwareDepth:
+                                general_debug_tex = task_depth->h_depth_;
                                 break;
 
-                            case 5:
+                            case EDebugBufferMode::DirectionalShadowAtlas:
+                                general_debug_tex = debug_dshadow;
+                                break;
+                                
+                            case EDebugBufferMode::GtaoDemo:
+                                general_debug_tex = task_ss_depth_technique->h_gtao_bent_normal_;
+                                break;
+                            case EDebugBufferMode::BentNormalTest:
                                 general_debug_tex = task_ss_depth_technique->h_bent_normal_;
                                 break;
-                            case 6:
+                            case EDebugBufferMode::SsvgDebugTexture:
                                 general_debug_tex = task_ssvg_update->h_work_;
                                 break;
                             default:

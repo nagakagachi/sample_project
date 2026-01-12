@@ -24,6 +24,7 @@ struct CbLightingPass
 	int is_first_frame;
 
     int is_enable_gi;
+    float gi_probe_sample_offset_distance;
     int dbg_view_ssvg_sky_visibility;
 };
 ConstantBuffer<CbLightingPass> cb_ngl_lighting_pass;
@@ -35,6 +36,8 @@ Texture2D tex_gbuffer2;
 Texture2D tex_gbuffer3;
 Texture2D tex_prev_light;
 Texture2D tex_shadowmap;
+Texture2D tex_bent_normal;// BentNormalテクスチャ.
+
 SamplerState samp;
 SamplerComparisonState samp_shadow;
 
@@ -212,6 +215,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	const float4 gb1 = tex_gbuffer1.Load(int3(input.pos.xy, 0));
 	const float4 gb2 = tex_gbuffer2.Load(int3(input.pos.xy, 0));
 	const float4 gb3 = tex_gbuffer3.Load(int3(input.pos.xy, 0));
+    const float4 bent_normal_sample = tex_bent_normal.Load(int3(input.pos.xy, 0));
 	const float4 prev_light = tex_prev_light.Load(int3(input.pos.xy, 0));
 
 	// GBuffer Decode.
@@ -263,9 +267,18 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
         const float2 texel_size = 1.0 / float2(tex_width, tex_height);
 
         const float2 octmap_local_texel_pos = OctEncode(gb_normal_ws)*k_probe_octmap_width;
+        float3 probe_sample_pos_ws = pixel_pos_ws;
+        #if 1
+            // BentNormalでサンプル位置をオフセットすることでライトリーク緩和の検証.
+            {
+                const float k_bent_normal_offset_distance = cb_ngl_lighting_pass.gi_probe_sample_offset_distance;//0.5;
 
+                const float3 bent_normal_ws = bent_normal_sample.xyz;
+                probe_sample_pos_ws += bent_normal_ws * k_bent_normal_offset_distance;
+            }
+        #endif
 
-        const float3 voxel_coordf = (pixel_pos_ws - cb_ssvg.wcp.grid_min_pos) * cb_ssvg.wcp.cell_size_inv;
+        const float3 voxel_coordf = (probe_sample_pos_ws - cb_ssvg.wcp.grid_min_pos) * cb_ssvg.wcp.cell_size_inv;
         const int3 voxel_base_coord = floor(voxel_coordf - 0.5);
         const float3 coord_frac = frac(voxel_coordf - 0.5);
 

@@ -45,4 +45,29 @@ namespace ngl::imgui
         int snapshot_flip_{};
         int snapshot_flip_render_{};
     };
+
+    // ImGuiのIndent/Unindentをスコープで管理するヘルパークラス.
+    class ScopedIndent
+    {
+    private:
+        float indent_ = 0;
+
+    public:
+        ScopedIndent(float indent)
+        {
+            indent_ = indent;
+            ImGui::Indent(indent);
+        }
+        ~ScopedIndent()
+        {
+            ImGui::Unindent(indent_);
+        }
+    };
+    // https://www.jpcert.or.jp/sc-rules/c-pre05-c.html
+    #define NGL_IMGUI_JOIN_AGAIN(a,b) a ## b
+    #define NGL_IMGUI_JOIN(a,b) NGL_IMGUI_JOIN_AGAIN(a, b)
+    // IMGUIのIndent/Unindentをスコープで管理するヘルパークラス用マクロ.
+    //	ex. NGL_IMGUI_SCOPED_INDENT(10.0f);
+    #define NGL_IMGUI_SCOPED_INDENT(size) const ngl::imgui::ScopedIndent NGL_IMGUI_JOIN(imgui_scoped_indent , __LINE__) (size);
+
 }

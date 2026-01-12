@@ -37,56 +37,62 @@
 #include "gfx/material/material_shader_manager.h"
 
 // Render Path
-#include "render/test_render_path.h"
-
-#include "render/app/sw_tess/sw_tessellation_mesh.h"
 #include "render/app/ssvg/ssvg.h"
-
+#include "render/app/sw_tess/sw_tessellation_mesh.h"
+#include "render/test_render_path.h"
 
 // imguiのシステム処理Wrapper.
 #include "imgui/imgui_interface.h"
+
 // ImGui.
-static bool dbgw_test_window_enable               = true;
+static bool dbgw_test_window_enable = true;
+
+// デバッグ描画.
+static bool dbgw_enable_feedback_blur_test = true;
+static bool dbgw_enable_sub_view_path      = false;
+static bool dbgw_enable_raytrace_pass      = false;
+static bool dbgw_view_half_dot_gray        = false;
+static bool dbgw_view_gbuffer              = false;
+static bool dbgw_view_dshadow              = false;
+static int dbgw_view_general_debug_buffer  = -1;
+static int dbgw_view_general_debug_channel = 0;
+static float dbgw_view_general_debug_rate  = 0.5f;
+
+// SSVG.
+static bool dbgw_view_ssvg_sky_visibility         = false;
+static bool dbgw_enable_gi_lighting               = true;
+static float dbgw_gi_probe_sample_offset_distance = 0.5f;
+
+static bool dbgw_enable_gtao_demo = true;
+
+// Camera and DLight.
+static float dbgw_dlit_angle_v = 0.4f;
+static float dbgw_dlit_angle_h = 4.1f;
+static float dbgw_camera_speed = 5.0f;  // 10.0f;
+
+// 並列化.
 static bool dbgw_render_thread                    = true;
 static bool dbgw_multithread_render_pass          = true;
 static bool dbgw_multithread_cascade_shadow       = true;
 static float dbgw_perf_main_thread_sleep_millisec = 0.0f;
-static bool dbgw_enable_feedback_blur_test        = true;
-static bool dbgw_enable_sub_view_path             = false;
-static bool dbgw_enable_raytrace_pass             = false;
-static bool dbgw_view_half_dot_gray               = false;
-static bool dbgw_view_gbuffer                     = false;
-static bool dbgw_view_dshadow                     = false;
-
-static int dbgw_view_general_debug_buffer            = -1;
-static int dbgw_view_general_debug_channel            = 0;
-static float dbgw_view_general_debug_rate            = 0.5f;
-
-//static bool dbgw_view_ssvg_voxel                  = true;
-static bool dbgw_view_ssvg_sky_visibility         = false;
-static bool dbgw_enable_gi_lighting                = true;
-
-static float dbgw_dlit_angle_v                    = 0.4f;
-static float dbgw_dlit_angle_h                    = 4.1f;
-static float dbgw_camera_speed                    = 5.0f;//10.0f;
-
+// Stat.
 static float dbgw_stat_primary_rtg_construct = {};
 static float dbgw_stat_primary_rtg_compile   = {};
 static float dbgw_stat_primary_rtg_execute   = {};
 
+// Sky and IBL.
 static int dbgw_sky_debug_mode       = {};
 static float dbgw_sky_debug_mip_bias = 0.0f;
 
-static float sw_tess_important_point_offset_in_view = 7.0;
-
-static int sw_tess_fixed_subdivision_level = -1; // -1で無効、0以上で固定分割レベルを指定
-static bool sw_tess_update_tessellation = true; // trueでテッセレーション更新を有効化
-static bool sw_tess_update_tessellation_frame_toggle = false; // trueで1F毎にテッセレーション更新フラグをOFFにするデバッグ用.
-static float sw_tess_split_threshold = 0.5f; // テッセレーション分割閾値
-
-static int sw_tess_debug_bisector_id = -1;      // デバッグ対象BisectorID（-1で無効）
-static int sw_tess_debug_bisector_depth = -1;   // デバッグ対象BisectorDepth（-1で無効）
-static int sw_tess_debug_bisector_neighbor = -1;
+// SwTessellation.
+static float sw_tess_important_point_offset_in_view  = 7.0;
+static int sw_tess_fixed_subdivision_level           = -1;     // -1で無効、0以上で固定分割レベルを指定
+static bool sw_tess_update_tessellation              = true;   // trueでテッセレーション更新を有効化
+static bool sw_tess_update_tessellation_frame_toggle = false;  // trueで1F毎にテッセレーション更新フラグをOFFにするデバッグ用.
+static float sw_tess_split_threshold                 = 0.5f;   // テッセレーション分割閾値
+static int sw_tess_debug_bisector_id                 = -1;     // デバッグ対象BisectorID（-1で無効）
+static int sw_tess_debug_bisector_depth              = -1;     // デバッグ対象BisectorDepth（-1で無効）
+static int sw_tess_debug_bisector_neighbor           = -1;
 
 class PlayerController
 {
@@ -153,23 +159,23 @@ private:
     ngl::fwk::GraphicsFramework gfxfw_{};
     std::vector<ngl::rhi::EResourceState> swapchain_resource_state_;
 
-    //ngl::math::Vec3 camera_pos_   = {0.368f, 1.237f, 0.453f};//{0.0f, 2.0f, -5.0f};
-    ngl::math::Vec3 camera_pos_   = {1.871f, 1.347f, 1.399f};//{0.0f, 2.0f, -5.0f};
-    ngl::math::Mat33 camera_pose_ = ngl::math::Mat33::RotAxisY(ngl::math::Deg2Rad(-90.0f));// ngl::math::Mat33::Identity();
-    float camera_fov_y            = ngl::math::Deg2Rad(60.0f);  // not half fov.
+    // ngl::math::Vec3 camera_pos_   = {0.368f, 1.237f, 0.453f};//{0.0f, 2.0f, -5.0f};
+    ngl::math::Vec3 camera_pos_   = {1.871f, 1.347f, 1.399f};                                //{0.0f, 2.0f, -5.0f};
+    ngl::math::Mat33 camera_pose_ = ngl::math::Mat33::RotAxisY(ngl::math::Deg2Rad(-90.0f));  // ngl::math::Mat33::Identity();
+    float camera_fov_y            = ngl::math::Deg2Rad(60.0f);                               // not half fov.
     PlayerController player_controller{};
 
     // GfxSceneMesh版
     std::vector<std::shared_ptr<ngl::gfx::scene::SceneMesh>> mesh_entity_array_;
     std::vector<ngl::gfx::scene::SceneMesh*> test_move_mesh_entity_array_;
-    
+
     // SwTessellationMesh管理用
     std::vector<ngl::render::app::SwTessellationMesh*> sw_tessellation_mesh_array_;
 
     // RaytraceScene.
     ngl::gfx::RtSceneManager rt_scene_;
 
-    ngl::render::app::SsVg  ssvg_;
+    ngl::render::app::SsVg ssvg_;
 
     ngl::fwk::GfxScene gfx_scene_{};
     ngl::gfx::scene::SceneSkyBox skybox_{};
@@ -362,64 +368,56 @@ bool AppGame::Initialize()
 
         std::shared_ptr<ngl::gfx::MeshData> procedural_mesh_data = std::make_shared<ngl::gfx::MeshData>();
         {
-            const float mesh_scale = 10.0f;
+            const float mesh_scale      = 10.0f;
             ngl::math::Vec3 quad_pos[4] = {
                 ngl::math::Vec3(-1.0f, 0.0f, -1.0f) * mesh_scale,
                 ngl::math::Vec3(-1.0f, 0.0f, 1.0f) * mesh_scale,
                 ngl::math::Vec3(1.0f, 0.0f, 1.0f) * mesh_scale,
-                ngl::math::Vec3(1.0f, 0.0f, -1.0f) * mesh_scale
-            };
+                ngl::math::Vec3(1.0f, 0.0f, -1.0f) * mesh_scale};
             ngl::math::Vec3 quad_normal[4] = {
                 ngl::math::Vec3(0.0f, 1.0f, 0.0f),
                 ngl::math::Vec3(0.0f, 1.0f, 0.0f),
                 ngl::math::Vec3(0.0f, 1.0f, 0.0f),
-                ngl::math::Vec3(0.0f, 1.0f, 0.0f)
-            };
+                ngl::math::Vec3(0.0f, 1.0f, 0.0f)};
             ngl::math::Vec3 quad_tangent[4] = {
                 ngl::math::Vec3(1.0f, 0.0f, 0.0f),
                 ngl::math::Vec3(1.0f, 0.0f, 0.0f),
                 ngl::math::Vec3(1.0f, 0.0f, 0.0f),
-                ngl::math::Vec3(1.0f, 0.0f, 0.0f)
-            };
+                ngl::math::Vec3(1.0f, 0.0f, 0.0f)};
             ngl::math::Vec3 quad_binormal[4] = {
                 ngl::math::Vec3(0.0f, 0.0f, 1.0f),
                 ngl::math::Vec3(0.0f, 0.0f, 1.0f),
                 ngl::math::Vec3(0.0f, 0.0f, 1.0f),
-                ngl::math::Vec3(0.0f, 0.0f, 1.0f)
-            };
+                ngl::math::Vec3(0.0f, 0.0f, 1.0f)};
             ngl::math::Vec2 quad_texcoord[4] = {
                 ngl::math::Vec2(0.0f, 0.0f),
                 ngl::math::Vec2(1.0f, 0.0f),
                 ngl::math::Vec2(0.0f, 1.0f),
-                ngl::math::Vec2(1.0f, 1.0f)
-            };
+                ngl::math::Vec2(1.0f, 1.0f)};
             ngl::gfx::VertexColor quad_color[4] = {
                 ngl::gfx::VertexColor{255, 255, 255, 255},
                 ngl::gfx::VertexColor{255, 255, 255, 255},
                 ngl::gfx::VertexColor{255, 255, 255, 255},
-                ngl::gfx::VertexColor{255, 255, 255, 255}
-            };
+                ngl::gfx::VertexColor{255, 255, 255, 255}};
 
             ngl::u32 index_data[6] = {
                 0, 1, 2,
-                0, 2, 3
-            };
+                0, 2, 3};
 
             ngl::gfx::MeshShapeInitializeSourceData init_source_data{};
-            init_source_data.num_vertex_ = 4;
+            init_source_data.num_vertex_    = 4;
             init_source_data.num_primitive_ = 2;
-            init_source_data.index_ = index_data;
-            init_source_data.position_ = quad_pos;
-            init_source_data.normal_ = quad_normal;
-            init_source_data.tangent_ = quad_tangent;
-            init_source_data.binormal_ = quad_binormal;
+            init_source_data.index_         = index_data;
+            init_source_data.position_      = quad_pos;
+            init_source_data.normal_        = quad_normal;
+            init_source_data.tangent_       = quad_tangent;
+            init_source_data.binormal_      = quad_binormal;
             init_source_data.texcoord_.push_back(quad_texcoord);
             init_source_data.color_.push_back(quad_color);
 
             // MeshData生成.
             GenerateMeshDataProcedural(*procedural_mesh_data, &device, init_source_data);
         }
-
 
         auto& ResourceMan = ngl::res::ResourceManager::Instance();
         // SceneMesh.
@@ -450,7 +448,7 @@ bool AppGame::Initialize()
 
                 ngl::math::Mat34 tr = ngl::math::Mat34::Identity();
                 tr.SetDiagonal(ngl::math::Vec3(spider_base_scale * 4.0f));
-                //tr.SetColumn3(ngl::math::Vec4(30.0f, 12.0f, 0.0f, 1.0f));
+                // tr.SetColumn3(ngl::math::Vec4(30.0f, 12.0f, 0.0f, 1.0f));
                 tr.SetColumn3(ngl::math::Vec3(-10.0f, 15.0f, 4.0f));
 
                 mc->SetTransform(ngl::math::Mat34(tr));
@@ -521,7 +519,7 @@ bool AppGame::Initialize()
                 constexpr float placement_range = 30.0f;
 
                 ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
-                
+
                 tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 4.0f));
 
                 tr = ngl::math::Mat44::RotAxisY(randroty * ngl::math::k_pi_f * 2.0f) * tr;
@@ -539,57 +537,54 @@ bool AppGame::Initialize()
             {
                 auto mc = std::make_shared<ngl::render::app::SwTessellationMesh>();
                 mesh_entity_array_.push_back(mc);
-                
+
                 // SwTessellationMesh管理用vectorにも追加
                 sw_tessellation_mesh_array_.push_back(mc.get());
 
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-                
 
                 ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
-                #if 0
+#if 0
                 // 蜘蛛
                 constexpr int tessellation_level = 4;  // 0で無効、1以上で有効.
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), {}, tessellation_level);
                 tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 3.0f, 1.0f));
-                #else
+#else
                 constexpr int tessellation_level = 9;
-                    #if 1
-                        mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), procedural_mesh_data, tessellation_level);
-                    #else
-                        mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), {}, tessellation_level);
-                        tr.SetDiagonal(ngl::math::Vec4(60.0f));
-                        tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
-                    #endif
-                #endif
+#if 1
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), procedural_mesh_data, tessellation_level);
+#else
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), {}, tessellation_level);
+                tr.SetDiagonal(ngl::math::Vec4(60.0f));
+                tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
+#endif
+#endif
                 tr.SetColumn3(ngl::math::Vec4(0.0f, 10.0f, 0.0f, 0.0f));
 
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
 
             // 単純形状テスト.
-            if(0)
+            if (0)
             {
                 auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
                 mesh_entity_array_.push_back(mc);
-                
+
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
-                
+
                 ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
-                
+
                 mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), procedural_mesh_data);
 
-                //tr.SetColumn3(ngl::math::Vec4(0.0f, 0.0f, 0.0f, 0.0f));
-                //tr.SetColumn3(ngl::math::Vec4(0.0f, 0.5f, 0.5f, 0.0f));
-                
+                // tr.SetColumn3(ngl::math::Vec4(0.0f, 0.0f, 0.0f, 0.0f));
+                // tr.SetColumn3(ngl::math::Vec4(0.0f, 0.5f, 0.5f, 0.0f));
+
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
-
-
         }
     }
 
-    #if 0
+#if 0
         // Raytrace. 初期化しなければ描画パスでも処理されなくなる.
         //	TLAS構築時にShaderTableの最大Hitgroup数が必要な設計であるため初期化時に最大数指定する. PrimayとShadowの2種であれば 2.
         constexpr int k_system_hitgroup_count_max = 3;
@@ -597,15 +592,13 @@ bool AppGame::Initialize()
         {
             std::cout << "[ERROR] Initialize gfx::RtSceneManager" << std::endl;
         }
-    #endif
-    
-    #if 1
-        // SSVG.
-        ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f);
-        //ngl::render::app::SsVg::dbg_view_mode_ = -1;
-    #endif
+#endif
 
-
+#if 1
+    // SSVG.
+    ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f);
+    // ngl::render::app::SsVg::dbg_view_mode_ = -1;
+#endif
 
     // Texture Rexource読み込みのテスト.
     ngl::gfx::ResTexture::LoadDesc tex_load_desc{};
@@ -726,8 +719,9 @@ bool AppGame::ExecuteApp()
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("View Info"))
         {
+            NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::Text("Camera Dir:			%.3f, %.3f, %.3f", camera_pose_.GetColumn2().x, camera_pose_.GetColumn2().y, camera_pose_.GetColumn2().z);
-            ImGui::Text("Camera Pos:			%.3f, %.3f, %.3f", camera_pos_.x, camera_pos_.y, camera_pos_.z );
+            ImGui::Text("Camera Pos:			%.3f, %.3f, %.3f", camera_pos_.x, camera_pos_.y, camera_pos_.z);
 
             ImGui::SliderFloat("Camera Speed", &dbgw_camera_speed, 0.5f, 100.0f);
         }
@@ -735,6 +729,7 @@ bool AppGame::ExecuteApp()
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Debug Perf"))
         {
+            NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::Text("Delta:			%f [ms]", delta_sec * 1000.0f);
             ImGui::Text("Delta(avg0.5):	%f [ms]", moving_avg_t50_frame_sec_ * 1000.0f);
 
@@ -760,31 +755,80 @@ bool AppGame::ExecuteApp()
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Debug View"))
         {
+            NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::Checkbox("View GBuffer", &dbgw_view_gbuffer);
             ImGui::Checkbox("View Directional Shadow Atlas", &dbgw_view_dshadow);
             ImGui::Checkbox("View Half Dot Gray", &dbgw_view_half_dot_gray);
             // sky visibilityデバッグ.
             ImGui::Checkbox("View Ssvg Sky Visibility", &dbgw_view_ssvg_sky_visibility);
             ImGui::Checkbox("Enable GI Lighting", &dbgw_enable_gi_lighting);
+            ImGui::SliderFloat("GI Probe Sample Offset Distance", &dbgw_gi_probe_sample_offset_distance, 0.0f, 10.0f);
 
             ImGui::Separator();
             ImGui::Text("Debug Buffer Visualize");
-            ImGui::SliderInt("Buffer Index", &dbgw_view_general_debug_buffer, -1, 10);
+            {
+                ImGui::RadioButton("None", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::None);
+                ImGui::RadioButton("GBuffer0", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::GBuffer0);
+                ImGui::RadioButton("GBuffer1", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::GBuffer1);
+                ImGui::RadioButton("GBuffer2", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::GBuffer2);
+                ImGui::RadioButton("GBuffer3", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::GBuffer3);
+                ImGui::RadioButton("HwDepth", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::HardwareDepth);
+                ImGui::RadioButton("DirectionalShadowAtlas", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::DirectionalShadowAtlas);
+                ImGui::RadioButton("GtaoDemo", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::GtaoDemo);
+                ImGui::RadioButton("BentNormalTest", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::BentNormalTest);
+                ImGui::RadioButton("SsvgDebugTexture", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::SsvgDebugTexture);
+            }
             ImGui::SliderInt("Channel", &dbgw_view_general_debug_channel, 0, 10);
             ImGui::SliderFloat("Slider Rate", &dbgw_view_general_debug_rate, 0.0f, 1.0f);
         }
+        
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Directional Light"))
         {
+            NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::SliderFloat("DirectionalLight Angle V", &dbgw_dlit_angle_v, 0.0f, ngl::math::k_pi_f * 2.0f);
             ImGui::SliderFloat("DirectionalLight Angle H", &dbgw_dlit_angle_h, 0.0f, ngl::math::k_pi_f * 2.0f);
         }
 
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
+        if (ImGui::CollapsingHeader("GI"))
+        {
+            NGL_IMGUI_SCOPED_INDENT(10.0f);
+            ImGui::SetNextItemOpen(false, ImGuiCond_Once);
+            if (ImGui::CollapsingHeader("Ssvg"))
+            {
+                NGL_IMGUI_SCOPED_INDENT(10.0f);
+                if (ImGui::CollapsingHeader("Voxel Debug"))
+                {
+                NGL_IMGUI_SCOPED_INDENT(10.0f);
+                    ImGui::SliderInt("Debug Texture Mode", &ngl::render::app::SsVg::dbg_view_mode_, -1, 10);
+                }
+
+                if (ImGui::CollapsingHeader("Probe Debug"))
+                {
+                    NGL_IMGUI_SCOPED_INDENT(10.0f);
+                    ImGui::SliderInt("Wcp Probe Mode", &ngl::render::app::SsVg::dbg_wcp_probe_debug_mode_, -1, 10);
+                    ImGui::SliderInt("Bbv Probe Mode", &ngl::render::app::SsVg::dbg_bbv_probe_debug_mode_, -1, 10);
+
+                    ImGui::SliderFloat("Probe Scale", &ngl::render::app::SsVg::dbg_probe_scale_, 0.01f, 10.0f);
+                    ImGui::SliderFloat("Probe Near Geometry Scale", &ngl::render::app::SsVg::dbg_probe_near_geom_scale_, 0.01f, 10.0f);
+                }
+            }
+
+            if (ImGui::CollapsingHeader("GTAO Demo"))
+            {
+                NGL_IMGUI_SCOPED_INDENT(10.0f);
+                ImGui::Checkbox("enable", &dbgw_enable_gtao_demo);
+            }
+        }
+
+        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Sky"))
         {
+            NGL_IMGUI_SCOPED_INDENT(10.0f);
             if (ImGui::CollapsingHeader("IBL"))
             {
+                NGL_IMGUI_SCOPED_INDENT(10.0f);
                 bool param_prevent_aliasing_mode_diffuse  = skybox_.GetParam_PreventAliasingModeDiffuse();
                 bool param_prevent_aliasing_mode_specular = skybox_.GetParam_PreventAliasingModeSpecular();
 
@@ -807,32 +851,16 @@ bool AppGame::ExecuteApp()
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Pass Setting"))
         {
+            NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::Checkbox("Enable Feedback Blur Test", &dbgw_enable_feedback_blur_test);
             ImGui::Checkbox("Enable Raytrace Pass", &dbgw_enable_raytrace_pass);
             ImGui::Checkbox("Enable SubView Render", &dbgw_enable_sub_view_path);
         }
 
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("Ssvg"))
-        {
-            if (ImGui::CollapsingHeader("Voxel Debug"))
-            {
-                ImGui::SliderInt("Debug Texture Mode", &ngl::render::app::SsVg::dbg_view_mode_, -1, 10);
-            }
-
-            if (ImGui::CollapsingHeader("Probe Debug"))
-            {
-                ImGui::SliderInt("Wcp Probe Mode", &ngl::render::app::SsVg::dbg_wcp_probe_debug_mode_, -1, 10);
-                ImGui::SliderInt("Bbv Probe Mode", &ngl::render::app::SsVg::dbg_bbv_probe_debug_mode_, -1, 10);
-                
-                ImGui::SliderFloat("Probe Scale", &ngl::render::app::SsVg::dbg_probe_scale_, 0.01f, 10.0f);
-                ImGui::SliderFloat("Probe Near Geometry Scale", &ngl::render::app::SsVg::dbg_probe_near_geom_scale_, 0.01f, 10.0f);
-            }
-        }
-        
-        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("SwTessellation Mesh"))
         {
+            NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::Checkbox("Enable Tessellation Update", &sw_tess_update_tessellation);
             ImGui::Checkbox("Tessellation Update Frame Toggle", &sw_tess_update_tessellation_frame_toggle);
             ImGui::SliderInt("Fixed Subdivision Level", &sw_tess_fixed_subdivision_level, -1, 10);
@@ -853,13 +881,13 @@ bool AppGame::ExecuteApp()
             ImGui::Text("Debug Target Bisector:");
             ImGui::SliderInt("Bisector Depth", &sw_tess_debug_bisector_depth, -1, 15);
             ImGui::InputInt("Bisector ID", &sw_tess_debug_bisector_id, 1);
-            
+
             ImGui::SliderInt("Neighbor(Twin,Prev,Next)", &sw_tess_debug_bisector_neighbor, -1, 2);
 
             if (ImGui::Button("Clear Debug Target"))
             {
-                sw_tess_debug_bisector_id = -1;
-                sw_tess_debug_bisector_depth = -1;
+                sw_tess_debug_bisector_id       = -1;
+                sw_tess_debug_bisector_depth    = -1;
                 sw_tess_debug_bisector_neighbor = -1;
             }
         }
@@ -867,6 +895,7 @@ bool AppGame::ExecuteApp()
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("RHI"))
         {
+            NGL_IMGUI_SCOPED_INDENT(10.0f);
             const auto free_dynamic_descriptor_count = gfxfw_.device_.GeDynamicDescriptorManager()->GetFreeDescriptorCount();
             const auto max_dynamic_descriptor_count  = gfxfw_.device_.GeDynamicDescriptorManager()->GetMaxDescriptorCount();
             // Dynamic Descriptorの残量.
@@ -883,7 +912,7 @@ bool AppGame::ExecuteApp()
     {
         for (int i = 0; i < test_move_mesh_entity_array_.size(); ++i)
         {
-            auto* e               = test_move_mesh_entity_array_[i];
+            auto* e = test_move_mesh_entity_array_[i];
             if (nullptr == e)
                 continue;
 
@@ -915,7 +944,7 @@ bool AppGame::ExecuteApp()
         sw_tess_mesh->SetTessellationUpdate(sw_tess_update_tessellation);
     }
 
-    if(sw_tess_update_tessellation_frame_toggle)
+    if (sw_tess_update_tessellation_frame_toggle)
     {
         // 1FでOFFにする.
         sw_tess_update_tessellation = false;
@@ -926,7 +955,7 @@ bool AppGame::ExecuteApp()
     {
         for (auto& e : mesh_entity_array_)
         {
-            if(nullptr == e.get())
+            if (nullptr == e.get())
                 continue;
 
             // Render更新.
@@ -1015,8 +1044,8 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
             render_frame_desc.camera_pose  = render_param_->camera_pose * ngl::math::Mat33::RotAxisX(ngl::math::Deg2Rad(75.0f));
             render_frame_desc.camera_fov_y = render_param_->camera_fov_y;
 
-            render_frame_desc.p_scene               = &render_param_->frame_scene;
-            render_frame_desc.directional_light_dir = render_param_->dlight_dir;
+            render_frame_desc.p_scene                                       = &render_param_->frame_scene;
+            render_frame_desc.feature_config.lighting.directional_light_dir = render_param_->dlight_dir;
 
             {
                 render_frame_desc.debug_multithread_render_pass    = dbgw_multithread_render_pass;
@@ -1054,8 +1083,28 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
             render_frame_desc.camera_pose  = render_param_->camera_pose;
             render_frame_desc.camera_fov_y = render_param_->camera_fov_y;
 
-            render_frame_desc.p_scene               = &render_param_->frame_scene;
-            render_frame_desc.directional_light_dir = render_param_->dlight_dir;
+            render_frame_desc.p_scene = &render_param_->frame_scene;
+
+            // Config.
+            {
+                // Lighting.
+                {
+                    render_frame_desc.feature_config.lighting.directional_light_dir = render_param_->dlight_dir;
+                }
+                // GI.
+                {
+                    if (ssvg_.IsValid())
+                    {
+                        render_frame_desc.feature_config.gi.p_ssvg                       = &ssvg_;
+                        render_frame_desc.feature_config.gi.enable_gi_lighting           = dbgw_enable_gi_lighting;
+                        render_frame_desc.feature_config.gi.probe_sample_offset_distance = dbgw_gi_probe_sample_offset_distance;
+                    }
+                }
+                // GTAO.
+                {
+                    render_frame_desc.feature_config.gtao_demo.enable = dbgw_enable_gtao_demo;
+                }
+            }
 
             if (dbgw_enable_raytrace_pass && rt_scene_.IsValid())
             {
@@ -1063,16 +1112,11 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
                 render_frame_desc.p_rt_scene = &rt_scene_;
             }
 
-            if(ssvg_.IsValid())
-            {
-                render_frame_desc.p_ssvg = &ssvg_;
-                render_frame_desc.is_enable_gi_lighting = (true) && dbgw_enable_gi_lighting;
-            }
-
             render_frame_desc.ref_test_tex_srv      = res_texture_->ref_view_;
             render_frame_desc.h_prev_lit            = h_prev_light;  // MainViewはヒストリ有効.
             render_frame_desc.h_other_graph_out_tex = subview_render_frame_out.h_propagate_lit;
 
+            // Debug.
             {
                 render_frame_desc.debug_multithread_render_pass    = dbgw_multithread_render_pass;
                 render_frame_desc.debug_multithread_cascade_shadow = dbgw_multithread_cascade_shadow;
@@ -1082,11 +1126,13 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
                 render_frame_desc.debugview_subview_result            = dbgw_enable_sub_view_path;
                 render_frame_desc.debugview_raytrace_result           = dbgw_enable_raytrace_pass;
 
-                render_frame_desc.debugview_gbuffer = dbgw_view_gbuffer;
-                render_frame_desc.debugview_dshadow = dbgw_view_dshadow;
-                render_frame_desc.debugview_general_debug_buffer = dbgw_view_general_debug_buffer;
+                render_frame_desc.debugview_ssvg_sky_visibility = dbgw_view_ssvg_sky_visibility;
+
+                render_frame_desc.debugview_gbuffer               = dbgw_view_gbuffer;
+                render_frame_desc.debugview_dshadow               = dbgw_view_dshadow;
+                render_frame_desc.debugview_general_debug_buffer  = dbgw_view_general_debug_buffer;
                 render_frame_desc.debugview_general_debug_channel = dbgw_view_general_debug_channel;
-                render_frame_desc.debugview_general_debug_rate = dbgw_view_general_debug_rate;
+                render_frame_desc.debugview_general_debug_rate    = dbgw_view_general_debug_rate;
             }
         }
 

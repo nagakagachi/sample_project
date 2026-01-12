@@ -28,6 +28,7 @@ namespace ngl::render::task
 		
 		rtg::RtgResourceHandle h_shadowmap_{};
 		
+		rtg::RtgResourceHandle h_bent_normal_{};
 		
 		rhi::RhiRef<rhi::GraphicsPipelineStateDep> pso_;
 
@@ -43,6 +44,7 @@ namespace ngl::render::task
 			
             render::app::SsVg* p_ssvg = {};
             bool is_enable_gi_lighting = false;
+            float gi_probe_sample_offset_distance{ 0.5f };
 
 			bool enable_feedback_blur_test{};
             bool dbg_view_ssvg_sky_visibility = false;
@@ -56,6 +58,7 @@ namespace ngl::render::task
 			rtg::RtgResourceHandle h_linear_depth, rtg::RtgResourceHandle h_prev_light,
 			rtg::RtgResourceHandle h_shadowmap,
 			rtg::RtgResourceHandle h_async_compute_result,
+            rtg::RtgResourceHandle h_bent_normal,
 			const SetupDesc& desc)
 		{
 			// Rtgリソースセットアップ.
@@ -81,6 +84,10 @@ namespace ngl::render::task
 					// Asyncの結果を読み取りだけレコードしてFenceさせる.
 					builder.RecordResourceAccess(*this, h_async_compute_result, rtg::access_type::SHADER_READ);
 				}
+                if(!h_bent_normal.IsInvalid())
+                {
+                    h_bent_normal_ = builder.RecordResourceAccess(*this, h_bent_normal, rtg::access_type::SHADER_READ);
+                }
 
 				if (h_light.IsInvalid())
 				{
@@ -152,7 +159,14 @@ namespace ngl::render::task
 					auto res_prev_light = builder.GetAllocatedResource(this, h_prev_light_);// 前回フレームリソースのテスト.
 					auto res_light = builder.GetAllocatedResource(this, h_light_);
 					auto res_shadowmap = builder.GetAllocatedResource(this, h_shadowmap_);
-						
+                    
+                    auto res_bent_normal = builder.GetAllocatedResource(this, h_bent_normal_);
+                    auto srv_bent_normal = res_bent_normal.srv_;
+					if(!res_bent_normal.tex_.IsValid())
+                    {
+                        srv_bent_normal = global_res.default_resource_.tex_black->ref_view_;
+                    }
+                    
 					assert(res_gb0.tex_.IsValid() && res_gb0.srv_.IsValid());
 					assert(res_gb1.tex_.IsValid() && res_gb1.srv_.IsValid());
 					assert(res_gb2.tex_.IsValid() && res_gb2.srv_.IsValid());
@@ -161,6 +175,7 @@ namespace ngl::render::task
 					assert(res_linear_depth.tex_.IsValid() && res_linear_depth.srv_.IsValid());
 					assert(res_light.tex_.IsValid() && res_light.rtv_.IsValid());
 					assert(res_shadowmap.tex_.IsValid() && res_shadowmap.srv_.IsValid());
+                    
 
 					// 前回フレームのライトリソースが無効な場合は、グローバルリソースのデフォルトを使用.
 					rhi::RefSrvDep ref_prev_lit = (res_prev_light.srv_.IsValid())? res_prev_light.srv_ : global_res.default_resource_.tex_black->ref_view_;
@@ -180,6 +195,7 @@ namespace ngl::render::task
 						int enable_feedback_blur_test{};
 						int is_first_frame{};
                         int is_enable_gi{};
+                        float gi_probe_sample_offset_distance{ 0.5f };
                         int dbg_view_ssvg_sky_visibility{};
 					};
 					auto lighting_cbh = gfx_commandlist->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(CbLightingPass));
@@ -189,6 +205,7 @@ namespace ngl::render::task
 						p_mapped->is_first_frame = is_first_frame ? 1 : 0;
 
                         p_mapped->is_enable_gi = (desc_.p_ssvg != nullptr && desc_.is_enable_gi_lighting) ? 1 : 0;
+                        p_mapped->gi_probe_sample_offset_distance = desc_.gi_probe_sample_offset_distance;
                         p_mapped->dbg_view_ssvg_sky_visibility = desc_.dbg_view_ssvg_sky_visibility ? 1 : 0;
 
 						lighting_cbh->buffer_.Unmap();
@@ -219,6 +236,7 @@ namespace ngl::render::task
 					pso_->SetView(&desc_set, "tex_prev_light", ref_prev_lit.Get());
 
 					pso_->SetView(&desc_set, "tex_shadowmap", res_shadowmap.srv_.Get());
+                    pso_->SetView(&desc_set, "tex_bent_normal", srv_bent_normal.Get());
 
 					pso_->SetView(&desc_set, "tex_ibl_diffuse", skybox_proxy->ibl_diffuse_cubemap_plane_array_srv_.Get());
 					pso_->SetView(&desc_set, "tex_ibl_specular", skybox_proxy->ibl_ggx_specular_cubemap_plane_array_srv_.Get());
