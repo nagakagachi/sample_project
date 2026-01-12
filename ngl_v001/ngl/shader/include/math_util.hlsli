@@ -381,27 +381,28 @@ float InterleavedGradientNoise(float2 pixel_coord)
     const float3 magic = float3(0.06711056, 0.00583715, 52.9829189);
     return frac(magic.z * frac(dot(pixel_coord, magic.xy)));
 }
-// Golden Noise
+// Gold Noise
 // https://www.shadertoy.com/view/ltB3zD
 // Optimized hash function for golden ratio based noise
-float GoldenNoise(float2 xy, float seed)
+// Divergentな値で特定の値(994, 581)などを与えるとNaNになる謎の不具合があるため注意.
+float GoldNoise(float2 xy, float seed)
 {
     return frac(tan(distance(xy * NGL_PHI, xy) * seed) * xy.x);
 }
 
-float GoldenNoise(float2 xy)
+float GoldNoise(float2 xy)
 {
-    return GoldenNoise(xy, 1.0);
+    return GoldNoise(xy, 1.0);
 }
 
-float GoldenNoise(float3 xyz, float seed)
+float GoldNoise(float3 xyz, float seed)
 {
     return frac(tan(distance(xyz.xy * NGL_PHI, xyz.yz) * seed) * xyz.x);
 }
 
-float GoldenNoise(float3 xyz)
+float GoldNoise(float3 xyz)
 {
-    return GoldenNoise(xyz, 1.0);
+    return GoldNoise(xyz, 1.0);
 }
 
 

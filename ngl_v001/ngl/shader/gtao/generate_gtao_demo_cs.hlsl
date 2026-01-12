@@ -53,7 +53,8 @@ void main_cs(
     const float2 texel_uv = float2(dtid.xy) * texel_size;
 
     // サンプル方向Jitter.
-    const float phi_jitter = GoldenNoise(float2(dtid.xy)) * NGL_2PI;
+    //const float phi_jitter = GoldNoise(float2(dtid.xy)) * NGL_2PI;// なぜか不正ピクセルが発生する? Divergentな値で特定の値(994, 581)などを与えるとNaNになる謎の不具合があるため注意.
+    const float phi_jitter = noise_iqint32(float2(dtid.xy)) * NGL_2PI;// こちらは安定.
 
     const float view_z = TexLinearDepth.Load(int3(dtid.xy, 0)).r;
     const float3 view_pos = CalcViewSpacePosition(texel_uv, view_z, cb_ngl_sceneview.cb_proj_mtx);

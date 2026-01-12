@@ -3,7 +3,7 @@
 
 generate_bent_normal_cs.hlsl
 
-GI用のBentNormal計算.
+GI用のBentNormal計算. 高周波AO用ではなく低周波GIプローブの補助用.
 
 #endif
 
@@ -130,11 +130,12 @@ void main_cs(
     const float2 texel_uv = float2(dtid.xy) * texel_size;
 
     // サンプル方向Jitter.
-    const float phi_jitter = GoldenNoise(float2(dtid.xy)) * NGL_2PI;
+    const float phi_jitter = noise_iqint32(float2(dtid.xy)) * NGL_2PI;
 
     const float view_z = TexLinearDepth.Load(int3(dtid.xy, 0)).r;
     const float3 view_pos = CalcViewSpacePosition(texel_uv, view_z, cb_ngl_sceneview.cb_proj_mtx);
 
+    // 復元Tangent and Normal.
     float3 view_tangent_x, view_tangent_y, view_normal;
     CalcViewSpaceTangentAndNormalFromLinearDepth(view_tangent_x, view_tangent_y, view_normal, texel_uv, dtid.xy, view_z, TexLinearDepth, texel_size);
 
@@ -143,15 +144,13 @@ void main_cs(
     float visibility = 0.0;
     float3 bent_normal = float3(0.0, 0.0, 0.0);
 
-    #if 1
         if(view_z <= 65535.0)
         {
             const int sample_count = 16;
-            const float sample_radius = 256.0;// Probeサンプル位置オフセット用途ではかなり粗い半径設定が望ましい.
-
-            float3 covar_x = float3(0.0, 0.0, 0.0);
-            float2 covar_y = float2(0.0, 0.0);
-            float covar_z = 0.0;
+            const float sample_radius = 128.0;// Probeサンプル位置オフセット用途ではかなり粗い半径設定が望ましい.
+            // 周辺テクセルView座標の分散共分散行列(の上三角成分).
+            float3 covar_xx_xy_xz = float3(0.0, 0.0, 0.0);
+            float3 covar_yy_yz_zz = float3(0.0, 0.0, 0.0);
             int sample_num = 0;
             for(int sample_i = 0; sample_i < sample_count; sample_i++)
             {
@@ -171,27 +170,25 @@ void main_cs(
 
                 // 共分散の逐次更新. 対称行列の上三角部のみ.
                 sample_num = sample_num + 1;
-                int sample_num_next = sample_num + 1;
+                const int sample_num_next = sample_num + 1;
                 {
-                    const float3 covar_term_x = float3(to_sample_vec.x*to_sample_vec.x, to_sample_vec.x*to_sample_vec.y, to_sample_vec.x*to_sample_vec.z);
-                    const float2 covar_term_y = float2(to_sample_vec.y*to_sample_vec.y, to_sample_vec.y*to_sample_vec.z);
-                    const float covar_term_z = to_sample_vec.z*to_sample_vec.z;
-
+                    const float3 covar_term_xx_xy_xz = float3(to_sample_vec.x*to_sample_vec.x, to_sample_vec.x*to_sample_vec.y, to_sample_vec.x*to_sample_vec.z);
+                    const float3 covar_term_yy_yz_zz = float3(to_sample_vec.y*to_sample_vec.y, to_sample_vec.y*to_sample_vec.z, to_sample_vec.z*to_sample_vec.z);
                     const float progressive_factor_0  = (sample_num/float(sample_num_next*sample_num_next));
                     const float progressive_factor_1 = (sample_num/float(sample_num_next));
-                    covar_x = progressive_factor_0 * covar_term_x + progressive_factor_1 * covar_x;
-                    covar_y = progressive_factor_0 * covar_term_y + progressive_factor_1 * covar_y;
-                    covar_z = progressive_factor_0 * covar_term_z + progressive_factor_1 * covar_z;
-                }
+
+                    covar_xx_xy_xz = progressive_factor_0 * covar_term_xx_xy_xz + progressive_factor_1 * covar_xx_xy_xz;
+                    covar_yy_yz_zz = progressive_factor_0 * covar_term_yy_yz_zz + progressive_factor_1 * covar_yy_yz_zz;
+                }                
             }
 
             // 共分散行列構築.
             if(0 < sample_num)
             {
                 float3x3 covar_mat;
-                covar_mat[0] = float3(covar_x.x, covar_x.y, covar_x.z);
-                covar_mat[1] = float3(covar_x.y, covar_y.x, covar_y.y);
-                covar_mat[2] = float3(covar_x.z, covar_y.y, covar_z);
+                covar_mat[0] = float3(covar_xx_xy_xz.x, covar_xx_xy_xz.y, covar_xx_xy_xz.z);
+                covar_mat[1] = float3(covar_xx_xy_xz.y, covar_yy_yz_zz.x, covar_yy_yz_zz.y);
+                covar_mat[2] = float3(covar_xx_xy_xz.z, covar_yy_yz_zz.y, covar_yy_yz_zz.z);
                 // 最小固有値に対応する固有ベクトル計算.
                 // 初期値は正規化済みベクトル. 反復処理の起点であるため真の解に近いほうが収束が早い.
                 // 初期値としてカメラ方向ベクトル. スクリーンスペースで低周波なBentNormalを求めたい場合はジオメトリ法線よりこちらのほうがよさそう.
@@ -200,6 +197,7 @@ void main_cs(
                 // 逆べき乗法反復で近似計算.
                 float3 smallest_eigen_vec = CalcInversePowerSmallestEigenvector(covar_mat, init_eigen_vec, 5);
 
+
                 bent_normal = smallest_eigen_vec;
                 // to world space.
                 bent_normal = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(bent_normal, 0.0)).xyz;
@@ -207,72 +205,8 @@ void main_cs(
                 // 可視化用.
                 //bent_normal = bent_normal * 0.5 + 0.5;
             }
-
-            //visibility = saturate( covar_z / 2.0 );
-            //bent_normal = abs(covar_x)/4.0;
         }
 
-    #else
-        const int slice_count = 8;
-        const int direction_sample_count = 8;
-        const float ao_radius = 64.0;
-
-        const float3 cPosV = view_pos;
-        const float3 viewV = normalize(-cPosV);
-        const float3x3 rotMatrixToViewV = RotFromToMatrix(float3(0.0, 0.0, -1.0), viewV);
-
-        for(int slice = 0; slice < slice_count; slice++)
-        {
-            const float phi = ((NGL_PI / float(slice_count)) * float(slice)) + phi_jitter;
-            
-            const float2 omega = float2(cos(phi), sin(phi));
-            const float3 directionV = float3(omega.x, omega.y, 0.0);
-            const float3 orthoDirectionV = directionV - viewV * dot(directionV, viewV);// 表面法線平面へ投影したサンプル方向ベクトル.
-            const float3 axisV = cross(directionV, viewV);// Sliceプレーン法線.
-            const float3 projNormalV = view_normal - axisV * dot(view_normal, axisV);// 表面法線をSliceプレーンへ投影したベクトル.
-            const float sgnN = sign(dot(orthoDirectionV, projNormalV));
-            const float cosN = saturate(dot(projNormalV, viewV) / length(projNormalV));// projNormalVが正規化されていないためlengthで割る.
-            const float projNormal_view_angle = sgnN * acos(cosN);// Sliceプレーン投影法線とビュー方向のなす角度.
-            float h[2] = {0.0, 0.0};
-            
-            // 双方向探索.
-            for(int side = 0; side < 2; side++)
-            {
-                // Slice毎に最大HorizonAngle探索.
-                float cHorizonCos = -1.0;
-                for(int sample_i = 0; sample_i < direction_sample_count; sample_i++)
-                {
-                    const float s = float(sample_i+1) / float(direction_sample_count);
-                    const float2 sTexCoordOffset = float2(omega.x, -omega.y) * (-1.0 + 2.0 * float(side)) * s * ao_radius;
-                    const int2 sTexelPos = int2(dtid.xy) + int2(sTexCoordOffset);
-                    const float2 sTexCoord = texel_uv + sTexCoordOffset * texel_size;
-                    const float sampleDepth = TexLinearDepth.Load(int3(sTexelPos, 0)).r;
-                    const float3 sPosV = CalcViewSpacePosition(sTexCoord, sampleDepth, cb_ngl_sceneview.cb_proj_mtx);
-                    const float3 sHorizonV = normalize(sPosV - cPosV);
-                    cHorizonCos = max(cHorizonCos, dot(sHorizonV, viewV));
-                }
-                // 最大HorizonAngle更新.
-                h[side] = projNormal_view_angle + clamp((-1.0 + 2.0 * float(side)) * acos(cHorizonCos) - projNormal_view_angle, -NGL_HALF_PI, NGL_HALF_PI);
-                // 式(7)のAO積分寄与(両sideの片方ずつ).
-                visibility += length(projNormalV) * (cosN + 2.0 * h[side] * sin(projNormal_view_angle) - cos(2.0 * h[side] - projNormal_view_angle)) / 4.0;
-            }
-
-            // bent normal計算.
-            {
-                const float n = projNormal_view_angle;
-                const float t0 = (6.0 * sin(h[0] - n) - sin(3.0 * h[0] - n) + 6.0 * sin(h[1] - n) - sin(3.0 * h[1] - n) + 16.0 * sin(n) - 3.0 * (sin(h[0] + n) + sin(h[1] + n))) / 12.0;
-                const float t1 = (-cos(3.0 * h[0] - n) - cos(3.0 * h[1] - n) + 8.0 * cos(n) - 3.0 * (cos(h[0] + n) + cos(h[1] + n))) / 12.0;
-                const float3 bentNormalL = float3(omega.x * t0, omega.y * t0, -t1);
-                bent_normal += mul(rotMatrixToViewV, bentNormalL) * length(projNormalV);// Sliceプレーンへ投影された法線の長さで重み付け.
-            }
-        }
-        
-        visibility = visibility / float(slice_count);
-        // bent normal正規化
-        bent_normal = normalize(bent_normal);
-        // World空間へ変換
-        bent_normal = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(bent_normal, 0.0)).xyz;
-    #endif
     // 出力.
     RWTexBentNormal[dtid.xy] = float4(bent_normal, visibility);
 }
