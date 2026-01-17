@@ -129,83 +129,98 @@ void main_cs(
     const float2 texel_size = 1.0 / float2(w, h);
     const float2 texel_uv = float2(dtid.xy) * texel_size;
 
-    // サンプル方向Jitter.
-    const float phi_jitter = noise_iqint32(float2(dtid.xy)) * NGL_2PI;
-
     const float view_z = TexLinearDepth.Load(int3(dtid.xy, 0)).r;
+    if(view_z > 65535.0)
+    {
+        // 有効な深度値がない場合は出力しない.
+        RWTexBentNormal[dtid.xy] = float4(0.0, 0.0, 0.0, 0.0);
+        return;
+    }
     const float3 view_pos = CalcViewSpacePosition(texel_uv, view_z, cb_ngl_sceneview.cb_proj_mtx);
+    const float3 to_view_dir = normalize(-view_pos);
 
     // 復元Tangent and Normal.
     float3 view_tangent_x, view_tangent_y, view_normal;
     CalcViewSpaceTangentAndNormalFromLinearDepth(view_tangent_x, view_tangent_y, view_normal, texel_uv, dtid.xy, view_z, TexLinearDepth, texel_size);
 
 
+    const int sample_count = 16;
+    const float sample_radius_texel = 80.0;// Probeサンプル位置オフセット用途ではかなり粗い半径設定が望ましい.
+    const int inverse_power_method_iterations = 5;// 5
+    
+    // サンプル方向Jitter.
+    //const float phi_jitter = GoldNoise(float2(dtid.xy)) * NGL_2PI;// なぜか不正ピクセルが発生する? Divergentな値で特定の値(994, 581)などを与えるとNaNになる謎の不具合があるため注意.
+    const float phi_jitter = noise_iqint32(float2(dtid.xy)) * NGL_2PI;// こちらは安定.
+    
+
     // 出力用.
     float visibility = 0.0;
     float3 bent_normal = float3(0.0, 0.0, 0.0);
 
-        if(view_z <= 65535.0)
+    // 周辺テクセルView座標の分散共分散行列(の上三角成分).
+    float3 covar_xx_xy_xz = float3(0.0, 0.0, 0.0);
+    float3 covar_yy_yz_zz = float3(0.0, 0.0, 0.0);
+    int sample_num = 0;
+    for(int sample_i = 0; sample_i < sample_count; sample_i++)
+    {
+        const float2 omega = fibonacci_spiral_point(sample_i+1, sample_count, phi_jitter);
+
+        const float2 sample_offset = float2(omega.x, omega.y) * sample_radius_texel;
+        const int2 sample_pos = int2(dtid.xy) + int2(sample_offset);
+        const float2 sample_uv = texel_uv + sample_offset * texel_size;
+        const float sample_view_z = TexLinearDepth.Load(int3(sample_pos, 0)).r;
+
+        if(sample_view_z > 65535.0) continue;
+
+        const float3 sample_view_pos = CalcViewSpacePosition(sample_uv, sample_view_z, cb_ngl_sceneview.cb_proj_mtx);
+        float3 to_sample_vec = sample_view_pos - view_pos;
+        
+        // 同一平面ではないサンプルの棄却.
+        // 受理範囲は徐々に進行するZ分散に応じて緩和するのがよいかもしれない.
+        if(false)
         {
-            const int sample_count = 16;
-            const float sample_radius = 128.0;// Probeサンプル位置オフセット用途ではかなり粗い半径設定が望ましい.
-            // 周辺テクセルView座標の分散共分散行列(の上三角成分).
-            float3 covar_xx_xy_xz = float3(0.0, 0.0, 0.0);
-            float3 covar_yy_yz_zz = float3(0.0, 0.0, 0.0);
-            int sample_num = 0;
-            for(int sample_i = 0; sample_i < sample_count; sample_i++)
+            const float k_sample_clamp_range = 2.0;
+            const float len_on_view = dot(to_sample_vec, to_view_dir);
+            if(abs(len_on_view) > k_sample_clamp_range)
             {
-                const float2 omega = fibonacci_spiral_point(sample_i+1, sample_count, phi_jitter);
-
-                const float2 sample_offset = float2(omega.x, omega.y) * sample_radius;
-                const int2 sample_pos = int2(dtid.xy) + int2(sample_offset);
-                const float2 sample_uv = texel_uv + sample_offset * texel_size;
-                const float sample_view_z = TexLinearDepth.Load(int3(sample_pos, 0)).r;
-
-                if(sample_view_z > 65535.0)
-                    continue;
-
-                const float3 sample_view_pos = CalcViewSpacePosition(sample_uv, sample_view_z, cb_ngl_sceneview.cb_proj_mtx);
-
-                const float3 to_sample_vec = sample_view_pos - view_pos;
-
-                // 共分散の逐次更新. 対称行列の上三角部のみ.
-                sample_num = sample_num + 1;
-                const int sample_num_next = sample_num + 1;
-                {
-                    const float3 covar_term_xx_xy_xz = float3(to_sample_vec.x*to_sample_vec.x, to_sample_vec.x*to_sample_vec.y, to_sample_vec.x*to_sample_vec.z);
-                    const float3 covar_term_yy_yz_zz = float3(to_sample_vec.y*to_sample_vec.y, to_sample_vec.y*to_sample_vec.z, to_sample_vec.z*to_sample_vec.z);
-                    const float progressive_factor_0  = (sample_num/float(sample_num_next*sample_num_next));
-                    const float progressive_factor_1 = (sample_num/float(sample_num_next));
-
-                    covar_xx_xy_xz = progressive_factor_0 * covar_term_xx_xy_xz + progressive_factor_1 * covar_xx_xy_xz;
-                    covar_yy_yz_zz = progressive_factor_0 * covar_term_yy_yz_zz + progressive_factor_1 * covar_yy_yz_zz;
-                }                
-            }
-
-            // 共分散行列構築.
-            if(0 < sample_num)
-            {
-                float3x3 covar_mat;
-                covar_mat[0] = float3(covar_xx_xy_xz.x, covar_xx_xy_xz.y, covar_xx_xy_xz.z);
-                covar_mat[1] = float3(covar_xx_xy_xz.y, covar_yy_yz_zz.x, covar_yy_yz_zz.y);
-                covar_mat[2] = float3(covar_xx_xy_xz.z, covar_yy_yz_zz.y, covar_yy_yz_zz.z);
-                // 最小固有値に対応する固有ベクトル計算.
-                // 初期値は正規化済みベクトル. 反復処理の起点であるため真の解に近いほうが収束が早い.
-                // 初期値としてカメラ方向ベクトル. スクリーンスペースで低周波なBentNormalを求めたい場合はジオメトリ法線よりこちらのほうがよさそう.
-                float3 init_eigen_vec = normalize(-view_pos);
-
-                // 逆べき乗法反復で近似計算.
-                float3 smallest_eigen_vec = CalcInversePowerSmallestEigenvector(covar_mat, init_eigen_vec, 5);
-
-
-                bent_normal = smallest_eigen_vec;
-                // to world space.
-                bent_normal = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(bent_normal, 0.0)).xyz;
-
-                // 可視化用.
-                //bent_normal = bent_normal * 0.5 + 0.5;
+                to_sample_vec = to_sample_vec - to_view_dir * len_on_view;// 範囲チェックで棄却するサンプルはView方向成分をキャンセルして平面に投影.
             }
         }
+
+        // 共分散の逐次更新. 対称行列の上三角部のみ.
+        sample_num = sample_num + 1;
+        const int sample_num_next = sample_num + 1;
+        {
+            const float3 covar_term_xx_xy_xz = float3(to_sample_vec.x*to_sample_vec.x, to_sample_vec.x*to_sample_vec.y, to_sample_vec.x*to_sample_vec.z);
+            const float3 covar_term_yy_yz_zz = float3(to_sample_vec.y*to_sample_vec.y, to_sample_vec.y*to_sample_vec.z, to_sample_vec.z*to_sample_vec.z);
+            const float progressive_factor_0  = (sample_num/float(sample_num_next*sample_num_next));
+            const float progressive_factor_1 = (sample_num/float(sample_num_next));
+
+            covar_xx_xy_xz = progressive_factor_0 * covar_term_xx_xy_xz + progressive_factor_1 * covar_xx_xy_xz;
+            covar_yy_yz_zz = progressive_factor_0 * covar_term_yy_yz_zz + progressive_factor_1 * covar_yy_yz_zz;
+        }                
+    }
+
+    // 共分散行列構築.
+    if(0 < sample_num)
+    {
+        float3x3 covar_mat;
+        covar_mat[0] = float3(covar_xx_xy_xz.x, covar_xx_xy_xz.y, covar_xx_xy_xz.z);
+        covar_mat[1] = float3(covar_xx_xy_xz.y, covar_yy_yz_zz.x, covar_yy_yz_zz.y);
+        covar_mat[2] = float3(covar_xx_xy_xz.z, covar_yy_yz_zz.y, covar_yy_yz_zz.z);
+        // 最小固有値に対応する固有ベクトル計算.
+        // 初期値は正規化済みベクトル. 反復処理の起点であるため真の解に近いほうが収束が早い.
+        // 初期値としてカメラ方向ベクトル. スクリーンスペースで低周波なBentNormalを求めたい場合はジオメトリ法線よりこちらのほうがよさそう.
+        float3 init_eigen_vec = to_view_dir;
+
+        // 逆べき乗法反復で近似計算.
+        float3 smallest_eigen_vec = CalcInversePowerSmallestEigenvector(covar_mat, init_eigen_vec, inverse_power_method_iterations);
+
+
+        bent_normal = (all(isfinite(smallest_eigen_vec))) ? smallest_eigen_vec : float3(0.0, 0.0, 0.0);
+        // to world space.
+        bent_normal = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(bent_normal, 0.0)).xyz;
+    }
 
     // 出力.
     RWTexBentNormal[dtid.xy] = float4(bent_normal, visibility);

@@ -417,7 +417,9 @@ namespace ngl::test
 						
                         setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
                         setup_desc.is_enable_gi_lighting = render_frame_desc.feature_config.gi.enable_gi_lighting;
-                        setup_desc.gi_probe_sample_offset_distance = render_frame_desc.feature_config.gi.probe_sample_offset_distance;
+                        setup_desc.probe_sample_offset_view = render_frame_desc.feature_config.gi.probe_sample_offset_view;
+                        setup_desc.probe_sample_offset_surface_normal = render_frame_desc.feature_config.gi.probe_sample_offset_surface_normal;
+                        setup_desc.probe_sample_offset_bent_normal = render_frame_desc.feature_config.gi.probe_sample_offset_bent_normal;
                         setup_desc.dbg_view_ssvg_sky_visibility = render_frame_desc.debugview_ssvg_sky_visibility;
                         
 						setup_desc.enable_feedback_blur_test = render_frame_desc.debugview_enable_feedback_blur_test;

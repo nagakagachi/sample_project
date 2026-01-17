@@ -52,16 +52,18 @@ void main_cs(
     const float2 texel_size = 1.0 / float2(w, h);
     const float2 texel_uv = float2(dtid.xy) * texel_size;
 
-    // サンプル方向Jitter.
-    //const float phi_jitter = GoldNoise(float2(dtid.xy)) * NGL_2PI;// なぜか不正ピクセルが発生する? Divergentな値で特定の値(994, 581)などを与えるとNaNになる謎の不具合があるため注意.
-    const float phi_jitter = noise_iqint32(float2(dtid.xy)) * NGL_2PI;// こちらは安定.
 
     const float view_z = TexLinearDepth.Load(int3(dtid.xy, 0)).r;
+    if(view_z > 65535.0)
+    {
+        // 有効な深度値がない場合は出力しない.
+        RWTexGtaoBentNormal[dtid.xy] = float4(0.0, 0.0, 0.0, 0.0);
+        return;
+    }
     const float3 view_pos = CalcViewSpacePosition(texel_uv, view_z, cb_ngl_sceneview.cb_proj_mtx);
 
     float3 view_tangent_x, view_tangent_y, view_normal;
     CalcViewSpaceTangentAndNormalFromLinearDepth(view_tangent_x, view_tangent_y, view_normal, texel_uv, dtid.xy, view_z, TexLinearDepth, texel_size);
-
 
     // 出力用.
     float visibility = 0.0;
@@ -69,11 +71,15 @@ void main_cs(
 
     const int slice_count = 8;
     const int direction_sample_count = 8;
-    const float ao_radius = 32.0;
+    const float sample_radius_texel = 32.0;
 
     const float3 cPosV = view_pos;
     const float3 viewV = normalize(-cPosV);
     const float3x3 rotMatrixToViewV = RotFromToMatrix(float3(0.0, 0.0, -1.0), viewV);
+
+    // サンプル方向Jitter.
+    //const float phi_jitter = GoldNoise(float2(dtid.xy)) * NGL_2PI;// なぜか不正ピクセルが発生する? Divergentな値で特定の値(994, 581)などを与えるとNaNになる謎の不具合があるため注意.
+    const float phi_jitter = noise_iqint32(float2(dtid.xy)) * NGL_2PI;// こちらは安定.
 
     for(int slice = 0; slice < slice_count; slice++)
     {
@@ -97,7 +103,7 @@ void main_cs(
             for(int sample_i = 0; sample_i < direction_sample_count; sample_i++)
             {
                 const float s = float(sample_i+1) / float(direction_sample_count);
-                const float2 sTexCoordOffset = float2(omega.x, -omega.y) * (-1.0 + 2.0 * float(side)) * s * ao_radius;
+                const float2 sTexCoordOffset = float2(omega.x, -omega.y) * (-1.0 + 2.0 * float(side)) * s * sample_radius_texel;
                 const int2 sTexelPos = int2(dtid.xy) + int2(sTexCoordOffset);
                 const float2 sTexCoord = texel_uv + sTexCoordOffset * texel_size;
                 const float sampleDepth = TexLinearDepth.Load(int3(sTexelPos, 0)).r;

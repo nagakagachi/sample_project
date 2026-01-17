@@ -24,7 +24,9 @@ struct CbLightingPass
 	int is_first_frame;
 
     int is_enable_gi;
-    float gi_probe_sample_offset_distance;
+    float probe_sample_offset_view;
+    float probe_sample_offset_surface_normal;
+    float probe_sample_offset_bent_normal;
     int dbg_view_ssvg_sky_visibility;
 };
 ConstantBuffer<CbLightingPass> cb_ngl_lighting_pass;
@@ -271,10 +273,14 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
         #if 1
             // BentNormalでサンプル位置をオフセットすることでライトリーク緩和の検証.
             {
-                const float k_bent_normal_offset_distance = cb_ngl_lighting_pass.gi_probe_sample_offset_distance;//0.5;
+                // View Offset.
+                probe_sample_pos_ws += V * cb_ngl_lighting_pass.probe_sample_offset_view;
 
-                const float3 bent_normal_ws = bent_normal_sample.xyz;
-                probe_sample_pos_ws += bent_normal_ws * k_bent_normal_offset_distance;
+                // Surface Normal Offset.
+                probe_sample_pos_ws += gb_normal_ws * cb_ngl_lighting_pass.probe_sample_offset_surface_normal;
+
+                // BentNormal Offset.
+                probe_sample_pos_ws += bent_normal_sample.xyz * cb_ngl_lighting_pass.probe_sample_offset_bent_normal;
             }
         #endif
 

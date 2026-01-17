@@ -37,7 +37,9 @@ namespace ngl::test
     {
         render::app::SsVg* p_ssvg = {};
         bool enable_gi_lighting   = false;
-        float probe_sample_offset_distance{0.5f};
+        float probe_sample_offset_view{0.0f};
+        float probe_sample_offset_surface_normal{0.0f};
+        float probe_sample_offset_bent_normal{0.0f};
     };
     struct RenderFeatureConfig
     {

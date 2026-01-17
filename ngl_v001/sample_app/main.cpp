@@ -44,12 +44,10 @@
 // imguiのシステム処理Wrapper.
 #include "imgui/imgui_interface.h"
 
-
 // レイトレデモ機能の有効化
 #define NGL_TEST_RAYTRACING_ENABLE 0
 // SwTessellationデモ機能の有効化
 #define NGL_TEST_SWTESSELLATION_ENABLE 0
-
 
 // ImGui.
 static bool dbgw_test_window_enable = true;
@@ -66,9 +64,11 @@ static int dbgw_view_general_debug_channel = 0;
 static float dbgw_view_general_debug_rate  = 0.5f;
 
 // SSVG.
-static bool dbgw_view_ssvg_sky_visibility         = false;
-static bool dbgw_enable_gi_lighting               = true;
-static float dbgw_gi_probe_sample_offset_distance = 0.5f;
+static bool dbgw_view_ssvg_sky_visibility               = false;
+static bool dbgw_enable_gi_lighting                     = true;
+static float dbgw_gi_probe_sample_offset_view           = 0.0f;
+static float dbgw_gi_probe_sample_offset_surface_normal = 0.0f;
+static float dbgw_gi_probe_sample_offset_bent_normal    = 0.5f;
 
 static bool dbgw_enable_gtao_demo = true;
 
@@ -584,11 +584,10 @@ bool AppGame::Initialize()
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
 #endif
-
         }
     }
 
-    // Raytrace. 
+    // Raytrace.
     //  初期化しなければ描画パスでも処理されなくなる.
 #if NGL_TEST_RAYTRACING_ENABLE
     //	TLAS構築時にShaderTableの最大Hitgroup数が必要な設計であるため初期化時に最大数指定する. PrimayとShadowの2種であれば 2.
@@ -767,7 +766,9 @@ bool AppGame::ExecuteApp()
             // sky visibilityデバッグ.
             ImGui::Checkbox("View Ssvg Sky Visibility", &dbgw_view_ssvg_sky_visibility);
             ImGui::Checkbox("Enable GI Lighting", &dbgw_enable_gi_lighting);
-            ImGui::SliderFloat("GI Probe Sample Offset Distance", &dbgw_gi_probe_sample_offset_distance, 0.0f, 10.0f);
+            ImGui::SliderFloat("Probe Sample Offset View", &dbgw_gi_probe_sample_offset_view, 0.0f, 10.0f);
+            ImGui::SliderFloat("Probe Sample Offset Surface Normal", &dbgw_gi_probe_sample_offset_surface_normal, 0.0f, 10.0f);
+            ImGui::SliderFloat("Probe Sample Offset Bent Normal", &dbgw_gi_probe_sample_offset_bent_normal, 0.0f, 10.0f);
 
             ImGui::Separator();
             ImGui::Text("Debug Buffer Visualize");
@@ -786,7 +787,7 @@ bool AppGame::ExecuteApp()
             ImGui::SliderInt("Channel", &dbgw_view_general_debug_channel, 0, 10);
             ImGui::SliderFloat("Slider Rate", &dbgw_view_general_debug_rate, 0.0f, 1.0f);
         }
-        
+
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Directional Light"))
         {
@@ -805,7 +806,7 @@ bool AppGame::ExecuteApp()
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
                 if (ImGui::CollapsingHeader("Voxel Debug"))
                 {
-                NGL_IMGUI_SCOPED_INDENT(10.0f);
+                    NGL_IMGUI_SCOPED_INDENT(10.0f);
                     ImGui::SliderInt("Debug Texture Mode", &ngl::render::app::SsVg::dbg_view_mode_, -1, 10);
                 }
 
@@ -1100,9 +1101,11 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
                 {
                     if (ssvg_.IsValid())
                     {
-                        render_frame_desc.feature_config.gi.p_ssvg                       = &ssvg_;
-                        render_frame_desc.feature_config.gi.enable_gi_lighting           = dbgw_enable_gi_lighting;
-                        render_frame_desc.feature_config.gi.probe_sample_offset_distance = dbgw_gi_probe_sample_offset_distance;
+                        render_frame_desc.feature_config.gi.p_ssvg                             = &ssvg_;
+                        render_frame_desc.feature_config.gi.enable_gi_lighting                 = dbgw_enable_gi_lighting;
+                        render_frame_desc.feature_config.gi.probe_sample_offset_view           = dbgw_gi_probe_sample_offset_view;
+                        render_frame_desc.feature_config.gi.probe_sample_offset_surface_normal = dbgw_gi_probe_sample_offset_surface_normal;
+                        render_frame_desc.feature_config.gi.probe_sample_offset_bent_normal    = dbgw_gi_probe_sample_offset_bent_normal;
                     }
                 }
                 // GTAO.
