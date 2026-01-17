@@ -23,6 +23,9 @@ struct CbLightingPass
 	int enable_feedback_blur_test;
 	int is_first_frame;
 
+    float d_lit_intensity;
+    float sky_lit_intensity;
+
     int is_enable_gi;
     float probe_sample_offset_view;
     float probe_sample_offset_surface_normal;
@@ -240,7 +243,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	const float3 to_pixel_ray_ws = normalize(to_pixel_vec_ws);
 
 	
-	const float3 lit_intensity = float3(1.0, 1.0, 1.0) * NGL_PI * 1.5;
+	const float3 lit_intensity = float3(1.0, 1.0, 1.0) * cb_ngl_lighting_pass.d_lit_intensity;
 	const float3 lit_dir = normalize(cb_ngl_shadowview.cb_shadow_view_inv_mtx[0]._m02_m12_m22);// InvShadowViewMtxから向きベクトルを取得.
 
 
@@ -325,7 +328,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		float3 ibl_diffuse, ibl_specular;
 		EvalIblDiffuseStandard(ibl_diffuse, ibl_specular, tex_ibl_diffuse, tex_ibl_specular, tex_ibl_dfg, samp, gb_normal_ws, V, gb_base_color, gb_roughness, gb_metalness);
 
-		lit_color += (ibl_diffuse + ibl_specular) * sky_visibility;
+		lit_color += (ibl_diffuse + ibl_specular) * cb_ngl_lighting_pass.sky_lit_intensity * sky_visibility;
 		
 		//lit_color = ibl_diffuse + ibl_specular;// テスト
 		//lit_color = ibl_diffuse;// テスト.

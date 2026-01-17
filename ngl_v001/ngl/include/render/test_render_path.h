@@ -28,6 +28,8 @@ namespace ngl::test
     struct RenderFeatureLighting
     {
         math::Vec3 directional_light_dir = -math::Vec3::UnitY();
+        float directional_light_intensity = math::k_pi_f;
+        float sky_light_intensity = 1.0f;
     };
     struct RenderFeatureGtaoDemo
     {

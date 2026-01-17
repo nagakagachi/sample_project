@@ -41,6 +41,9 @@ namespace ngl::render::task
 
 			fwk::GfxScene* scene{};
 			fwk::GfxSceneEntityId skybox_proxy_id{};
+
+            float d_lit_intensity{math::k_pi_f};
+            float sky_lit_intensity{1.0f};
 			
             render::app::SsVg* p_ssvg = {};
             bool is_enable_gi_lighting = false;
@@ -197,6 +200,9 @@ namespace ngl::render::task
 						int enable_feedback_blur_test{};
 						int is_first_frame{};
 
+                        float d_lit_intensity{1.0f};
+                        float sky_lit_intensity{1.0f};
+    
                         int is_enable_gi{};
                         float probe_sample_offset_view{ 0.0f };
                         float probe_sample_offset_surface_normal{ 0.0f };
@@ -208,6 +214,9 @@ namespace ngl::render::task
 					{
 						p_mapped->enable_feedback_blur_test = desc_.enable_feedback_blur_test;
 						p_mapped->is_first_frame = is_first_frame ? 1 : 0;
+
+                        p_mapped->d_lit_intensity = desc_.d_lit_intensity;//skybox_proxy->directional_light_intensity;
+                        p_mapped->sky_lit_intensity = desc_.sky_lit_intensity;//skybox_proxy->sky_light_intensity
 
                         p_mapped->is_enable_gi = (desc_.p_ssvg != nullptr && desc_.is_enable_gi_lighting) ? 1 : 0;
                         p_mapped->probe_sample_offset_view = desc_.probe_sample_offset_view;

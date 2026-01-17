@@ -415,6 +415,9 @@ namespace ngl::test
 						setup_desc.scene = p_scene->gfx_scene_;
 						setup_desc.skybox_proxy_id = p_scene->skybox_proxy_id_;
 						
+                        setup_desc.d_lit_intensity = render_frame_desc.feature_config.lighting.directional_light_intensity;
+                        setup_desc.sky_lit_intensity = render_frame_desc.feature_config.lighting.sky_light_intensity;
+
                         setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
                         setup_desc.is_enable_gi_lighting = render_frame_desc.feature_config.gi.enable_gi_lighting;
                         setup_desc.probe_sample_offset_view = render_frame_desc.feature_config.gi.probe_sample_offset_view;

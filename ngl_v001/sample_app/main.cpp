@@ -72,10 +72,18 @@ static float dbgw_gi_probe_sample_offset_bent_normal    = 0.5f;
 
 static bool dbgw_enable_gtao_demo = true;
 
-// Camera and DLight.
-static float dbgw_dlit_angle_v = 0.4f;
-static float dbgw_dlit_angle_h = 4.1f;
+// Camera.
 static float dbgw_camera_speed = 5.0f;  // 10.0f;
+
+// DLight.
+static float dbgw_dlit_angle_v   = 0.4f;
+static float dbgw_dlit_angle_h   = 4.1f;
+static float dbgw_dlit_intensity = ngl::math::k_pi_f * 1.5f;
+
+// Sky and IBL.
+static int dbgw_sky_debug_mode       = {};
+static float dbgw_sky_debug_mip_bias = 0.0f;
+static float dbgw_skylight_intensity = 2.0f;
 
 // 並列化.
 static bool dbgw_render_thread                    = true;
@@ -86,10 +94,6 @@ static float dbgw_perf_main_thread_sleep_millisec = 0.0f;
 static float dbgw_stat_primary_rtg_construct = {};
 static float dbgw_stat_primary_rtg_compile   = {};
 static float dbgw_stat_primary_rtg_execute   = {};
-
-// Sky and IBL.
-static int dbgw_sky_debug_mode       = {};
-static float dbgw_sky_debug_mip_bias = 0.0f;
 
 // SwTessellation.
 static float sw_tess_important_point_offset_in_view  = 7.0;
@@ -789,11 +793,13 @@ bool AppGame::ExecuteApp()
         }
 
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("Directional Light"))
+        if (ImGui::CollapsingHeader("Lighting"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::SliderFloat("DirectionalLight Angle V", &dbgw_dlit_angle_v, 0.0f, ngl::math::k_pi_f * 2.0f);
             ImGui::SliderFloat("DirectionalLight Angle H", &dbgw_dlit_angle_h, 0.0f, ngl::math::k_pi_f * 2.0f);
+            ImGui::SliderFloat("DirectionalLight Intensity", &dbgw_dlit_intensity, 0.0f, 50.0f);
+            ImGui::SliderFloat("Sky Light Intensity", &dbgw_skylight_intensity, 0.0f, 15.0f);
         }
 
         ImGui::SetNextItemOpen(false, ImGuiCond_Once);
@@ -1050,8 +1056,11 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
             render_frame_desc.camera_pose  = render_param_->camera_pose * ngl::math::Mat33::RotAxisX(ngl::math::Deg2Rad(75.0f));
             render_frame_desc.camera_fov_y = render_param_->camera_fov_y;
 
-            render_frame_desc.p_scene                                       = &render_param_->frame_scene;
-            render_frame_desc.feature_config.lighting.directional_light_dir = render_param_->dlight_dir;
+            render_frame_desc.p_scene = &render_param_->frame_scene;
+
+            render_frame_desc.feature_config.lighting.directional_light_dir       = render_param_->dlight_dir;
+            render_frame_desc.feature_config.lighting.directional_light_intensity = dbgw_dlit_intensity;
+            render_frame_desc.feature_config.lighting.sky_light_intensity         = dbgw_skylight_intensity;
 
             {
                 render_frame_desc.debug_multithread_render_pass    = dbgw_multithread_render_pass;
@@ -1095,7 +1104,9 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
             {
                 // Lighting.
                 {
-                    render_frame_desc.feature_config.lighting.directional_light_dir = render_param_->dlight_dir;
+                    render_frame_desc.feature_config.lighting.directional_light_dir       = render_param_->dlight_dir;
+                    render_frame_desc.feature_config.lighting.directional_light_intensity = dbgw_dlit_intensity;
+                    render_frame_desc.feature_config.lighting.sky_light_intensity         = dbgw_skylight_intensity;
                 }
                 // GI.
                 {
