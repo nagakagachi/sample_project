@@ -215,6 +215,14 @@ namespace ngl
 				return {};
 			}
 
+            // ハンドルの有効性チェック.
+            if(res_handle.IsInvalid())
+            {
+                std::cout <<  "[ERROR] RecordResourceAccessに無効なリソースハンドルが渡されました." << std::endl;
+                assert(false);
+                return {};
+            }
+
 			// TaskNodeのタイプによって許可されないアクセスをチェック.
 			//	AsyncComputeで許可されないアクセス等を事前にエラーとする.
 			{

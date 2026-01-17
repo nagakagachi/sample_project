@@ -431,7 +431,7 @@ namespace ngl::test
 					task_skybox->h_light_,
 						task_gbuffer->h_gb0_, task_gbuffer->h_gb1_, task_gbuffer->h_gb2_, task_gbuffer->h_gb3_,
 						task_gbuffer->h_velocity_, task_linear_depth->h_linear_depth_, render_frame_desc.h_prev_lit,
-						task_d_shadow->h_shadow_depth_atlas_,
+						task_d_shadow->h_shadow_depth_atlas_, task_ss_depth_technique->h_gtao_bent_normal_,
 						async_compute_tex1,
                         task_ss_depth_technique->h_bent_normal_,
 						setup_desc);

@@ -27,6 +27,7 @@ namespace ngl::render::task
 		rtg::RtgResourceHandle h_light_{};
 		
 		rtg::RtgResourceHandle h_shadowmap_{};
+        rtg::RtgResourceHandle h_ssao_{};
 		
 		rtg::RtgResourceHandle h_bent_normal_{};
 		
@@ -61,7 +62,7 @@ namespace ngl::render::task
 			rtg::RtgResourceHandle h_light,
 			rtg::RtgResourceHandle h_gb0, rtg::RtgResourceHandle h_gb1, rtg::RtgResourceHandle h_gb2, rtg::RtgResourceHandle h_gb3, rtg::RtgResourceHandle h_velocity,
 			rtg::RtgResourceHandle h_linear_depth, rtg::RtgResourceHandle h_prev_light,
-			rtg::RtgResourceHandle h_shadowmap,
+			rtg::RtgResourceHandle h_shadowmap, rtg::RtgResourceHandle h_ssao,
 			rtg::RtgResourceHandle h_async_compute_result,
             rtg::RtgResourceHandle h_bent_normal,
 			const SetupDesc& desc)
@@ -78,6 +79,11 @@ namespace ngl::render::task
 				h_velocity_ = builder.RecordResourceAccess(*this, h_velocity, rtg::access_type::SHADER_READ);
 				h_linear_depth_ = builder.RecordResourceAccess(*this, h_linear_depth, rtg::access_type::SHADER_READ);
 				h_shadowmap_ = builder.RecordResourceAccess(*this, h_shadowmap, rtg::access_type::SHADER_READ);
+
+                if(!h_ssao.IsInvalid())
+                {
+                    h_ssao_ = builder.RecordResourceAccess(*this, h_ssao, rtg::access_type::SHADER_READ);
+                }
 
 				h_prev_light_ = {};
 				if(!h_prev_light.IsInvalid())
@@ -164,6 +170,13 @@ namespace ngl::render::task
 					auto res_prev_light = builder.GetAllocatedResource(this, h_prev_light_);// 前回フレームリソースのテスト.
 					auto res_light = builder.GetAllocatedResource(this, h_light_);
 					auto res_shadowmap = builder.GetAllocatedResource(this, h_shadowmap_);
+
+                    auto res_ssao = builder.GetAllocatedResource(this, h_ssao_);
+                    auto srv_ssao = res_ssao.srv_;
+                    if(!res_ssao.tex_.IsValid())
+                    {
+                        srv_ssao = global_res.default_resource_.tex_white->ref_view_;
+                    }
                     
                     auto res_bent_normal = builder.GetAllocatedResource(this, h_bent_normal_);
                     auto srv_bent_normal = res_bent_normal.srv_;
@@ -252,6 +265,7 @@ namespace ngl::render::task
 					pso_->SetView(&desc_set, "tex_prev_light", ref_prev_lit.Get());
 
 					pso_->SetView(&desc_set, "tex_shadowmap", res_shadowmap.srv_.Get());
+                    pso_->SetView(&desc_set, "tex_ssao", srv_ssao.Get());
                     pso_->SetView(&desc_set, "tex_bent_normal", srv_bent_normal.Get());
 
 					pso_->SetView(&desc_set, "tex_ibl_diffuse", skybox_proxy->ibl_diffuse_cubemap_plane_array_srv_.Get());

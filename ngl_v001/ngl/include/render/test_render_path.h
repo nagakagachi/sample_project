@@ -27,9 +27,9 @@ namespace ngl::test
 {
     struct RenderFeatureLighting
     {
-        math::Vec3 directional_light_dir = -math::Vec3::UnitY();
+        math::Vec3 directional_light_dir  = -math::Vec3::UnitY();
         float directional_light_intensity = math::k_pi_f;
-        float sky_light_intensity = 1.0f;
+        float sky_light_intensity         = 1.0f;
     };
     struct RenderFeatureGtaoDemo
     {
@@ -116,7 +116,7 @@ namespace ngl::test
         bool debugview_dshadow                   = false;
         bool debugview_ssvg_sky_visibility       = false;
 
-        int debugview_general_debug_buffer  = -1;//EDebugBufferMode
+        int debugview_general_debug_buffer  = -1;  // EDebugBufferMode
         int debugview_general_debug_channel = 0;
         float debugview_general_debug_rate  = 0.5f;
     };

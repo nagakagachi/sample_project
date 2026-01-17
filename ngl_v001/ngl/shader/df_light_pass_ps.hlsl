@@ -41,6 +41,7 @@ Texture2D tex_gbuffer2;
 Texture2D tex_gbuffer3;
 Texture2D tex_prev_light;
 Texture2D tex_shadowmap;
+Texture2D tex_ssao;// rgb:bent normal, a:AO.
 Texture2D tex_bent_normal;// BentNormalテクスチャ.
 
 SamplerState samp;
@@ -205,23 +206,22 @@ uint2 calc_probe_octahedral_map_atlas_texel_base_pos(uint index, uint tex_width)
 
 float4 main_ps(VS_OUTPUT input) : SV_TARGET
 {	
+    const float2 screen_uv = input.uv;
 	// リニアView深度.
-	const float ld = tex_lineardepth.Load(int3(input.pos.xy, 0)).r;// LightingBufferとGBufferが同じ解像度前提でLoad.
-	if(1e7 <= ld)
+	const float ld = tex_lineardepth.SampleLevel(samp, screen_uv, 0).r;// LightingBufferとGBufferが同じ解像度前提でLoad.
+	if(65535.0 <= ld)
 	{
-		// 天球扱い.
-		//return float4(0.0, 0.0, 0.5, 0.0);
 		discard;
 	}
-	float depth_visualize = pow(saturate(ld / 200.0), 1.0/0.8);
 	
 	// LightingBufferとGBufferが同じ解像度前提でLoad.
-	const float4 gb0 = tex_gbuffer0.Load(int3(input.pos.xy, 0));
-	const float4 gb1 = tex_gbuffer1.Load(int3(input.pos.xy, 0));
-	const float4 gb2 = tex_gbuffer2.Load(int3(input.pos.xy, 0));
-	const float4 gb3 = tex_gbuffer3.Load(int3(input.pos.xy, 0));
-    const float4 bent_normal_sample = tex_bent_normal.Load(int3(input.pos.xy, 0));
-	const float4 prev_light = tex_prev_light.Load(int3(input.pos.xy, 0));
+	const float4 gb0 = tex_gbuffer0.SampleLevel(samp, screen_uv, 0);
+	const float4 gb1 = tex_gbuffer1.SampleLevel(samp, screen_uv, 0);
+	const float4 gb2 = tex_gbuffer2.SampleLevel(samp, screen_uv, 0);
+	const float4 gb3 = tex_gbuffer3.SampleLevel(samp, screen_uv, 0);
+    const float4 ssao_sample = tex_ssao.SampleLevel(samp, screen_uv, 0);
+    const float4 bent_normal_sample = tex_bent_normal.SampleLevel(samp, screen_uv, 0);
+	const float4 prev_light = tex_prev_light.SampleLevel(samp, screen_uv, 0);
 
 	// GBuffer Decode.
 	float3 gb_base_color = gb0.xyz;
@@ -264,7 +264,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	}
 
     // GIのテスト(Dynamic Sky Visibility).
-    float sky_visibility = 1.0;;
+    float sky_visibility = 1.0;
     if(cb_ngl_lighting_pass.is_enable_gi)
     {
         uint tex_width, tex_height;
@@ -328,14 +328,8 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		float3 ibl_diffuse, ibl_specular;
 		EvalIblDiffuseStandard(ibl_diffuse, ibl_specular, tex_ibl_diffuse, tex_ibl_specular, tex_ibl_dfg, samp, gb_normal_ws, V, gb_base_color, gb_roughness, gb_metalness);
 
-		lit_color += (ibl_diffuse + ibl_specular) * cb_ngl_lighting_pass.sky_lit_intensity * sky_visibility;
-		
-		//lit_color = ibl_diffuse + ibl_specular;// テスト
-		//lit_color = ibl_diffuse;// テスト.
-		//lit_color = ibl_specular;// テスト.
+		lit_color += (ibl_diffuse + ibl_specular) * cb_ngl_lighting_pass.sky_lit_intensity * sky_visibility * ssao_sample.a;
 	}
-
-
 
 
     // ------------------------------------------------------------------------------
