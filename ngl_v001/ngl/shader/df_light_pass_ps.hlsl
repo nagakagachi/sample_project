@@ -65,18 +65,12 @@ void EvalDirectionalLightStandard
 	float3 base_color, float roughness, float metalness
 )
 {
-	const float3 F = brdf_schlick_roughness_F(compute_F0_default(base_color, metalness), roughness, N, V, L);// Roughnessを考慮したFresnel
-	const float3 kD = (1.0 - F);
-
 	const float3 diffuse_term = brdf_lambert(base_color, roughness, metalness, N, V, L);
 	const float3 specular_term = brdf_standard_ggx(base_color, roughness, metalness, N, V, L);
-	const float3 brdf = specular_term + diffuse_term;
+    
 	const float cos_term = saturate(dot(N, L));
 
-	//out_diffuse = (float3)0;
-	out_diffuse = cos_term * diffuse_term * kD * light_intensity;
-	
-	//out_specular = (float3)0;
+	out_diffuse = cos_term * diffuse_term * light_intensity;
 	out_specular = cos_term * specular_term * light_intensity;
 }
 
@@ -92,7 +86,6 @@ void EvalIblDiffuseStandard
 {
 	const float3 L_Reflect = 2 * dot( V, N ) * N - V;
 	const float3 F = brdf_schlick_roughness_F(compute_F0_default(base_color, metalness), roughness, N, V, L_Reflect);// Roughnessを考慮したFresnel
-	const float3 kD = (1.0 - F);
 
 	const float3 brdf_diffuse = brdf_lambert(base_color, roughness, metalness, N, V, L_Reflect);// diffuse BRDF.
 
@@ -106,7 +99,7 @@ void EvalIblDiffuseStandard
 	const float3 irradiance_diffuse = tex_cube_ibl_diffuse.SampleLevel(samp, N, 0).rgb;
 
 	// FresnelでDiffuseとSpecularに分配.
-	out_diffuse = brdf_diffuse * kD * irradiance_diffuse;
+	out_diffuse = brdf_diffuse * irradiance_diffuse;
 	out_specular = irradiance_specular * (F * specular_dfg.x + specular_dfg.y);
 }
 
