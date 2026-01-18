@@ -159,6 +159,11 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_bbv_debug_probe_ = {};
         ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_wcp_debug_probe_ = {};
 
+
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_clear_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_update_ = {};
+
+
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
 
         // Bitmask Brick Voxel. Bbv.
@@ -189,6 +194,10 @@ namespace ngl::render::app
         ComputeBufferSet wcp_visible_surface_list_indirect_arg_ = {};
         ComputeBufferSet wcp_buffer_ = {};
         ComputeTextureSet wcp_probe_atlas_tex_ = {};
+
+        
+        // ScreenSpaceProbe.
+        ComputeTextureSet ss_probe_tex_ = {};
 
     };
 

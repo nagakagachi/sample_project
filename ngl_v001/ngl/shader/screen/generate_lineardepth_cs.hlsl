@@ -30,7 +30,7 @@ void main_cs(
     float d = TexHardwareDepth.Load(int3(dtid.xy, 0)).r;
 
     // Samplerを使うテストなのであまり意味はない.
-    #if 1
+    #if 0
         uint w, h;
         TexHardwareDepth.GetDimensions(w, h);
         const float d_samp = TexHardwareDepth.SampleLevel(SmpHardwareDepth, dtid.xy / float2(w, h), 0).r;

@@ -16,7 +16,6 @@ wcp_screen_space_pass_cs.hlsl
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 Texture2D			TexHardwareDepth;
-SamplerState		SmpHardwareDepth;
 
 
 // ThreadGroupタイル単位でスキップする最適化のグループタイル幅. 1より大きい数値で実行.
