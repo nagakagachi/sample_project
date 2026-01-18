@@ -28,7 +28,7 @@
 
 // gfx
 #include "gfx/game_scene.h"
-#include "gfx/raytrace_scene.h"
+#include "gfx/raytrace/raytrace_scene.h"
 #include "render/scene/scene_mesh.h"
 #include "render/scene/scene_skybox.h"
 

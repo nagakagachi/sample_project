@@ -16,8 +16,8 @@
 #include "rhi/d3d12/resource.d3d12.h"
 
 
-#include "resource/resource_mesh.h"
-#include "game_scene.h"
+#include "gfx/resource/resource_mesh.h"
+#include "gfx/game_scene.h"
 
 #include "resource/resource_manager.h"
 #include "gfx/resource/resource_shader.h"

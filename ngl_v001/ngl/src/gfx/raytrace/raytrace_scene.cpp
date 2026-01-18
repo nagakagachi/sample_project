@@ -1,4 +1,4 @@
-﻿#include "gfx/raytrace_scene.h"
+﻿#include "gfx/raytrace/raytrace_scene.h"
 
 #include <unordered_map>
 #include <algorithm>

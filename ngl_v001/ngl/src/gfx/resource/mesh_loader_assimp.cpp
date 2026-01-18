@@ -1,5 +1,5 @@
 ﻿
-#include "gfx/mesh_loader_assimp.h"
+#include "gfx/resource/mesh_loader_assimp.h"
 
 #include <numeric>
 

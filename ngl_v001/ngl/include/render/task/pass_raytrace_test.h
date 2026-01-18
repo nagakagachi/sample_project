@@ -9,7 +9,7 @@
 #include "gfx/rtg/graph_builder.h"
 #include "gfx/command_helper.h"
 
-#include "gfx/raytrace_scene.h"
+#include "gfx/raytrace/raytrace_scene.h"
 
 namespace ngl::render::task
 {
