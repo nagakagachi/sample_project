@@ -354,15 +354,19 @@ float3 random_unit_vector3(float2 seed)
 
 // Fibonacci球面分布方向を取得.
 // indexのmoduloは呼び出し側の責任とする.
-float3 fibonacci_sphere_point(int index, int sample_count_max)
+float3 fibonacci_sphere_point(int index, int sample_count_max, float angle_offset)
 {
     const float phi = NGL_GOLDEN_ANGLE;//NGL_PI * (3.0 - sqrt(5.0)); // 黄金角
     const float y = 1.0 - (index / float(sample_count_max - 1)) * 2.0;// ここで 1 になると後段の sqrt に 0.0 が入って計算破綻する.
     const float horizontal_radius = sqrt((1.0 - y * y) + NGL_EPSILON);// sqrtに1が入らないようにするための安全策として加算で済ませるパターン.
-    const float theta = phi * index;
+    const float theta = (phi * index) + angle_offset;
     const float x = cos(theta) * horizontal_radius;
     const float z = sin(theta) * horizontal_radius;
     return float3(x, y, z);
+}
+float3 fibonacci_sphere_point(int index, int sample_count_max)
+{
+    return fibonacci_sphere_point(index, sample_count_max, 0.0);
 }
 // 密度一定のFibonacci螺旋分布で2D点列を計算.
 float2 fibonacci_spiral_point(int index, int sample_count_max, float angle_offset)

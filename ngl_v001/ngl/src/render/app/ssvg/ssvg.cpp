@@ -738,6 +738,7 @@ namespace ngl::render::app
             pso_ss_probe_update_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
             pso_ss_probe_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
             pso_ss_probe_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+            pso_ss_probe_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
             pso_ss_probe_update_->SetView(&desc_set, "RWScreenSpaceProbeTex", ss_probe_tex_.uav.Get());
 
             p_command_list->SetPipelineState(pso_ss_probe_update_.Get());
@@ -888,6 +889,7 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "WcpProbeAtlasTex", wcp_probe_atlas_tex_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, "ScreenSpaceProbeTex", ss_probe_tex_.srv.Get());
             
             pso_bbv_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
 

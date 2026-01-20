@@ -605,7 +605,7 @@ bool AppGame::Initialize()
 #if 1
     // SSVG.
     ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f);
-    // ngl::render::app::SsVg::dbg_view_mode_ = -1;
+    ngl::render::app::SsVg::dbg_view_mode_ = 9;
 #endif
 
     // Texture Rexource読み込みのテスト.

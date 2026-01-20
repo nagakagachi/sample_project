@@ -97,13 +97,10 @@ void main_cs(
             else if(5 == cb_ssvg.debug_view_mode)
             {
             }
-            else if(6 == cb_ssvg.debug_view_mode)
-            {
-            }
         }
         RWTexWork[dtid.xy] = debug_color;
     }
-    else if(7 == cb_ssvg.debug_view_mode)
+    else if(6 == cb_ssvg.debug_view_mode)
     {
         // Brick単位Traceのテスト. Brickの占有フラグが適切に設定または除去されているかのテスト.
         const float trace_distance = 10000.0;          
@@ -127,7 +124,7 @@ void main_cs(
         }
         RWTexWork[dtid.xy] = debug_color;
     }
-    if(8 == cb_ssvg.debug_view_mode)
+    if(7 == cb_ssvg.debug_view_mode)
     {
         // Voxel上面図X-Ray表示.
         const int3 bv_full_reso = cb_ssvg.bbv.grid_resolution * k_bbv_per_voxel_resolution;
@@ -150,7 +147,7 @@ void main_cs(
 
         RWTexWork[dtid.xy] = float4(write_data, write_data, write_data, 1.0);
     }
-    else if(9 == cb_ssvg.debug_view_mode)
+    else if(8 == cb_ssvg.debug_view_mode)
     {
         // Probe Atlas Textureの表示.
         const int2 texel_pos = dtid.xy * 0.1;
@@ -159,6 +156,14 @@ void main_cs(
 
         const float4 probe_data = WcpProbeAtlasTex.Load(uint3(texel_pos, 0));
         RWTexWork[dtid.xy] = probe_data.xxxx;
+    }
+    else if(9 == cb_ssvg.debug_view_mode)
+    {
+        // Probe Atlas Textureの表示.
+        const int2 texel_pos = dtid.xy;
+
+        const float4 probe_data = ScreenSpaceProbeTex.Load(uint3(texel_pos, 0));
+        RWTexWork[dtid.xy] = probe_data;
     }
     else if(10 == cb_ssvg.debug_view_mode)
     {
