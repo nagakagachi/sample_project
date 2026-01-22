@@ -260,60 +260,73 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
     float sky_visibility = 1.0;
     if(cb_ngl_lighting_pass.is_enable_gi)
     {
-        uint tex_width, tex_height;
-        WcpProbeAtlasTex.GetDimensions(tex_width, tex_height);
-        const float2 texel_size = 1.0 / float2(tex_width, tex_height);
-
-        const float2 octmap_local_texel_pos = OctEncode(gb_normal_ws)*k_probe_octmap_width;
-        float3 probe_sample_pos_ws = pixel_pos_ws;
         #if 1
-            // BentNormalでサンプル位置をオフセットすることでライトリーク緩和の検証.
-            {
-                // View Offset.
-                probe_sample_pos_ws += V * cb_ngl_lighting_pass.probe_sample_offset_view;
-
-                // Surface Normal Offset.
-                probe_sample_pos_ws += gb_normal_ws * cb_ngl_lighting_pass.probe_sample_offset_surface_normal;
-
-                // BentNormal Offset.
-                probe_sample_pos_ws += bent_normal_sample.xyz * cb_ngl_lighting_pass.probe_sample_offset_bent_normal;
-            }
-        #endif
-
-        const float3 voxel_coordf = (probe_sample_pos_ws - cb_ssvg.wcp.grid_min_pos) * cb_ssvg.wcp.cell_size_inv;
-        const int3 voxel_base_coord = floor(voxel_coordf - 0.5);
-        const float3 coord_frac = frac(voxel_coordf - 0.5);
-
-            const int3 vtx_pos[8] = {
-                int3(0, 0, 0),int3(1, 0, 0),
-                int3(0, 1, 0),int3(1, 1, 0),
-                int3(0, 0, 1),int3(1, 0, 1),
-                int3(0, 1, 1),int3(1, 1, 1)
-            };
-
-            uint voxel_indexs[8];
-            float2 octmap_uvs[8];
-            for (int i = 0; i < 8; ++i)
-            {
-                voxel_indexs[i] = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + vtx_pos[i], cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
-                octmap_uvs[i] = (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_indexs[i], cb_ssvg.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
-            }
-
-            // k_wcp_probe_distance_max で正規化された [0,1] のDistanceProbe.
-            float4 dir_d[2];
-            for (int i = 0; i < 2; ++i)
-            {
-                dir_d[i].x = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 0], 0).r;
-                dir_d[i].y = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 2], 0).r;
-                dir_d[i].z = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 4], 0).r;
-                dir_d[i].w = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 6], 0).r;
-            }
+            // ScreenSpaceProbeテスト.
+            uint2 ss_probe_tex_size;
+            ScreenSpaceProbeTex.GetDimensions(ss_probe_tex_size.x, ss_probe_tex_size.y);
+            const float2 ss_probe_texel_uv_size = 1.0 / float2(ss_probe_tex_size);
+            const int2 ss_probe_count = ss_probe_tex_size / 8;
+            //const float2 octmap_local_texel_pos = screen_uv / 8.0 + (OctEncode(gb_normal_ws)*8.0) * ss_probe_texel_uv_size;
+            const float2 octmap_local_texel_pos = (floor(screen_uv * float2(ss_probe_count)) / float2(ss_probe_count)) + (OctEncode(gb_normal_ws)*8.0) * ss_probe_texel_uv_size;
             
-            const float4 lerp_d_x = lerp(dir_d[0], dir_d[1], coord_frac.x);// x補間
-            const float2 lerp_d_y = lerp(lerp_d_x.xz, lerp_d_x.yw, coord_frac.y);// y補間
-            const float lerp_d_z = lerp(lerp_d_y.x, lerp_d_y.y, coord_frac.z);// z補間
+            const float4 ss_probe_value = ScreenSpaceProbeTex.SampleLevel(samp, octmap_local_texel_pos, 0);
+            sky_visibility = ss_probe_value.a;
+        #else
+            uint tex_width, tex_height;
+            WcpProbeAtlasTex.GetDimensions(tex_width, tex_height);
+            const float2 texel_size = 1.0 / float2(tex_width, tex_height);
 
-        sky_visibility = lerp_d_z;
+            const float2 octmap_local_texel_pos = OctEncode(gb_normal_ws)*k_probe_octmap_width;
+            float3 probe_sample_pos_ws = pixel_pos_ws;
+            #if 1
+                // BentNormalでサンプル位置をオフセットすることでライトリーク緩和の検証.
+                {
+                    // View Offset.
+                    probe_sample_pos_ws += V * cb_ngl_lighting_pass.probe_sample_offset_view;
+
+                    // Surface Normal Offset.
+                    probe_sample_pos_ws += gb_normal_ws * cb_ngl_lighting_pass.probe_sample_offset_surface_normal;
+
+                    // BentNormal Offset.
+                    probe_sample_pos_ws += bent_normal_sample.xyz * cb_ngl_lighting_pass.probe_sample_offset_bent_normal;
+                }
+            #endif
+
+            const float3 voxel_coordf = (probe_sample_pos_ws - cb_ssvg.wcp.grid_min_pos) * cb_ssvg.wcp.cell_size_inv;
+            const int3 voxel_base_coord = floor(voxel_coordf - 0.5);
+            const float3 coord_frac = frac(voxel_coordf - 0.5);
+
+                const int3 vtx_pos[8] = {
+                    int3(0, 0, 0),int3(1, 0, 0),
+                    int3(0, 1, 0),int3(1, 1, 0),
+                    int3(0, 0, 1),int3(1, 0, 1),
+                    int3(0, 1, 1),int3(1, 1, 1)
+                };
+
+                uint voxel_indexs[8];
+                float2 octmap_uvs[8];
+                for (int i = 0; i < 8; ++i)
+                {
+                    voxel_indexs[i] = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + vtx_pos[i], cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
+                    octmap_uvs[i] = (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_indexs[i], cb_ssvg.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
+                }
+
+                // k_wcp_probe_distance_max で正規化された [0,1] のDistanceProbe.
+                float4 dir_d[2];
+                for (int i = 0; i < 2; ++i)
+                {
+                    dir_d[i].x = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 0], 0).r;
+                    dir_d[i].y = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 2], 0).r;
+                    dir_d[i].z = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 4], 0).r;
+                    dir_d[i].w = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 6], 0).r;
+                }
+                
+                const float4 lerp_d_x = lerp(dir_d[0], dir_d[1], coord_frac.x);// x補間
+                const float2 lerp_d_y = lerp(lerp_d_x.xz, lerp_d_x.yw, coord_frac.y);// y補間
+                const float lerp_d_z = lerp(lerp_d_y.x, lerp_d_y.y, coord_frac.z);// z補間
+                
+            sky_visibility = lerp_d_z;
+        #endif
     }
 	
 	// IBL.

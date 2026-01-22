@@ -26,6 +26,10 @@ namespace ngl::render::app
     static constexpr size_t k_sizeof_BbvOptionalData = sizeof(BbvOptionalData);
     static constexpr size_t k_sizeof_WcpProbeData      = sizeof(WcpProbeData);
     static constexpr u32 k_max_update_probe_work_count = 1024;
+    
+    // 時間分散するScreenProbeグループのサイズ. 幅がこのサイズのProbeグループ毎に1Fに一つ更新をする. GI-1.0などは2を指定して 4フレームで2x2のグループが更新される.
+    static const int k_screen_probe_update_skip_frame = 1;
+
 
     // デバッグ.
     int SsVg::dbg_view_mode_ = -1;
@@ -34,6 +38,11 @@ namespace ngl::render::app
     float SsVg::dbg_probe_scale_ = 1.0f;
     float SsVg::dbg_probe_near_geom_scale_ = 0.2f;
     
+    using SsvgShaderBindName = ngl::text::HashText<128>;
+    constexpr SsvgShaderBindName k_shader_bind_name_wcp_atlas_srv = "WcpProbeAtlasTex";
+    constexpr SsvgShaderBindName k_shader_bind_name_wcp_atlas_uav = "RWWcpProbeAtlasTex";
+    constexpr SsvgShaderBindName k_shader_bind_name_ssprobe_srv = "ScreenSpaceProbeTex";
+    constexpr SsvgShaderBindName k_shader_bind_name_ssprobe_uav = "RWScreenSpaceProbeTex";
 
     void ToroidalGridUpdater::Initialize(const math::Vec3u& grid_resolution, float bbv_cell_size)
     {
@@ -442,6 +451,8 @@ namespace ngl::render::app
             p->tex_main_view_depth_size = hw_depth_size;
             p->frame_count = frame_count_;
 
+            p->screen_probe_temporal_update_tile_size = k_screen_probe_update_skip_frame;
+
             p->debug_view_mode = SsVg::dbg_view_mode_;
             p->debug_bbv_probe_mode = SsVg::dbg_bbv_probe_debug_mode_;
             p->debug_wcp_probe_mode = SsVg::dbg_wcp_probe_debug_mode_;
@@ -476,7 +487,7 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_wcp_clear_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                 pso_wcp_clear_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
-                pso_wcp_clear_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
+                pso_wcp_clear_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_uav.Get(), wcp_probe_atlas_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_wcp_clear_.Get());
                 p_command_list->SetDescriptorSet(pso_wcp_clear_.Get(), &desc_set);
@@ -491,7 +502,7 @@ namespace ngl::render::app
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "SsProbeInitClear");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_ss_probe_clear_->SetView(&desc_set, "RWScreenSpaceProbeTex", ss_probe_tex_.uav.Get());
+                pso_ss_probe_clear_->SetView(&desc_set, k_shader_bind_name_ssprobe_uav.Get(), ss_probe_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_ss_probe_clear_.Get());
                 p_command_list->SetDescriptorSet(pso_ss_probe_clear_.Get(), &desc_set);
@@ -731,20 +742,17 @@ namespace ngl::render::app
         {
             NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ScreenSpaceProbe");
 
-            // 処理するタイルをフレーム分散する場合. GI-1.0などは4フレームで全タイル更新されるように 4 としていた.
-            const int tile_frame_distribution = 1;
-
             ngl::rhi::DescriptorSetDep desc_set = {};
             pso_ss_probe_update_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
             pso_ss_probe_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
             pso_ss_probe_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
             pso_ss_probe_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-            pso_ss_probe_update_->SetView(&desc_set, "RWScreenSpaceProbeTex", ss_probe_tex_.uav.Get());
+            pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_uav.Get(), ss_probe_tex_.uav.Get());
 
             p_command_list->SetPipelineState(pso_ss_probe_update_.Get());
             p_command_list->SetDescriptorSet(pso_ss_probe_update_.Get(), &desc_set);
 
-            pso_ss_probe_update_->DispatchHelper(p_command_list, ss_probe_tex_.texture->GetWidth()/tile_frame_distribution, ss_probe_tex_.texture->GetHeight()/tile_frame_distribution, 1);
+            pso_ss_probe_update_->DispatchHelper(p_command_list, ss_probe_tex_.texture->GetWidth()/k_screen_probe_update_skip_frame, ss_probe_tex_.texture->GetHeight()/k_screen_probe_update_skip_frame, 1);
 
             p_command_list->ResourceUavBarrier(ss_probe_tex_.texture.Get());
         }
@@ -759,7 +767,7 @@ namespace ngl::render::app
                 pso_wcp_begin_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
                 pso_wcp_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
                 pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
-                pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
+                pso_wcp_begin_update_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_uav.Get(), wcp_probe_atlas_tex_.uav.Get());
                 pso_wcp_begin_update_->SetView(&desc_set, "RWSurfaceProbeCellList", wcp_visible_surface_list_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_wcp_begin_update_.Get());
@@ -817,7 +825,7 @@ namespace ngl::render::app
 
                 pso_wcp_visible_surface_element_update_->SetView(&desc_set, "SurfaceProbeCellList", wcp_visible_surface_list_.srv.Get());
                 pso_wcp_visible_surface_element_update_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
-                pso_wcp_visible_surface_element_update_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
+                pso_wcp_visible_surface_element_update_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_uav.Get(), wcp_probe_atlas_tex_.uav.Get());
 
 
                 p_command_list->SetPipelineState(pso_wcp_visible_surface_element_update_.Get());
@@ -839,7 +847,7 @@ namespace ngl::render::app
                 pso_wcp_coarse_ray_sample_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
 
                 pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
-                pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
+                pso_wcp_coarse_ray_sample_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_uav.Get(), wcp_probe_atlas_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_wcp_coarse_ray_sample_.Get());
                 p_command_list->SetDescriptorSet(pso_wcp_coarse_ray_sample_.Get(), &desc_set);
@@ -855,7 +863,7 @@ namespace ngl::render::app
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_wcp_fill_probe_octmap_atlas_border_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                pso_wcp_fill_probe_octmap_atlas_border_->SetView(&desc_set, "RWWcpProbeAtlasTex", wcp_probe_atlas_tex_.uav.Get());
+                pso_wcp_fill_probe_octmap_atlas_border_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_uav.Get(), wcp_probe_atlas_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_wcp_fill_probe_octmap_atlas_border_.Get());
                 p_command_list->SetDescriptorSet(pso_wcp_fill_probe_octmap_atlas_border_.Get(), &desc_set);
@@ -888,8 +896,8 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, "WcpProbeAtlasTex", wcp_probe_atlas_tex_.srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, "ScreenSpaceProbeTex", ss_probe_tex_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_srv.Get(), wcp_probe_atlas_tex_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_srv.Get(), ss_probe_tex_.srv.Get());
             
             pso_bbv_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
 
@@ -948,7 +956,7 @@ namespace ngl::render::app
 
             pso_wcp_debug_probe_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
             pso_wcp_debug_probe_->SetView(&desc_set, "WcpProbeBuffer", wcp_buffer_.srv.Get());
-            pso_wcp_debug_probe_->SetView(&desc_set, "WcpProbeAtlasTex", wcp_probe_atlas_tex_.srv.Get());
+            pso_wcp_debug_probe_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_srv.Get(), wcp_probe_atlas_tex_.srv.Get());
             pso_wcp_debug_probe_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
 
 
@@ -1056,7 +1064,8 @@ namespace ngl::render::app
     void SsVg::SetDescriptor(rhi::PipelineStateBaseDep* p_pso, rhi::DescriptorSetDep* p_desc_set) const
     {
         assert(ssvg_instance_);
-        p_pso->SetView(p_desc_set, "WcpProbeAtlasTex", ssvg_instance_->GetWcpProbeAtlasTex().Get());
+        p_pso->SetView(p_desc_set, k_shader_bind_name_wcp_atlas_srv.Get(), ssvg_instance_->GetWcpProbeAtlasTex().Get());
+        p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_srv.Get(), ssvg_instance_->GetSsProbeTex().Get());
         p_pso->SetView(p_desc_set, "cb_ssvg", &ssvg_instance_->GetDispatchCbh()->cbv_);
     }
 

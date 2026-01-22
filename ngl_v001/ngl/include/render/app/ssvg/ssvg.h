@@ -126,6 +126,7 @@ namespace ngl::render::app
 
         ngl::rhi::ConstantBufferPooledHandle GetDispatchCbh() const { return cbh_dispatch_; }
         rhi::RefSrvDep GetWcpProbeAtlasTex() const { return wcp_probe_atlas_tex_.srv; }
+        rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_.srv; }
 
     private:
         bool is_first_dispatch_ = true;

@@ -159,7 +159,8 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
         int2 tex_main_view_depth_size;// MainViewのDepthBuffer解像度.
         uint frame_count;
-        int dummy3;
+
+        int screen_probe_temporal_update_tile_size;// NxNのScreenProbe毎に1Fに1Probeのみ更新するパラメータ.
 
         int debug_view_mode;
         
