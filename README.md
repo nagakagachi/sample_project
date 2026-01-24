@@ -208,6 +208,7 @@ Concurrent Binary Trees for Large-Scale Game Components. </br>
 
 
 # References
+- https://www.3dgep.com/learning-directx-12-1/
 - https://learnopengl.com/
 - https://www.pbrt.org/
 - https://google.github.io/filament/Filament.html
