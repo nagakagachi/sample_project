@@ -440,12 +440,21 @@ float GoldNoise(float3 xyz)
 }
 
 
+
+
+// --------------------------------------------------------------
+// Octahedron Mapping
+// A Survey of Efficient Representations for Independent Unit Vectors (Journal of Computer Graphics Techniques Vol. 3, No. 2, 2014)
+// https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
+// https://twitter.com/Stubbesaurus/status/937994790553227264
+
 // Octahedron Mapping.
 float2 OctWrap(float2 v)
 {
     //return (1.0 - abs(v.yx)) * (v.xy >= 0.0 ? 1.0 : -1.0);
     return (1.0 - abs(v.yx)) * select(v.xy >= 0.0, 1.0, -1.0);
 }
+// Unit Vector -> Spherical Octahedron UV[0,1].
 // 1,0,0 のような基底ベクトルの場合に結果のUVが 1,0 等になるため, テクセル座標として利用する場合はclampするなど注意が必要.
 float2 OctEncode(float3 n)
 {
@@ -453,7 +462,8 @@ float2 OctEncode(float3 n)
     n.xy = n.z >= 0.0 ? n.xy : OctWrap(n.xy);
     n.xy = n.xy * 0.5 + 0.5;
     return n.xy;
-} 
+}
+// Spherical Octahedron UV[0,1] -> Unit Vector.
 float3 OctDecode(float2 f)
 {
     f = f * 2.0 - 1.0;
@@ -466,5 +476,23 @@ float3 OctDecode(float2 f)
     return normalize(n);
 }
 
-
+// +Z Hemispherical Unit Vector -> Octahedron UV[0,1].
+float2 OctEncodeHemi(float3 n)
+{
+    // Project the hemisphere onto the hemi-octahedron,
+    // and then into the xy plane
+    float2 p = n.xy * (1.0 / (abs(n.x) + abs(n.y) + n.z));
+    // Rotate and scale the center diamond to the unit square
+    float2 signed_oct_coord = float2(p.x + p.y, p.x - p.y);// [-1,1]
+    return signed_oct_coord * 0.5 + 0.5;// [-1,1] -> [0,1]
+}
+// Octahedron UV[0,1] -> +Z Hemispherical Unit Vector.
+float3 OctDecodeHemi(float2 f)
+{
+    f = f * 2.0 - 1.0;// [0,1] -> [-1,1]
+    // Rotate and scale the unit square back to the center diamond
+    float2 temp = float2(f.x + f.y, f.x - f.y) * 0.5;
+    float3 v = float3(temp, 1.0 - abs(temp.x) - abs(temp.y));
+    return normalize(v);
+}
 #endif

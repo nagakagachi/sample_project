@@ -266,11 +266,13 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
             ScreenSpaceProbeTex.GetDimensions(ss_probe_tex_size.x, ss_probe_tex_size.y);
             const float2 ss_probe_texel_uv_size = 1.0 / float2(ss_probe_tex_size);
             const int2 ss_probe_count = ss_probe_tex_size / 8;
-            //const float2 octmap_local_texel_pos = screen_uv / 8.0 + (OctEncode(gb_normal_ws)*8.0) * ss_probe_texel_uv_size;
+
+            // Spherical Octahedral Mapモード.
             const float2 octmap_local_texel_pos = (floor(screen_uv * float2(ss_probe_count)) / float2(ss_probe_count)) + (OctEncode(gb_normal_ws)*8.0) * ss_probe_texel_uv_size;
             
+            // XYZはSkyVisibleなサンプルレイ方向, WはVisibilityとSsProbe配置位置の有効性の積が格納されている(配置に失敗していたら0).
             const float4 ss_probe_value = ScreenSpaceProbeTex.SampleLevel(samp, octmap_local_texel_pos, 0);
-            sky_visibility = ss_probe_value.a;
+            sky_visibility = length(ss_probe_value.xyz);
         #else
             uint tex_width, tex_height;
             WcpProbeAtlasTex.GetDimensions(tex_width, tex_height);

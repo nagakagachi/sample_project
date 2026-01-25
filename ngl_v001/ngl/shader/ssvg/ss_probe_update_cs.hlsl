@@ -17,10 +17,26 @@ Texture2D			           TexHardwareDepth;
 #define SCREEN_SPACE_PROBE_TILE_SIZE 8
 #define SCREEN_SPACE_PROBE_TILE_SIZE_INV (1.0 / float(SCREEN_SPACE_PROBE_TILE_SIZE))
 
-groupshared float tile_hw_depth;
-groupshared float tile_view_z;
-groupshared float3 tile_pos_vs;
-groupshared float3 tile_pos_ws;
+// -------------------------------------
+// Tile ThreadGroup共有のため共有メモリ.
+
+// TileのこのフレームでのScreenSpaceProbe配置テクセル情報.
+groupshared float ss_probe_hw_depth;
+groupshared float ss_probe_view_z;
+groupshared float3 ss_probe_pos_vs;
+groupshared float3 ss_probe_pos_ws;
+
+// ScreenSpaceProbe配置位置の近似法線情報.
+groupshared float3 ss_probe_approx_normal_ws;
+
+// -------------------------------------
+
+bool isValidDepth(float d)
+{
+    // 
+    return (0.0 < d && d < 1.0);
+}
+
 
 [numthreads(SCREEN_SPACE_PROBE_TILE_SIZE, SCREEN_SPACE_PROBE_TILE_SIZE, 1)]
 void main_cs(
@@ -40,8 +56,9 @@ void main_cs(
     //cb_ssvg.frame_count;
     uint2 depth_size;
     TexHardwareDepth.GetDimensions(depth_size.x, depth_size.y);
+    const float2 depth_size_inv = 1.0 / float2(depth_size);
     
-    const float2 screen_uv = (float2(global_pos) + float2(0.5, 0.5)) / float2(depth_size);// ピクセル中心への半ピクセルオフセット考慮.
+    const float2 screen_uv = (float2(global_pos) + float2(0.5, 0.5)) * depth_size_inv;// ピクセル中心への半ピクセルオフセット考慮.
 
     // Tile内で今回処理するテクセルを決定して最小限のテクスチャ読み取り.
     const int2 ss_probe_tile_id = probe_id;
@@ -50,40 +67,65 @@ void main_cs(
     const uint frame_rand = hash_uint32_iq(probe_id + cb_ssvg.frame_count);
     const uint2 rand_element_in_tile = uint2(frame_rand * SCREEN_SPACE_PROBE_TILE_SIZE_INV, frame_rand) % SCREEN_SPACE_PROBE_TILE_SIZE;
 
-    const int2 rand_texel_pos = ss_probe_tile_pixel_start + rand_element_in_tile;
-    const float2 rand_texel_uv = (float2(rand_texel_pos) + float2(0.5, 0.5)) / float2(depth_size);// ピクセル中心への半ピクセルオフセット考慮.
+    // このフレームでのプローブ配置テクセル位置をタイル内ランダム選択.
+    const int2 current_probe_texel_pos = ss_probe_tile_pixel_start + rand_element_in_tile;
+    const float2 current_probe_texel_uv = (float2(current_probe_texel_pos) + float2(0.5, 0.5)) * depth_size_inv;// ピクセル中心への半ピクセルオフセット考慮.
     
+    // タイルのプローブ配置情報を代表して取得.
     if(all(probe_atlas_local_pos == 0))
     {
         // クリア
-        tile_hw_depth = 1.0;
-        tile_view_z = 0.0;
-        tile_pos_vs = float3(0.0, 0.0, 0.0);
-        tile_pos_ws = float3(0.0, 0.0, 0.0);
+        ss_probe_hw_depth = 1.0;
+        ss_probe_view_z = 0.0;
+        ss_probe_pos_vs = float3(0.0, 0.0, 0.0);
+        ss_probe_pos_ws = float3(0.0, 0.0, 0.0);
+        ss_probe_approx_normal_ws = float3(0.0, 0.0, 0.0);
 
         // プローブのレイ始点とするピクセルの深度取得.
-        const float d = TexHardwareDepth.Load(int3(rand_texel_pos, 0)).r;
+        const float d = TexHardwareDepth.Load(int3(current_probe_texel_pos, 0)).r;
+
+
         // 空ピクセルだった場合は再トライするほうが良いか？検討.
-        if(0.0 < d && d < 1.0)
+        if(isValidDepth(d))
         {
             const float view_z = calc_view_z_from_ndc_z(d, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
-            const float3 pixel_pos_vs = CalcViewSpacePosition(rand_texel_uv, view_z, cb_ngl_sceneview.cb_proj_mtx);
+            const float3 pixel_pos_vs = CalcViewSpacePosition(current_probe_texel_uv, view_z, cb_ngl_sceneview.cb_proj_mtx);
             const float3 pixel_pos_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(pixel_pos_vs, 1.0));
 
-            // 今回タイルが処理するプローブ候補の情報.
-            tile_hw_depth = d;
-            tile_view_z = view_z;
-            tile_pos_vs = pixel_pos_vs;
-            tile_pos_ws = pixel_pos_ws;
+
+            // 近似法線計算のため右と下の深度も取得.
+            const float d_x = TexHardwareDepth.Load(int3(current_probe_texel_pos + int2(1, 0), 0)).r;
+            const float d_y = TexHardwareDepth.Load(int3(current_probe_texel_pos + int2(0, 1), 0)).r;
+            float3 approx_normal_ws = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);// 法線デフォルトはカメラ方向の逆.;
+            if(isValidDepth(d_x) && isValidDepth(d_y))
+            {
+                const float3 nx_pixel_pos_vs = CalcViewSpacePosition(current_probe_texel_uv + float2(depth_size_inv.x, 0.0), calc_view_z_from_ndc_z(d_x, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+                const float3 ny_pixel_pos_vs = CalcViewSpacePosition(current_probe_texel_uv + float2(0.0, depth_size_inv.y), calc_view_z_from_ndc_z(d_y, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+                const float3 approx_normal_vs = normalize(cross(nx_pixel_pos_vs - pixel_pos_vs, ny_pixel_pos_vs - pixel_pos_vs));
+                approx_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, approx_normal_vs);
+            }
+
+
+            // タイル共有情報.
+            {
+                ss_probe_hw_depth = d;
+                ss_probe_view_z = view_z;
+                ss_probe_pos_vs = pixel_pos_vs;
+                ss_probe_pos_ws = pixel_pos_ws;
+
+                ss_probe_approx_normal_ws = approx_normal_ws;
+            }
         }
     }
     GroupMemoryBarrierWithGroupSync();// タイル代表情報の共有メモリ書き込み待ち.
 
 
     // この後さらに共有メモリでバリアする場合などはリターンできなくなるかも.
-    if(1.0 <= tile_hw_depth)
+    if(1.0 <= ss_probe_hw_depth)
     {
-        RWScreenSpaceProbeTex[global_pos] = float4(0.0, 0.0, 0.0, 0.0);
+        // ミスタイルはクリアすべきか, 近傍SSプローブやワールドプローブで補填すべきか.
+        //RWScreenSpaceProbeTex[global_pos] = float4(0.0, 0.0, 0.0, 0.0);
+        RWScreenSpaceProbeTex[global_pos].w = 0.0;// ミスタイルはw成分だけクリアして他は残しておく.
         return;
     }
 
@@ -96,23 +138,31 @@ void main_cs(
     #else
         // OctMapセル毎にレイを発行. セル内でJitter.
         const float2 noise_float2 = noise_float3_to_float2(float3(global_pos.xy, float(frame_rand))) * 2.0 - 1.0;
-
         const float3 sample_ray_dir = OctDecode(((float2(probe_atlas_local_pos) + 0.5 + noise_float2*0.5)*SCREEN_SPACE_PROBE_TILE_SIZE_INV));
     #endif
 
-    const float3 sample_ray_origin = tile_pos_ws + (normalize(view_origin - tile_pos_ws) * 1.1);// 少しカメラ寄りからレイを飛ばす.
-    // Voxel単位Traceのテスト.
-    const float trace_distance = 50.0;          
+    // 自己遮蔽回避の位置オフセット.
+    const float3 sample_ray_origin = ss_probe_pos_ws + ss_probe_approx_normal_ws*0.2 + normalize(view_origin - ss_probe_pos_ws)*0.5;
+    // 自己遮蔽回避の初期ヒット無視回数. 単位はBrick内BitCell.
+    const int initial_hit_avoidance_count = 1;
+
+    // タイルのスクリーンスペースプローブ位置から, タイル内スレッド毎にレイトレース.
+    const float trace_distance = 50.0;
     int hit_voxel_index = -1;
     float4 debug_ray_info;
-    float4 curr_ray_t_ws = trace_bbv_dev(
+    float4 curr_ray_t_ws = 
+    trace_bbv_initial_hit_avoidance
+    (
         hit_voxel_index, debug_ray_info,
         sample_ray_origin, sample_ray_dir, trace_distance, 
         cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
-        cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel, false);
+        cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel, initial_hit_avoidance_count);
 
     // ヒットしなかったら空が見えているものとしてその方向を格納.
     const float3 hit_debug = (0.0 > curr_ray_t_ws.x)? sample_ray_dir : 0.0;
+
+    // デバッグ approx_normal_ws
+    //const float3 hit_debug = (0.0 > curr_ray_t_ws.x)? ss_probe_approx_normal_ws : 0.0;
 
     // 仮書き込み.
     RWScreenSpaceProbeTex[global_pos] = lerp( RWScreenSpaceProbeTex[global_pos], float4(hit_debug, (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0), 0.1);

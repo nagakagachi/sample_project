@@ -258,44 +258,6 @@ bool3 calc_dda_trace_step_mask(float3 ray_side_distance) {
     return mask;
 }
 
-// Bbv内部のビットセル単位でのレイトレース.
-// https://github.com/dubiousconst282/VoxelRT
-int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3 invDir, inout bool3 stepMask, 
-        Buffer<uint> bbv_buffer, uint bbv_bitmask_addr,
-        const bool is_brick_mode // ヒットをVoxelではなくBrickで完了させるモード. Brickの占有フラグのデバッグ用.
-    ) 
-{
-    rayPos = clamp(rayPos, 0.0001, float(k_bbv_per_voxel_resolution)-0.0001);
-
-    float3 sideDist = ((floor(rayPos) - rayPos) + step(0.0, rayDir)) * invDir;
-    int3 mapPos = int3(floor(rayPos));
-
-    int3 raySign = rayDirSign;
-    if(!is_brick_mode)
-    {
-        do {
-            uint bitcell_u32_offset, bitcell_u32_bit_pos;
-            calc_bbv_bitcell_info(bitcell_u32_offset, bitcell_u32_bit_pos, mapPos);
-            bool is_hit = bbv_buffer[bbv_bitmask_addr + bitcell_u32_offset] & (1u << bitcell_u32_bit_pos);
-            if(is_hit) { return mapPos; }
-
-            stepMask = calc_dda_trace_step_mask(sideDist);
-            sideDist += select(stepMask, abs(invDir), 0);
-            const int3 mapPosDelta = select(stepMask, raySign, 0);
-            mapPos += mapPosDelta;
-            //if(all(mapPosDelta == 0)) {break;}// 外側のBrick単位ループではこのチェックが必要だがここでは不要そう.
-            
-        } while (all(uint3(mapPos) < k_bbv_per_voxel_resolution));
-
-        return -1;
-    }
-    else
-    {
-        return mapPos;// デバッグ用にBrick単位で即時ヒット扱いする. この関数に入る時点でBrick単位のOccupiedフラグを参照しているはず.
-    }
-}
-
-
 // レイの始点終点セットアップ. 領域AABBの内部または表面から開始するための始点終点のt値( origin + dir * t) を計算.
 // aabb_min, aabb_max, ray_origin, ray_end のすべての空間が一致していればどの空間の情報でも適切な結果を返す(World空間でもCell基準空間でも).
 bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float out_aabb_clamped_end_t, float3 aabb_min, float3 aabb_max, float3 ray_origin, float3 ray_dir, float3 ray_dir_inv, float ray_len)
@@ -320,6 +282,71 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
 };
 
 
+// Bbv内部のビットセル単位でのレイトレース.
+// https://github.com/dubiousconst282/VoxelRT
+int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3 invDir, inout bool3 stepMask, 
+        Buffer<uint> bbv_buffer, uint bbv_bitmask_addr,
+        
+        const bool static_enable_initial_hit_avoidance,
+        int initial_hit_avoidance_count,
+
+        const bool is_brick_mode // ヒットをVoxelではなくBrickで完了させるモード. Brickの占有フラグのデバッグ用.
+    ) 
+{
+    rayPos = clamp(rayPos, 0.0001, float(k_bbv_per_voxel_resolution)-0.0001);
+
+    float3 sideDist = ((floor(rayPos) - rayPos) + step(0.0, rayDir)) * invDir;
+    int3 mapPos = int3(floor(rayPos));
+
+    int3 raySign = rayDirSign;
+    if(!is_brick_mode)
+    {
+        do {
+            uint bitcell_u32_offset, bitcell_u32_bit_pos;
+            calc_bbv_bitcell_info(bitcell_u32_offset, bitcell_u32_bit_pos, mapPos);
+            bool is_hit = bbv_buffer[bbv_bitmask_addr + bitcell_u32_offset] & (1u << bitcell_u32_bit_pos);
+
+            if(static_enable_initial_hit_avoidance)
+            {
+                // 初期ヒット回避処理.
+                if(is_hit) 
+                {
+                    // ヒットした場合でも初期ヒット回避カウントが残っていれば無視.
+                    if(0 >= initial_hit_avoidance_count)
+                        return mapPos;
+
+                    initial_hit_avoidance_count--;// カウントダウン.
+                }
+                else
+                {
+                    // ヒットしなくなった時点で通常ヒットモードに即座に移行.
+                    initial_hit_avoidance_count = 0;
+                }
+            }
+            else
+            {
+                // 通常ヒット処理.
+                if(is_hit)
+                    return mapPos;
+            }
+
+            stepMask = calc_dda_trace_step_mask(sideDist);
+            sideDist += select(stepMask, abs(invDir), 0);
+            const int3 mapPosDelta = select(stepMask, raySign, 0);
+            mapPos += mapPosDelta;
+            //if(all(mapPosDelta == 0)) {break;}// 外側のBrick単位ループではこのチェックが必要だがここでは不要そう.
+            
+        } while (all(uint3(mapPos) < k_bbv_per_voxel_resolution));
+
+        return -1;
+    }
+    else
+    {
+        return mapPos;// デバッグ用にBrick単位で即時ヒット扱いする. この関数に入る時点でBrick単位のOccupiedフラグを参照しているはず.
+    }
+}
+
+
 // Bbvレイトレース.
 float4 trace_bbv_core(
     out int out_hit_voxel_index,
@@ -328,6 +355,8 @@ float4 trace_bbv_core(
     float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws, 
     float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
     int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer,
+
+    const int static_initial_hit_avoidance_count, // 始点からヒットしている場合に無視するヒット回数. 自己遮蔽回避などに利用. 0で無効.
 
     const bool is_brick_mode // ヒットをVoxelではなくBrickで完了させるモード. Brickの占有フラグのデバッグ用.
 )
@@ -360,6 +389,9 @@ float4 trace_bbv_core(
     int3 mapPos = clampled_start_pos_i;
     bool3 stepMask = calc_dda_trace_step_mask(sideDist);
     int3 subMapPos = int3(-1, -1, -1);
+
+    const bool enable_initial_hit_avoidance = (0 < static_initial_hit_avoidance_count);
+    int  initial_hit_avoidance_count = static_initial_hit_avoidance_count;
     // トレースループ.
     for(;;)
     {
@@ -374,10 +406,15 @@ float4 trace_bbv_core(
             const float d = max(0.0, Max3(mini));
             const float3 pos_in_brick = ((clampled_start_pos + ray_dir_ws*d) - mapPos) * k_bbv_per_voxel_resolution;// all(mapPos == clampled_start_pos_i)のエッジケース対応で clampled_start_pos に置き換える対応は, dの0クランプで代替している.
 
-            subMapPos = trace_bitmask_brick(pos_in_brick, ray_dir_ws, ray_dir_sign, ray_dir_inv, stepMask, bbv_buffer, bbv_voxel_bitmask_data_addr(voxel_index), is_brick_mode);
+            subMapPos = trace_bitmask_brick(pos_in_brick, ray_dir_ws, ray_dir_sign, ray_dir_inv, stepMask, bbv_buffer, bbv_voxel_bitmask_data_addr(voxel_index), enable_initial_hit_avoidance, initial_hit_avoidance_count, is_brick_mode);
             // bitmaskヒット. 未ヒットなら何れかの要素が-1の結果が返ってくる.
             if (subMapPos.x >= 0)
                 break;
+        }
+        
+        if(enable_initial_hit_avoidance)
+        {
+            initial_hit_avoidance_count--;// カウントダウン.
         }
 
         stepMask = calc_dda_trace_step_mask(sideDist);
@@ -432,6 +469,27 @@ float4 trace_bbv(
         ray_origin_ws, ray_dir_ws, trace_distance_ws,
         grid_min_ws, cell_width_ws, grid_resolution,
         bbv_grid_toroidal_offset, bbv_buffer,
+        0, // 初期ヒット回避無効.
+        false
+    );
+}
+// Bbvレイトレース 初期ヒット回避モード.
+float4 trace_bbv_initial_hit_avoidance(
+    out int out_hit_voxel_index,
+    out float4 out_debug,
+    float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws, 
+    float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
+    int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer,
+    const int initial_hit_avoidance_count // 始点からヒットしている場合に無視するヒット回数.
+)
+{
+    return trace_bbv_core(
+        out_hit_voxel_index,
+        out_debug,
+        ray_origin_ws, ray_dir_ws, trace_distance_ws,
+        grid_min_ws, cell_width_ws, grid_resolution,
+        bbv_grid_toroidal_offset, bbv_buffer,
+        initial_hit_avoidance_count, // 初期ヒット回避無効.
         false
     );
 }
@@ -451,6 +509,7 @@ float4 trace_bbv_dev(
         ray_origin_ws, ray_dir_ws, trace_distance_ws,
         grid_min_ws, cell_width_ws, grid_resolution,
         bbv_grid_toroidal_offset, bbv_buffer,
+        0, // 初期ヒット回避無効.
         is_brick_mode
     );
 }
