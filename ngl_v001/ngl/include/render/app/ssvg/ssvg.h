@@ -162,6 +162,7 @@ namespace ngl::render::app
 
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_clear_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_preupdate_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_update_ = {};
 
 
@@ -198,7 +199,8 @@ namespace ngl::render::app
 
         
         // ScreenSpaceProbe.
-        ComputeTextureSet ss_probe_tex_ = {};
+        ComputeTextureSet ss_probe_tile_info_tex_ = {}; // 1/8 解像度のProbeタイル用情報. r:probe local pos, gb:hw depth, a: todo.
+        ComputeTextureSet ss_probe_tex_ = {};// 8x8 texel per probe.
 
     };
 

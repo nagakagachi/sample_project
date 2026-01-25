@@ -1,9 +1,9 @@
 
 #if 0
 
-ss_probe_clear_cs.hlsl
+ss_probe_update_cs.hlsl
 
-ScreenSpaceProbe用テクスチャクリア.
+ScreenSpaceProbe更新.
 
 #endif
 
@@ -12,10 +12,8 @@ ScreenSpaceProbe用テクスチャクリア.
 #include "../include/scene_view_struct.hlsli"
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
-Texture2D			           TexHardwareDepth;
+//Texture2D			           TexHardwareDepth;
 
-#define SCREEN_SPACE_PROBE_TILE_SIZE 8
-#define SCREEN_SPACE_PROBE_TILE_SIZE_INV (1.0 / float(SCREEN_SPACE_PROBE_TILE_SIZE))
 
 // -------------------------------------
 // Tile ThreadGroup共有のため共有メモリ.
@@ -52,23 +50,29 @@ void main_cs(
     const int2 probe_id = gid.xy * cb_ssvg.screen_probe_temporal_update_tile_size + frame_skip_probe_offset;// プローブフレームスキップ考慮.
     const int2 global_pos = probe_id * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos;// グローバルテクセル位置計算.
     
+    const uint frame_rand = hash_uint32_iq(probe_id + cb_ssvg.frame_count);
 
-    //cb_ssvg.frame_count;
-    uint2 depth_size;
-    TexHardwareDepth.GetDimensions(depth_size.x, depth_size.y);
-    const float2 depth_size_inv = 1.0 / float2(depth_size);
-    
-    const float2 screen_uv = (float2(global_pos) + float2(0.5, 0.5)) * depth_size_inv;// ピクセル中心への半ピクセルオフセット考慮.
 
     // Tile内で今回処理するテクセルを決定して最小限のテクスチャ読み取り.
     const int2 ss_probe_tile_id = probe_id;
     const int2 ss_probe_tile_pixel_start = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
 
-    const uint frame_rand = hash_uint32_iq(probe_id + cb_ssvg.frame_count);
-    const uint2 rand_element_in_tile = uint2(frame_rand * SCREEN_SPACE_PROBE_TILE_SIZE_INV, frame_rand) % SCREEN_SPACE_PROBE_TILE_SIZE;
 
+    // ScreenSpaceProbeTexelTile情報テクスチャから取得.
+    const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
+    const float ss_probe_depth = ss_probe_tile_info.x;
+    const int2 ss_probe_pos_rand_in_tile = int2(ss_probe_tile_info.yz);
+    const float ss_candidate_hit_t = ss_probe_tile_info.w;
+
+
+    //uint2 depth_size;
+    //TexHardwareDepth.GetDimensions(depth_size.x, depth_size.y);
+    //const float2 depth_size_inv = 1.0 / float2(depth_size);
+    uint2 depth_size = cb_ngl_sceneview.cb_render_resolution;
+    const float2 depth_size_inv = cb_ngl_sceneview.cb_render_resolution_inv;
+    
     // このフレームでのプローブ配置テクセル位置をタイル内ランダム選択.
-    const int2 current_probe_texel_pos = ss_probe_tile_pixel_start + rand_element_in_tile;
+    const int2 current_probe_texel_pos = ss_probe_tile_pixel_start + ss_probe_pos_rand_in_tile;
     const float2 current_probe_texel_uv = (float2(current_probe_texel_pos) + float2(0.5, 0.5)) * depth_size_inv;// ピクセル中心への半ピクセルオフセット考慮.
     
     // タイルのプローブ配置情報を代表して取得.
@@ -81,30 +85,95 @@ void main_cs(
         ss_probe_pos_ws = float3(0.0, 0.0, 0.0);
         ss_probe_approx_normal_ws = float3(0.0, 0.0, 0.0);
 
+
         // プローブのレイ始点とするピクセルの深度取得.
-        const float d = TexHardwareDepth.Load(int3(current_probe_texel_pos, 0)).r;
+        const float d = ss_probe_depth;
 
-
-        // 空ピクセルだった場合は再トライするほうが良いか？検討.
-        if(isValidDepth(d))
+        if(0.0 <= ss_candidate_hit_t)
         {
             const float view_z = calc_view_z_from_ndc_z(d, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
             const float3 pixel_pos_vs = CalcViewSpacePosition(current_probe_texel_uv, view_z, cb_ngl_sceneview.cb_proj_mtx);
             const float3 pixel_pos_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(pixel_pos_vs, 1.0));
 
+            #if 1
+                float2 neighbor_probe_depth_x = float2(1.0, 1.0);
+                int2 neighbor_probe_global_pos_x[2];
+                float2 neighbor_probe_depth_y = float2(1.0, 1.0);
+                int2 neighbor_probe_global_pos_y[2];
+                for(int offset_i = 0; offset_i < 1; ++offset_i)
+                {
+                    const int offset_base = offset_i + 1;
 
-            // 近似法線計算のため右と下の深度も取得.
-            const float d_x = TexHardwareDepth.Load(int3(current_probe_texel_pos + int2(1, 0), 0)).r;
-            const float d_y = TexHardwareDepth.Load(int3(current_probe_texel_pos + int2(0, 1), 0)).r;
-            float3 approx_normal_ws = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);// 法線デフォルトはカメラ方向の逆.;
-            if(isValidDepth(d_x) && isValidDepth(d_y))
-            {
-                const float3 nx_pixel_pos_vs = CalcViewSpacePosition(current_probe_texel_uv + float2(depth_size_inv.x, 0.0), calc_view_z_from_ndc_z(d_x, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
-                const float3 ny_pixel_pos_vs = CalcViewSpacePosition(current_probe_texel_uv + float2(0.0, depth_size_inv.y), calc_view_z_from_ndc_z(d_y, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
-                const float3 approx_normal_vs = normalize(cross(nx_pixel_pos_vs - pixel_pos_vs, ny_pixel_pos_vs - pixel_pos_vs));
-                approx_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, approx_normal_vs);
-            }
+                    // X方向
+                    for(int xi = 0; xi < 2; ++xi)
+                    {
+                        if(!isValidDepth(neighbor_probe_depth_x[xi]))
+                        {
+                            const int offset = offset_base * (xi * 2 - 1);
+                            const float4 ssp_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id + int2(offset, 0), 0));
+                            
+                            neighbor_probe_depth_x[xi] = ssp_info.x;
+                            neighbor_probe_global_pos_x[xi] = (ss_probe_tile_id + int2(offset, 0)) * SCREEN_SPACE_PROBE_TILE_SIZE + int2(ssp_info.yz);
+                        }
+                    }
+                    // Y方向
+                    for(int yi = 0; yi < 2; ++yi)
+                    {
+                        if(!isValidDepth(neighbor_probe_depth_y[yi]))
+                        {
+                            const int offset = offset_base * (yi * 2 - 1);
+                            const float4 ssp_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id + int2(0, offset), 0));
+                        
+                            neighbor_probe_depth_y[yi] = ssp_info.x;
+                            neighbor_probe_global_pos_y[yi] = (ss_probe_tile_id + int2(0, offset)) * SCREEN_SPACE_PROBE_TILE_SIZE + int2(ssp_info.yz);
+                        }
+                    }
+                }
 
+                // XYそれぞれdepth有効な要素がとれなかったらセンターのデプスで埋める. 座標は近傍位置のままとする.
+                for(int ni = 0; ni < 1; ++ni)
+                {
+                    if(!isValidDepth(neighbor_probe_depth_x[ni]))
+                    {
+                        neighbor_probe_depth_x[ni] = d;
+                    }
+                    if(!isValidDepth(neighbor_probe_depth_y[ni]))
+                    {
+                        neighbor_probe_depth_y[ni] = d;
+                    }
+                }
+                // 近傍情報から法線近似.
+                float3 approx_normal_ws = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);// 法線デフォルトはカメラ方向の逆.
+                {
+                    const float3 xn_pixel_pos_vs = CalcViewSpacePosition((neighbor_probe_global_pos_x[0] + 0.5)*depth_size_inv, calc_view_z_from_ndc_z(neighbor_probe_depth_x[0], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+                    const float3 xp_pixel_pos_vs = CalcViewSpacePosition((neighbor_probe_global_pos_x[1] + 0.5)*depth_size_inv, calc_view_z_from_ndc_z(neighbor_probe_depth_x[1], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+                    const float3 yn_pixel_pos_vs = CalcViewSpacePosition((neighbor_probe_global_pos_y[0] + 0.5)*depth_size_inv, calc_view_z_from_ndc_z(neighbor_probe_depth_y[0], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+                    const float3 yp_pixel_pos_vs = CalcViewSpacePosition((neighbor_probe_global_pos_y[1] + 0.5)*depth_size_inv, calc_view_z_from_ndc_z(neighbor_probe_depth_y[1], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+
+                    // nとpで中央差分による法線計算.
+                    const float3 approx_normal_vs = normalize(cross(xp_pixel_pos_vs - xn_pixel_pos_vs, yp_pixel_pos_vs - yn_pixel_pos_vs));
+                    approx_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, approx_normal_vs);
+                }
+
+            #else
+                // 近傍Probe情報を取得して法線近似するなど.
+                const float4 ss_probe_tile_info_nx = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id + int2(1, 0), 0));
+                const float4 ss_probe_tile_info_ny = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id + int2(0, 1), 0));
+                const float d_x = ss_probe_tile_info_nx.x;
+                const float d_y = ss_probe_tile_info_ny.x;
+                const int2 ss_probe_global_pos_nx = (ss_probe_tile_id + int2(1, 0)) * SCREEN_SPACE_PROBE_TILE_SIZE + int2(ss_probe_tile_info_nx.yz);
+                const int2 ss_probe_global_pos_ny = (ss_probe_tile_id + int2(0, 1)) * SCREEN_SPACE_PROBE_TILE_SIZE + int2(ss_probe_tile_info_ny.yz);
+
+                float3 approx_normal_ws = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);// 法線デフォルトはカメラ方向の逆.
+                if(0.0 <= ss_probe_tile_info_nx.w && 0.0 <= ss_probe_tile_info_ny.w)
+                {
+                    const float3 nx_pixel_pos_vs = CalcViewSpacePosition((ss_probe_global_pos_nx + 0.5)*depth_size_inv, calc_view_z_from_ndc_z(d_x, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+                    const float3 ny_pixel_pos_vs = CalcViewSpacePosition((ss_probe_global_pos_ny + 0.5)*depth_size_inv, calc_view_z_from_ndc_z(d_y, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+
+                    const float3 approx_normal_vs = normalize(cross(nx_pixel_pos_vs - pixel_pos_vs, ny_pixel_pos_vs - pixel_pos_vs));
+                    approx_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, approx_normal_vs);
+                }
+            #endif
 
             // タイル共有情報.
             {
@@ -142,12 +211,12 @@ void main_cs(
     #endif
 
     // 自己遮蔽回避の位置オフセット.
-    const float3 sample_ray_origin = ss_probe_pos_ws + ss_probe_approx_normal_ws*0.2 + normalize(view_origin - ss_probe_pos_ws)*0.5;
+    const float3 sample_ray_origin = ss_probe_pos_ws + ss_probe_approx_normal_ws*0.3 + normalize(view_origin - ss_probe_pos_ws)*0.2;
     // 自己遮蔽回避の初期ヒット無視回数. 単位はBrick内BitCell.
     const int initial_hit_avoidance_count = 1;
 
     // タイルのスクリーンスペースプローブ位置から, タイル内スレッド毎にレイトレース.
-    const float trace_distance = 50.0;
+    const float trace_distance = 30.0;
     int hit_voxel_index = -1;
     float4 debug_ray_info;
     float4 curr_ray_t_ws = 
@@ -163,7 +232,9 @@ void main_cs(
 
     // デバッグ approx_normal_ws
     //const float3 hit_debug = (0.0 > curr_ray_t_ws.x)? ss_probe_approx_normal_ws : 0.0;
+    //const float3 hit_debug = ss_probe_approx_normal_ws;
 
     // 仮書き込み.
-    RWScreenSpaceProbeTex[global_pos] = lerp( RWScreenSpaceProbeTex[global_pos], float4(hit_debug, (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0), 0.1);
+    const float temporal_rate = 0.05;
+    RWScreenSpaceProbeTex[global_pos] = lerp( RWScreenSpaceProbeTex[global_pos], float4(hit_debug, (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0), temporal_rate);
 }

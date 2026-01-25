@@ -78,6 +78,10 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     #define k_component_count_RemoveVoxelList 4
 
 
+    #define SCREEN_SPACE_PROBE_TILE_SIZE 8
+    #define SCREEN_SPACE_PROBE_TILE_SIZE_INV (1.0 / float(SCREEN_SPACE_PROBE_TILE_SIZE))
+
+
     // シェーダとCppで一致させる.
     // Voxel追加データバッファ. Bbv一つ毎の外部データ.
     // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.

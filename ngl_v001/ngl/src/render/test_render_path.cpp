@@ -75,6 +75,9 @@ namespace ngl::test
 
 				mapped->cb_ndc_z_to_view_z_coef = view_info.ndc_z_to_view_z_coef;
 
+                mapped->cb_render_resolution = math::Vec2i(screen_w, screen_h);
+                mapped->cb_render_resolution_inv = math::Vec2(1.0f / screen_w, 1.0f / screen_h);
+
 				mapped->cb_time_sec = std::fmodf(static_cast<float>(ngl::time::Timer::Instance().GetElapsedSec("AppGameTime")), 60.0f*60.0f*24.0f);
 
 				scene_cb_h->buffer_.Unmap();

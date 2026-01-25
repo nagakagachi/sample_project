@@ -28,6 +28,9 @@ namespace gfx
 		//	view_z = (ndc_z * cb_ndc_z_to_view_z_coef.x + cb_ndc_z_to_view_z_coef.y) / ( ndc_z * cb_ndc_z_to_view_z_coef.z + cb_ndc_z_to_view_z_coef.w )
         //	ndc_z_to_view_z_coef = CalcViewDepthReconstructCoefFromProjectionMatrix(projection_matrix)
 		ngl::math::Vec4	cb_ndc_z_to_view_z_coef;
+        
+        ngl::math::Vec2i   cb_render_resolution;
+        ngl::math::Vec2   cb_render_resolution_inv;
 		
 		float			cb_time_sec;
 	};
