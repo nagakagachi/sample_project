@@ -211,7 +211,14 @@ void main_cs(
     #endif
 
     // 自己遮蔽回避の位置オフセット.
-    const float3 sample_ray_origin = ss_probe_pos_ws + ss_probe_approx_normal_ws*0.3 + normalize(view_origin - ss_probe_pos_ws)*0.2;
+    //const float ray_origin_view_offset_scale = 0.2;
+    //const float ray_origin_normal_offset_scale = 0.3;
+    //const float3 sample_ray_origin = ss_probe_pos_ws + normalize(view_origin - ss_probe_pos_ws)*ray_origin_view_offset_scale + ss_probe_approx_normal_ws*ray_origin_normal_offset_scale;
+    
+    const float ray_origin_view_offset_scale = ss_candidate_hit_t;// 前処理で表面からVoxelの外に出るための距離をトレースしている場合.
+    const float ray_origin_normal_offset_scale = 0.1;
+    const float3 sample_ray_origin = ss_probe_pos_ws + normalize(view_origin - ss_probe_pos_ws)*ray_origin_view_offset_scale + ss_probe_approx_normal_ws * ray_origin_normal_offset_scale;
+    
     // 自己遮蔽回避の初期ヒット無視回数. 単位はBrick内BitCell.
     const int initial_hit_avoidance_count = 1;
 
@@ -235,6 +242,6 @@ void main_cs(
     //const float3 hit_debug = ss_probe_approx_normal_ws;
 
     // 仮書き込み.
-    const float temporal_rate = 0.05;
+    const float temporal_rate = 0.025;
     RWScreenSpaceProbeTex[global_pos] = lerp( RWScreenSpaceProbeTex[global_pos], float4(hit_debug, (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0), temporal_rate);
 }

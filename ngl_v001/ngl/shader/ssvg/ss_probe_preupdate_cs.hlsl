@@ -70,7 +70,7 @@ void main_cs(
         const float3 sample_ray_vec = camera_pos - sample_ray_origin;
         const float3 sample_ray_dir = normalize(sample_ray_vec);
 
-        const float trace_distance = 1.0;
+        const float trace_distance = 0.5;
         int hit_voxel_index = -1;
         float4 debug_ray_info;
         float4 curr_ray_t_ws = 
