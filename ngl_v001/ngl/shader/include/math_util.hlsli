@@ -312,39 +312,62 @@ int3 GetVec3ComponentReorderIndexByMagnitude(float3 v)
 
 
 //--------------------------------------------------------------------------------
-// ランダム
-uint noise_iqint32_orig(uint2 p)  
+#define NGL_F32_PRESISION (2.3283064365386962890625e-10) // 2^-32
+// https://www.shadertoy.com/view/4tXyWN
+uint hash_uint32_iq(uint2 p)  
 {  
     p *= uint2(73333, 7777);  
     p ^= uint2(3333777777, 3333777777) >> (p >> 28);  
     uint n = p.x * p.y;  
     return n ^ n >> 15;  
 }
-float noise_iqint32(float pos)  
+float noise_float_to_float(float pos)  
 {  
-    uint value = noise_iqint32_orig(asuint(pos.xx));  
-    return value * 2.3283064365386962890625e-10;  
+    uint value = hash_uint32_iq(asuint(pos.xx));  
+    return value * NGL_F32_PRESISION;
 }
-float noise_iqint32(float2 pos)  
+float noise_float_to_float(float2 pos)  
 {  
-    uint value = noise_iqint32_orig(asuint(pos.xy));  
-    return value * 2.3283064365386962890625e-10;  
+    uint value = hash_uint32_iq(asuint(pos.xy));  
+    return value * NGL_F32_PRESISION;
 }
-float noise_iqint32(float3 pos)  
+float noise_float_to_float(float3 pos)  
 {  
-    uint value = noise_iqint32_orig(asuint(pos.xy)) + noise_iqint32_orig(asuint(pos.zz));
-    return value * 2.3283064365386962890625e-10;  
+    uint value = hash_uint32_iq(asuint(pos.xy)) + hash_uint32_iq(asuint(pos.zz));
+    return value * NGL_F32_PRESISION;  
 }
-float noise_iqint32(float4 pos)  
+float noise_float_to_float(float4 pos)  
 {  
-    uint value = noise_iqint32_orig(asuint(pos.xy)) + noise_iqint32_orig(asuint(pos.zw));  
-    return value * 2.3283064365386962890625e-10;  
+    uint value = hash_uint32_iq(asuint(pos.xy)) + hash_uint32_iq(asuint(pos.zw));  
+    return value * NGL_F32_PRESISION;  
+}
+float2 noise_float3_to_float2(float3 pos)
+{  
+    const uint3 uint_v3 = asuint(pos);
+    const uint seed0 = uint_v3.x + (uint_v3.y ^ uint_v3.z);
+    const uint seed1 = uint_v3.y + (uint_v3.z ^ uint_v3.x);
+    const uint seed2 = uint_v3.z + (uint_v3.x ^ uint_v3.y);
+    uint value0 = hash_uint32_iq(uint2(seed0, seed1));
+    uint value1 = hash_uint32_iq(uint2(seed1, seed2));
+    return uint2(value0, value1) * NGL_F32_PRESISION;  
+}
+float3 noise_float4_to_float3(float4 pos)
+{  
+    const uint4 uint_v4 = asuint(pos);
+    const uint seed0 = uint_v4.x + (uint_v4.y ^ uint_v4.z);
+    const uint seed1 = uint_v4.y + (uint_v4.z ^ uint_v4.w);
+    const uint seed2 = uint_v4.z + (uint_v4.w ^ uint_v4.x);
+    const uint seed3 = uint_v4.w + (uint_v4.x ^ uint_v4.y);
+    uint value0 = hash_uint32_iq(uint2(seed0, seed1));
+    uint value1 = hash_uint32_iq(uint2(seed1, seed2));
+    uint value2 = hash_uint32_iq(uint2(seed2, seed3));
+    return uint3(value0, value1, value2) * NGL_F32_PRESISION;  
 }
 
 float3 random_unit_vector3(float2 seed)
 {
-    const float angleY = noise_iqint32(seed.xyxy) * NGL_2PI;
-    const float angleX = asin(noise_iqint32(seed.yyxx)*2.0 - 1.0);
+    const float angleY = noise_float_to_float(seed.xyxy) * NGL_2PI;
+    const float angleX = asin(noise_float_to_float(seed.yyxx)*2.0 - 1.0);
     float3 sample_ray_dir;
     sample_ray_dir.y = sin(angleX);
     sample_ray_dir.x = cos(angleX) * cos(angleY);

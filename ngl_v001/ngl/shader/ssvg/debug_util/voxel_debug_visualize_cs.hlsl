@@ -61,7 +61,7 @@ void main_cs(
             {
                 // bbvセル可視化
                 const float3 bbv_cell_id = floor((view_origin + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
-                debug_color.xyz = float4(noise_iqint32(bbv_cell_id.xyzz), noise_iqint32(bbv_cell_id.xzyy), noise_iqint32(bbv_cell_id.xyzx), 1);
+                debug_color.xyz = float4(noise_float_to_float(bbv_cell_id.xyzz), noise_float_to_float(bbv_cell_id.xzyy), noise_float_to_float(bbv_cell_id.xyzx), 1);
 
                 // 簡易フォグ.
                 debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
@@ -70,7 +70,7 @@ void main_cs(
             else if(1 == cb_ssvg.debug_view_mode)
             {
                 // VoxelIDを可視化.
-                debug_color.xyz = float4(noise_iqint32(hit_voxel_index), noise_iqint32(hit_voxel_index*2), noise_iqint32(hit_voxel_index*3), 1);
+                debug_color.xyz = float4(noise_float_to_float(hit_voxel_index), noise_float_to_float(hit_voxel_index*2), noise_float_to_float(hit_voxel_index*3), 1);
                 
                 // 簡易フォグ.
                 debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
@@ -116,7 +116,7 @@ void main_cs(
         if(0.0 <= curr_ray_t_ws.x)
         {
             // VoxelIDを可視化.
-            debug_color.xyz = float4(noise_iqint32(hit_voxel_index), noise_iqint32(hit_voxel_index*2), noise_iqint32(hit_voxel_index*3), 1);
+            debug_color.xyz = float4(noise_float_to_float(hit_voxel_index), noise_float_to_float(hit_voxel_index*2), noise_float_to_float(hit_voxel_index*3), 1);
             
             // 簡易フォグ.
             debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate((curr_ray_t_ws.x - 20.0)/100.0), 1.0/1.2) * 0.8);

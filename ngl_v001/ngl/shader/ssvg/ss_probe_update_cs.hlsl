@@ -15,6 +15,7 @@ ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 Texture2D			           TexHardwareDepth;
 
 #define SCREEN_SPACE_PROBE_TILE_SIZE 8
+#define SCREEN_SPACE_PROBE_TILE_SIZE_INV (1.0 / float(SCREEN_SPACE_PROBE_TILE_SIZE))
 
 groupshared float tile_hw_depth;
 groupshared float tile_view_z;
@@ -46,8 +47,8 @@ void main_cs(
     const int2 ss_probe_tile_id = probe_id;
     const int2 ss_probe_tile_pixel_start = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
 
-    const uint frame_rand = noise_iqint32_orig(probe_id + cb_ssvg.frame_count);
-    const uint2 rand_element_in_tile = uint2(frame_rand / SCREEN_SPACE_PROBE_TILE_SIZE, frame_rand) % SCREEN_SPACE_PROBE_TILE_SIZE;
+    const uint frame_rand = hash_uint32_iq(probe_id + cb_ssvg.frame_count);
+    const uint2 rand_element_in_tile = uint2(frame_rand * SCREEN_SPACE_PROBE_TILE_SIZE_INV, frame_rand) % SCREEN_SPACE_PROBE_TILE_SIZE;
 
     const int2 rand_texel_pos = ss_probe_tile_pixel_start + rand_element_in_tile;
     const float2 rand_texel_uv = (float2(rand_texel_pos) + float2(0.5, 0.5)) / float2(depth_size);// ピクセル中心への半ピクセルオフセット考慮.
@@ -91,14 +92,12 @@ void main_cs(
 
     #if 0
         // 担当アトラステクセルのOctahedral方向の固定レイ方向.
-        const float3 sample_ray_dir = OctDecode(float2(probe_atlas_local_pos + 0.5)/SCREEN_SPACE_PROBE_TILE_SIZE);
+        const float3 sample_ray_dir = OctDecode(float2(probe_atlas_local_pos + 0.5)*SCREEN_SPACE_PROBE_TILE_SIZE_INV);
     #else
-        // 担当アトラステクセルのOctahedral方向にノイズを付加したレイ方向.
-        const float2 noise_float2 = float2(
-            noise_iqint32(float2(global_pos.x, global_pos.y ^ frame_rand)),
-            noise_iqint32(float2(global_pos.y ^ frame_rand, global_pos.x))
-        ) * 2.0 - 1.0;
-        const float3 sample_ray_dir = OctDecode(((float2(probe_atlas_local_pos) + 0.5 + noise_float2*0.5)/float(SCREEN_SPACE_PROBE_TILE_SIZE)));
+        // OctMapセル毎にレイを発行. セル内でJitter.
+        const float2 noise_float2 = noise_float3_to_float2(float3(global_pos.xy, float(frame_rand))) * 2.0 - 1.0;
+
+        const float3 sample_ray_dir = OctDecode(((float2(probe_atlas_local_pos) + 0.5 + noise_float2*0.5)*SCREEN_SPACE_PROBE_TILE_SIZE_INV));
     #endif
 
     const float3 sample_ray_origin = tile_pos_ws + (normalize(view_origin - tile_pos_ws) * 1.1);// 少しカメラ寄りからレイを飛ばす.

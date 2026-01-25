@@ -33,23 +33,6 @@ Texture2D tex_basecolor;
 SamplerState samp_default;
 
 
-uint3 iqint2_orig(uint3 x)  
-{  
-    uint k = 1103515245;  
-  
-    x = ((x >> 8) ^ x.yzx) * k;  
-    x = ((x >> 8) ^ x.yzx) * k;  
-    x = ((x >> 8) ^ x.yzx) * k;  
-      
-    return x;  
-} 
-float iqint2(float4 pos)  
-{
-    const uint4 bin_val = uint4(asuint(pos));
-    return (dot(iqint2_orig(bin_val.xyz), 1) + dot(iqint2_orig(bin_val.w), 1)) * 2.3283064365386962890625e-10;
-}
-
-
 // 頂点入力の自由度を確保するために頂点入力定義とその取得, 変換はマテリアル側に記述する.
     struct VS_INPUT
     {

@@ -65,14 +65,14 @@ void main_cs(
                 const int num_fibonacci_point_max = 128;
                 float3 sample_ray_dir = fibonacci_sphere_point((cb_ssvg.frame_count*RAY_SAMPLE_COUNT_PER_VOXEL + sample_index)%num_fibonacci_point_max, num_fibonacci_point_max);
                 // fibonacci sample_ray_dir をy軸でランダム回転
-                const float random_angle = noise_iqint32(float2(voxel_index, cb_ssvg.frame_count)) * 6.28318530718;// 0~2π
+                const float random_angle = noise_float_to_float(float2(voxel_index, cb_ssvg.frame_count)) * 6.28318530718;// 0~2π
                 const float2 cossin = float2(cos(random_angle), sin(random_angle));
                 sample_ray_dir.xz = float2(sample_ray_dir.x * cossin.x - sample_ray_dir.z * cossin.y, sample_ray_dir.x * cossin.y + sample_ray_dir.z * cossin.x);
             #elif 0
                 // 更新対象プローブに関してはフレーム分散せずに必要な全方位トレースを実行する. サンプル数でFibonacciシーケンス分布を使用.
                 float3 sample_ray_dir = fibonacci_sphere_point(sample_index, RAY_SAMPLE_COUNT_PER_VOXEL);
                 // fibonacci sample_ray_dir をy軸でランダム回転
-                const float random_angle = noise_iqint32(float2(voxel_index, cb_ssvg.frame_count)) * 6.28318530718;// 0~2π
+                const float random_angle = noise_float_to_float(float2(voxel_index, cb_ssvg.frame_count)) * 6.28318530718;// 0~2π
                 const float2 cossin = float2(cos(random_angle), sin(random_angle));
                 sample_ray_dir.xz = float2(sample_ray_dir.x * cossin.x - sample_ray_dir.z * cossin.y, sample_ray_dir.x * cossin.y + sample_ray_dir.z * cossin.x);
             #else

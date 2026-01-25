@@ -79,7 +79,7 @@ void main_cs(
 
     // サンプル方向Jitter.
     //const float phi_jitter = GoldNoise(float2(dtid.xy)) * NGL_2PI;// なぜか不正ピクセルが発生する? Divergentな値で特定の値(994, 581)などを与えるとNaNになる謎の不具合があるため注意.
-    const float phi_jitter = noise_iqint32(float2(dtid.xy)) * NGL_2PI;// こちらは安定.
+    const float phi_jitter = noise_float_to_float(float2(dtid.xy)) * NGL_2PI;// こちらは安定.
 
     for(int slice = 0; slice < slice_count; slice++)
     {

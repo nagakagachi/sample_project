@@ -53,7 +53,7 @@ void main_cs(
                 {
                     // Voxel内ランダムオフセットを加える.
                     const uint seed_0 = cb_ssvg.frame_count + ri;
-                    const float3 random_offset = float3(noise_iqint32(float2(voxel_index, seed_0)), noise_iqint32(float2(update_element_index, seed_0)), noise_iqint32(float2(seed_0, voxel_index))) - 0.5;
+                    const float3 random_offset = float3(noise_float_to_float(float2(voxel_index, seed_0)), noise_float_to_float(float2(update_element_index, seed_0)), noise_float_to_float(float2(seed_0, voxel_index))) - 0.5;
                     probe_sample_pos_ws = probe_cell_center + random_offset * (cb_ssvg.wcp.cell_size * 0.4);// レンジはセルを超えない程度.
 
                     if(read_bbv_voxel_from_world_pos(BitmaskBrickVoxel, cb_ssvg.bbv.grid_resolution, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size_inv, probe_sample_pos_ws) == 0)
