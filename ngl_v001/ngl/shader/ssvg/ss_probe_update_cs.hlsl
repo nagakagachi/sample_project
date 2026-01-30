@@ -61,7 +61,7 @@ void main_cs(
     // ScreenSpaceProbeTexelTile情報テクスチャから取得.
     const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
     const float ss_probe_depth = ss_probe_tile_info.x;
-    const int2 ss_probe_pos_rand_in_tile = int2(ss_probe_tile_info.yz);
+    const int2 ss_probe_pos_rand_in_tile = int2(int(ss_probe_tile_info.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(ss_probe_tile_info.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
     const float ss_candidate_hit_t = ss_probe_tile_info.w;
 
 
@@ -111,9 +111,10 @@ void main_cs(
                         {
                             const int offset = offset_base * (xi * 2 - 1);
                             const float4 ssp_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id + int2(offset, 0), 0));
+                            const int2 ssp_probe_pos_rand_in_tile = int2(int(ssp_info.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(ssp_info.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
                             
                             neighbor_probe_depth_x[xi] = ssp_info.x;
-                            neighbor_probe_global_pos_x[xi] = (ss_probe_tile_id + int2(offset, 0)) * SCREEN_SPACE_PROBE_TILE_SIZE + int2(ssp_info.yz);
+                            neighbor_probe_global_pos_x[xi] = (ss_probe_tile_id + int2(offset, 0)) * SCREEN_SPACE_PROBE_TILE_SIZE + ssp_probe_pos_rand_in_tile;
                         }
                     }
                     // Y方向
@@ -123,9 +124,10 @@ void main_cs(
                         {
                             const int offset = offset_base * (yi * 2 - 1);
                             const float4 ssp_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id + int2(0, offset), 0));
+                            const int2 ssp_probe_pos_rand_in_tile = int2(int(ssp_info.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(ssp_info.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
                         
                             neighbor_probe_depth_y[yi] = ssp_info.x;
-                            neighbor_probe_global_pos_y[yi] = (ss_probe_tile_id + int2(0, offset)) * SCREEN_SPACE_PROBE_TILE_SIZE + int2(ssp_info.yz);
+                            neighbor_probe_global_pos_y[yi] = (ss_probe_tile_id + int2(0, offset)) * SCREEN_SPACE_PROBE_TILE_SIZE + ssp_probe_pos_rand_in_tile;
                         }
                     }
                 }
@@ -161,8 +163,8 @@ void main_cs(
                 const float4 ss_probe_tile_info_ny = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id + int2(0, 1), 0));
                 const float d_x = ss_probe_tile_info_nx.x;
                 const float d_y = ss_probe_tile_info_ny.x;
-                const int2 ss_probe_global_pos_nx = (ss_probe_tile_id + int2(1, 0)) * SCREEN_SPACE_PROBE_TILE_SIZE + int2(ss_probe_tile_info_nx.yz);
-                const int2 ss_probe_global_pos_ny = (ss_probe_tile_id + int2(0, 1)) * SCREEN_SPACE_PROBE_TILE_SIZE + int2(ss_probe_tile_info_ny.yz);
+                const int2 ss_probe_global_pos_nx = (ss_probe_tile_id + int2(1, 0)) * SCREEN_SPACE_PROBE_TILE_SIZE + int2(int(ss_probe_tile_info_nx.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(ss_probe_tile_info_nx.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
+                const int2 ss_probe_global_pos_ny = (ss_probe_tile_id + int2(0, 1)) * SCREEN_SPACE_PROBE_TILE_SIZE + int2(int(ss_probe_tile_info_ny.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(ss_probe_tile_info_ny.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
 
                 float3 approx_normal_ws = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);// 法線デフォルトはカメラ方向の逆.
                 if(0.0 <= ss_probe_tile_info_nx.w && 0.0 <= ss_probe_tile_info_ny.w)
@@ -211,13 +213,13 @@ void main_cs(
     #endif
 
     // 自己遮蔽回避の位置オフセット.
-    //const float ray_origin_view_offset_scale = 0.2;
-    //const float ray_origin_normal_offset_scale = 0.3;
-    //const float3 sample_ray_origin = ss_probe_pos_ws + normalize(view_origin - ss_probe_pos_ws)*ray_origin_view_offset_scale + ss_probe_approx_normal_ws*ray_origin_normal_offset_scale;
+    const float ray_origin_view_offset_scale = cb_ssvg.bbv.cell_size * k_bbv_per_voxel_resolution_inv * 0.5;
+    const float ray_origin_normal_offset_scale = cb_ssvg.bbv.cell_size * k_bbv_per_voxel_resolution_inv * 0.5;
+    const float3 sample_ray_origin = ss_probe_pos_ws + normalize(view_origin - ss_probe_pos_ws)*ray_origin_view_offset_scale + ss_probe_approx_normal_ws*ray_origin_normal_offset_scale;
     
-    const float ray_origin_view_offset_scale = ss_candidate_hit_t;// 前処理で表面からVoxelの外に出るための距離をトレースしている場合.
-    const float ray_origin_normal_offset_scale = 0.1;
-    const float3 sample_ray_origin = ss_probe_pos_ws + normalize(view_origin - ss_probe_pos_ws)*ray_origin_view_offset_scale + ss_probe_approx_normal_ws * ray_origin_normal_offset_scale;
+    //const float ray_origin_view_offset_scale = ss_candidate_hit_t;// 前処理で表面からVoxelの外に出るための距離をトレースしている場合.
+    //const float ray_origin_normal_offset_scale = 0.1;
+    //const float3 sample_ray_origin = ss_probe_pos_ws + normalize(view_origin - ss_probe_pos_ws)*ray_origin_view_offset_scale + ss_probe_approx_normal_ws * ray_origin_normal_offset_scale;
     
     // 自己遮蔽回避の初期ヒット無視回数. 単位はBrick内BitCell.
     const int initial_hit_avoidance_count = 1;
@@ -242,6 +244,6 @@ void main_cs(
     //const float3 hit_debug = ss_probe_approx_normal_ws;
 
     // 仮書き込み.
-    const float temporal_rate = 0.025;
+    const float temporal_rate = 0.01;
     RWScreenSpaceProbeTex[global_pos] = lerp( RWScreenSpaceProbeTex[global_pos], float4(hit_debug, (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0), temporal_rate);
 }

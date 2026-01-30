@@ -35,7 +35,7 @@ void main_cs(
     const int2 probe_id = dtid.xy;// フル解像度に対して 1/8 で, ScreenSpaceProbeごとに1テクセル.
     const int2 global_pos = probe_id * SCREEN_SPACE_PROBE_TILE_SIZE;
     
-	const float3 camera_pos = cb_ngl_sceneview.cb_view_inv_mtx._m03_m13_m23;
+	const float3 camera_pos = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
     uint2 depth_size;
     TexHardwareDepth.GetDimensions(depth_size.x, depth_size.y);
@@ -83,8 +83,10 @@ void main_cs(
 
         // Bbvでヒットしなかった場合はサーフェイスまでの距離をそのまま格納.
         const float surface_hit_distance = (curr_ray_t_ws.x > 0.0)? curr_ray_t_ws.x : trace_distance;
+        // タイル内のプローブ位置をフラットインデックス化.
+        const int probe_pos_flat_index_in_tile = rand_element_in_tile.y * SCREEN_SPACE_PROBE_TILE_SIZE + rand_element_in_tile.x;
         // 配置できたらその情報を格納.
-        RWScreenSpaceProbeTileInfoTex[probe_id] = float4(d, rand_element_in_tile.x, rand_element_in_tile.y, surface_hit_distance);
+        RWScreenSpaceProbeTileInfoTex[probe_id] = float4(d, probe_pos_flat_index_in_tile, 0.0, surface_hit_distance);
     }
     else
     {

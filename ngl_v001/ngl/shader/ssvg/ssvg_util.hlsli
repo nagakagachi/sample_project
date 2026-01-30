@@ -68,7 +68,7 @@ Texture2D<float4>      ScreenSpaceProbeTex;
 RWTexture2D<float4>    RWScreenSpaceProbeTex;
 
 // 1/8 resolution Per ScreenSpaceProbe Tile Info Texture.
-// r.x : Depth, r.y : Tile内X座標, r.z : Tile内Y座標, r.w : Bbvレイトレースヒット距離(プローブレイトレース時の自己遮蔽回避のため).
+// r.x : Depth, r.y : Probe位置オフセットのフラットインデックス, r.z : unused , r.w : Bbvレイトレースヒット距離(プローブレイトレース時の自己遮蔽回避のため).
 Texture2D<float4>      ScreenSpaceProbeTileInfoTex;
 RWTexture2D<float4>    RWScreenSpaceProbeTileInfoTex;
 
