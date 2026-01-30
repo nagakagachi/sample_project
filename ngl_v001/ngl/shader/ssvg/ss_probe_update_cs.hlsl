@@ -244,6 +244,6 @@ void main_cs(
     //const float3 hit_debug = ss_probe_approx_normal_ws;
 
     // 仮書き込み.
-    const float temporal_rate = 0.01;
+    const float temporal_rate = 0.1;
     RWScreenSpaceProbeTex[global_pos] = lerp( RWScreenSpaceProbeTex[global_pos], float4(hit_debug, (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0), temporal_rate);
 }
