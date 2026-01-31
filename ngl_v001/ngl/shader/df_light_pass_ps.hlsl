@@ -268,31 +268,11 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 
             // Spherical Octahedral Map.
             const int2 ss_probe_tile_base_pos = floor(screen_uv * ss_probe_tex_size / SCREEN_SPACE_PROBE_TILE_SIZE)*SCREEN_SPACE_PROBE_TILE_SIZE;
+            // Octmapのテクセルが外側をBilinearSamplingしないようにクランプ.
+            float2 octmap_texel_pos = clamp(OctEncode(gb_normal_ws)*SCREEN_SPACE_PROBE_TILE_SIZE, 0.5, SCREEN_SPACE_PROBE_TILE_SIZE-0.5);
+            float2 ss_probe_sample_texel_pos = ss_probe_tile_base_pos + octmap_texel_pos;
+            float2 ss_probe_sample_uv = ss_probe_sample_texel_pos * ss_probe_texel_uv_size;
 
-            const int2 ss_probe_cell_pos = ss_probe_tile_base_pos + (OctEncode(gb_normal_ws)*SCREEN_SPACE_PROBE_TILE_SIZE);
-            float2 ss_probe_sample_uv = (ss_probe_cell_pos + 0.5) * ss_probe_texel_uv_size;// テクセル中心サンプリング.
-
-                /*
-                float2 ss_probe_tile_sample_uv_base = ss_probe_tile_base_pos * ss_probe_texel_uv_size;
-                float2 ss_probe_sample_uv_debug = ss_probe_tile_sample_uv_base + floor(OctEncode(gb_normal_ws)*SCREEN_SPACE_PROBE_TILE_SIZE) * ss_probe_texel_uv_size;
-                float2 ss_probe_sample_uv_debug2 = ss_probe_tile_sample_uv_base + (OctEncode(gb_normal_ws)*SCREEN_SPACE_PROBE_TILE_SIZE) * ss_probe_texel_uv_size;
-
-                if(0.5 < screen_uv.x)
-                {
-                    ss_probe_sample_uv = ss_probe_sample_uv_debug;
-                }
-                else
-                {
-                    ss_probe_sample_uv = ss_probe_sample_uv_debug2;
-                }
-
-                if(0.5 < screen_uv.y)
-                {
-                    // デバッグ
-                    return (float4((ss_probe_sample_uv_debug2*ss_probe_tex_size) - (ss_probe_sample_uv*ss_probe_tex_size), 0.0, 1.0));
-                }
-                */
-            
             float4 ss_probe_value = ScreenSpaceProbeTex.SampleLevel(samp, ss_probe_sample_uv, 0);
 
             sky_visibility = saturate(length(ss_probe_value.xyz));
