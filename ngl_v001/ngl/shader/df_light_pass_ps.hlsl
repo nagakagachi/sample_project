@@ -265,14 +265,37 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
             uint2 ss_probe_tex_size;
             ScreenSpaceProbeTex.GetDimensions(ss_probe_tex_size.x, ss_probe_tex_size.y);
             const float2 ss_probe_texel_uv_size = 1.0 / float2(ss_probe_tex_size);
-            const int2 ss_probe_count = ss_probe_tex_size / 8;
 
-            // Spherical Octahedral Mapモード.
-            const float2 octmap_local_texel_pos = (floor(screen_uv * float2(ss_probe_count)) / float2(ss_probe_count)) + (OctEncode(gb_normal_ws)*8.0) * ss_probe_texel_uv_size;
+            // Spherical Octahedral Map.
+            const int2 ss_probe_tile_base_pos = floor(screen_uv * ss_probe_tex_size / SCREEN_SPACE_PROBE_TILE_SIZE)*SCREEN_SPACE_PROBE_TILE_SIZE;
+
+            const int2 ss_probe_cell_pos = ss_probe_tile_base_pos + (OctEncode(gb_normal_ws)*SCREEN_SPACE_PROBE_TILE_SIZE);
+            float2 ss_probe_sample_uv = (ss_probe_cell_pos + 0.5) * ss_probe_texel_uv_size;// テクセル中心サンプリング.
+
+                /*
+                float2 ss_probe_tile_sample_uv_base = ss_probe_tile_base_pos * ss_probe_texel_uv_size;
+                float2 ss_probe_sample_uv_debug = ss_probe_tile_sample_uv_base + floor(OctEncode(gb_normal_ws)*SCREEN_SPACE_PROBE_TILE_SIZE) * ss_probe_texel_uv_size;
+                float2 ss_probe_sample_uv_debug2 = ss_probe_tile_sample_uv_base + (OctEncode(gb_normal_ws)*SCREEN_SPACE_PROBE_TILE_SIZE) * ss_probe_texel_uv_size;
+
+                if(0.5 < screen_uv.x)
+                {
+                    ss_probe_sample_uv = ss_probe_sample_uv_debug;
+                }
+                else
+                {
+                    ss_probe_sample_uv = ss_probe_sample_uv_debug2;
+                }
+
+                if(0.5 < screen_uv.y)
+                {
+                    // デバッグ
+                    return (float4((ss_probe_sample_uv_debug2*ss_probe_tex_size) - (ss_probe_sample_uv*ss_probe_tex_size), 0.0, 1.0));
+                }
+                */
             
-            // XYZはSkyVisibleなサンプルレイ方向, WはVisibilityとSsProbe配置位置の有効性の積が格納されている(配置に失敗していたら0).
-            const float4 ss_probe_value = ScreenSpaceProbeTex.SampleLevel(samp, octmap_local_texel_pos, 0);
-            sky_visibility = length(ss_probe_value.xyz);
+            float4 ss_probe_value = ScreenSpaceProbeTex.SampleLevel(samp, ss_probe_sample_uv, 0);
+
+            sky_visibility = saturate(length(ss_probe_value.xyz));
         #else
             uint tex_width, tex_height;
             WcpProbeAtlasTex.GetDimensions(tex_width, tex_height);

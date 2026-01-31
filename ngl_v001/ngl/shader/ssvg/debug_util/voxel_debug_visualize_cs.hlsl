@@ -167,5 +167,16 @@ void main_cs(
     }
     else if(10 == cb_ssvg.debug_view_mode)
     {
+        // Probe Atlas Textureの表示.
+        const int2 texel_pos = dtid.xy;
+
+        const int2 probe_local_pos = (texel_pos % SCREEN_SPACE_PROBE_TILE_SIZE);
+        const float2 probe_uv = (float2(probe_local_pos) + float2(0.5, 0.5)) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+
+        const float3 probe_cell_dir = OctDecode(probe_uv);
+        const float2 probe_oct_uv_debug = OctEncode(probe_cell_dir);
+
+        const float4 probe_data = ScreenSpaceProbeTex.Load(uint3(texel_pos, 0));
+        RWTexWork[dtid.xy] = probe_data * max(0.0, dot(probe_cell_dir, float3(0,1,0))); // OctMapの特定方向のみ表示.
     }
 }

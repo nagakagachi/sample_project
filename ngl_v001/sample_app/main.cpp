@@ -820,7 +820,7 @@ bool AppGame::ExecuteApp()
                 if (ImGui::CollapsingHeader("Voxel Debug"))
                 {
                     NGL_IMGUI_SCOPED_INDENT(10.0f);
-                    ImGui::SliderInt("Debug Texture Mode", &ngl::render::app::SsVg::dbg_view_mode_, -1, 10);
+                    ImGui::SliderInt("Debug Texture Mode", &ngl::render::app::SsVg::dbg_view_mode_, -1, 11);
                 }
 
                 if (ImGui::CollapsingHeader("Probe Debug"))
