@@ -42,6 +42,9 @@ namespace ngl::test
         float probe_sample_offset_view{0.0f};
         float probe_sample_offset_surface_normal{0.0f};
         float probe_sample_offset_bent_normal{0.0f};
+
+        bool enable_ssvg_injection_pass{true};
+        bool enable_ssvg_rejection_pass{true};
     };
     struct RenderFeatureConfig
     {

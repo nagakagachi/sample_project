@@ -616,68 +616,94 @@ namespace ngl::render::app
                 p_command_list->ResourceUavBarrier(bbv_remove_voxel_list_.buffer.Get());
             }
 
-            // Bbv Hollow Voxel Removal Pass.
-            if(target_depth_info.is_enable_removal_pass)
+            // RemovalPass Lambda.
+            auto func_call_removal_pass = [this](
+                rhi::GraphicsCommandListDep* p_command_list,
+                rhi::ConstantBufferPooledHandle scene_cbv,
+                rhi::ConstantBufferPooledHandle cbh_injection_view_info,
+                const InjectionSourceDepthBufferViewInfo& target_depth_info
+            )
             {
-                // Bbv Generate Remove Voxel Info.
-                // 動的な環境で中空になった可能性のあるBbvをクリアするためのリスト生成. Depthからその表面に至るまでの経路上のVoxelが中空であると仮定してリスト化.
+                // Bbv Hollow Voxel Removal Pass.
+                if(target_depth_info.is_enable_removal_pass)
                 {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "GenerateHollowVoxelInfo");
+                    // Bbv Generate Remove Voxel Info.
+                    // 動的な環境で中空になった可能性のあるBbvをクリアするためのリスト生成. Depthからその表面に至るまでの経路上のVoxelが中空であると仮定してリスト化.
+                    {
+                        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "GenerateHollowVoxelInfo");
 
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_bbv_hollow_voxel_info_->SetView(&desc_set, "TexHardwareDepth", target_depth_info.hw_depth_srv.Get());
-                    pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
-                    pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv_);
-                    pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_bbv_hollow_voxel_info_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                    pso_bbv_hollow_voxel_info_->SetView(&desc_set, "RWRemoveVoxelList", bbv_remove_voxel_list_.uav.Get());
-                    pso_bbv_hollow_voxel_info_->SetView(&desc_set, "RWRemoveVoxelDebugList", bbv_remove_voxel_debug_list_.uav.Get());
+                        ngl::rhi::DescriptorSetDep desc_set = {};
+                        pso_bbv_hollow_voxel_info_->SetView(&desc_set, "TexHardwareDepth", target_depth_info.hw_depth_srv.Get());
+                        pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
+                        pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv_);
+                        pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                        pso_bbv_hollow_voxel_info_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+                        pso_bbv_hollow_voxel_info_->SetView(&desc_set, "RWRemoveVoxelList", bbv_remove_voxel_list_.uav.Get());
+                        pso_bbv_hollow_voxel_info_->SetView(&desc_set, "RWRemoveVoxelDebugList", bbv_remove_voxel_debug_list_.uav.Get());
 
-                    p_command_list->SetPipelineState(pso_bbv_hollow_voxel_info_.Get());
-                    p_command_list->SetDescriptorSet(pso_bbv_hollow_voxel_info_.Get(), &desc_set);
-                    pso_bbv_hollow_voxel_info_->DispatchHelper(p_command_list, target_depth_info.atlas_resolution.x, target_depth_info.atlas_resolution.y, 1);  // Screen処理でDispatch.
+                        p_command_list->SetPipelineState(pso_bbv_hollow_voxel_info_.Get());
+                        p_command_list->SetDescriptorSet(pso_bbv_hollow_voxel_info_.Get(), &desc_set);
+                        pso_bbv_hollow_voxel_info_->DispatchHelper(p_command_list, target_depth_info.atlas_resolution.x, target_depth_info.atlas_resolution.y, 1);  // Screen処理でDispatch.
+                        p_command_list->ResourceUavBarrier(bbv_remove_voxel_list_.buffer.Get());
+                        p_command_list->ResourceUavBarrier(bbv_remove_voxel_debug_list_.buffer.Get());
+                    }
+                    // リストに則って実際に除去するパス.
+                    {
+                        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "RemoveHollowVoxel");
 
-                    p_command_list->ResourceUavBarrier(bbv_remove_voxel_list_.buffer.Get());
-                    p_command_list->ResourceUavBarrier(bbv_remove_voxel_debug_list_.buffer.Get());
+                        ngl::rhi::DescriptorSetDep desc_set = {};
+                        pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+                        pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
+                        pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "RemoveVoxelList", bbv_remove_voxel_list_.srv.Get());
+                        p_command_list->SetPipelineState(pso_bbv_remove_hollow_voxel_.Get());
+                        p_command_list->SetDescriptorSet(pso_bbv_remove_hollow_voxel_.Get(), &desc_set);
+                        pso_bbv_remove_hollow_voxel_->DispatchHelper(p_command_list, bbv_hollow_voxel_list_count_max_, 1, 1);// 現状は最大数分Dispatch. あとでIndirectArg化.
+
+                        p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
+                    }
                 }
-                // リストに則って実際に除去するパス.
+            };
+            // InjectionPass Lambda.
+            auto func_call_injection_pass = [this](
+                rhi::GraphicsCommandListDep* p_command_list,
+                rhi::ConstantBufferPooledHandle scene_cbv,
+                rhi::ConstantBufferPooledHandle cbh_injection_view_info,
+                const InjectionSourceDepthBufferViewInfo& target_depth_info
+            )
+            {
+                // Bbv Surface Voxel Injection Pass.
+                if(target_depth_info.is_enable_injection_pass)
                 {
-                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "RemoveHollowVoxel");
+                    NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvInjection");
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-                    pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
-                    pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "RemoveVoxelList", bbv_remove_voxel_list_.srv.Get());
-                    p_command_list->SetPipelineState(pso_bbv_remove_hollow_voxel_.Get());
-                    p_command_list->SetDescriptorSet(pso_bbv_remove_hollow_voxel_.Get(), &desc_set);
-                    pso_bbv_remove_hollow_voxel_->DispatchHelper(p_command_list, bbv_hollow_voxel_list_count_max_, 1, 1);// 現状は最大数分Dispatch. あとでIndirectArg化.
+                    pso_bbv_voxelize_->SetView(&desc_set, "TexHardwareDepth", target_depth_info.hw_depth_srv.Get());
+                    
+                    pso_bbv_voxelize_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
+                    pso_bbv_voxelize_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv_);
+                    pso_bbv_voxelize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
+
+                    pso_bbv_voxelize_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
+                    pso_bbv_voxelize_->SetView(&desc_set, "RWVisibleVoxelList", bbv_fine_update_voxel_list_.uav.Get());
+
+                    p_command_list->SetPipelineState(pso_bbv_voxelize_.Get());
+                    p_command_list->SetDescriptorSet(pso_bbv_voxelize_.Get(), &desc_set);
+                    pso_bbv_voxelize_->DispatchHelper(p_command_list, target_depth_info.atlas_resolution.x, target_depth_info.atlas_resolution.y, 1);  // Screen処理でDispatch.
 
                     p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
+                    p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_list_.buffer.Get());
                 }
-            }
+            };
 
-            // Bbv Surface Voxel Injection Pass.
-            if(target_depth_info.is_enable_injection_pass)
-            {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvInjection");
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_bbv_voxelize_->SetView(&desc_set, "TexHardwareDepth", target_depth_info.hw_depth_srv.Get());
-                
-                pso_bbv_voxelize_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
-                pso_bbv_voxelize_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv_);
-                pso_bbv_voxelize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
-
-                pso_bbv_voxelize_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
-                pso_bbv_voxelize_->SetView(&desc_set, "RWVisibleVoxelList", bbv_fine_update_voxel_list_.uav.Get());
-
-                p_command_list->SetPipelineState(pso_bbv_voxelize_.Get());
-                p_command_list->SetDescriptorSet(pso_bbv_voxelize_.Get(), &desc_set);
-                pso_bbv_voxelize_->DispatchHelper(p_command_list, target_depth_info.atlas_resolution.x, target_depth_info.atlas_resolution.y, 1);  // Screen処理でDispatch.
-
-                p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
-                p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_list_.buffer.Get());
-            }
+            #if 1
+                // Removal Pass -> Injection Pass の順序.
+                func_call_removal_pass(p_command_list, scene_cbv, cbh_injection_view_info, target_depth_info);
+                func_call_injection_pass(p_command_list, scene_cbv, cbh_injection_view_info, target_depth_info);
+            #else
+                // Injection Pass -> Removal Pass の順序.
+                func_call_injection_pass(p_command_list, scene_cbv, cbh_injection_view_info, target_depth_info);
+                func_call_removal_pass(p_command_list, scene_cbv, cbh_injection_view_info, target_depth_info);
+            #endif
         }
 
         // ここから先はDebugBuffer数に依らず実行.

@@ -69,6 +69,8 @@ static bool dbgw_enable_gi_lighting                     = true;
 static float dbgw_gi_probe_sample_offset_view           = 0.0f;
 static float dbgw_gi_probe_sample_offset_surface_normal = 0.0f;
 static float dbgw_gi_probe_sample_offset_bent_normal    = 0.5f;
+static bool dbgw_enable_ssvg_injection_pass = true;
+static bool dbgw_enable_ssvg_rejection_pass = true;
 
 static bool dbgw_enable_gtao_demo = true;
 
@@ -802,14 +804,19 @@ bool AppGame::ExecuteApp()
             ImGui::SliderFloat("Sky Light Intensity", &dbgw_skylight_intensity, 0.0f, 15.0f);
         }
 
-        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
+        ImGui::SetNextItemOpen(true, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("GI"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
-            ImGui::SetNextItemOpen(false, ImGuiCond_Once);
+            ImGui::SetNextItemOpen(true, ImGuiCond_Once);
             if (ImGui::CollapsingHeader("Ssvg"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
+                
+                ImGui::Checkbox("Enable Injection", &dbgw_enable_ssvg_injection_pass);
+                ImGui::Checkbox("Enable Rejection", &dbgw_enable_ssvg_rejection_pass);
+
+                ImGui::SetNextItemOpen(true, ImGuiCond_Once);
                 if (ImGui::CollapsingHeader("Voxel Debug"))
                 {
                     NGL_IMGUI_SCOPED_INDENT(10.0f);
@@ -1117,6 +1124,9 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
                         render_frame_desc.feature_config.gi.probe_sample_offset_view           = dbgw_gi_probe_sample_offset_view;
                         render_frame_desc.feature_config.gi.probe_sample_offset_surface_normal = dbgw_gi_probe_sample_offset_surface_normal;
                         render_frame_desc.feature_config.gi.probe_sample_offset_bent_normal    = dbgw_gi_probe_sample_offset_bent_normal;
+
+                        render_frame_desc.feature_config.gi.enable_ssvg_injection_pass = dbgw_enable_ssvg_injection_pass;
+                        render_frame_desc.feature_config.gi.enable_ssvg_rejection_pass = dbgw_enable_ssvg_rejection_pass;
                     }
                 }
                 // GTAO.

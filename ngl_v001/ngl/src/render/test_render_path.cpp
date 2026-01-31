@@ -359,8 +359,8 @@ namespace ngl::test
                                 setup_desc.depth_buffer_info.primary.atlas_resolution = math::Vec2i(screen_w, screen_h);
                                 setup_desc.depth_buffer_info.primary.h_depth = task_depth->h_depth_;
 
-                                setup_desc.depth_buffer_info.primary.is_enable_injection_pass = true;// Voxel充填利用するか.
-                                setup_desc.depth_buffer_info.primary.is_enable_removal_pass = true;// Voxel除去に利用するか.
+                                setup_desc.depth_buffer_info.primary.is_enable_injection_pass = (render_frame_desc.feature_config.gi.enable_ssvg_injection_pass) && true;// Voxel充填利用するか.
+                                setup_desc.depth_buffer_info.primary.is_enable_removal_pass = (render_frame_desc.feature_config.gi.enable_ssvg_rejection_pass) && true;// Voxel除去に利用するか.
                             }
 
                             // ShadowMapのDepthBuffer登録. 高速化のためにフレーム毎にカスケードスキップするのもありかもしれない.
@@ -374,8 +374,8 @@ namespace ngl::test
                                     shadow_depth_info.atlas_resolution = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_size_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_size_y[cascade_idx]);
                                     shadow_depth_info.h_depth = task_d_shadow->h_shadow_depth_atlas_;
                                     
-                                    shadow_depth_info.is_enable_injection_pass = true;// Voxel充填に利用するか.
-                                    shadow_depth_info.is_enable_removal_pass = true;// Voxel除去に利用するか.
+                                    shadow_depth_info.is_enable_injection_pass = (render_frame_desc.feature_config.gi.enable_ssvg_injection_pass) && true;// Voxel充填に利用するか.
+                                    shadow_depth_info.is_enable_removal_pass = (render_frame_desc.feature_config.gi.enable_ssvg_rejection_pass) && true;// Voxel除去に利用するか.
                                 }
 
                                 setup_desc.depth_buffer_info.sub_array.push_back(shadow_depth_info);
