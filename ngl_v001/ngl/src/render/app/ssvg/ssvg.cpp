@@ -28,7 +28,9 @@ namespace ngl::render::app
     static constexpr u32 k_max_update_probe_work_count = 1024;
     
     // 時間分散するScreenProbeグループのサイズ. 幅がこのサイズのProbeグループ毎に1Fに一つ更新をする. GI-1.0などは2を指定して 4フレームで2x2のグループが更新される.
-    static const int k_screen_probe_update_skip_tile_group_width = 1;
+    static const int k_ss_probe_update_skip_tile_group_width = 1;
+    static const float k_ss_probe_ray_start_offset_scale = sqrt(3.0f);
+    static const float k_ss_probe_ray_normal_offset_scale = 0.2f;
 
 
     // デバッグ.
@@ -472,7 +474,9 @@ namespace ngl::render::app
             p->tex_main_view_depth_size = hw_depth_size;
             p->frame_count = frame_count_;
 
-            p->screen_probe_temporal_update_tile_size = k_screen_probe_update_skip_tile_group_width;
+            p->ss_probe_temporal_update_group_size = k_ss_probe_update_skip_tile_group_width;
+            p->ss_probe_ray_start_offset_scale = k_ss_probe_ray_start_offset_scale;
+            p->ss_probe_ray_normal_offset_scale = k_ss_probe_ray_normal_offset_scale;
 
             p->debug_view_mode = SsVg::dbg_view_mode_;
             p->debug_bbv_probe_mode = SsVg::dbg_bbv_probe_debug_mode_;
@@ -820,7 +824,7 @@ namespace ngl::render::app
                 p_command_list->SetPipelineState(pso_ss_probe_update_.Get());
                 p_command_list->SetDescriptorSet(pso_ss_probe_update_.Get(), &desc_set);
 
-                pso_ss_probe_update_->DispatchHelper(p_command_list, ss_probe_tex_.texture->GetWidth()/k_screen_probe_update_skip_tile_group_width, ss_probe_tex_.texture->GetHeight()/k_screen_probe_update_skip_tile_group_width, 1);
+                pso_ss_probe_update_->DispatchHelper(p_command_list, ss_probe_tex_.texture->GetWidth()/k_ss_probe_update_skip_tile_group_width, ss_probe_tex_.texture->GetHeight()/k_ss_probe_update_skip_tile_group_width, 1);
 
                 p_command_list->ResourceUavBarrier(ss_probe_tex_.texture.Get());
             }

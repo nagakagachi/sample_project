@@ -44,10 +44,10 @@ void main_cs(
 )
 {
     const int2 frame_skip_probe_offset = 
-    int2(cb_ssvg.frame_count % cb_ssvg.screen_probe_temporal_update_tile_size, (cb_ssvg.frame_count / cb_ssvg.screen_probe_temporal_update_tile_size) % cb_ssvg.screen_probe_temporal_update_tile_size);
+    int2(cb_ssvg.frame_count % cb_ssvg.ss_probe_temporal_update_group_size, (cb_ssvg.frame_count / cb_ssvg.ss_probe_temporal_update_group_size) % cb_ssvg.ss_probe_temporal_update_group_size);
 
     const int2 probe_atlas_local_pos = gtid.xy;// タイル内でのローカル位置は時間分散でスキップされないのでそのまま.
-    const int2 probe_id = gid.xy * cb_ssvg.screen_probe_temporal_update_tile_size + frame_skip_probe_offset;// プローブフレームスキップ考慮.
+    const int2 probe_id = gid.xy * cb_ssvg.ss_probe_temporal_update_group_size + frame_skip_probe_offset;// プローブフレームスキップ考慮.
     const int2 global_pos = probe_id * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos;// グローバルテクセル位置計算.
     
     const uint frame_rand = hash_uint32_iq(probe_id + cb_ssvg.frame_count);
@@ -168,7 +168,7 @@ void main_cs(
     {
         // ミスタイルはクリアすべきか, 近傍SSプローブやワールドプローブで補填すべきか.
         //RWScreenSpaceProbeTex[global_pos] = float4(0.0, 0.0, 0.0, 0.0);
-        RWScreenSpaceProbeTex[global_pos].w = 0.0;// ミスタイルはw成分だけクリアして他は残しておく.
+        RWScreenSpaceProbeTex[global_pos].w = 1.0;// ミスタイルは可視扱い.
         return;
     }
 
@@ -184,14 +184,14 @@ void main_cs(
         const float3 sample_ray_dir = OctDecode(((float2(probe_atlas_local_pos) + 0.5 + noise_float2*0.5)*SCREEN_SPACE_PROBE_TILE_SIZE_INV));
     #endif
 
+    // レイ方向オフセット. sqrt(3.0).
+    const float ray_start_offset_scale = cb_ssvg.ss_probe_ray_start_offset_scale;
+    const float ray_origin_start_offset = cb_ssvg.bbv.cell_size * k_bbv_per_voxel_resolution_inv * ray_start_offset_scale;
+    // 近似法線方向オフセット.
+    const float ray_origin_normal_offset_scale = cb_ssvg.ss_probe_ray_normal_offset_scale;
+    const float ray_origin_normal_offset = cb_ssvg.bbv.cell_size * k_bbv_per_voxel_resolution_inv * ray_origin_normal_offset_scale;
 
-    // 自身が所属するBbvを回避するオフセット.
-    const float ray_start_offset_scale = sqrt(3.0);// 自己遮蔽回避のためのセル単位オフセットスケール.
-    const float ray_origin_start_offset_scale = cb_ssvg.bbv.cell_size * k_bbv_per_voxel_resolution_inv * ray_start_offset_scale;// トレース方向へスタート地点をオフセットして自己遮蔽回避.
-    
-    const float ray_origin_normal_offset_scale = cb_ssvg.bbv.cell_size * k_bbv_per_voxel_resolution_inv * 0.2;// 法線方向へのオフセットスケール.
-
-    const float3 sample_ray_origin = ss_probe_pos_ws + sample_ray_dir * ray_origin_start_offset_scale + ss_probe_approx_normal_ws * ray_origin_normal_offset_scale;
+    const float3 sample_ray_origin = ss_probe_pos_ws + sample_ray_dir * ray_origin_start_offset + ss_probe_approx_normal_ws * ray_origin_normal_offset;
 
     // タイルのスクリーンスペースプローブ位置から, タイル内スレッド毎にレイトレース.
     const float trace_distance = 30.0;
@@ -205,10 +205,12 @@ void main_cs(
         cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
         cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
 
-    // ヒットしなかったら空が見えているものとしてその方向を格納.
-    const float3 hit_debug = (0.0 > curr_ray_t_ws.x)? sample_ray_dir : 0.0;
+    //const float3 hit_debug = (0.0 > curr_ray_t_ws.x)? sample_ray_dir : 0.0;// ヒットしなかったら空が見えているものとしてその方向を格納.
+    const float occluted_distance = (0.0 > curr_ray_t_ws.x)? 1.0 : saturate(curr_ray_t_ws.x/trace_distance);// 正規化ヒット距離を格納.
+    const float sky_visibility = (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0;// 負ならヒットなしで空が見えている.
+    const float4 hit_debug = float4(occluted_distance, 0.0, 0.0, sky_visibility);
 
     // 仮書き込み.
     const float temporal_rate = 0.033;
-    RWScreenSpaceProbeTex[global_pos] = lerp( RWScreenSpaceProbeTex[global_pos], float4(hit_debug, (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0), temporal_rate);
+    RWScreenSpaceProbeTex[global_pos] = lerp( RWScreenSpaceProbeTex[global_pos], hit_debug, temporal_rate);
 }
