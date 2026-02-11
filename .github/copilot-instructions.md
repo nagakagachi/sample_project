@@ -27,12 +27,14 @@
 - **既存コードに lower_snake の関数名など混在があるため、厳格な強制はしない**
 
 ## HLSL Shader Naming Rules
-- **HLSLシェーダファイルはファイル名末尾のSuffixでシェーダステージを明示する**
+- **.hlsliファイルはシェーダインクルードファイルとしてSnakeCaseとする**
+- 例: `common_functions.hlsli`, `lighting_models.hlsli`
+- **.hlslファイルは末尾にシェーダステージを示すSuffixを付加する**
 - VertexShader = `_vs.hlsl`
 - PixelShader = `_ps.hlsl`
 - ComputeShader = `_cs.hlsl`
+- DxrShader = `_lib.hlsl`
 - 例: `sample_pixel_shader_ps.hlsl`
-- **例外: 共有ライブラリ/ヘルパー (`*_lib.hlsl`) や include/ 配下はステージSuffixなしを許容**
 
 ## HLSL Shader Entry Point Naming Rules
 - **シェーダのエントリポイント名は `main_[シェーダステージSuffix]` とする**
