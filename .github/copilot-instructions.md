@@ -42,5 +42,47 @@
 - VertexShader = `main_vs`
 - ComputeShader = `main_cs`
 
+## Architecture Overview: Render Task Graph (RTG)
+
+このプロジェクトはグラフィックスパイプラインを **RenderTaskGraph (RTG)** で管理する設計です。
+
+### 基本概念
+- **Pass/Task の依存関係をグラフで管理**
+- **RTG がリソース割り当てと状態遷移を統括**
+- **構築→最適化→実行のフローで処理**
+
+## Project Structure & Namespaces
+
+### モジュール構成
+```
+ngl_v001/ngl/
+├── include/
+│   ├── rhi/           - RHI層 (D3D12抽象化、CommandList/DescriptorPool)
+│   ├── gfx/           - 低レベルグラフィックス (RenderTaskGraph, リソース管理)
+│   ├── framework/     - フレームワーク層 (GfxScene, エンティティシステム)
+│   ├── render/        - レンダリング実装 (Pass, Feature, RTG構築)
+│   ├── resource/      - リソースハンドル、キャッシング
+│   ├── math/          - 数学ユーティリティ
+│   ├── memory/        - メモリ管理（PoolAllocator等）
+│   └── util/          - 一般ユーティリティ (Handle factory, NonCopyable等)
+└── src/               - 対応する実装ファイル
+```
+
+### Namespace 階層
+- **`ngl`**: Root namespace
+- **`ngl::rhi`**: D3D12 低レベルインタフェース
+- **`ngl::gfx`**: グラフィックス中核
+- **`ngl::rtg`**: RenderTaskGraph 関連（ヘッダは gfx/rtg 配下）
+- **`ngl::fwk`**: フレームワーク（GfxScene等）
+- **`ngl::render`**: レンダリング実装、Pass、Feature
+- **`ngl::res`**: リソース管理
+
+## File Layout (Structure Only)
+
+### C++ ファイル対応規則
+- `include/` と `src/` は同じパス/ファイル名で対応させる
+  - 例: `include/framework/gfx_framework.h` ↔ `src/framework/gfx_framework.cpp`
+  - 例: `include/render/test_render_path.h` ↔ `src/render/test_render_path.cpp`
+
 
 
