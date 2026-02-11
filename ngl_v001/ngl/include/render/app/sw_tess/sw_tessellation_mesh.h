@@ -163,9 +163,9 @@ namespace ngl::render::app
 
     private:
         // Game更新.
-        void UpdateOnGame(gfx::scene::SceneMeshGameUpdateCallbackArg arg);
+        void UpdateOnGame(gfx::scene::SceneMeshGameUpdateCallbackArgRef arg);
         // Render更新.
-        void UpdateOnRender(gfx::scene::SceneMeshRenderUpdateCallbackArg arg);
+        void UpdateOnRender(gfx::scene::SceneMeshRenderUpdateCallbackArgRef arg);
 
     private:
     

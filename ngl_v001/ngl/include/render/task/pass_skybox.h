@@ -57,7 +57,7 @@ namespace ngl::render::task
                     res_desc.SetupAsAbsoluteSize(setup_desc_.w, setup_desc_.h, rhi::EResourceFormat::Format_D32_FLOAT);
                     h_depth = builder.CreateResource(res_desc);
                 }
-                h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::access_type::DEPTH_TARGET);
+                h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::AccessType::DEPTH_TARGET);
             
                 if (h_light.IsInvalid())
                 {
@@ -65,7 +65,7 @@ namespace ngl::render::task
                     res_desc.SetupAsAbsoluteSize(setup_desc_.w, setup_desc_.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
                     h_light = builder.CreateResource(res_desc);
                 }
-                h_light_ = builder.RecordResourceAccess(*this, h_light, rtg::access_type::RENDER_TARGET);
+                h_light_ = builder.RecordResourceAccess(*this, h_light, rtg::AccessType::RENDER_TARGET);
             }
 
             {

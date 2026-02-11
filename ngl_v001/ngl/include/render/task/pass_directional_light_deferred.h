@@ -72,32 +72,32 @@ namespace ngl::render::task
 				desc_ = desc;
 				
 				// リソースアクセス定義.
-				h_gb0_ = builder.RecordResourceAccess(*this, h_gb0, rtg::access_type::SHADER_READ);
-				h_gb1_ = builder.RecordResourceAccess(*this, h_gb1, rtg::access_type::SHADER_READ);
-				h_gb2_ = builder.RecordResourceAccess(*this, h_gb2, rtg::access_type::SHADER_READ);
-				h_gb3_ = builder.RecordResourceAccess(*this, h_gb3, rtg::access_type::SHADER_READ);
-				h_velocity_ = builder.RecordResourceAccess(*this, h_velocity, rtg::access_type::SHADER_READ);
-				h_linear_depth_ = builder.RecordResourceAccess(*this, h_linear_depth, rtg::access_type::SHADER_READ);
-				h_shadowmap_ = builder.RecordResourceAccess(*this, h_shadowmap, rtg::access_type::SHADER_READ);
+				h_gb0_ = builder.RecordResourceAccess(*this, h_gb0, rtg::AccessType::SHADER_READ);
+				h_gb1_ = builder.RecordResourceAccess(*this, h_gb1, rtg::AccessType::SHADER_READ);
+				h_gb2_ = builder.RecordResourceAccess(*this, h_gb2, rtg::AccessType::SHADER_READ);
+				h_gb3_ = builder.RecordResourceAccess(*this, h_gb3, rtg::AccessType::SHADER_READ);
+				h_velocity_ = builder.RecordResourceAccess(*this, h_velocity, rtg::AccessType::SHADER_READ);
+				h_linear_depth_ = builder.RecordResourceAccess(*this, h_linear_depth, rtg::AccessType::SHADER_READ);
+				h_shadowmap_ = builder.RecordResourceAccess(*this, h_shadowmap, rtg::AccessType::SHADER_READ);
 
                 if(!h_ssao.IsInvalid())
                 {
-                    h_ssao_ = builder.RecordResourceAccess(*this, h_ssao, rtg::access_type::SHADER_READ);
+                    h_ssao_ = builder.RecordResourceAccess(*this, h_ssao, rtg::AccessType::SHADER_READ);
                 }
 
 				h_prev_light_ = {};
 				if(!h_prev_light.IsInvalid())
 				{
-					h_prev_light_ = builder.RecordResourceAccess(*this, h_prev_light, rtg::access_type::SHADER_READ);
+					h_prev_light_ = builder.RecordResourceAccess(*this, h_prev_light, rtg::AccessType::SHADER_READ);
 				}
 				if(!h_async_compute_result.IsInvalid())
 				{
 					// Asyncの結果を読み取りだけレコードしてFenceさせる.
-					builder.RecordResourceAccess(*this, h_async_compute_result, rtg::access_type::SHADER_READ);
+					builder.RecordResourceAccess(*this, h_async_compute_result, rtg::AccessType::SHADER_READ);
 				}
                 if(!h_bent_normal.IsInvalid())
                 {
-                    h_bent_normal_ = builder.RecordResourceAccess(*this, h_bent_normal, rtg::access_type::SHADER_READ);
+                    h_bent_normal_ = builder.RecordResourceAccess(*this, h_bent_normal, rtg::AccessType::SHADER_READ);
                 }
 
 				if (h_light.IsInvalid())
@@ -105,7 +105,7 @@ namespace ngl::render::task
 					rtg::RtgResourceDesc2D light_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
 					h_light = builder.CreateResource(light_desc);
 				}
-				h_light_ = builder.RecordResourceAccess(*this, h_light, rtg::access_type::RENDER_TARGET);// このTaskで新規生成したRenderTargetを出力先とする.
+				h_light_ = builder.RecordResourceAccess(*this, h_light, rtg::AccessType::RENDER_TARGET);// このTaskで新規生成したRenderTargetを出力先とする.
 			}
 			
 			{

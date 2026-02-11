@@ -26,7 +26,7 @@ namespace ngl::render::app
         math::Vec3u resolution_ = math::Vec3u(32);
         float       cell_size_ = 3.0f;
 
-        u32 total_count = {};
+        u32 total_count_ = {};
         
         u32         flatten_2d_width_ = {};
     };
@@ -52,22 +52,22 @@ namespace ngl::render::app
 
     struct InjectionSourceDepthBufferViewInfo
     {
-        math::Mat34 view_mat{};
-        math::Mat44 proj_mat{};
+        math::Mat34 view_mat_{};
+        math::Mat44 proj_mat_{};
 
-        math::Vec2i atlas_offset{};
-        math::Vec2i atlas_resolution{};
+        math::Vec2i atlas_offset_{};
+        math::Vec2i atlas_resolution_{};
 
-        rtg::RtgResourceHandle h_depth{};// セットアップフェーズ用.
-        rhi::RefSrvDep hw_depth_srv{};// レンダリングフェーズ用.
+        rtg::RtgResourceHandle h_depth_{};// セットアップフェーズ用.
+        rhi::RefSrvDep hw_depth_srv_{};// レンダリングフェーズ用.
 
-        bool is_enable_injection_pass{true};// Voxel充填利用するか.
-        bool is_enable_removal_pass{true};// Voxel除去に利用するか.
+        bool is_enable_injection_pass_{true};// Voxel充填利用するか.
+        bool is_enable_removal_pass_{true};// Voxel除去に利用するか.
     };
     struct InjectionSourceDepthBufferInfo
     {
-        InjectionSourceDepthBufferViewInfo primary{};
-        std::vector<InjectionSourceDepthBufferViewInfo> sub_array{};
+        InjectionSourceDepthBufferViewInfo primary_{};
+        std::vector<InjectionSourceDepthBufferViewInfo> sub_array_{};
     };
 
 
@@ -82,11 +82,11 @@ namespace ngl::render::app
         // 初期化
         struct InitArg
         {
-            math::Vec3u voxel_resolution = math::Vec3u(32);
-            float       voxel_size = 3.0f;
+            math::Vec3u voxel_resolution_ = math::Vec3u(32);
+            float       voxel_size_ = 3.0f;
             
-            math::Vec3u probe_resolution = math::Vec3u(32);
-            float       probe_cell_size = 3.0f;
+            math::Vec3u probe_resolution_ = math::Vec3u(32);
+            float       probe_cell_size_ = 3.0f;
         };
         bool Initialize(ngl::rhi::DeviceDep* p_device, const InitArg& init_arg);
 
@@ -264,11 +264,11 @@ namespace ngl::render::app
 	{
 		struct SetupDesc
 		{
-			int w{};
-			int h{};
+            int w_{};
+            int h_{};
 			
-			rhi::ConstantBufferPooledHandle scene_cbv{};
-            render::app::SsVg* p_ssvg = {};
+            rhi::ConstantBufferPooledHandle scene_cbv_{};
+            render::app::SsVg* p_ssvg_ = {};
 		};
 		SetupDesc desc_{};
 		
@@ -276,13 +276,13 @@ namespace ngl::render::app
 		void Setup(ngl::rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const ngl::render::task::RenderPassViewInfo& view_info,
 			const SetupDesc& desc)
 		{
-            if(!desc.p_ssvg)
+            if(!desc.p_ssvg_)
                 return;
 
 			desc_ = desc;
             
             // ssvgへの情報直接設定をBeginで実行.
-            desc_.p_ssvg->SetImportantPointInfo(view_info.camera_pos, view_info.camera_pose.GetColumn2());
+            desc_.p_ssvg_->SetImportantPointInfo(view_info.camera_pos, view_info.camera_pose.GetColumn2());
 
 			// Render処理のLambdaをRTGに登録.
 			builder.RegisterTaskNodeRenderFunction(this,
@@ -292,8 +292,8 @@ namespace ngl::render::app
 					auto gfx_commandlist = command_list_allocator.GetOrCreate(0);
 					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RenderTaskSsvgBegin");
 
-                    desc_.p_ssvg->DispatchBegin(gfx_commandlist, desc_.scene_cbv, 
-                        view_info, math::Vec2i(desc_.w, desc_.h));
+                    desc_.p_ssvg_->DispatchBegin(gfx_commandlist, desc_.scene_cbv_, 
+                        view_info, math::Vec2i(desc_.w_, desc_.h_));
 				}
 			);
 		}
@@ -304,15 +304,15 @@ namespace ngl::render::app
 	{
 		struct SetupDesc
 		{
-			int w{};
-			int h{};
+            int w_{};
+            int h_{};
 			
-			rhi::ConstantBufferPooledHandle scene_cbv{};
-            render::app::SsVg* p_ssvg = {};
+            rhi::ConstantBufferPooledHandle scene_cbv_{};
+            render::app::SsVg* p_ssvg_ = {};
 
             //ngl::rtg::RtgResourceHandle h_depth{};
 
-            InjectionSourceDepthBufferInfo depth_buffer_info{};
+            InjectionSourceDepthBufferInfo depth_buffer_info_{};
 		};
 		SetupDesc desc_{};
 		
@@ -320,19 +320,19 @@ namespace ngl::render::app
 		void Setup(ngl::rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const ngl::render::task::RenderPassViewInfo& view_info,
 			const SetupDesc& desc)
 		{
-            if(!desc.p_ssvg)
+            if(!desc.p_ssvg_)
                 return;
 
 			desc_ = desc;// コピー.
 			// Rtgリソースセットアップ.
 			{
 				// リソースアクセス定義.
-				desc_.depth_buffer_info.primary.h_depth = builder.RecordResourceAccess(*this, desc_.depth_buffer_info.primary.h_depth, ngl::rtg::access_type::SHADER_READ);
+                desc_.depth_buffer_info_.primary_.h_depth_ = builder.RecordResourceAccess(*this, desc_.depth_buffer_info_.primary_.h_depth_, ngl::rtg::AccessType::SHADER_READ);
 
-                for(int i = 0; i < desc_.depth_buffer_info.sub_array.size(); ++i)
+                for(int i = 0; i < desc_.depth_buffer_info_.sub_array_.size(); ++i)
                 {
                     // ハンドルへのアクセスレコード(ハンドル変わる可能性があるので更新).
-                    desc_.depth_buffer_info.sub_array[i].h_depth = builder.RecordResourceAccess(*this, desc_.depth_buffer_info.sub_array[i].h_depth, ngl::rtg::access_type::SHADER_READ);
+                    desc_.depth_buffer_info_.sub_array_[i].h_depth_ = builder.RecordResourceAccess(*this, desc_.depth_buffer_info_.sub_array_[i].h_depth_, ngl::rtg::AccessType::SHADER_READ);
                 }
 			}
 			// Render処理のLambdaをRTGに登録.
@@ -346,27 +346,27 @@ namespace ngl::render::app
                     InjectionSourceDepthBufferInfo injection_depth_buffer_info{};
                     {
                         {
-                            auto res_depth = builder.GetAllocatedResource(this, desc_.depth_buffer_info.primary.h_depth);
+                            auto res_depth = builder.GetAllocatedResource(this, desc_.depth_buffer_info_.primary_.h_depth_);
                             assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
                             
-                            injection_depth_buffer_info.primary = desc_.depth_buffer_info.primary;// copy.
-                            injection_depth_buffer_info.primary.hw_depth_srv = res_depth.srv_;// リソース設定.
+                            injection_depth_buffer_info.primary_ = desc_.depth_buffer_info_.primary_;// copy.
+    						injection_depth_buffer_info.primary_.hw_depth_srv_ = res_depth.srv_;// リソース設定.
 
-                            for(int i = 0; i < desc_.depth_buffer_info.sub_array.size(); ++i)
+                            for(int i = 0; i < desc_.depth_buffer_info_.sub_array_.size(); ++i)
                             {
-                                auto res_sub_depth = builder.GetAllocatedResource(this, desc_.depth_buffer_info.sub_array[i].h_depth);
+                                auto res_sub_depth = builder.GetAllocatedResource(this, desc_.depth_buffer_info_.sub_array_[i].h_depth_);
                                 assert(res_sub_depth.tex_.IsValid() && res_sub_depth.srv_.IsValid());
 
-                                InjectionSourceDepthBufferViewInfo sub_view_info = desc_.depth_buffer_info.sub_array[i];// copy.
-                                sub_view_info.hw_depth_srv = res_sub_depth.srv_;// リソース設定.
+                                InjectionSourceDepthBufferViewInfo sub_view_info = desc_.depth_buffer_info_.sub_array_[i];// copy.
+    							sub_view_info.hw_depth_srv_ = res_sub_depth.srv_;// リソース設定.
 
-                                injection_depth_buffer_info.sub_array.push_back(sub_view_info);
+                                    injection_depth_buffer_info.sub_array_.push_back(sub_view_info);
                             }
                         }
                     }
 
                     
-                    desc_.p_ssvg->DispatchViewVoxelInjection(gfx_commandlist, desc_.scene_cbv, view_info, injection_depth_buffer_info);
+                    desc_.p_ssvg_->DispatchViewVoxelInjection(gfx_commandlist, desc_.scene_cbv_, view_info, injection_depth_buffer_info);
 				}
 			);
 		}
@@ -379,13 +379,13 @@ namespace ngl::render::app
 
 		struct SetupDesc
 		{
-			int w{};
-			int h{};
+            int w_{};
+            int h_{};
 			
-			rhi::ConstantBufferPooledHandle scene_cbv{};
-            render::app::SsVg* p_ssvg = {};
+            rhi::ConstantBufferPooledHandle scene_cbv_{};
+            render::app::SsVg* p_ssvg_ = {};
 
-            ngl::rtg::RtgResourceHandle h_depth{};
+            ngl::rtg::RtgResourceHandle h_depth_{};
 		};
 		SetupDesc desc_{};
 		
@@ -393,7 +393,7 @@ namespace ngl::render::app
 		void Setup(ngl::rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const ngl::render::task::RenderPassViewInfo& view_info,
 			const SetupDesc& desc)
 		{
-            if(!desc.p_ssvg)
+            if(!desc.p_ssvg_)
                 return;
 
 			desc_ = desc;
@@ -401,11 +401,11 @@ namespace ngl::render::app
 			// Rtgリソースセットアップ.
 			{
 				// リソース定義.
-				ngl::rtg::RtgResourceDesc2D work_desc = ngl::rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R32G32B32A32_FLOAT);
+                ngl::rtg::RtgResourceDesc2D work_desc = ngl::rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w_, desc.h_, rhi::EResourceFormat::Format_R32G32B32A32_FLOAT);
 
 				// リソースアクセス定義.
-				h_depth_ = builder.RecordResourceAccess(*this, desc.h_depth, rtg::access_type::SHADER_READ);
-                h_work_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_desc), rtg::access_type::UAV);
+                h_depth_ = builder.RecordResourceAccess(*this, desc.h_depth_, rtg::AccessType::SHADER_READ);
+                h_work_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_desc), rtg::AccessType::UAV);
 			}
 
 			// Render処理のLambdaをRTGに登録.
@@ -422,7 +422,7 @@ namespace ngl::render::app
 					assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
                     assert(res_work.tex_.IsValid() && res_work.uav_.IsValid());
 
-                    desc_.p_ssvg->DispatchUpdate(gfx_commandlist, desc_.scene_cbv, 
+                    desc_.p_ssvg_->DispatchUpdate(gfx_commandlist, desc_.scene_cbv_, 
                         view_info, res_depth.tex_, res_depth.srv_,
                         res_work.tex_, res_work.uav_);
 				}

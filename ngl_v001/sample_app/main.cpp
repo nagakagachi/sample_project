@@ -45,7 +45,7 @@
 #include "imgui/imgui_interface.h"
 
 // レイトレデモ機能の有効化
-#define NGL_TEST_RAYTRACING_ENABLE 0
+#define NGL_TEST_RAYTRACING_ENABLE 1
 // SwTessellationデモ機能の有効化
 #define NGL_TEST_SWTESSELLATION_ENABLE 0
 
@@ -553,8 +553,9 @@ bool AppGame::Initialize()
 
                 ngl::gfx::ResMeshData::LoadDesc loaddesc{};
 
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), procedural_mesh_data);
                 ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), procedural_mesh_data);
+                tr.SetColumn3(ngl::math::Vec4(-20.0f, 20.0f, 0.0f, 0.0f));
                 mc->SetTransform(ngl::math::Mat34(tr));
             }
 
@@ -578,9 +579,9 @@ bool AppGame::Initialize()
 #else
                 constexpr int tessellation_level = 9;
 #if 1
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), procedural_mesh_data, tessellation_level);
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), procedural_mesh_data, tessellation_level);
 #else
-                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_box, &loaddesc), {}, tessellation_level);
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc), {}, tessellation_level);
                 tr.SetDiagonal(ngl::math::Vec4(60.0f));
                 tr = ngl::math::Mat44::RotAxisY(ngl::math::k_pi_f * 0.1f) * ngl::math::Mat44::RotAxisZ(ngl::math::k_pi_f * -0.15f) * ngl::math::Mat44::RotAxisX(ngl::math::k_pi_f * 0.65f) * tr;
 #endif

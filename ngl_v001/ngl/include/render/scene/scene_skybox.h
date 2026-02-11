@@ -46,7 +46,7 @@ namespace ngl::gfx::scene
             assert(gfx_skybox_entity_.proxy_info_.scene_);
 
             // GfxScene上のSkyBox Proxyの情報を更新するRenderCommand. ProxyはIDによってRenderPassからアクセス可能で, SkyBoxの描画パラメータ送付に利用される.
-            fwk::PushCommonRenderCommand([this](fwk::ComonRenderCommandArg arg)
+            fwk::PushCommonRenderCommand([this](fwk::CommonRenderCommandArgRef arg)
             {
                 // TODO. Entityが破棄されると即時Proxyが破棄されるため, 破棄フレームでもRenderThreadで安全にアクセスできるようにEntityの破棄リスト対応する必要がある.
                 auto* proxy = gfx_skybox_entity_.GetProxy();
@@ -90,7 +90,7 @@ namespace ngl::gfx::scene
                 constexpr auto next_state = rhi::EResourceState::ShaderRead;
                 conv_diffuse_cubemap_state_ = next_state;
                 const auto prevent_aliasing_mode = prevent_aliasing_mode_diffuse_;
-                ngl::fwk::PushCommonRenderCommand([this, prev_state, next_state, prevent_aliasing_mode](ngl::fwk::ComonRenderCommandArg arg)
+                ngl::fwk::PushCommonRenderCommand([this, prev_state, next_state, prevent_aliasing_mode](ngl::fwk::CommonRenderCommandArgRef arg)
                 {
                     auto& global_res = gfx::GlobalRenderResource::Instance();
                     auto* command_list = arg.command_list;
@@ -147,7 +147,7 @@ namespace ngl::gfx::scene
                 constexpr auto next_state = rhi::EResourceState::ShaderRead;
                 conv_ggx_specular_cubemap_state_ = next_state;
                 const auto prevent_aliasing_mode = prevent_aliasing_mode_specular_;
-                ngl::fwk::PushCommonRenderCommand([this, target_mip_level, target_roughness,  prev_state, next_state, prevent_aliasing_mode](ngl::fwk::ComonRenderCommandArg arg)
+                ngl::fwk::PushCommonRenderCommand([this, target_mip_level, target_roughness,  prev_state, next_state, prevent_aliasing_mode](ngl::fwk::CommonRenderCommandArgRef arg)
                 {
                     auto& global_res = gfx::GlobalRenderResource::Instance();
                     auto* command_list = arg.command_list;
@@ -387,7 +387,7 @@ namespace ngl::gfx::scene
                 const rhi::EResourceState cubemap_init_state = generated_cubemap_state_;
                 constexpr rhi::EResourceState cubemap_next_state = rhi::EResourceState::ShaderRead;
                 generated_cubemap_state_ = cubemap_next_state;
-                ngl::fwk::PushCommonRenderCommand([this, cubemap_init_state, cubemap_next_state](ngl::fwk::ComonRenderCommandArg arg)
+                ngl::fwk::PushCommonRenderCommand([this, cubemap_init_state, cubemap_next_state](ngl::fwk::CommonRenderCommandArgRef arg)
                 {
                     auto& global_res = gfx::GlobalRenderResource::Instance();
                     auto* command_list = arg.command_list;
@@ -430,7 +430,7 @@ namespace ngl::gfx::scene
                 const rhi::EResourceState init_state = conv_ggx_dfg_lut_state_;
                 constexpr rhi::EResourceState next_state = rhi::EResourceState::ShaderRead;
                 conv_ggx_dfg_lut_state_ = next_state;
-                ngl::fwk::PushCommonRenderCommand([this, init_state, next_state](ngl::fwk::ComonRenderCommandArg arg)
+                ngl::fwk::PushCommonRenderCommand([this, init_state, next_state](ngl::fwk::CommonRenderCommandArgRef arg)
                 {
                     auto& global_res = gfx::GlobalRenderResource::Instance();
                     auto* command_list = arg.command_list;

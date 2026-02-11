@@ -206,7 +206,7 @@ namespace ngl
 
 		// Nodeからのリソースアクセスを記録.
 		// NodeのRender実行順と一致する順序で登録をする必要がある. この順序によってリソースステート遷移の確定や実リソースの割当等をする.
-		RtgResourceHandle RenderTaskGraphBuilder::RecordResourceAccess(const ITaskNode& node, const RtgResourceHandle res_handle, const ACCESS_TYPE access_type)
+		RtgResourceHandle RenderTaskGraphBuilder::RecordResourceAccess(const ITaskNode& node, const RtgResourceHandle res_handle, const AccessTypeValue AccessType)
 		{
 			if(!IsRecordable())
 			{
@@ -226,13 +226,13 @@ namespace ngl
 			// TaskNodeのタイプによって許可されないアクセスをチェック.
 			//	AsyncComputeで許可されないアクセス等を事前にエラーとする.
 			{
-				if(ETASK_TYPE::COMPUTE ==  node.TaskType())
+				if(ETaskType::COMPUTE ==  node.TaskType())
 				{
 					// AsyncComputeでは SRVとUAVアクセスのみ許可.
 					if(
-						access_type != access_type::SHADER_READ
+						AccessType != AccessType::SHADER_READ
 						&&
-						access_type != access_type::UAV
+						AccessType != AccessType::UAV
 						)
 					{
 						std::cout <<  "[ERROR] AsyncComputeTaskで許可されないアクセスタイプを検出しました. 許可されるアクセスタイプは ShaderRead と UAV のみです." << std::endl;
@@ -256,7 +256,7 @@ namespace ngl
                 std::find_if(node_handle_usage_list_[&node].begin(), node_handle_usage_list_[&node].end(),
                     [&](const NodeHandleUsageInfo& info)
                     {
-                        return (info.handle == res_handle) && (info.access == access_type);
+                        return (info.handle == res_handle) && (info.access == AccessType);
                     })
                 );
 
@@ -264,7 +264,7 @@ namespace ngl
                 {
                     NodeHandleUsageInfo push_info = {};
                     push_info.handle = res_handle;
-                    push_info.access = access_type;
+                    push_info.access = AccessType;
                     node_handle_usage_list_[&node].push_back(push_info);// NodeからHandleへのアクセス情報を記録.
                 }
 			}
@@ -340,7 +340,7 @@ namespace ngl
 			compiled_.node_dependency_fence_.resize(node_sequence_.size());
 			std::fill(compiled_.node_dependency_fence_.begin(), compiled_.node_dependency_fence_.end(), CompiledBuilder::NodeDependency{});// fill -1
 			{
-				std::vector<ETASK_TYPE> task_type = {};
+				std::vector<ETaskType> task_type = {};
 				std::vector<CompiledBuilder::NodeDependency> task_dependency = {};
 				task_type.resize(node_sequence_.size());
 				task_dependency.resize(node_sequence_.size());
@@ -496,11 +496,11 @@ namespace ngl
 			struct ResourceHandleAccessFromNode
 			{
 				const ITaskNode*	p_node_ = {};
-				ACCESS_TYPE			access_type = access_type::INVALID;
+				AccessTypeValue			AccessType = AccessType::INVALID;
 			};
 			struct ResourceHandleAccessInfo
 			{
-				bool access_pattern_[access_type::_MAX] = {};
+				bool access_pattern_[AccessType::_MAX] = {};
 				std::vector<ResourceHandleAccessFromNode> from_node_ = {};
 			};
 			// リソースハンドルへの各ノードからのアクセスタイプ収集.
@@ -520,7 +520,7 @@ namespace ngl
 					// このResourceHandleへのNodeからのアクセスを順にリストアップ.
 					ResourceHandleAccessFromNode access_flow_part = {};
 					access_flow_part.p_node_ = p_node;
-					access_flow_part.access_type = res_access.access;
+					access_flow_part.AccessType = res_access.access;
 
 					// ノードからのアクセス情報を追加.
 					handle_access_info_array[handle_index].from_node_.push_back(access_flow_part);
@@ -532,9 +532,9 @@ namespace ngl
 				for(auto handle_access : handle_access_info_array)
 				{
 					if(
-						handle_access.access_pattern_[access_type::RENDER_TARGET]
+						handle_access.access_pattern_[AccessType::RENDER_TARGET]
 						&&
-						handle_access.access_pattern_[access_type::DEPTH_TARGET]
+						handle_access.access_pattern_[AccessType::DEPTH_TARGET]
 						)
 					{
 						std::cout << "RenderTarget と DepthStencilTarget を同時に指定することは不許可." << std::endl;
@@ -642,16 +642,16 @@ namespace ngl
 							require_desc.GetConcreteTextureSize(res_base_width_, res_base_height_, concrete_w, concrete_h);
 
 							// アクセスタイプでUsageを決定. 同時指定が不可能なパターンのチェックはこれ以前に実行している予定.
-							ACCESS_TYPE_MASK usage_mask = 0;
+							AccessTypeMaskValue usage_mask = 0;
 							{
-								if(handle_access.access_pattern_[access_type::RENDER_TARGET])
-									usage_mask |= access_type_mask::RENDER_TARGET;
-								if(handle_access.access_pattern_[access_type::DEPTH_TARGET])
-									usage_mask |= access_type_mask::DEPTH_TARGET;
-								if(handle_access.access_pattern_[access_type::UAV])
-									usage_mask |= access_type_mask::UAV;
-								if(handle_access.access_pattern_[access_type::SHADER_READ])
-									usage_mask |= access_type_mask::SHADER_READ;
+								if(handle_access.access_pattern_[AccessType::RENDER_TARGET])
+									usage_mask |= AccessTypeMask::RENDER_TARGET;
+								if(handle_access.access_pattern_[AccessType::DEPTH_TARGET])
+									usage_mask |= AccessTypeMask::DEPTH_TARGET;
+								if(handle_access.access_pattern_[AccessType::UAV])
+									usage_mask |= AccessTypeMask::UAV;
+								if(handle_access.access_pattern_[AccessType::SHADER_READ])
+									usage_mask |= AccessTypeMask::SHADER_READ;
 							}
 				
 							ResourceSearchKey search_key = {};
@@ -769,19 +769,19 @@ namespace ngl
 							{
 								// Handleへのアクセスタイプから次のrhiステートを決定.
 								rhi::EResourceState next_state = {};
-								if(access_type::RENDER_TARGET == handle.access)
+								if(AccessType::RENDER_TARGET == handle.access)
 								{
 									next_state = rhi::EResourceState::RenderTarget;
 								}
-								else if(access_type::DEPTH_TARGET == handle.access)
+								else if(AccessType::DEPTH_TARGET == handle.access)
 								{
 									next_state = rhi::EResourceState::DepthWrite;
 								}
-								else if(access_type::UAV == handle.access)
+								else if(AccessType::UAV == handle.access)
 								{
 									next_state = rhi::EResourceState::UnorderedAccess;
 								}
-								else if(access_type::SHADER_READ == handle.access)
+								else if(AccessType::SHADER_READ == handle.access)
 								{
 									next_state = rhi::EResourceState::ShaderRead;
 								}
@@ -895,7 +895,7 @@ namespace ngl
 						const auto curr_state = compiled_.node_handle_state_[res_access.p_node_][handle].curr_;
 						
 						std::cout << "		-Node " << res_access.p_node_->GetDebugNodeName().Get() << std::endl;
-						std::cout << "			-AccessType " << static_cast<int>(res_access.access_type) << std::endl;
+						std::cout << "			-AccessType " << static_cast<int>(res_access.AccessType) << std::endl;
 						// 確定したステート遷移.
 						std::cout << "			-PrevState " << static_cast<int>(prev_state) << std::endl;
 						std::cout << "			-CurrState " << static_cast<int>(curr_state) << std::endl;
@@ -1090,7 +1090,7 @@ namespace ngl
 			{
 				const int node_index = GetNodeSequencePosition(e);
 
-				if(ETASK_TYPE::GRAPHICS == e->TaskType())
+				if(ETaskType::GRAPHICS == e->TaskType())
 				{
 					// Graphics.
 					
@@ -1121,7 +1121,7 @@ namespace ngl
 						render_jobs.push_back(render_func);
 					}
 				}
-				else if(ETASK_TYPE::COMPUTE == e->TaskType())
+				else if(ETaskType::COMPUTE == e->TaskType())
 				{
 					// Compute.
 					
@@ -1252,7 +1252,7 @@ namespace ngl
 						wait_elem.fence = sync_fences[fence_id];
 						wait_elem.fence_value = sync_fences[fence_id]->GetHelperFenceValue();// すでにユニーク値になっているのでそのまま使用.
 						
-						if(ETASK_TYPE::GRAPHICS == queue_type)
+						if(ETaskType::GRAPHICS == queue_type)
 						{
 							out_command_set->graphics.push_back(wait_elem);
 						}
@@ -1272,7 +1272,7 @@ namespace ngl
 						command_elem.type = ERtgSubmitCommandType::CommandList;
 						command_elem.command_list = list;
 							
-						if(ETASK_TYPE::GRAPHICS == queue_type)
+						if(ETaskType::GRAPHICS == queue_type)
 						{
 							// Graphics.
 							out_command_set->graphics.push_back(command_elem);
@@ -1334,7 +1334,7 @@ namespace ngl
 						signal_elem.fence = sync_fences[fence_id];
 						signal_elem.fence_value = sync_fences[fence_id]->GetHelperFenceValue();// すでにユニーク値になっているのでそのまま使用.
 						
-						if(ETASK_TYPE::GRAPHICS == queue_type)
+						if(ETaskType::GRAPHICS == queue_type)
 						{
 							out_command_set->graphics.push_back(signal_elem);
 						}
@@ -1658,25 +1658,25 @@ namespace ngl
 				if(internal_resource_pool_[i].tex_->GetHeight() < static_cast<uint32_t>(key.require_height_))
 					continue;
 				// RTV要求している場合.
-				if(key.usage_ & access_type_mask::RENDER_TARGET)
+				if(key.usage_ & AccessTypeMask::RENDER_TARGET)
 				{
 					if(!internal_resource_pool_[i].rtv_.IsValid())
 						continue;
 				}
 				// DSV要求している場合.
-				if(key.usage_ & access_type_mask::DEPTH_TARGET)
+				if(key.usage_ & AccessTypeMask::DEPTH_TARGET)
 				{
 					if(!internal_resource_pool_[i].dsv_.IsValid())
 						continue;
 				}
 				// UAV要求している場合.
-				if(key.usage_ & access_type_mask::UAV)
+				if(key.usage_ & AccessTypeMask::UAV)
 				{
 					if(!internal_resource_pool_[i].uav_.IsValid())
 						continue;
 				}
 				// SRV要求している場合.
-				if(key.usage_ & access_type_mask::SHADER_READ)
+				if(key.usage_ & AccessTypeMask::SHADER_READ)
 				{
 					if(!internal_resource_pool_[i].srv_.IsValid())
 						continue;
@@ -1707,13 +1707,13 @@ namespace ngl
 							
 					desc.bind_flag = 0;
 					{
-						if(key.usage_ & access_type_mask::RENDER_TARGET)
+						if(key.usage_ & AccessTypeMask::RENDER_TARGET)
 							desc.bind_flag |= rhi::ResourceBindFlag::RenderTarget;
-						if(key.usage_ & access_type_mask::DEPTH_TARGET)
+						if(key.usage_ & AccessTypeMask::DEPTH_TARGET)
 							desc.bind_flag |= rhi::ResourceBindFlag::DepthStencil;
-						if(key.usage_ & access_type_mask::UAV)
+						if(key.usage_ & AccessTypeMask::UAV)
 							desc.bind_flag |= rhi::ResourceBindFlag::UnorderedAccess;
-						if(key.usage_ & access_type_mask::SHADER_READ)
+						if(key.usage_ & AccessTypeMask::SHADER_READ)
 							desc.bind_flag |= rhi::ResourceBindFlag::ShaderResource;
 					}
 				}
@@ -1732,7 +1732,7 @@ namespace ngl
 					return -1;
 				}
 				// Rtv.
-				if(key.usage_ & access_type_mask::RENDER_TARGET)
+				if(key.usage_ & AccessTypeMask::RENDER_TARGET)
 				{
 					new_rtv.Reset(new rhi::RenderTargetViewDep());
 					if (!new_rtv->Initialize(p_device_, new_tex.Get(), 0, 0, 1))
@@ -1742,7 +1742,7 @@ namespace ngl
 					}
 				}
 				// Dsv.
-				if(key.usage_ & access_type_mask::DEPTH_TARGET)
+				if(key.usage_ & AccessTypeMask::DEPTH_TARGET)
 				{
 					new_dsv.Reset(new rhi::DepthStencilViewDep());
 					if (!new_dsv->Initialize(p_device_, new_tex.Get(), 0, 0, 1))
@@ -1752,7 +1752,7 @@ namespace ngl
 					}
 				}
 				// Uav.
-				if(key.usage_ & access_type_mask::UAV)
+				if(key.usage_ & AccessTypeMask::UAV)
 				{
 					new_uav.Reset(new rhi::UnorderedAccessViewDep());
 					if (!new_uav->InitializeRwTexture(p_device_, new_tex.Get(), 0, 0, 1))
@@ -1762,7 +1762,7 @@ namespace ngl
 					}
 				}
 				// Srv.
-				if(key.usage_ & access_type_mask::SHADER_READ)
+				if(key.usage_ & AccessTypeMask::SHADER_READ)
 				{
 					new_srv.Reset(new rhi::ShaderResourceViewDep());
 					if (!new_srv->InitializeAsTexture(p_device_, new_tex.Get(), 0, 1, 0, 1))

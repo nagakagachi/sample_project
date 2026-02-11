@@ -58,7 +58,7 @@ namespace ngl::gfx
         return true;
     }
 
-    void StandardRenderModel::BindModelResourceCallback(BindModelResourceOptionCallbackArg arg)
+    void StandardRenderModel::BindModelResourceCallback(BindModelResourceOptionCallbackArgRef arg)
     {
         auto default_white_tex_srv  = GlobalRenderResource::Instance().default_resource_.tex_white->ref_view_;
         auto default_black_tex_srv  = GlobalRenderResource::Instance().default_resource_.tex_black->ref_view_;
@@ -94,7 +94,7 @@ namespace ngl::gfx
         if (draw_shape_override_)
         {
             // プロシージャル描画関数が設定されている場合はそちらを呼び出す.
-            _DrawShapeOverrideFuncionArg draw_shape_override_arg;
+            DrawShapeOverrideFunctionArg draw_shape_override_arg;
             {
                 draw_shape_override_arg.command_list = p_command_list;
                 draw_shape_override_arg.shape_index  = shape_index;

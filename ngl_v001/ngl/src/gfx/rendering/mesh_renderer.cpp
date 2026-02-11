@@ -60,7 +60,7 @@ namespace ngl
                         pso->SetView(&desc_set, "cb_ngl_instance", &mesh_instance_cbh->cbv_);
 
                         // モデルのマテリアル/モデル固有リソースのDescriptorSetの設定
-                        _BindModelResourceOptionCallbackArg bind_model_resource_option_callback_arg;
+                        BindModelResourceOptionCallbackArg bind_model_resource_option_callback_arg;
                         {
                             bind_model_resource_option_callback_arg.pso         = pso;
                             bind_model_resource_option_callback_arg.desc_set    = &desc_set;

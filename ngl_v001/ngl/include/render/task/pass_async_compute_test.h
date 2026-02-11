@@ -39,11 +39,11 @@ namespace ngl::render::task
 				rtg::RtgResourceDesc2D work_tex_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
 
 				// リソースアクセス定義.
-				h_work_tex_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_tex_desc), rtg::access_type::UAV);
+				h_work_tex_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_tex_desc), rtg::AccessType::UAV);
 
 				// 入力リソーステスト.
 				if(!h_input_test.IsInvalid())
-					builder.RecordResourceAccess(*this, h_input_test, rtg::access_type::SHADER_READ);
+					builder.RecordResourceAccess(*this, h_input_test, rtg::AccessType::SHADER_READ);
 			}
 
 			{

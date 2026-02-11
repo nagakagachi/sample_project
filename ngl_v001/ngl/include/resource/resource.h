@@ -115,7 +115,7 @@ namespace res
 		
 
 	private:
-		friend class ResoucePrivateAccess;
+		friend class ResourcePrivateAccess;
 		detail::ResourceHolderHandle GetRawHandle() { return raw_handle_; }
 
 		// Resouce基底ポインタを保持するオブジェクトの参照カウンタ.
@@ -163,7 +163,7 @@ namespace res
 
 		const char* GetFileName() const { return filename_.c_str(); }
 	private:
-		friend class ResoucePrivateAccess;
+		friend class ResourcePrivateAccess;
 
 		void SetResourceInfo(const char* filename);
 
@@ -176,7 +176,7 @@ namespace res
 
 
 	// Privateアクセス用.
-	class ResoucePrivateAccess
+	class ResourcePrivateAccess
 	{
 	public:
 		static inline void SetResourceInfo(Resource* p_res, const char* filename)

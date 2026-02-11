@@ -42,12 +42,12 @@ namespace ngl::render::task
 				// Async Computeの出力リソースを読み取るテスト.
 				if(!h_tex_compute.IsInvalid())
 				{
-					builder.RecordResourceAccess(*this, h_tex_compute, rtg::access_type::SHADER_READ);
+					builder.RecordResourceAccess(*this, h_tex_compute, rtg::AccessType::SHADER_READ);
 				}
 				
 				// リソースアクセス定義.
-				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::access_type::SHADER_READ);
-				h_linear_depth_ = builder.RecordResourceAccess(*this, builder.CreateResource(linear_depth_desc), rtg::access_type::UAV);
+				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::AccessType::SHADER_READ);
+				h_linear_depth_ = builder.RecordResourceAccess(*this, builder.CreateResource(linear_depth_desc), rtg::AccessType::UAV);
 			}
 
 			{

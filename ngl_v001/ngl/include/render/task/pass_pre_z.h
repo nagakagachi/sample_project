@@ -40,7 +40,7 @@ namespace ngl::render::task
             // Rtgリソースセットアップ.
             {
                 rtg::RtgResourceDesc2D depth_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, gfx::MaterialPassPsoCreator_depth::k_depth_format);
-                h_depth_ = builder.RecordResourceAccess(*this, builder.CreateResource(depth_desc), rtg::access_type::DEPTH_TARGET);
+                h_depth_ = builder.RecordResourceAccess(*this, builder.CreateResource(depth_desc), rtg::AccessType::DEPTH_TARGET);
             }
 				
             // Render処理のLambdaをRtgに登録.

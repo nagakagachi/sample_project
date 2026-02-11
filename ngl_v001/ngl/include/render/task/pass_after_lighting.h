@@ -45,8 +45,8 @@ namespace ngl::render::task
 				desc_ = desc;
 				
 				// リソースアクセス定義.
-				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::access_type::DEPTH_TARGET);
-				h_light_ = builder.RecordResourceAccess(*this, h_light, rtg::access_type::RENDER_TARGET);
+				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::AccessType::DEPTH_TARGET);
+				h_light_ = builder.RecordResourceAccess(*this, h_light, rtg::AccessType::RENDER_TARGET);
 			}
 			
 			// Render処理のLambdaをRTGに登録.

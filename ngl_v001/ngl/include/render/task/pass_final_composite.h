@@ -70,39 +70,39 @@ namespace ngl::render::task
 			
 			// Rtgリソースセットアップ.
 			{
-				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::access_type::SHADER_READ);
-				h_linear_depth_ = builder.RecordResourceAccess(*this, h_linear_depth, rtg::access_type::SHADER_READ);
-				h_light_ = builder.RecordResourceAccess(*this, h_light, rtg::access_type::SHADER_READ);
+				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::AccessType::SHADER_READ);
+				h_linear_depth_ = builder.RecordResourceAccess(*this, h_linear_depth, rtg::AccessType::SHADER_READ);
+				h_light_ = builder.RecordResourceAccess(*this, h_light, rtg::AccessType::SHADER_READ);
 
-				h_swapchain_ = builder.RecordResourceAccess(*this, h_swapchain, rtg::access_type::RENDER_TARGET);
+				h_swapchain_ = builder.RecordResourceAccess(*this, h_swapchain, rtg::AccessType::RENDER_TARGET);
 
 				if(!h_rt_result.IsInvalid())
 				{
-					h_rt_result_ = builder.RecordResourceAccess(*this, h_rt_result, rtg::access_type::SHADER_READ);
+					h_rt_result_ = builder.RecordResourceAccess(*this, h_rt_result, rtg::AccessType::SHADER_READ);
 				}
 				if(!h_other_rtg_out.IsInvalid())
 				{
-					h_other_rtg_out_ = builder.RecordResourceAccess(*this, h_other_rtg_out, rtg::access_type::SHADER_READ);
+					h_other_rtg_out_ = builder.RecordResourceAccess(*this, h_other_rtg_out, rtg::AccessType::SHADER_READ);
 				}
 				if(!h_general_debug.IsInvalid())
 				{
-					h_general_debug_ = builder.RecordResourceAccess(*this, h_general_debug, rtg::access_type::SHADER_READ);
+					h_general_debug_ = builder.RecordResourceAccess(*this, h_general_debug, rtg::AccessType::SHADER_READ);
 				}
 
 				if(!h_gbuffer0.IsInvalid())
-					h_gbuffer0_ = builder.RecordResourceAccess(*this, h_gbuffer0, rtg::access_type::SHADER_READ);
+					h_gbuffer0_ = builder.RecordResourceAccess(*this, h_gbuffer0, rtg::AccessType::SHADER_READ);
 				if(!h_gbuffer1.IsInvalid())
-					h_gbuffer1_ = builder.RecordResourceAccess(*this, h_gbuffer1, rtg::access_type::SHADER_READ);
+					h_gbuffer1_ = builder.RecordResourceAccess(*this, h_gbuffer1, rtg::AccessType::SHADER_READ);
 				if(!h_gbuffer2.IsInvalid())
-					h_gbuffer2_ = builder.RecordResourceAccess(*this, h_gbuffer2, rtg::access_type::SHADER_READ);
+					h_gbuffer2_ = builder.RecordResourceAccess(*this, h_gbuffer2, rtg::AccessType::SHADER_READ);
 				if(!h_gbuffer3.IsInvalid())
-					h_gbuffer3_ = builder.RecordResourceAccess(*this, h_gbuffer3, rtg::access_type::SHADER_READ);
+					h_gbuffer3_ = builder.RecordResourceAccess(*this, h_gbuffer3, rtg::AccessType::SHADER_READ);
 				if(!h_dshadow.IsInvalid())
-					h_dshadow_ = builder.RecordResourceAccess(*this, h_dshadow, rtg::access_type::SHADER_READ);
+					h_dshadow_ = builder.RecordResourceAccess(*this, h_dshadow, rtg::AccessType::SHADER_READ);
 				
 				// リソースアクセス期間による再利用のテスト用. 作業用の一時リソース.
 				rtg::RtgResourceDesc2D temp_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R11G11B10_FLOAT);
-				auto temp_res0 = builder.RecordResourceAccess(*this, builder.CreateResource(temp_desc), rtg::access_type::RENDER_TARGET);
+				auto temp_res0 = builder.RecordResourceAccess(*this, builder.CreateResource(temp_desc), rtg::AccessType::RENDER_TARGET);
 				h_tmp_ = temp_res0;
 			}
 			

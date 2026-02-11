@@ -54,7 +54,7 @@ namespace ngl::render::app
         grid_.cell_size_ = bbv_cell_size;
 
         const u32 total_count = grid_.resolution_.x * grid_.resolution_.y * grid_.resolution_.z;
-        grid_.total_count = total_count;
+        grid_.total_count_ = total_count;
         grid_.flatten_2d_width_ = static_cast<u32>(std::ceil(std::sqrt(static_cast<float>(total_count))));
     }
     void ToroidalGridUpdater::UpdateGrid(const math::Vec3& important_pos)
@@ -90,8 +90,8 @@ namespace ngl::render::app
     // 初期化
     bool BitmaskBrickVoxel::Initialize(ngl::rhi::DeviceDep* p_device, const InitArg& init_arg)
     {
-        bbv_grid_updater_.Initialize(init_arg.voxel_resolution, init_arg.voxel_size);
-        wcp_grid_updater_.Initialize(init_arg.probe_resolution, init_arg.probe_cell_size);
+        bbv_grid_updater_.Initialize(init_arg.voxel_resolution_, init_arg.voxel_size_);
+        wcp_grid_updater_.Initialize(init_arg.probe_resolution_, init_arg.probe_cell_size_);
 
 
         const u32 voxel_count = bbv_grid_updater_.Get().resolution_.x * bbv_grid_updater_.Get().resolution_.y * bbv_grid_updater_.Get().resolution_.z;
@@ -335,7 +335,7 @@ namespace ngl::render::app
             rhi::TextureDep::Desc desc = {};
             desc.type = rhi::ETextureType::Texture2D;
             desc.width =  wcp_grid_updater_.Get().flatten_2d_width_ * k_probe_octmap_width_with_border;
-            desc.height = static_cast<u32>(std::ceil((wcp_grid_updater_.Get().total_count + wcp_grid_updater_.Get().flatten_2d_width_-1) / wcp_grid_updater_.Get().flatten_2d_width_)) * k_probe_octmap_width_with_border;
+            desc.height = static_cast<u32>(std::ceil((wcp_grid_updater_.Get().total_count_ + wcp_grid_updater_.Get().flatten_2d_width_-1) / wcp_grid_updater_.Get().flatten_2d_width_)) * k_probe_octmap_width_with_border;
             desc.depth = 1;
             desc.mip_count = 1;
             desc.array_size = 1;
@@ -501,7 +501,7 @@ namespace ngl::render::app
 
                 p_command_list->SetPipelineState(pso_bbv_clear_.Get());
                 p_command_list->SetDescriptorSet(pso_bbv_clear_.Get(), &desc_set);
-                pso_bbv_clear_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
+                pso_bbv_clear_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count_, 1, 1);
 
                 p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
@@ -516,7 +516,7 @@ namespace ngl::render::app
 
                 p_command_list->SetPipelineState(pso_wcp_clear_.Get());
                 p_command_list->SetDescriptorSet(pso_wcp_clear_.Get(), &desc_set);
-                pso_wcp_clear_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
+                pso_wcp_clear_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count_, 1, 1);
 
                 p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
@@ -551,7 +551,7 @@ namespace ngl::render::app
 
             p_command_list->SetPipelineState(pso_bbv_begin_update_.Get());
             p_command_list->SetDescriptorSet(pso_bbv_begin_update_.Get(), &desc_set);
-            pso_bbv_begin_update_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
+            pso_bbv_begin_update_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count_, 1, 1);
 
             p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
             p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
@@ -569,35 +569,35 @@ namespace ngl::render::app
 
         auto& global_res = gfx::GlobalRenderResource::Instance();
 
-        const int num_depth_buffer = 1 + depth_buffer_info.sub_array.size();
+        const int num_depth_buffer = 1 + static_cast<int>(depth_buffer_info.sub_array_.size());
         for(int i = 0; i < num_depth_buffer; ++i)
         {
             #if 1
                 // 最期にPrimaryを実行するように順序入れ替え. Primaryで可視な表面のInjectionが最優先になるようにするため.
-                const InjectionSourceDepthBufferViewInfo& target_depth_info = (i == (num_depth_buffer - 1)) ? depth_buffer_info.primary : depth_buffer_info.sub_array[i];
+                const InjectionSourceDepthBufferViewInfo& target_depth_info = (i == (num_depth_buffer - 1)) ? depth_buffer_info.primary_ : depth_buffer_info.sub_array_[i];
             #else
                 // 0番はPrimary, それ以降はSubかを参照.
-                const InjectionSourceDepthBufferViewInfo& target_depth_info = (i == 0) ? depth_buffer_info.primary : depth_buffer_info.sub_array[i - 1];
+                const InjectionSourceDepthBufferViewInfo& target_depth_info = (i == 0) ? depth_buffer_info.primary_ : depth_buffer_info.sub_array_[i - 1];
             #endif
             
-            if(!target_depth_info.is_enable_injection_pass && !target_depth_info.is_enable_removal_pass)
+            if(!target_depth_info.is_enable_injection_pass_ && !target_depth_info.is_enable_removal_pass_)
                 continue;
 
             auto cbh_injection_view_info = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(BbvSurfaceInjectionViewInfo));
             {
                 auto* p = cbh_injection_view_info->buffer_.MapAs<BbvSurfaceInjectionViewInfo>();
                 {
-                    p->cb_view_mtx = target_depth_info.view_mat;
-                    p->cb_proj_mtx = target_depth_info.proj_mat;
-                    p->cb_view_inv_mtx = ngl::math::Mat34::Inverse(target_depth_info.view_mat);
-                    p->cb_proj_inv_mtx = ngl::math::Mat44::Inverse(target_depth_info.proj_mat);
-                    p->cb_ndc_z_to_view_z_coef =  CalcViewDepthReconstructCoefFromProjectionMatrix(target_depth_info.proj_mat);
+                    p->cb_view_mtx = target_depth_info.view_mat_;
+                    p->cb_proj_mtx = target_depth_info.proj_mat_;
+                    p->cb_view_inv_mtx = ngl::math::Mat34::Inverse(target_depth_info.view_mat_);
+                    p->cb_proj_inv_mtx = ngl::math::Mat44::Inverse(target_depth_info.proj_mat_);
+                    p->cb_ndc_z_to_view_z_coef =  CalcViewDepthReconstructCoefFromProjectionMatrix(target_depth_info.proj_mat_);
                     // ViewDepthBufferの他, ShadowMapによるInjectionもしたいのでShadowMapAtlas用にオフセット考慮.
                     p->cb_view_depth_buffer_offset_size = math::Vec4i(
-                        target_depth_info.atlas_offset.x,
-                        target_depth_info.atlas_offset.y,
-                        target_depth_info.atlas_resolution.x,
-                        target_depth_info.atlas_resolution.y
+                        target_depth_info.atlas_offset_.x,
+                        target_depth_info.atlas_offset_.y,
+                        target_depth_info.atlas_resolution_.x,
+                        target_depth_info.atlas_resolution_.y
                     );
                 }
                 cbh_injection_view_info->buffer_.Unmap();
@@ -629,7 +629,7 @@ namespace ngl::render::app
             )
             {
                 // Bbv Hollow Voxel Removal Pass.
-                if(target_depth_info.is_enable_removal_pass)
+                if(target_depth_info.is_enable_removal_pass_)
                 {
                     // Bbv Generate Remove Voxel Info.
                     // 動的な環境で中空になった可能性のあるBbvをクリアするためのリスト生成. Depthからその表面に至るまでの経路上のVoxelが中空であると仮定してリスト化.
@@ -637,7 +637,7 @@ namespace ngl::render::app
                         NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "GenerateHollowVoxelInfo");
 
                         ngl::rhi::DescriptorSetDep desc_set = {};
-                        pso_bbv_hollow_voxel_info_->SetView(&desc_set, "TexHardwareDepth", target_depth_info.hw_depth_srv.Get());
+                        pso_bbv_hollow_voxel_info_->SetView(&desc_set, "TexHardwareDepth", target_depth_info.hw_depth_srv_.Get());
                         pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
                         pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv_);
                         pso_bbv_hollow_voxel_info_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv_);
@@ -647,7 +647,7 @@ namespace ngl::render::app
 
                         p_command_list->SetPipelineState(pso_bbv_hollow_voxel_info_.Get());
                         p_command_list->SetDescriptorSet(pso_bbv_hollow_voxel_info_.Get(), &desc_set);
-                        pso_bbv_hollow_voxel_info_->DispatchHelper(p_command_list, target_depth_info.atlas_resolution.x, target_depth_info.atlas_resolution.y, 1);  // Screen処理でDispatch.
+                        pso_bbv_hollow_voxel_info_->DispatchHelper(p_command_list, target_depth_info.atlas_resolution_.x, target_depth_info.atlas_resolution_.y, 1);  // Screen処理でDispatch.
                         p_command_list->ResourceUavBarrier(bbv_remove_voxel_list_.buffer.Get());
                         p_command_list->ResourceUavBarrier(bbv_remove_voxel_debug_list_.buffer.Get());
                     }
@@ -676,12 +676,12 @@ namespace ngl::render::app
             )
             {
                 // Bbv Surface Voxel Injection Pass.
-                if(target_depth_info.is_enable_injection_pass)
+                if(target_depth_info.is_enable_injection_pass_)
                 {
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvInjection");
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_bbv_voxelize_->SetView(&desc_set, "TexHardwareDepth", target_depth_info.hw_depth_srv.Get());
+                    pso_bbv_voxelize_->SetView(&desc_set, "TexHardwareDepth", target_depth_info.hw_depth_srv_.Get());
                     
                     pso_bbv_voxelize_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv_);
                     pso_bbv_voxelize_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv_);
@@ -692,7 +692,7 @@ namespace ngl::render::app
 
                     p_command_list->SetPipelineState(pso_bbv_voxelize_.Get());
                     p_command_list->SetDescriptorSet(pso_bbv_voxelize_.Get(), &desc_set);
-                    pso_bbv_voxelize_->DispatchHelper(p_command_list, target_depth_info.atlas_resolution.x, target_depth_info.atlas_resolution.y, 1);  // Screen処理でDispatch.
+                    pso_bbv_voxelize_->DispatchHelper(p_command_list, target_depth_info.atlas_resolution_.x, target_depth_info.atlas_resolution_.y, 1);  // Screen処理でDispatch.
 
                     p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
                     p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_list_.buffer.Get());
@@ -774,7 +774,7 @@ namespace ngl::render::app
 
             p_command_list->SetPipelineState(pso_bbv_element_update_.Get());
             p_command_list->SetDescriptorSet(pso_bbv_element_update_.Get(), &desc_set);
-            pso_bbv_element_update_->DispatchHelper(p_command_list, (bbv_grid_updater_.Get().total_count + (BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT)) / (BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT+1), 1, 1);
+            pso_bbv_element_update_->DispatchHelper(p_command_list, (bbv_grid_updater_.Get().total_count_ + (BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT)) / (BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT+1), 1, 1);
 
             p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
         }
@@ -845,7 +845,7 @@ namespace ngl::render::app
 
                 p_command_list->SetPipelineState(pso_wcp_begin_update_.Get());
                 p_command_list->SetDescriptorSet(pso_wcp_begin_update_.Get(), &desc_set);
-                pso_wcp_begin_update_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
+                pso_wcp_begin_update_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count_, 1, 1);
 
                 p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
@@ -925,7 +925,7 @@ namespace ngl::render::app
                 p_command_list->SetPipelineState(pso_wcp_coarse_ray_sample_.Get());
                 p_command_list->SetDescriptorSet(pso_wcp_coarse_ray_sample_.Get(), &desc_set);
                 // 全Probe更新のスキップ要素分考慮したDispatch.
-                pso_wcp_coarse_ray_sample_->DispatchHelper(p_command_list, (wcp_grid_updater_.Get().total_count + (WCP_ALL_ELEMENT_UPDATE_SKIP_COUNT)) / (WCP_ALL_ELEMENT_UPDATE_SKIP_COUNT+1), 1, 1);
+                pso_wcp_coarse_ray_sample_->DispatchHelper(p_command_list, (wcp_grid_updater_.Get().total_count_ + (WCP_ALL_ELEMENT_UPDATE_SKIP_COUNT)) / (WCP_ALL_ELEMENT_UPDATE_SKIP_COUNT+1), 1, 1);
 
                 p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
@@ -942,7 +942,7 @@ namespace ngl::render::app
                 p_command_list->SetDescriptorSet(pso_wcp_fill_probe_octmap_atlas_border_.Get(), &desc_set);
 
                 // 全Probe更新のスキップ要素分考慮したDispatch.
-                pso_wcp_fill_probe_octmap_atlas_border_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
+                pso_wcp_fill_probe_octmap_atlas_border_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count_, 1, 1);
 
                 p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
             }
@@ -1016,7 +1016,7 @@ namespace ngl::render::app
             p_command_list->SetDescriptorSet(pso_bbv_debug_probe_.Get(), &desc_set);
 
             p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
-            p_command_list->DrawInstanced(6 * bbv_grid_updater_.Get().total_count, 1, 0, 0);
+            p_command_list->DrawInstanced(6 * bbv_grid_updater_.Get().total_count_, 1, 0, 0);
         }
         if (0 <= SsVg::dbg_wcp_probe_debug_mode_)
         {
@@ -1036,7 +1036,7 @@ namespace ngl::render::app
             p_command_list->SetDescriptorSet(pso_wcp_debug_probe_.Get(), &desc_set);
 
             p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
-            p_command_list->DrawInstanced(6 * wcp_grid_updater_.Get().total_count, 1, 0, 0);
+            p_command_list->DrawInstanced(6 * wcp_grid_updater_.Get().total_count_, 1, 0, 0);
         }
 
     }
@@ -1056,11 +1056,11 @@ namespace ngl::render::app
         ssvg_instance_ = new BitmaskBrickVoxel();
         BitmaskBrickVoxel::InitArg init_arg = {};
         {
-            init_arg.voxel_resolution = bbv_resolution;
-            init_arg.voxel_size       = bbv_cell_size;
+            init_arg.voxel_resolution_ = bbv_resolution;
+            init_arg.voxel_size_       = bbv_cell_size;
 
-            init_arg.probe_resolution = wcp_resolution;
-            init_arg.probe_cell_size  = wcp_cell_size;
+            init_arg.probe_resolution_ = wcp_resolution;
+            init_arg.probe_cell_size_  = wcp_cell_size;
         }
         if(!ssvg_instance_->Initialize(p_device, init_arg))
         {

@@ -308,21 +308,21 @@ namespace ngl::render::app
 
         // Game更新のコールバックを設定.
         SetGameUpdateCallback(
-            [this](gfx::scene::SceneMeshGameUpdateCallbackArg arg)
+            [this](gfx::scene::SceneMeshGameUpdateCallbackArgRef arg)
             {
                 UpdateOnGame(arg);
             });
 
         // Render更新のコールバックを設定.
         SetRenderUpdateCallback(
-            [this](gfx::scene::SceneMeshRenderUpdateCallbackArg arg)
+            [this](gfx::scene::SceneMeshRenderUpdateCallbackArgRef arg)
             {
                 UpdateOnRender(arg);
             });
 
         // AttrLess用のBindResourceコールバック.
         SetBindModelResourceOptionCallback(
-            [this](gfx::BindModelResourceOptionCallbackArg arg)
+            [this](gfx::BindModelResourceOptionCallbackArgRef arg)
             {
                 auto* pso       = arg.pso;
                 auto* desc_set  = arg.desc_set;
@@ -351,7 +351,7 @@ namespace ngl::render::app
 
         // AttrLess用のDrawShape関数オーバーライド.
         SetProceduralDrawShapeFunc(
-            [this](gfx::DrawShapeOverrideFuncionArg arg)
+            [this](gfx::DrawShapeOverrideFunctionArgRef arg)
             {
                 auto* p_command_list = arg.command_list;
                 int shape_index      = arg.shape_index;
@@ -366,14 +366,14 @@ namespace ngl::render::app
         return true;
     }
 
-    void SwTessellationMesh::UpdateOnGame(gfx::scene::SceneMeshGameUpdateCallbackArg arg)
+    void SwTessellationMesh::UpdateOnGame(gfx::scene::SceneMeshGameUpdateCallbackArgRef arg)
     {
         // Gameスレッドで実行される更新処理.
         arg.dummy;
 
         ++local_frame_index_;
     }
-    void SwTessellationMesh::UpdateOnRender(gfx::scene::SceneMeshRenderUpdateCallbackArg arg)
+    void SwTessellationMesh::UpdateOnRender(gfx::scene::SceneMeshRenderUpdateCallbackArgRef arg)
     {
         // Renderスレッドで実行される更新処理.
         // command_listに対するシェーダディスパッチなどをする.

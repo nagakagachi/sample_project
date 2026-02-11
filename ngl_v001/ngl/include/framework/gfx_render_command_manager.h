@@ -8,13 +8,13 @@
 namespace ngl::fwk
 {
     // RenderCommand Lambda定義の引数簡易化のための定義.
-    struct _CommonRenderCommandArg
+    struct CommonRenderCommandArg
     {
         rhi::GraphicsCommandListDep* command_list;
     };
-    using ComonRenderCommandArg = const _CommonRenderCommandArg&;
+    using CommonRenderCommandArgRef = const CommonRenderCommandArg&;
     // RenderCommand登録Lambda型.
-    using CommonRenderCommandType = std::function<void(ComonRenderCommandArg)>;
+    using CommonRenderCommandType = std::function<void(CommonRenderCommandArgRef)>;
 
     // 次のRenderThreadの先頭で実行される標準的なRenderComandをLambdaで登録.
     void PushCommonRenderCommand(const CommonRenderCommandType& func);

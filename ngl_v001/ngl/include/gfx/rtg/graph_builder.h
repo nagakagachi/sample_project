@@ -12,7 +12,7 @@
 			// リソース定義.
 			rtg::ResourceDesc2D depth_desc = rtg::ResourceDesc2D::CreateAsAbsoluteSize(1920, 1080, gfx::MaterialPassPsoCreator_depth::k_depth_format);
 			// 新規作成したDepthBufferリソースをDepthTarget使用としてレコード.
-			h_depth_ = builder.RecordResourceAccess(*this, builder.CreateResource(depth_desc), rtg::access_type::DEPTH_TARGET);
+			h_depth_ = builder.RecordResourceAccess(*this, builder.CreateResource(depth_desc), rtg::AccessType::DEPTH_TARGET);
 
 			// 実際のレンダリング処理をLambda登録. RTGのCompile後ExecuteでTaskNode毎のLambdaが並列実行されCommandList生成される.
 			builder.RegisterTaskNodeRenderFunction(this,
@@ -50,10 +50,10 @@
 		{
 			// LinearDepth出力用のバッファを新規に作成してUAV使用としてレコード.
 			rtg::ResourceDesc2D linear_depth_desc = rtg::ResourceDesc2D::CreateAsAbsoluteSize(1920, 1080, rhi::EResourceFormat::Format_R32_FLOAT);
-			h_linear_depth_ = builder.RecordResourceAccess(*this, builder.CreateResource(linear_depth_desc), rtg::access_type::UAV);
+			h_linear_depth_ = builder.RecordResourceAccess(*this, builder.CreateResource(linear_depth_desc), rtg::AccessType::UAV);
 			
 			// 先行するDepth書き込みTaskの出力先リソースハンドルを利用し, 読み取り使用としてレコード.
-			h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::access_type::SHADER_READ);
+			h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::AccessType::SHADER_READ);
 
 			// 実際のレンダリング処理をLambda登録. RTGのCompile後ExecuteでTaskNode毎のLambdaが並列実行されCommandList生成される.
 			builder.RegisterTaskNodeRenderFunction(this,
@@ -130,8 +130,8 @@ namespace ngl
 		public:
 			virtual ~IGraphicsTaskNode() = default;
 			// Type Graphics.
-			ETASK_TYPE TaskType() const final
-			{ return ETASK_TYPE::GRAPHICS; }
+			ETaskType TaskType() const final
+			{ return ETaskType::GRAPHICS; }
 		};
 		// ComputeTaskの基底クラス.
 		// GraphicsでもAsyncComputeでも実行可能なもの. UAVバリア以外のバリアは出来ないようにComputeCommandListのみ利用可能とする.
@@ -141,8 +141,8 @@ namespace ngl
 		public:
 			virtual ~IComputeTaskNode() = default;
 			// Type AsyncCompute.
-			ETASK_TYPE TaskType() const final
-			{ return ETASK_TYPE::COMPUTE; }
+			ETaskType TaskType() const final
+			{ return ETaskType::COMPUTE; }
 		};
 
 		
@@ -196,7 +196,7 @@ namespace ngl
 
 			// Nodeからのリソースアクセスを記録.
 			// NodeのRender実行順と一致する順序で登録をする必要がある. この順序によってリソースステート遷移の確定や実リソースの割当等をする.
-			RtgResourceHandle RecordResourceAccess(const ITaskNode& node, const RtgResourceHandle res_handle, const ACCESS_TYPE access_type);
+			RtgResourceHandle RecordResourceAccess(const ITaskNode& node, const RtgResourceHandle res_handle, const AccessTypeValue AccessType);
 			
 			// 次のフレームへ寿命を延長する.
 			//	TAA等で前回フレームのリソースを利用したい場合に, この関数で寿命を次回フレームまで延長することで同じハンドルで同じリソースを利用できる.
@@ -269,7 +269,7 @@ namespace ngl
 			struct NodeHandleUsageInfo
 			{
 				RtgResourceHandle		handle{};// あるNodeからどのようなHandleで利用されたか.
-				ACCESS_TYPE				access{};// あるNodeから上記Handleがどのアクセスタイプで利用されたか.
+				AccessTypeValue				access{};// あるNodeから上記Handleがどのアクセスタイプで利用されたか.
 			};
 			std::unordered_map<const ITaskNode*, std::vector<NodeHandleUsageInfo>> node_handle_usage_list_{};// Node毎のResourceHandleアクセス情報をまとめるMap.
 			// ------------------------------------------------------------------------------------------------------------------------------------------------------

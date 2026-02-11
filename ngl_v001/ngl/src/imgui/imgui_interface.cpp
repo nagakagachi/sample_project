@@ -220,7 +220,7 @@ namespace  ngl::imgui
                 p_parent_ = p_parent;
                 
                 // Swapchainの使用を登録.
-                h_swapchain_ = builder.RecordResourceAccess(*this, h_swapchain, rtg::access_type::RENDER_TARGET);
+                h_swapchain_ = builder.RecordResourceAccess(*this, h_swapchain, rtg::AccessType::RENDER_TARGET);
                 
                 // Render処理のLambdaをRTGに登録.
                 builder.RegisterTaskNodeRenderFunction(this,

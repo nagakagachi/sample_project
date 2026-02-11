@@ -331,12 +331,12 @@ namespace ngl::test
                     {
                         ngl::render::app::RenderTaskSsvgBegin::SetupDesc setup_desc{};
                         {
-                            setup_desc.w = screen_w;
-                            setup_desc.h = screen_h;
+							setup_desc.w_ = screen_w;
+							setup_desc.h_ = screen_h;
                             
-                            setup_desc.scene_cbv = scene_cb_h;
+							setup_desc.scene_cbv_ = scene_cb_h;
 
-                            setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
+							setup_desc.p_ssvg_ = render_frame_desc.feature_config.gi.p_ssvg;
                         }
                         task_ssvg_begin->Setup(rtg_builder, p_device, view_info, setup_desc);
                     }
@@ -345,22 +345,22 @@ namespace ngl::test
                     {
                         ngl::render::app::RenderTaskSsvgViewVoxelInjection::SetupDesc setup_desc{};
                         {
-                            setup_desc.w = screen_w;
-                            setup_desc.h = screen_h;
+							setup_desc.w_ = screen_w;
+							setup_desc.h_ = screen_h;
                             
-                            setup_desc.scene_cbv = scene_cb_h;
-                            setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
+							setup_desc.scene_cbv_ = scene_cb_h;
+							setup_desc.p_ssvg_ = render_frame_desc.feature_config.gi.p_ssvg;
 
                             // main view DepthBuffer登録.
                             {
-                                setup_desc.depth_buffer_info.primary.view_mat = view_info.view_mat;
-                                setup_desc.depth_buffer_info.primary.proj_mat = view_info.proj_mat;
-                                setup_desc.depth_buffer_info.primary.atlas_offset = math::Vec2i(0,0);
-                                setup_desc.depth_buffer_info.primary.atlas_resolution = math::Vec2i(screen_w, screen_h);
-                                setup_desc.depth_buffer_info.primary.h_depth = task_depth->h_depth_;
+								setup_desc.depth_buffer_info_.primary_.view_mat_ = view_info.view_mat;
+								setup_desc.depth_buffer_info_.primary_.proj_mat_ = view_info.proj_mat;
+								setup_desc.depth_buffer_info_.primary_.atlas_offset_ = math::Vec2i(0,0);
+								setup_desc.depth_buffer_info_.primary_.atlas_resolution_ = math::Vec2i(screen_w, screen_h);
+								setup_desc.depth_buffer_info_.primary_.h_depth_ = task_depth->h_depth_;
 
-                                setup_desc.depth_buffer_info.primary.is_enable_injection_pass = (render_frame_desc.feature_config.gi.enable_ssvg_injection_pass) && true;// Voxel充填利用するか.
-                                setup_desc.depth_buffer_info.primary.is_enable_removal_pass = (render_frame_desc.feature_config.gi.enable_ssvg_rejection_pass) && true;// Voxel除去に利用するか.
+								setup_desc.depth_buffer_info_.primary_.is_enable_injection_pass_ = (render_frame_desc.feature_config.gi.enable_ssvg_injection_pass) && true;// Voxel充填利用するか.
+								setup_desc.depth_buffer_info_.primary_.is_enable_removal_pass_ = (render_frame_desc.feature_config.gi.enable_ssvg_rejection_pass) && true;// Voxel除去に利用するか.
                             }
 
                             // ShadowMapのDepthBuffer登録. 高速化のためにフレーム毎にカスケードスキップするのもありかもしれない.
@@ -368,17 +368,17 @@ namespace ngl::test
                             {
                                 ngl::render::app::InjectionSourceDepthBufferViewInfo shadow_depth_info{};
                                 {
-                                    shadow_depth_info.view_mat = task_d_shadow->csm_param_.light_view_mtx[cascade_idx];
-                                    shadow_depth_info.proj_mat = task_d_shadow->csm_param_.light_ortho_mtx[cascade_idx];
-                                    shadow_depth_info.atlas_offset = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_offset_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_offset_y[cascade_idx]);
-                                    shadow_depth_info.atlas_resolution = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_size_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_size_y[cascade_idx]);
-                                    shadow_depth_info.h_depth = task_d_shadow->h_shadow_depth_atlas_;
+									shadow_depth_info.view_mat_ = task_d_shadow->csm_param_.light_view_mtx[cascade_idx];
+									shadow_depth_info.proj_mat_ = task_d_shadow->csm_param_.light_ortho_mtx[cascade_idx];
+									shadow_depth_info.atlas_offset_ = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_offset_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_offset_y[cascade_idx]);
+									shadow_depth_info.atlas_resolution_ = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_size_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_size_y[cascade_idx]);
+									shadow_depth_info.h_depth_ = task_d_shadow->h_shadow_depth_atlas_;
                                     
-                                    shadow_depth_info.is_enable_injection_pass = (render_frame_desc.feature_config.gi.enable_ssvg_injection_pass) && true;// Voxel充填に利用するか.
-                                    shadow_depth_info.is_enable_removal_pass = (render_frame_desc.feature_config.gi.enable_ssvg_rejection_pass) && true;// Voxel除去に利用するか.
+									shadow_depth_info.is_enable_injection_pass_ = (render_frame_desc.feature_config.gi.enable_ssvg_injection_pass) && true;// Voxel充填に利用するか.
+									shadow_depth_info.is_enable_removal_pass_ = (render_frame_desc.feature_config.gi.enable_ssvg_rejection_pass) && true;// Voxel除去に利用するか.
                                 }
 
-                                setup_desc.depth_buffer_info.sub_array.push_back(shadow_depth_info);
+								setup_desc.depth_buffer_info_.sub_array_.push_back(shadow_depth_info);
                             }   
                         }
                         task_ssvg_view_voxel_injection->Setup(rtg_builder, p_device, view_info, setup_desc);
@@ -388,15 +388,15 @@ namespace ngl::test
                     {
                         ngl::render::app::RenderTaskSsvgUpdate::SetupDesc setup_desc{};
                         {
-                            setup_desc.w = screen_w;
-                            setup_desc.h = screen_h;
+							setup_desc.w_ = screen_w;
+							setup_desc.h_ = screen_h;
                             
-                            setup_desc.scene_cbv = scene_cb_h;
+							setup_desc.scene_cbv_ = scene_cb_h;
 
-                            setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
+							setup_desc.p_ssvg_ = render_frame_desc.feature_config.gi.p_ssvg;
                             
                             // main view.
-                            setup_desc.h_depth = task_depth->h_depth_;
+							setup_desc.h_depth_ = task_depth->h_depth_;
                         }
                         task_ssvg_update->Setup(rtg_builder, p_device, view_info, setup_desc);
                     }

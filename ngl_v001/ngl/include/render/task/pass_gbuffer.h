@@ -70,15 +70,15 @@ namespace ngl::render::task
 				if(!h_async_write_tex.IsInvalid())
 				{
 					// 試しにAsyncComputeで書き込まれたリソースを読み取り.
-					builder.RecordResourceAccess(*this, h_async_write_tex, rtg::access_type::SHADER_READ);
+					builder.RecordResourceAccess(*this, h_async_write_tex, rtg::AccessType::SHADER_READ);
 				}
 			
-				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::access_type::DEPTH_TARGET);
-				h_gb0_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer0_desc), rtg::access_type::RENDER_TARGET);
-				h_gb1_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer1_desc), rtg::access_type::RENDER_TARGET);
-				h_gb2_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer2_desc), rtg::access_type::RENDER_TARGET);
-				h_gb3_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer3_desc), rtg::access_type::RENDER_TARGET);
-				h_velocity_ = builder.RecordResourceAccess(*this, builder.CreateResource(velocity_desc), rtg::access_type::RENDER_TARGET);
+				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::AccessType::DEPTH_TARGET);
+				h_gb0_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer0_desc), rtg::AccessType::RENDER_TARGET);
+				h_gb1_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer1_desc), rtg::AccessType::RENDER_TARGET);
+				h_gb2_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer2_desc), rtg::AccessType::RENDER_TARGET);
+				h_gb3_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer3_desc), rtg::AccessType::RENDER_TARGET);
+				h_velocity_ = builder.RecordResourceAccess(*this, builder.CreateResource(velocity_desc), rtg::AccessType::RENDER_TARGET);
 			}
 
 			// Render処理のLambdaをRTGに登録.

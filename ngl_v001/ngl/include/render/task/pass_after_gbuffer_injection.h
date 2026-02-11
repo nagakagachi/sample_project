@@ -34,7 +34,7 @@ namespace ngl::render::task
 			{
 				// リソース定義.
 				//rtg::RtgResourceDesc2D work_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R32G32B32A32_FLOAT);
-                //h_work_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_desc), rtg::access_type::UAV);
+                //h_work_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_desc), rtg::AccessType::UAV);
 			}
 
 			// Render処理のLambdaをRTGに登録.

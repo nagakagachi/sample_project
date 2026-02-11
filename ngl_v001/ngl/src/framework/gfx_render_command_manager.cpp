@@ -32,7 +32,7 @@ namespace ngl::fwk
         }
 
         // フリップで退避されたバッファを実行.
-        _CommonRenderCommandArg command_arg{};
+        CommonRenderCommandArg command_arg{};
         {
             command_arg.command_list = command_list;
         }

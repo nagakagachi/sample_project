@@ -42,17 +42,17 @@ namespace ngl::render::task
 			// Rtgリソースセットアップ.
 			{
 				// リソースアクセス定義.
-				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::access_type::SHADER_READ);
-				h_linear_depth_ = builder.RecordResourceAccess(*this, h_linear_depth, rtg::access_type::SHADER_READ);
+				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::AccessType::SHADER_READ);
+				h_linear_depth_ = builder.RecordResourceAccess(*this, h_linear_depth, rtg::AccessType::SHADER_READ);
                 
                 if(desc_.enable_gtao_demo)
                 {
                     rtg::RtgResourceDesc2D tex_gtao_bent_normal_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
-                    h_gtao_bent_normal_ = builder.RecordResourceAccess(*this, builder.CreateResource(tex_gtao_bent_normal_desc), rtg::access_type::UAV);
+                    h_gtao_bent_normal_ = builder.RecordResourceAccess(*this, builder.CreateResource(tex_gtao_bent_normal_desc), rtg::AccessType::UAV);
                 }
 
 				rtg::RtgResourceDesc2D bent_normal_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
-                h_bent_normal_ = builder.RecordResourceAccess(*this, builder.CreateResource(bent_normal_desc), rtg::access_type::UAV);
+                h_bent_normal_ = builder.RecordResourceAccess(*this, builder.CreateResource(bent_normal_desc), rtg::AccessType::UAV);
 			}
 
 

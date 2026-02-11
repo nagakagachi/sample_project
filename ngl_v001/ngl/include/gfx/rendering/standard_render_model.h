@@ -16,23 +16,23 @@ namespace ngl
     {
 
         // コールバック定義簡易化用定義.
-        struct _BindModelResourceOptionCallbackArg
+        struct BindModelResourceOptionCallbackArg
         {
             rhi::GraphicsPipelineStateDep* pso;
             rhi::DescriptorSetDep* desc_set;
             int shape_index;
         };
-        using BindModelResourceOptionCallbackArg = const _BindModelResourceOptionCallbackArg&;
-        using BindModelResourceOptionCallback    = std::function<void(BindModelResourceOptionCallbackArg)>;
+        using BindModelResourceOptionCallbackArgRef = const BindModelResourceOptionCallbackArg&;
+        using BindModelResourceOptionCallback       = std::function<void(BindModelResourceOptionCallbackArgRef)>;
 
         // コールバック定義簡易化用定義.
-        struct _DrawShapeOverrideFuncionArg
+        struct DrawShapeOverrideFunctionArg
         {
             rhi::GraphicsCommandListDep* command_list;
             int shape_index;
         };
-        using DrawShapeOverrideFuncionArg = const _DrawShapeOverrideFuncionArg&;
-        using DrawShapeOverrideFuncion    = std::function<void(DrawShapeOverrideFuncionArg)>;
+        using DrawShapeOverrideFunctionArgRef = const DrawShapeOverrideFunctionArg&;
+        using DrawShapeOverrideFunction       = std::function<void(DrawShapeOverrideFunctionArgRef)>;
 
         class StandardRenderMaterial
         {
@@ -53,7 +53,7 @@ namespace ngl
             bool Initialize(rhi::DeviceDep* p_device, res::ResourceHandle<ResMeshData> res_mesh, std::shared_ptr<gfx::MeshData> override_mesh_shape_data, const char* material_name);
 
             // Descriptorへのリソース設定コールバック.
-            void BindModelResourceCallback(BindModelResourceOptionCallbackArg arg);
+            void BindModelResourceCallback(BindModelResourceOptionCallbackArgRef arg);
 
             void DrawShape(rhi::GraphicsCommandListDep* p_command_list, int shape_index);
 
@@ -92,7 +92,7 @@ namespace ngl
 
         public:
             BindModelResourceOptionCallback bind_model_resource_option_callback_{};
-            DrawShapeOverrideFuncion draw_shape_override_{};
+            DrawShapeOverrideFunction draw_shape_override_{};
         };
     }  // namespace gfx
 }  // namespace ngl

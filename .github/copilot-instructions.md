@@ -17,6 +17,8 @@
 ### C++ Type Naming
 - **クラス/構造体/型: PascalCase** (例: `GraphicsFramework`, `RenderFrameDesc`)
 - **列挙体: `E` プレフィックスを許容** (例: `EResourceState`, `EShaderStage`)
+- **例外**
+  - material_shader_manager は 自動生成コードとの対応をわかりやすくするため例外とする
 
 ### C++ Member/Function/Constant
 - **メンバー変数: snake_case + 末尾 `_` を推奨** (例: `p_window_`, `swapchain_rtvs_`)

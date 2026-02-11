@@ -114,7 +114,7 @@ namespace ngl::render::task
 					rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(shadowmap_atlas_reso, shadowmap_atlas_reso, gfx::MaterialPassPsoCreator_depth::k_depth_format);
 
 				// リソースアクセス定義.
-				h_shadow_depth_atlas_ = builder.RecordResourceAccess(*this, builder.CreateResource(depth_desc), rtg::access_type::DEPTH_TARGET);
+				h_shadow_depth_atlas_ = builder.RecordResourceAccess(*this, builder.CreateResource(depth_desc), rtg::AccessType::DEPTH_TARGET);
 			}
 			
 			// ShadowSample用の定数バッファ.

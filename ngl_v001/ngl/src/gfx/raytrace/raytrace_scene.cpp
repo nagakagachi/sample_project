@@ -35,7 +35,7 @@ namespace ngl
 			// コピー.
 			geometry_desc_array_ = geometry_desc_array;
 
-			setup_type_ = SETUP_TYPE::BLAS_TRIANGLE;
+			setup_type_ = ESetupType::BLAS_TRIANGLE;
 			geom_desc_array_.clear();
 			geom_desc_array_.reserve(geometry_desc_array.size());// 予約.
 			for (auto& g : geometry_desc_array)
@@ -157,7 +157,7 @@ namespace ngl
 			}
 
 			// BLAS Build (Triangle Geometry).
-			if (SETUP_TYPE::BLAS_TRIANGLE == setup_type_)
+			if (ESetupType::BLAS_TRIANGLE == setup_type_)
 			{
 				// Setupで準備した情報からASをビルドするコマンドを発行.
 				// Build後は入力に利用したVertexBufferやIndexBufferは不要となるとのこと.
@@ -178,7 +178,7 @@ namespace ngl
 		}
 		bool RtBlas::IsSetuped() const
 		{
-			return SETUP_TYPE::NONE != setup_type_;
+			return ESetupType::NONE != setup_type_;
 		}
 		bool RtBlas::IsBuilt() const
 		{
@@ -237,7 +237,7 @@ namespace ngl
 				return false;
 			}
 
-			setup_type_ = SETUP_TYPE::TLAS;
+			setup_type_ = ESetupType::TLAS;
 
 
 
@@ -405,7 +405,7 @@ namespace ngl
 			}
 
 			// TLAS Build .
-			if (SETUP_TYPE::TLAS == setup_type_)
+			if (ESetupType::TLAS == setup_type_)
 			{
 				// ASビルドコマンドを発行.
 				// 
@@ -425,7 +425,7 @@ namespace ngl
 		}
 		bool RtTlas::IsSetuped() const
 		{
-			return SETUP_TYPE::NONE != setup_type_;
+			return ESetupType::NONE != setup_type_;
 		}
 		bool RtTlas::IsBuilt() const
 		{

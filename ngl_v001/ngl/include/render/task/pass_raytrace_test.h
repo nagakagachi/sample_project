@@ -39,7 +39,7 @@ namespace ngl::render::task
 			{
 				rtg::RtgResourceDesc2D res_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
 				// リソースアクセス定義.
-				h_rt_result_ = builder.RecordResourceAccess(*this, builder.CreateResource(res_desc), rtg::access_type::UAV);
+				h_rt_result_ = builder.RecordResourceAccess(*this, builder.CreateResource(res_desc), rtg::AccessType::UAV);
 			}
 			
 			// Raytrace Pipelineセットアップ.
