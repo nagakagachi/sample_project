@@ -176,7 +176,7 @@ namespace ngl::rtg
 						Do Render
 					});
 	*/
-	struct ITaskNode
+	class ITaskNode
 	{
 	public:
 		virtual ~ITaskNode() {}

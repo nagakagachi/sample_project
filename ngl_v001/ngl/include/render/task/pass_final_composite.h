@@ -12,8 +12,9 @@
 namespace ngl::render::task
 {
 	// 最終パス.
-	struct TaskFinalPass : public rtg::IGraphicsTaskNode
+	class TaskFinalPass : public rtg::IGraphicsTaskNode
 	{
+	public:
 		rtg::RtgResourceHandle h_depth_{};
 		rtg::RtgResourceHandle h_linear_depth_{};
 		rtg::RtgResourceHandle h_light_{};
@@ -51,7 +52,7 @@ namespace ngl::render::task
 			int debugview_general_debug_channel = 0;
             float debugview_general_debug_rate = 0.5f;
 		} desc_{};
-		bool is_render_skip_debug{};
+		bool is_render_skip_debug_{};
 		
 		// リソースとアクセスを定義するプリプロセス.
 		void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
@@ -101,14 +102,14 @@ namespace ngl::render::task
 					h_dshadow_ = builder.RecordResourceAccess(*this, h_dshadow, rtg::AccessType::SHADER_READ);
 				
 				// リソースアクセス期間による再利用のテスト用. 作業用の一時リソース.
-				rtg::RtgResourceDesc2D temp_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R11G11B10_FLOAT);
+				rtg::RtgResourceDesc2D temp_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc_.w, desc_.h, rhi::EResourceFormat::Format_R11G11B10_FLOAT);
 				auto temp_res0 = builder.RecordResourceAccess(*this, builder.CreateResource(temp_desc), rtg::AccessType::RENDER_TARGET);
 				h_tmp_ = temp_res0;
 			}
 			
 			// pso生成のためにRenderTarget(実際はSwapchain)のDescをBuilderから取得. DescはCompile前に取得ができるものとする.
 			// (実リソース再利用割当のために実際のリソースのWidthやHeightは取得できないが...).
-			const auto render_target_desc = builder.GetResourceHandleDesc(h_swapchain);
+			const auto render_target_desc = builder.GetResourceHandleDesc(h_swapchain_);
 
 			{
 				// 初期化. シェーダバイナリの要求とPSO生成.
@@ -153,7 +154,7 @@ namespace ngl::render::task
 			builder.RegisterTaskNodeRenderFunction(this,
 				[this, ref_test_tex](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
 				{
-					if(is_render_skip_debug)
+					if(is_render_skip_debug_)
 					{
 						return;
 					}
@@ -231,7 +232,7 @@ namespace ngl::render::task
                         float pad2[2];
 					};
 					auto cbh = gfx_commandlist->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(CbFinalScreenPass));
-					if(auto* p_mapped = cbh->buffer_.MapAs<CbFinalScreenPass>())
+					if(auto* p_mapped = cbh->buffer.MapAs<CbFinalScreenPass>())
 					{
 						p_mapped->enable_halfdot_gray = desc_.debugview_halfdot_gray;
 						p_mapped->enable_subview_result = desc_.debugview_subview_result;
@@ -239,10 +240,10 @@ namespace ngl::render::task
 
 						p_mapped->enable_gbuffer = desc_.debugview_gbuffer;
 						p_mapped->enable_dshadow = desc_.debugview_dshadow;
-						p_mapped->enable_general_debug = (0 <= desc_.debugview_general_debug_buffer)? desc_.debugview_general_debug_channel : -1;
-                        p_mapped->general_debug_rate = desc_.debugview_general_debug_rate;
+						p_mapped->enable_general_debug = (0 <= desc_.debugview_general_debug_buffer) ? desc_.debugview_general_debug_channel : -1;
+						p_mapped->general_debug_rate = desc_.debugview_general_debug_rate;
 
-						cbh->buffer_.Unmap();
+						cbh->buffer.Unmap();
 					}
 						
 					gfx::helper::SetFullscreenViewportAndScissor(gfx_commandlist, res_swapchain.swapchain_->GetWidth(), res_swapchain.swapchain_->GetHeight());
@@ -255,7 +256,7 @@ namespace ngl::render::task
 
 					gfx_commandlist->SetPipelineState(pso_.Get());
 					ngl::rhi::DescriptorSetDep desc_set = {};
-					pso_->SetView(&desc_set, "cb_final_screen_pass", &cbh->cbv_);
+					pso_->SetView(&desc_set, "cb_final_screen_pass", &cbh->cbv);
 					pso_->SetView(&desc_set, "tex_light", res_light.srv_.Get());
 					pso_->SetView(&desc_set, "tex_rt", ref_rt_result.Get());
 

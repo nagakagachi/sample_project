@@ -21,7 +21,7 @@ namespace ngl
 			u64 dst_byte_size;
 			std::vector<rhi::TextureSubresourceLayoutInfo> dst_layout;
 			dst_layout.resize(ref_texture_->NumSubresource());
-			// Subresouceのレイアウト情報を取得.
+			// Subresourceのレイアウト情報を取得.
 			ref_texture_->GetSubresourceLayoutInfo(dst_layout.data(), dst_byte_size);
 			
 			rhi::RefBufferDep temporal_upload_buffer = {};

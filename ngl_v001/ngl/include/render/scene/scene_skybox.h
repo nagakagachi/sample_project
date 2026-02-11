@@ -108,18 +108,18 @@ namespace ngl::gfx::scene
                             u32 use_mip_to_prevent_undersampling;
                         };
                         auto cbh = device->GetConstantBufferPool()->Alloc(sizeof(CbConvCubemapDiffuse));
-                        if (auto* map_ptr = cbh->buffer_.MapAs<CbConvCubemapDiffuse>())
+                        if (auto* map_ptr = cbh->buffer.MapAs<CbConvCubemapDiffuse>())
                         {
                             map_ptr->use_mip_to_prevent_undersampling = prevent_aliasing_mode;// Mipによるエイリアシング抑制有効.
                         
-                            cbh->buffer_.Unmap();
+                            cbh->buffer.Unmap();
                         }
                     
                         // UAVステートへ.
                        command_list->ResourceBarrier(conv_diffuse_cubemap_.Get(), prev_state, rhi::EResourceState::UnorderedAccess);
                 
                        rhi::DescriptorSetDep descset{};
-                        pso_conv_cube_diffuse_->SetView(&descset, "cb_conv_cubemap_diffuse", &cbh->cbv_);
+                        pso_conv_cube_diffuse_->SetView(&descset, "cb_conv_cubemap_diffuse", &cbh->cbv);
                        pso_conv_cube_diffuse_->SetView(&descset, "tex_cube", generated_cubemap_plane_array_srv_.Get());
                        pso_conv_cube_diffuse_->SetView(&descset, "samp", global_res.default_resource_.sampler_linear_wrap.Get());
                        pso_conv_cube_diffuse_->SetView(&descset, "uav_cubemap_as_array", conv_diffuse_cubemap_plane_array_uav_.Get());
@@ -135,7 +135,7 @@ namespace ngl::gfx::scene
             }
 
             const u32 specular_ibl_mip_count = conv_ggx_specular_cubemap_->GetMipCount();
-            // Supecular.
+            // Specular.
             for (u32 mip_i = 0; mip_i < specular_ibl_mip_count; ++mip_i)
             {
                 constexpr u32 k_cubemap_plane_count = 6;
@@ -171,19 +171,19 @@ namespace ngl::gfx::scene
                             float roughness;
                         };
                         auto cbh = device->GetConstantBufferPool()->Alloc(sizeof(CbConvCubemapGgxSpecular));
-                        if (auto* map_ptr = cbh->buffer_.MapAs<CbConvCubemapGgxSpecular>())
+                        if (auto* map_ptr = cbh->buffer.MapAs<CbConvCubemapGgxSpecular>())
                         {
                             map_ptr->use_mip_to_prevent_undersampling = prevent_aliasing_mode;// Mipによるエイリアシング抑制有効.
                             map_ptr->roughness = target_roughness;
                         
-                            cbh->buffer_.Unmap();
+                            cbh->buffer.Unmap();
                         }
                     
                         // UAVステートへ.
                        command_list->ResourceBarrier(conv_ggx_specular_cubemap_.Get(), prev_state, rhi::EResourceState::UnorderedAccess);
                                    
                        rhi::DescriptorSetDep descset{};
-                       pso_conv_cube_ggx_specular_->SetView(&descset, "cb_conv_cubemap_ggx_specular", &cbh->cbv_);
+                    pso_conv_cube_ggx_specular_->SetView(&descset, "cb_conv_cubemap_ggx_specular", &cbh->cbv);
                        pso_conv_cube_ggx_specular_->SetView(&descset, "tex_cube", generated_cubemap_plane_array_srv_.Get());
                        pso_conv_cube_ggx_specular_->SetView(&descset, "samp", global_res.default_resource_.sampler_linear_wrap.Get());
                        pso_conv_cube_ggx_specular_->SetView(&descset, "uav_cubemap_as_array", mip_uav.Get());
@@ -201,7 +201,7 @@ namespace ngl::gfx::scene
             
         }
         
-        bool SetupAsPanorama(rhi::DeviceDep* p_device, const char* sky_testure_file_path)
+        bool SetupAsPanorama(rhi::DeviceDep* p_device, const char* sky_texture_file_path)
         {
             auto& res_mgr = res::ResourceManager::Instance();
             
@@ -210,7 +210,7 @@ namespace ngl::gfx::scene
                 desc.mode = gfx::ResTexture::ECreateMode::FROM_FILE;
             }
             // ソースのパノラマイメージロード.
-            res_sky_texture_ = res_mgr.LoadResource<gfx::ResTexture>(p_device, sky_testure_file_path, &desc);
+            res_sky_texture_ = res_mgr.LoadResource<gfx::ResTexture>(p_device, sky_texture_file_path, &desc);
 
 
             // 内部で生成するCubemap.

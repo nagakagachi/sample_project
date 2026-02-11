@@ -49,51 +49,51 @@ namespace ngl
 			// 面倒なので現状では内部でヒープを確保して初期化
 			bool Initialize( u32 byteSize )
 			{
-				if (is_initialized_)
+				if (is_initialized)
 				{
 					// 前回のinitialize()からdestroy()される前に再度initializeしようとした
 					return false;
 				}
 
 				// ハンドルの生成
-				if (!tlsf_core_.NewHandle())
+				if (!tlsf_core.NewHandle())
 				{
 					// アロケータのハンドル生成に失敗
 					return false;
 				}
 
-				pool_memory_ = new u8[byteSize];
-				if (nullptr == pool_memory_)
+				pool_memory = new u8[byteSize];
+				if (nullptr == pool_memory)
 					return false;
-				pool_size_ = byteSize;
+				pool_size = byteSize;
 
-				if (!tlsf_core_->Initialize(pool_memory_, pool_size_))
+				if (!tlsf_core->Initialize(pool_memory, pool_size))
 				{
 					Destroy();
 					return false;
 				}
-				is_initialized_ = true;
+				is_initialized = true;
 				return true;
 			}
 
 			// 破棄
 			void Destroy()
 			{
-				tlsf_core_->Destroy();
-				tlsf_core_.Release();// ハンドル解放
-				if (nullptr != pool_memory_)
+				tlsf_core->Destroy();
+				tlsf_core.Release();// ハンドル解放
+				if (nullptr != pool_memory)
 				{
-					delete pool_memory_;
-					pool_memory_ = nullptr;
+					delete pool_memory;
+					pool_memory = nullptr;
 				}
-				pool_size_ = 0;
-				is_initialized_ = false;
+				pool_size = 0;
+				is_initialized = false;
 			}
 
 			// メモリリークレポート
 			void LeakReport()
 			{
-				tlsf_core_->LeakReport();
+				tlsf_core->LeakReport();
 			}
 
 			TlsfAllocator()
@@ -115,15 +115,15 @@ namespace ngl
 			TlsfAllocator & operator=(TlsfAllocator&& obj) noexcept
 			{
 				// 内容をコピーしつつ移動元は無効にしていく
-				pool_size_ = obj.pool_size_;
-				obj.pool_size_ = 0;
+				pool_size = obj.pool_size;
+				obj.pool_size = 0;
 
-				pool_memory_ = obj.pool_memory_;
-				obj.pool_memory_ = nullptr;
+				pool_memory = obj.pool_memory;
+				obj.pool_memory = nullptr;
 
-				is_initialized_ = obj.is_initialized_;
+				is_initialized = obj.is_initialized;
 
-				tlsf_core_ = std::move( obj.tlsf_core_ );
+				tlsf_core = std::move(obj.tlsf_core);
 
 				return *this;
 			}
@@ -144,11 +144,11 @@ namespace ngl
 
 			T * allocate(size_t num_to_allocate)
 			{
-				return static_cast<T*>(tlsf_core_->Allocate(sizeof(T)* num_to_allocate));
+				return static_cast<T*>(tlsf_core->Allocate(sizeof(T)* num_to_allocate));
 			}
 			void deallocate(T * ptr, size_t num_to_free)
 			{
-				tlsf_core_->Deallocate(ptr);
+				tlsf_core->Deallocate(ptr);
 			}
 
 			// boilerplate that shouldn't be needed, except
@@ -178,10 +178,10 @@ namespace ngl
 		private:
 
 
-			u8*					pool_memory_	= nullptr;
-			u32					pool_size_		= 0;
-			bool				is_initialized_ = false;
-			TlsfAllocatorCoreHandle tlsf_core_;
+			u8*					pool_memory	= nullptr;
+			u32					pool_size		= 0;
+			bool				is_initialized = false;
+			TlsfAllocatorCoreHandle tlsf_core;
 		};
 	}
 }

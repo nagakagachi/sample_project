@@ -15,7 +15,7 @@ namespace ngl
     namespace gfx
     {
         void RenderMeshWithMaterial(rhi::GraphicsCommandListDep& command_list,
-                                    const char* pass_name, fwk::GfxScene* gfx_scene, const std::vector<fwk::GfxSceneEntityId>& mesh_proxy_id_array, const RenderMeshResource& render_mesh_resouce)
+                                const char* pass_name, fwk::GfxScene* gfx_scene, const std::vector<fwk::GfxSceneEntityId>& mesh_proxy_id_array, const RenderMeshResource& render_mesh_resource)
         {
             auto default_white_tex_srv  = GlobalRenderResource::Instance().default_resource_.tex_white->ref_view_;
             auto default_black_tex_srv  = GlobalRenderResource::Instance().default_resource_.tex_black->ref_view_;
@@ -31,12 +31,12 @@ namespace ngl
                 auto* model      = mesh_proxy->model_;
 
                 auto mesh_instance_cbh = command_list.GetDevice()->GetConstantBufferPool()->Alloc(sizeof(InstanceInfo));
-                if (auto* map_ptr = mesh_instance_cbh->buffer_.MapAs<InstanceInfo>())
+                if (auto* map_ptr = mesh_instance_cbh->buffer.MapAs<InstanceInfo>())
                 {
                     map_ptr->mtx          = mesh_proxy->transform_;
                     map_ptr->mtx_cofactor = math::Mat34(math::Mat33::Cofactor(mesh_proxy->transform_.GetMat33()));  // 余因子行列.
 
-                    mesh_instance_cbh->buffer_.Unmap();
+                    mesh_instance_cbh->buffer.Unmap();
                 }
 
                 const auto shape_count = model->NumShape();
@@ -50,14 +50,14 @@ namespace ngl
                         ngl::rhi::DescriptorSetDep desc_set;
 
                         {
-                            if (auto* p_view = render_mesh_resouce.cbv_sceneview.p_view)
-                                pso->SetView(&desc_set, render_mesh_resouce.cbv_sceneview.slot_name.Get(), p_view);
+                            if (auto* p_view = render_mesh_resource.cbv_sceneview.p_view)
+                                pso->SetView(&desc_set, render_mesh_resource.cbv_sceneview.slot_name.Get(), p_view);
 
-                            if (auto* p_view = render_mesh_resouce.cbv_d_shadowview.p_view)
-                                pso->SetView(&desc_set, render_mesh_resouce.cbv_d_shadowview.slot_name.Get(), p_view);
+                            if (auto* p_view = render_mesh_resource.cbv_d_shadowview.p_view)
+                                pso->SetView(&desc_set, render_mesh_resource.cbv_d_shadowview.slot_name.Get(), p_view);
                         }
 
-                        pso->SetView(&desc_set, "cb_ngl_instance", &mesh_instance_cbh->cbv_);
+                        pso->SetView(&desc_set, "cb_ngl_instance", &mesh_instance_cbh->cbv);
 
                         // モデルのマテリアル/モデル固有リソースのDescriptorSetの設定
                         BindModelResourceOptionCallbackArg bind_model_resource_option_callback_arg;

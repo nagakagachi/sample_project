@@ -12,11 +12,12 @@
 namespace ngl::render::task
 {
 	// LinearDepthパス.
-	struct TaskLinearDepthPass : public rtg::IGraphicsTaskNode
+	class TaskLinearDepthPass : public rtg::IGraphicsTaskNode
 	{
+	public:
 		rtg::RtgResourceHandle h_depth_{};
 		rtg::RtgResourceHandle h_linear_depth_{};
-;
+
 		rhi::RhiRef<rhi::ComputePipelineStateDep> pso_;
 
 		struct SetupDesc
@@ -26,7 +27,7 @@ namespace ngl::render::task
 			
 			rhi::ConstantBufferPooledHandle scene_cbv{};
 		} desc_{};
-		bool is_render_skip_debug{};
+		bool is_render_skip_debug_{};
 		
 		// リソースとアクセスを定義するプリプロセス.
 		void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
@@ -37,7 +38,7 @@ namespace ngl::render::task
 			// Rtgリソースセットアップ.
 			{
 				// リソース定義.
-				rtg::RtgResourceDesc2D linear_depth_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R32_FLOAT);
+				rtg::RtgResourceDesc2D linear_depth_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc_.w, desc_.h, rhi::EResourceFormat::Format_R32_FLOAT);
 
 				// Async Computeの出力リソースを読み取るテスト.
 				if(!h_tex_compute.IsInvalid())
@@ -72,7 +73,7 @@ namespace ngl::render::task
 			builder.RegisterTaskNodeRenderFunction(this,
 				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
 				{
-					if(is_render_skip_debug)
+					if(is_render_skip_debug_)
 					{
 						return;
 					}
@@ -94,7 +95,7 @@ namespace ngl::render::task
 					// Samplerを設定するテスト. シェーダコード側ではほぼ意味はない.
 					pso_->SetView(&desc_set, "SmpHardwareDepth", global_res.default_resource_.sampler_shadow_point.Get());
 					pso_->SetView(&desc_set, "RWTexLinearDepth", res_linear_depth.uav_.Get());
-					pso_->SetView(&desc_set, "cb_ngl_sceneview", &desc_.scene_cbv->cbv_);
+					pso_->SetView(&desc_set, "cb_ngl_sceneview", &desc_.scene_cbv->cbv);
 						
 					gfx_commandlist->SetPipelineState(pso_.Get());
 					gfx_commandlist->SetDescriptorSet(pso_.Get(), &desc_set);

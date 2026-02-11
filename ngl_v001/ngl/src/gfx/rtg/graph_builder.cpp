@@ -676,7 +676,7 @@ namespace ngl
 						
 							// 割当決定したリソースの最終アクセスステージを更新 (このハンドルの最終アクセスステージ).
 							// 伝搬リソースの場合は事前に最終端まで引き伸ばされているため更新しない.
-							p_compiled_manager_->SetInternalResouceLastAccess(allocated_resource_id, handle_life_last_array[handle_id]);
+							p_compiled_manager_->SetInternalResourceLastAccess(allocated_resource_id, handle_life_last_array[handle_id]);
 						}
 						else
 						{
@@ -999,7 +999,7 @@ namespace ngl
 				return;
 			}
 
-			// Nodeの使用Resouceに有効な状態遷移が1つでも存在するかをチェック.
+			// Nodeの使用Resourceに有効な状態遷移が1つでも存在するかをチェック.
 			auto check_exist_state_transition = [&](const ITaskNode* p_node)-> bool
 			{
 				// リソースのRecordをしないTaskも存在する場合がある.
@@ -1809,7 +1809,7 @@ namespace ngl
 
 			return res_id;
 		}
-		void RenderTaskGraphManager::SetInternalResouceLastAccess(int resource_id, TaskStage last_access_stage)
+		void RenderTaskGraphManager::SetInternalResourceLastAccess(int resource_id, TaskStage last_access_stage)
 		{
 			if(0 > resource_id || internal_resource_pool_.size() <= resource_id)
 			{

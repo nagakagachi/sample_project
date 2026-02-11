@@ -208,10 +208,11 @@ namespace  ngl::imgui
     void ImguiInterface::AppendImguiRenderTask(rtg::RenderTaskGraphBuilder& builder, rtg::RtgResourceHandle h_swapchain)
     {
         // ImGuiの描画Task.
-        struct TaskImguiRender : public rtg::IGraphicsTaskNode
+        class TaskImguiRender : public rtg::IGraphicsTaskNode
         {
+        public:
             ImguiInterface* p_parent_{};
-            
+			
             rtg::RtgResourceHandle h_swapchain_{};
 			
             void Setup(rtg::RenderTaskGraphBuilder& builder, rtg::RtgResourceHandle h_swapchain, ImguiInterface* p_parent)

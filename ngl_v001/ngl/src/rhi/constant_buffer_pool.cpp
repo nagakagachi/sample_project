@@ -28,11 +28,11 @@ namespace ngl::rhi
             // Bufferの初期化.
             rhi::BufferDep::Desc cb_desc{};
             cb_desc.SetupAsConstantBuffer(byte_size);
-            item->buffer_.Initialize(p_device, cb_desc);
+            item->buffer.Initialize(p_device, cb_desc);
             
             // ConstantBufferViewの初期化.
             rhi::ConstantBufferViewDep::Desc cbv_desc{};
-            item->cbv_.Initialize(&item->buffer_, cbv_desc);
+            item->cbv.Initialize(&item->buffer, cbv_desc);
         }
         return item;
     }
@@ -176,7 +176,7 @@ namespace ngl::rhi
                 
                 for(auto* item : frame_return_list_[frame_return_index_].list_)
                 {
-                    const int bucket_index = CalcMatchBacketIndex(item->buffer_.GetElementByteSize());
+                    const int bucket_index = CalcMatchBacketIndex(item->buffer.GetElementByteSize());
                     assert( 0 <= bucket_index && "バケットインデックス計算が不正.");
                     if(bucket_.size() > bucket_index)
                     {

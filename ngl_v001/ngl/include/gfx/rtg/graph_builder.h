@@ -2,8 +2,9 @@
 /*
 
 	// IGraphicsTaskNode を継承してPreZPassを実装する例.
-	struct TaskDepthPass : public rtg::IGraphicsTaskNode
+	class TaskDepthPass : public rtg::IGraphicsTaskNode
 	{
+	public:
 		rtg::ResourceHandle h_depth_{};// RTGリソースハンドル保持.
 		
 		// リソースとアクセスを定義するプリプロセス.
@@ -40,8 +41,9 @@
 	// IGraphicsTaskNode を継承してHardwareDepthからLinearDepthを計算するPass例.
 	//	先行するPreZPass(DepthPass)の書き込み先リソースハンドルを読み取り使用し, LinearDepthを出力する.
 	//	別のTaskのリソースハンドルを利用する例.
-	struct TaskLinearDepthPass : public rtg::IGraphicsTaskNode
+	class TaskLinearDepthPass : public rtg::IGraphicsTaskNode
 	{
+	public:
 		rtg::ResourceHandle h_depth_{};
 		rtg::ResourceHandle h_linear_depth_{};
 
@@ -125,7 +127,7 @@ namespace ngl
 	{	
 		// 生成はRenderTaskGraphBuilder経由.
 		// GraphicsTaskの基底クラス.
-		struct IGraphicsTaskNode : public ITaskNode
+		class IGraphicsTaskNode : public ITaskNode
 		{
 		public:
 			virtual ~IGraphicsTaskNode() = default;
@@ -136,7 +138,7 @@ namespace ngl
 		// ComputeTaskの基底クラス.
 		// GraphicsでもAsyncComputeでも実行可能なもの. UAVバリア以外のバリアは出来ないようにComputeCommandListのみ利用可能とする.
 		// このTaskで利用するリソースのためのState遷移はRtg側の責任とする.
-		struct IComputeTaskNode : public ITaskNode
+		class IComputeTaskNode : public ITaskNode
 		{
 		public:
 			virtual ~IComputeTaskNode() = default;
@@ -425,7 +427,7 @@ namespace ngl
 			//	access_stage : リソース再利用を有効にしてアクセス開始ステージを指定する, nullptrの場合はリソース再利用をしない.
 			int GetOrCreateResourceFromPool(ResourceSearchKey key, const TaskStage* p_access_stage_for_reuse = nullptr);
 			// プールリソースの最終アクセス情報を書き換え. BuilderのCompile時の一時的な用途.
-			void SetInternalResouceLastAccess(int resource_id, TaskStage last_access_stage);
+			void SetInternalResourceLastAccess(int resource_id, TaskStage last_access_stage);
 			// 割り当て済みリソース番号から内部リソースポインタ取得.
 			InternalResourceInstanceInfo* GetInternalResourcePtr(int resource_id);
 

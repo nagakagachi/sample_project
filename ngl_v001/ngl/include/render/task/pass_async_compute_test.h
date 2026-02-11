@@ -12,8 +12,9 @@
 namespace ngl::render::task
 {
 	// AsyncComputeテスト用タスク (IComputeTaskNode派生).
-	struct TaskCopmuteTest : public  rtg::IComputeTaskNode
+	class TaskComputeTest : public  rtg::IComputeTaskNode
 	{
+	public:
 		rtg::RtgResourceHandle h_work_tex_{};
 
 		ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ = {};
@@ -25,7 +26,7 @@ namespace ngl::render::task
 			
 			rhi::ConstantBufferPooledHandle scene_cbv{};
 		} desc_{};
-		bool is_render_skip_debug{};
+		bool is_render_skip_debug_{};
 		
 		// リソースとアクセスを定義するプリプロセス.
 		void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
@@ -36,7 +37,7 @@ namespace ngl::render::task
 			// Rtgリソースセットアップ.
 			{
 				// リソース定義.
-				rtg::RtgResourceDesc2D work_tex_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
+				rtg::RtgResourceDesc2D work_tex_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc_.w, desc_.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
 
 				// リソースアクセス定義.
 				h_work_tex_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_tex_desc), rtg::AccessType::UAV);
@@ -68,7 +69,7 @@ namespace ngl::render::task
 			builder.RegisterTaskNodeRenderFunction(this,
 				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskComputeCommandListAllocator command_list_allocator)
 				{
-					if(is_render_skip_debug)
+					if(is_render_skip_debug_)
 					{
 						return;
 					}

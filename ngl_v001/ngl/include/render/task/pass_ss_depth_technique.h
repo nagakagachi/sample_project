@@ -12,13 +12,14 @@
 namespace ngl::render::task
 {
 	// .
-	struct TaskScreenSpaceDepthTechniquePass : public rtg::IGraphicsTaskNode
+	class TaskScreenSpaceDepthTechniquePass : public rtg::IGraphicsTaskNode
 	{
+	public:
 		rtg::RtgResourceHandle h_depth_{};
 		rtg::RtgResourceHandle h_linear_depth_{};
 
-        rtg::RtgResourceHandle h_gtao_bent_normal_{};// bent normal.xyz, visibility.w
-        rtg::RtgResourceHandle h_bent_normal_{};
+		rtg::RtgResourceHandle h_gtao_bent_normal_{};// bent normal.xyz, visibility.w
+		rtg::RtgResourceHandle h_bent_normal_{};
 
 		rhi::RhiRef<rhi::ComputePipelineStateDep> pso_gtao_demo_;
 		rhi::RhiRef<rhi::ComputePipelineStateDep> pso_bent_normal_;
@@ -35,7 +36,7 @@ namespace ngl::render::task
 		// リソースとアクセスを定義するプリプロセス.
 		void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info
 		    ,const SetupDesc& desc
-            ,rtg::RtgResourceHandle h_depth, rtg::RtgResourceHandle h_linear_depth)
+		    ,rtg::RtgResourceHandle h_depth, rtg::RtgResourceHandle h_linear_depth)
 		{
 			desc_ = desc;
 			
@@ -45,14 +46,14 @@ namespace ngl::render::task
 				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::AccessType::SHADER_READ);
 				h_linear_depth_ = builder.RecordResourceAccess(*this, h_linear_depth, rtg::AccessType::SHADER_READ);
                 
-                if(desc_.enable_gtao_demo)
+				if(desc_.enable_gtao_demo)
                 {
-                    rtg::RtgResourceDesc2D tex_gtao_bent_normal_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
-                    h_gtao_bent_normal_ = builder.RecordResourceAccess(*this, builder.CreateResource(tex_gtao_bent_normal_desc), rtg::AccessType::UAV);
+					rtg::RtgResourceDesc2D tex_gtao_bent_normal_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc_.w, desc_.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
+					h_gtao_bent_normal_ = builder.RecordResourceAccess(*this, builder.CreateResource(tex_gtao_bent_normal_desc), rtg::AccessType::UAV);
                 }
 
-				rtg::RtgResourceDesc2D bent_normal_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
-                h_bent_normal_ = builder.RecordResourceAccess(*this, builder.CreateResource(bent_normal_desc), rtg::AccessType::UAV);
+				rtg::RtgResourceDesc2D bent_normal_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc_.w, desc_.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
+				h_bent_normal_ = builder.RecordResourceAccess(*this, builder.CreateResource(bent_normal_desc), rtg::AccessType::UAV);
 			}
 
 
@@ -68,8 +69,8 @@ namespace ngl::render::task
                 
                 ngl::rhi::ComputePipelineStateDep::Desc pso_desc = {};
                 pso_desc.cs = &res_shader->data_;
-                pso_gtao_demo_.Reset(new rhi::ComputePipelineStateDep());
-                if (!pso_gtao_demo_->Initialize(p_device, pso_desc))
+				pso_gtao_demo_.Reset(new rhi::ComputePipelineStateDep());
+				if (!pso_gtao_demo_->Initialize(p_device, pso_desc))
                 {
                     assert(false);
                 }
@@ -107,34 +108,34 @@ namespace ngl::render::task
 					// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
 					auto res_depth = builder.GetAllocatedResource(this, h_depth_);
 					auto res_linear_depth = builder.GetAllocatedResource(this, h_linear_depth_);
-                    auto res_gtao_bent_normal = builder.GetAllocatedResource(this, h_gtao_bent_normal_);
+					auto res_gtao_bent_normal = builder.GetAllocatedResource(this, h_gtao_bent_normal_);
 					auto res_bent_normal = builder.GetAllocatedResource(this, h_bent_normal_);
 
                     if(res_gtao_bent_normal.srv_.IsValid())
                     {
                         NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "Gtao_demo");
                         ngl::rhi::DescriptorSetDep desc_set = {};
-                        pso_gtao_demo_->SetView(&desc_set, "TexLinearDepth", res_linear_depth.srv_.Get());
-                        pso_gtao_demo_->SetView(&desc_set, "RWTexGtaoBentNormal", res_gtao_bent_normal.uav_.Get());
-                        pso_gtao_demo_->SetView(&desc_set, "cb_ngl_sceneview", &desc_.scene_cbv->cbv_);
+						pso_gtao_demo_->SetView(&desc_set, "TexLinearDepth", res_linear_depth.srv_.Get());
+						pso_gtao_demo_->SetView(&desc_set, "RWTexGtaoBentNormal", res_gtao_bent_normal.uav_.Get());
+						pso_gtao_demo_->SetView(&desc_set, "cb_ngl_sceneview", &desc_.scene_cbv->cbv);
                             
-                        gfx_commandlist->SetPipelineState(pso_gtao_demo_.Get());
-                        gfx_commandlist->SetDescriptorSet(pso_gtao_demo_.Get(), &desc_set);
+						gfx_commandlist->SetPipelineState(pso_gtao_demo_.Get());
+						gfx_commandlist->SetDescriptorSet(pso_gtao_demo_.Get(), &desc_set);
 
-                        pso_gtao_demo_->DispatchHelper(gfx_commandlist, res_gtao_bent_normal.tex_->GetWidth(), res_gtao_bent_normal.tex_->GetHeight(), 1);
+						pso_gtao_demo_->DispatchHelper(gfx_commandlist, res_gtao_bent_normal.tex_->GetWidth(), res_gtao_bent_normal.tex_->GetHeight(), 1);
                     }
                     if(res_bent_normal.srv_.IsValid())
                     {
                         NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "CustomBentNormal");
                         ngl::rhi::DescriptorSetDep desc_set = {};
-                        pso_bent_normal_->SetView(&desc_set, "TexLinearDepth", res_linear_depth.srv_.Get());
-                        pso_bent_normal_->SetView(&desc_set, "RWTexBentNormal", res_bent_normal.uav_.Get());
-                        pso_bent_normal_->SetView(&desc_set, "cb_ngl_sceneview", &desc_.scene_cbv->cbv_);
+						pso_bent_normal_->SetView(&desc_set, "TexLinearDepth", res_linear_depth.srv_.Get());
+						pso_bent_normal_->SetView(&desc_set, "RWTexBentNormal", res_bent_normal.uav_.Get());
+						pso_bent_normal_->SetView(&desc_set, "cb_ngl_sceneview", &desc_.scene_cbv->cbv);
                             
-                        gfx_commandlist->SetPipelineState(pso_bent_normal_.Get());
-                        gfx_commandlist->SetDescriptorSet(pso_bent_normal_.Get(), &desc_set);
+						gfx_commandlist->SetPipelineState(pso_bent_normal_.Get());
+						gfx_commandlist->SetDescriptorSet(pso_bent_normal_.Get(), &desc_set);
 
-                        pso_bent_normal_->DispatchHelper(gfx_commandlist, res_bent_normal.tex_->GetWidth(), res_bent_normal.tex_->GetHeight(), 1);
+						pso_bent_normal_->DispatchHelper(gfx_commandlist, res_bent_normal.tex_->GetWidth(), res_bent_normal.tex_->GetHeight(), 1);
                     }
 				}
 			);

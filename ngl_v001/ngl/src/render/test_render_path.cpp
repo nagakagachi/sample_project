@@ -66,7 +66,7 @@ namespace ngl::test
 		auto scene_cb_h = p_cb_pool->Alloc(sizeof(ngl::gfx::CbSceneView));
 		// SceneView ConstantBuffer内容更新.
 		{
-			if (auto* mapped = scene_cb_h->buffer_.MapAs<ngl::gfx::CbSceneView>())
+			if (auto* mapped = scene_cb_h->buffer.MapAs<ngl::gfx::CbSceneView>())
 			{
 				mapped->cb_view_mtx = view_info.view_mat;
 				mapped->cb_proj_mtx = view_info.proj_mat;
@@ -80,7 +80,7 @@ namespace ngl::test
 
 				mapped->cb_time_sec = std::fmodf(static_cast<float>(ngl::time::Timer::Instance().GetElapsedSec("AppGameTime")), 60.0f*60.0f*24.0f);
 
-				scene_cb_h->buffer_.Unmap();
+				scene_cb_h->buffer.Unmap();
 			}
 		}
 				
@@ -115,9 +115,9 @@ namespace ngl::test
 #if ASYNC_COMPUTE_TEST0
 				// ----------------------------------------
 				// AsyncCompute Pass.
-				auto* task_test_compute0 = rtg_builder.AppendTaskNode<ngl::render::task::TaskCopmuteTest>();
+				auto* task_test_compute0 = rtg_builder.AppendTaskNode<ngl::render::task::TaskComputeTest>();
 				{
-					ngl::render::task::TaskCopmuteTest::SetupDesc setup_desc{};
+					ngl::render::task::TaskComputeTest::SetupDesc setup_desc{};
 					{
 						setup_desc.w = screen_w;
 						setup_desc.h = screen_h;
@@ -159,11 +159,11 @@ namespace ngl::test
 						setup_desc.scene_cbv = scene_cb_h;
 
 						setup_desc.gfx_scene = p_scene->gfx_scene_;
-						setup_desc.p_mesh_proxy_id_array_ = &p_scene->mesh_proxy_id_array_;
+						setup_desc.p_mesh_proxy_id_array = &p_scene->mesh_proxy_id_array_;
 					}
 					task_depth->Setup(rtg_builder, p_device, view_info, setup_desc);
 					// Renderをスキップテスト.
-					task_depth->is_render_skip_debug = k_force_skip_all_pass_render;
+					task_depth->is_render_skip_debug_ = k_force_skip_all_pass_render;
 				}
 					
 				// ----------------------------------------
@@ -179,7 +179,7 @@ namespace ngl::test
 					}
 					task_linear_depth->Setup(rtg_builder, p_device, view_info, task_depth->h_depth_, async_compute_tex0, setup_desc);
 					// Renderをスキップテスト.
-					task_linear_depth->is_render_skip_debug = k_force_skip_all_pass_render;
+					task_linear_depth->is_render_skip_debug_ = k_force_skip_all_pass_render;
 				}
 
 
@@ -195,7 +195,7 @@ namespace ngl::test
 
                         setup_desc.enable_gtao_demo = render_frame_desc.feature_config.gtao_demo.enable;
                     }
-                    task_ss_depth_technique->Setup(rtg_builder, p_device, view_info, setup_desc, task_depth->h_depth_, task_linear_depth->h_linear_depth_);
+					task_ss_depth_technique->Setup(rtg_builder, p_device, view_info, setup_desc, task_depth->h_depth_, task_linear_depth->h_linear_depth_);
                 }
 
 				
@@ -203,9 +203,9 @@ namespace ngl::test
 #if ASYNC_COMPUTE_TEST1
 				// ----------------------------------------
 				// AsyncCompute Pass.
-				auto* task_test_compute1 = rtg_builder.AppendTaskNode<ngl::render::task::TaskCopmuteTest>();
+				auto* task_test_compute1 = rtg_builder.AppendTaskNode<ngl::render::task::TaskComputeTest>();
 				{
-					ngl::render::task::TaskCopmuteTest::SetupDesc setup_desc{};
+					ngl::render::task::TaskComputeTest::SetupDesc setup_desc{};
 					{
 						setup_desc.w = screen_w;
 						setup_desc.h = screen_h;
@@ -214,7 +214,7 @@ namespace ngl::test
 					}
 					task_test_compute1->Setup(rtg_builder, p_device, view_info, task_linear_depth->h_linear_depth_, setup_desc);
 					// Renderをスキップテスト.
-					task_test_compute1->is_render_skip_debug = k_force_skip_all_pass_render;
+					task_test_compute1->is_render_skip_debug_ = k_force_skip_all_pass_render;
 
 					async_compute_tex1 = task_test_compute1->h_work_tex_;
 				}
@@ -232,11 +232,11 @@ namespace ngl::test
 						setup_desc.scene_cbv = scene_cb_h;
 						
 						setup_desc.gfx_scene = p_scene->gfx_scene_;
-						setup_desc.p_mesh_proxy_id_array_ = &p_scene->mesh_proxy_id_array_;
+						setup_desc.p_mesh_proxy_id_array = &p_scene->mesh_proxy_id_array_;
 					}
 					task_gbuffer->Setup(rtg_builder, p_device, view_info, task_depth->h_depth_, async_compute_tex0, setup_desc);
 					// Renderをスキップテスト.
-					task_gbuffer->is_render_skip_debug = k_force_skip_all_pass_render;
+					task_gbuffer->is_render_skip_debug_ = k_force_skip_all_pass_render;
 				}
 
                 // After GBuffer Injection Pass.
@@ -249,7 +249,7 @@ namespace ngl::test
                         
                         setup_desc.scene_cbv = scene_cb_h;
                     }
-                    task_after_gbuffer_injection->Setup(rtg_builder, p_device, view_info, task_depth->h_depth_, setup_desc);
+					task_after_gbuffer_injection->Setup(rtg_builder, p_device, view_info, task_depth->h_depth_, setup_desc);
                 }
 				
 				// ----------------------------------------
@@ -312,7 +312,7 @@ namespace ngl::test
 						setup_desc.scene_cbv = scene_cb_h;
 						
 						setup_desc.gfx_scene = p_scene->gfx_scene_;
-						setup_desc.p_mesh_proxy_id_array_ = &p_scene->mesh_proxy_id_array_;
+						setup_desc.p_mesh_proxy_id_array = &p_scene->mesh_proxy_id_array_;
 						
 						// Directionalのライト方向テスト.
 						setup_desc.directional_light_dir = ngl::math::Vec3::Normalize(render_frame_desc.feature_config.lighting.directional_light_dir);
@@ -321,7 +321,7 @@ namespace ngl::test
 					}
 					task_d_shadow->Setup(rtg_builder, p_device, view_info, setup_desc);
 					// Renderをスキップテスト.
-					task_d_shadow->is_render_skip_debug = k_force_skip_all_pass_render;
+					task_d_shadow->is_render_skip_debug_ = k_force_skip_all_pass_render;
 				}
 					
                 
@@ -331,12 +331,12 @@ namespace ngl::test
                     {
                         ngl::render::app::RenderTaskSsvgBegin::SetupDesc setup_desc{};
                         {
-							setup_desc.w_ = screen_w;
-							setup_desc.h_ = screen_h;
+							setup_desc.w = screen_w;
+							setup_desc.h = screen_h;
                             
-							setup_desc.scene_cbv_ = scene_cb_h;
+							setup_desc.scene_cbv = scene_cb_h;
 
-							setup_desc.p_ssvg_ = render_frame_desc.feature_config.gi.p_ssvg;
+							setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
                         }
                         task_ssvg_begin->Setup(rtg_builder, p_device, view_info, setup_desc);
                     }
@@ -345,40 +345,40 @@ namespace ngl::test
                     {
                         ngl::render::app::RenderTaskSsvgViewVoxelInjection::SetupDesc setup_desc{};
                         {
-							setup_desc.w_ = screen_w;
-							setup_desc.h_ = screen_h;
+							setup_desc.w = screen_w;
+							setup_desc.h = screen_h;
                             
-							setup_desc.scene_cbv_ = scene_cb_h;
-							setup_desc.p_ssvg_ = render_frame_desc.feature_config.gi.p_ssvg;
+							setup_desc.scene_cbv = scene_cb_h;
+							setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
 
                             // main view DepthBuffer登録.
                             {
-								setup_desc.depth_buffer_info_.primary_.view_mat_ = view_info.view_mat;
-								setup_desc.depth_buffer_info_.primary_.proj_mat_ = view_info.proj_mat;
-								setup_desc.depth_buffer_info_.primary_.atlas_offset_ = math::Vec2i(0,0);
-								setup_desc.depth_buffer_info_.primary_.atlas_resolution_ = math::Vec2i(screen_w, screen_h);
-								setup_desc.depth_buffer_info_.primary_.h_depth_ = task_depth->h_depth_;
+								setup_desc.depth_buffer_info.primary.view_mat = view_info.view_mat;
+								setup_desc.depth_buffer_info.primary.proj_mat = view_info.proj_mat;
+								setup_desc.depth_buffer_info.primary.atlas_offset = math::Vec2i(0,0);
+								setup_desc.depth_buffer_info.primary.atlas_resolution = math::Vec2i(screen_w, screen_h);
+								setup_desc.depth_buffer_info.primary.h_depth = task_depth->h_depth_;
 
-								setup_desc.depth_buffer_info_.primary_.is_enable_injection_pass_ = (render_frame_desc.feature_config.gi.enable_ssvg_injection_pass) && true;// Voxel充填利用するか.
-								setup_desc.depth_buffer_info_.primary_.is_enable_removal_pass_ = (render_frame_desc.feature_config.gi.enable_ssvg_rejection_pass) && true;// Voxel除去に利用するか.
+								setup_desc.depth_buffer_info.primary.is_enable_injection_pass = (render_frame_desc.feature_config.gi.enable_ssvg_injection_pass) && true;// Voxel充填利用するか.
+								setup_desc.depth_buffer_info.primary.is_enable_removal_pass = (render_frame_desc.feature_config.gi.enable_ssvg_rejection_pass) && true;// Voxel除去に利用するか.
                             }
 
                             // ShadowMapのDepthBuffer登録. 高速化のためにフレーム毎にカスケードスキップするのもありかもしれない.
-                            for( int cascade_idx = 0; cascade_idx < task_d_shadow->csm_param_.k_cascade_count; ++cascade_idx )
+							for( int cascade_idx = 0; cascade_idx < task_d_shadow->csm_param_.k_cascade_count; ++cascade_idx )
                             {
                                 ngl::render::app::InjectionSourceDepthBufferViewInfo shadow_depth_info{};
                                 {
-									shadow_depth_info.view_mat_ = task_d_shadow->csm_param_.light_view_mtx[cascade_idx];
-									shadow_depth_info.proj_mat_ = task_d_shadow->csm_param_.light_ortho_mtx[cascade_idx];
-									shadow_depth_info.atlas_offset_ = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_offset_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_offset_y[cascade_idx]);
-									shadow_depth_info.atlas_resolution_ = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_size_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_size_y[cascade_idx]);
-									shadow_depth_info.h_depth_ = task_d_shadow->h_shadow_depth_atlas_;
+									shadow_depth_info.view_mat = task_d_shadow->csm_param_.light_view_mtx[cascade_idx];
+									shadow_depth_info.proj_mat = task_d_shadow->csm_param_.light_ortho_mtx[cascade_idx];
+									shadow_depth_info.atlas_offset = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_offset_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_offset_y[cascade_idx]);
+									shadow_depth_info.atlas_resolution = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_size_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_size_y[cascade_idx]);
+									shadow_depth_info.h_depth = task_d_shadow->h_shadow_depth_atlas_;
                                     
-									shadow_depth_info.is_enable_injection_pass_ = (render_frame_desc.feature_config.gi.enable_ssvg_injection_pass) && true;// Voxel充填に利用するか.
-									shadow_depth_info.is_enable_removal_pass_ = (render_frame_desc.feature_config.gi.enable_ssvg_rejection_pass) && true;// Voxel除去に利用するか.
+									shadow_depth_info.is_enable_injection_pass = (render_frame_desc.feature_config.gi.enable_ssvg_injection_pass) && true;// Voxel充填に利用するか.
+									shadow_depth_info.is_enable_removal_pass = (render_frame_desc.feature_config.gi.enable_ssvg_rejection_pass) && true;// Voxel除去に利用するか.
                                 }
 
-								setup_desc.depth_buffer_info_.sub_array_.push_back(shadow_depth_info);
+									setup_desc.depth_buffer_info.sub_array.push_back(shadow_depth_info);
                             }   
                         }
                         task_ssvg_view_voxel_injection->Setup(rtg_builder, p_device, view_info, setup_desc);
@@ -388,15 +388,15 @@ namespace ngl::test
                     {
                         ngl::render::app::RenderTaskSsvgUpdate::SetupDesc setup_desc{};
                         {
-							setup_desc.w_ = screen_w;
-							setup_desc.h_ = screen_h;
+							setup_desc.w = screen_w;
+							setup_desc.h = screen_h;
                             
-							setup_desc.scene_cbv_ = scene_cb_h;
+							setup_desc.scene_cbv = scene_cb_h;
 
-							setup_desc.p_ssvg_ = render_frame_desc.feature_config.gi.p_ssvg;
+							setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
                             
                             // main view.
-							setup_desc.h_depth_ = task_depth->h_depth_;
+							setup_desc.h_depth = task_depth->h_depth_;
                         }
                         task_ssvg_update->Setup(rtg_builder, p_device, view_info, setup_desc);
                     }
@@ -436,10 +436,10 @@ namespace ngl::test
 						task_gbuffer->h_velocity_, task_linear_depth->h_linear_depth_, render_frame_desc.h_prev_lit,
 						task_d_shadow->h_shadow_depth_atlas_, task_ss_depth_technique->h_gtao_bent_normal_,
 						async_compute_tex1,
-                        task_ss_depth_technique->h_bent_normal_,
+						task_ss_depth_technique->h_bent_normal_,
 						setup_desc);
 					// Renderをスキップテスト.
-					task_light->is_render_skip_debug = k_force_skip_all_pass_render;
+					task_light->is_render_skip_debug_ = k_force_skip_all_pass_render;
 				}
 
 				// ----------------------------------------
@@ -459,7 +459,7 @@ namespace ngl::test
 					task_light->h_light_, task_depth->h_depth_,
 						setup_desc);
 					// Renderをスキップテスト.
-					task_after_light->is_render_skip_debug = k_force_skip_all_pass_render;
+					task_after_light->is_render_skip_debug_ = k_force_skip_all_pass_render;
 				}
 
 				// ----------------------------------------
@@ -524,7 +524,7 @@ namespace ngl::test
                                 general_debug_tex = debug_gbuffer3;
                                 break;
                             case EDebugBufferMode::HardwareDepth:
-                                general_debug_tex = task_depth->h_depth_;
+								general_debug_tex = task_depth->h_depth_;
                                 break;
 
                             case EDebugBufferMode::DirectionalShadowAtlas:
@@ -532,10 +532,10 @@ namespace ngl::test
                                 break;
                                 
                             case EDebugBufferMode::GtaoDemo:
-                                general_debug_tex = task_ss_depth_technique->h_gtao_bent_normal_;
+								general_debug_tex = task_ss_depth_technique->h_gtao_bent_normal_;
                                 break;
                             case EDebugBufferMode::BentNormalTest:
-                                general_debug_tex = task_ss_depth_technique->h_bent_normal_;
+								general_debug_tex = task_ss_depth_technique->h_bent_normal_;
                                 break;
                             case EDebugBufferMode::SsvgDebugTexture:
                                 general_debug_tex = task_ssvg_update->h_work_;
@@ -558,7 +558,7 @@ namespace ngl::test
 
 							setup_desc);
 						// Renderをスキップテスト.
-						task_final->is_render_skip_debug = k_force_skip_all_pass_render;
+						task_final->is_render_skip_debug_ = k_force_skip_all_pass_render;
 					}
 				}
 

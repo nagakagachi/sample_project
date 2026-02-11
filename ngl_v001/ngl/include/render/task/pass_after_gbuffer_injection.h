@@ -12,8 +12,9 @@
 
 namespace ngl::render::task
 {
-	struct TaskAfterGBufferInjection : public rtg::IGraphicsTaskNode
+	class TaskAfterGBufferInjection : public rtg::IGraphicsTaskNode
 	{
+	public:
 		//rtg::RtgResourceHandle h_work_{};
 
 		struct SetupDesc

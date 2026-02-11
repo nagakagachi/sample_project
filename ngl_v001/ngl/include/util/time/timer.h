@@ -68,24 +68,24 @@ namespace ngl
 					TimerConstruct() {
 						static LARGE_INTEGER freq = {};
 						QueryPerformanceFrequency(&freq);
-						friq_inv_ = 1.0 / (double)(freq.QuadPart);
+						freq_inv = 1.0 / (double)(freq.QuadPart);
 					}
-					double			friq_inv_;
+					double			freq_inv;
 				};
-				static double GetFriqInv() {
+				static double GetFreqInv() {
 					static TimerConstruct c;
-					return c.friq_inv_;
+					return c.freq_inv;
 				}
 				TimerEntity()
 				{
 				}
 
-				LARGE_INTEGER time_begin_ = {};
-				LARGE_INTEGER time_end_ = {};
+				LARGE_INTEGER time_begin = {};
+				LARGE_INTEGER time_end = {};
 				// 一時停止開始の時間
-				LARGE_INTEGER time_stop_start_ = {};
+				LARGE_INTEGER time_stop_start = {};
 				// 一時停止の総時間 時間の取得時にこの時間を引いたものを返すように
-				LARGE_INTEGER time_suspemd_total = {};
+				LARGE_INTEGER time_suspend_total = {};
 			};
 
 			//using TimerMapType = std::map<TimerName, Timer::TimerEntity>;

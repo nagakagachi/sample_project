@@ -145,7 +145,7 @@ namespace ngl::gfx::scene
         }
 
         // Game更新のコールバックを設定.
-        // 基底クラスSceneMeshのGameThreaed更新時にコールバックされます.
+        // 基底クラスSceneMeshのGameThread更新時にコールバックされます.
         void SetGameUpdateCallback(const SceneMeshGameUpdateCallback& func)
         {
             game_update_callback_ = func;
@@ -159,8 +159,8 @@ namespace ngl::gfx::scene
                     });
             */
         }
-        // Rennder更新のコールバックを設定.
-        // 基底クラスSceneMeshのRenderThreaed更新時にコールバックされます.
+        // Render更新のコールバックを設定.
+        // 基底クラスSceneMeshのRenderThread更新時にコールバックされます.
         void SetRenderUpdateCallback(const SceneMeshRenderUpdateCallback& func)
         {
             render_update_callback_ = func;

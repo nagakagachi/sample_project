@@ -14,8 +14,9 @@
 namespace ngl::render::task
 {
 	// AfterLightingパス.
-	struct TaskAfterLightPass : public rtg::IGraphicsTaskNode
+	class TaskAfterLightPass : public rtg::IGraphicsTaskNode
 	{
+	public:
 		rtg::RtgResourceHandle h_depth_{};
 		rtg::RtgResourceHandle h_light_{};
 		
@@ -27,7 +28,7 @@ namespace ngl::render::task
 
             render::app::SsVg* p_ssvg = {};
 		} desc_{};
-		bool is_render_skip_debug{};
+		bool is_render_skip_debug_{};
 		
 		// リソースとアクセスを定義するプリプロセス.
 		void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
@@ -53,7 +54,7 @@ namespace ngl::render::task
 			builder.RegisterTaskNodeRenderFunction(this,
 				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
 				{
-					if(is_render_skip_debug)
+					if(is_render_skip_debug_)
 					{
 						return;
 					}
@@ -69,8 +70,8 @@ namespace ngl::render::task
 					assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
 					assert(res_light.tex_.IsValid() && res_light.srv_.IsValid());
 
-                    desc_.p_ssvg->DebugDraw(gfx_commandlist,
-                        desc_.scene_cbv,
+					desc_.p_ssvg->DebugDraw(gfx_commandlist,
+						desc_.scene_cbv,
                         res_depth.tex_, res_depth.dsv_,
                         res_light.tex_, res_light.rtv_);
 				});

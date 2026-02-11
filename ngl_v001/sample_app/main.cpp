@@ -45,7 +45,7 @@
 #include "imgui/imgui_interface.h"
 
 // レイトレデモ機能の有効化
-#define NGL_TEST_RAYTRACING_ENABLE 1
+#define NGL_TEST_RAYTRACING_ENABLE 0
 // SwTessellationデモ機能の有効化
 #define NGL_TEST_SWTESSELLATION_ENABLE 0
 

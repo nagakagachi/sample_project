@@ -1685,11 +1685,11 @@ namespace ngl
 				int num_ray_type;
 			};
 			auto raytrace_cbh = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(RaytraceInfo));
-			if(auto* mapped = raytrace_cbh->buffer_.MapAs<RaytraceInfo>())
+			if(auto* mapped = raytrace_cbh->buffer.MapAs<RaytraceInfo>())
 			{
 				mapped->num_ray_type = p_rt_scene_->NumHitGroupCountMax();
 
-				raytrace_cbh->buffer_.Unmap();
+				raytrace_cbh->buffer.Unmap();
 			}
 			
 
@@ -1701,7 +1701,7 @@ namespace ngl
 				// global resourceのセット.
 				{
 					param.cbv_slot[0] = p_rt_scene_->GetSceneViewCbv();// View.
-					param.cbv_slot[1] = &raytrace_cbh->cbv_;// Raytrace.
+					param.cbv_slot[1] = &raytrace_cbh->cbv;// Raytrace.
 				}
 				{
 					param.srv_slot;
@@ -1917,7 +1917,7 @@ namespace ngl
 			// 定数バッファ更新.
 			{
 				const auto cb_index = frame_count_ % std::size(cbh_scene_view);
-				if (auto* mapped = static_cast<CbSceneView*>(cbh_scene_view[cb_index]->buffer_.Map()))
+				if (auto* mapped = static_cast<CbSceneView*>(cbh_scene_view[cb_index]->buffer.Map()))
 				{
 					mapped->cb_view_mtx = view_mat;
 					mapped->cb_proj_mtx = proj_mat;
@@ -1926,7 +1926,7 @@ namespace ngl
 
 					mapped->cb_ndc_z_to_view_z_coef = ndc_z_to_view_z_coef;
 
-					cbh_scene_view[cb_index]->buffer_.Unmap();
+					cbh_scene_view[cb_index]->buffer.Unmap();
 				}
 			}
 		}
@@ -1955,7 +1955,7 @@ namespace ngl
 				return nullptr;
 			
 			const auto cb_index = frame_count_ % std::size(cbh_scene_view);
-			return (cbh_scene_view[cb_index]->buffer_.IsValid())? &cbh_scene_view[cb_index]->cbv_ : nullptr;
+			return (cbh_scene_view[cb_index]->buffer.IsValid())? &cbh_scene_view[cb_index]->cbv : nullptr;
 		}
 		const rhi::ConstantBufferViewDep* RtSceneManager::GetSceneViewCbv() const
 		{
@@ -1963,7 +1963,7 @@ namespace ngl
 				return nullptr;
 			
 			const auto cb_index = frame_count_ % std::size(cbh_scene_view);
-			return (cbh_scene_view[cb_index]->buffer_.IsValid())? &cbh_scene_view[cb_index]->cbv_ : nullptr;
+			return (cbh_scene_view[cb_index]->buffer.IsValid())? &cbh_scene_view[cb_index]->cbv : nullptr;
 		}
 
 		void RtSceneManager::DispatchRay(rhi::GraphicsCommandListDep* p_command_list, const DispatchRayParam& param)

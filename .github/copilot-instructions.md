@@ -21,7 +21,8 @@
   - material_shader_manager は 自動生成コードとの対応をわかりやすくするため例外とする
 
 ### C++ Member/Function/Constant
-- **メンバー変数: snake_case + 末尾 `_` を推奨** (例: `p_window_`, `swapchain_rtvs_`)
+- **classメンバー変数: snake_case + 末尾 `_` を推奨** (例: `p_window_`, `swapchain_rtvs_`)
+- **structメンバー変数: snake_case（末尾 `_` なし）を推奨** (例: `param`, `xyz`)
 - **ポインタ/参照系の接頭辞: `p_` / `ref_` を推奨** (例: `p_device_`, `ref_swapchain_`)
 - **関数名: PascalCase を推奨** (例: `Initialize`, `BeginFrame`)
 - **定数: `k_` プレフィックス + snake_case を推奨** (例: `k_pi_f`)

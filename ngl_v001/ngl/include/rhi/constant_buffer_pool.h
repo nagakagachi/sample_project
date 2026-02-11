@@ -19,8 +19,8 @@ namespace rhi {
     // ConstantBufferPoolの要素.
     struct ConstantBufferPoolItem
     {
-        rhi::BufferDep buffer_{};
-        rhi::ConstantBufferViewDep cbv_{};
+        rhi::BufferDep buffer{};
+        rhi::ConstantBufferViewDep cbv{};
     };
     using ConstantBufferPooledHandle = std::shared_ptr<ConstantBufferPoolItem>;
 

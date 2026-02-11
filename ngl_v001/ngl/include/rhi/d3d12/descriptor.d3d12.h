@@ -127,7 +127,7 @@ namespace ngl
 			struct Desc
 			{
 				D3D12_DESCRIPTOR_HEAP_TYPE	type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-				u32							allocate_descriptor_count_ = 0;
+				   u32							allocate_descriptor_count = 0;
 				// Shaderからの可視性. trueの場合GPU常駐メモリに確保される.
 				// CopyDescriptorsのSrcに利用するHeapはfalseでなければならない.
 				// RTV/DSVのHeapはtrueの場合ValidationErrorとなる.
@@ -247,7 +247,7 @@ namespace ngl
 			struct Desc
 			{
 				D3D12_DESCRIPTOR_HEAP_TYPE	type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-				u32							allocate_descriptor_count_ = 500000;
+				u32						allocate_descriptor_count = 500000;
 			};
 
 			PersistentDescriptorAllocator();
@@ -357,7 +357,7 @@ namespace ngl
 			{
 				D3D12_DESCRIPTOR_HEAP_TYPE	type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 				// 一括確保するDescriptor数
-				u32							allocate_descriptor_count_ = 500000;
+				u32						allocate_descriptor_count = 500000;
 			};
 
 			DynamicDescriptorManager();

@@ -25,14 +25,14 @@ namespace time
 			timers_.insert(std::pair<TimerName, Timer::TimerEntity >(name, Timer::TimerEntity()));
 			it = timers_.find(name);
 		}
-		QueryPerformanceCounter(&it->second.time_begin_);
+		QueryPerformanceCounter(&it->second.time_begin);
 		
-		it->second.time_stop_start_.QuadPart = -1;
-		memset(&it->second.time_suspemd_total, 0x00, sizeof(LARGE_INTEGER));
+		it->second.time_stop_start.QuadPart = -1;
+		memset(&it->second.time_suspend_total, 0x00, sizeof(LARGE_INTEGER));
 	}
 	double	Timer::GetElapsedSec(const char* name)
 	{
-		return GetPerformanceCounter(name) * TimerEntity::GetFriqInv();
+		return GetPerformanceCounter(name) * TimerEntity::GetFreqInv();
 	}
 	// 経過時間をパフォーマンスカウンタのまま取得
 	ngl::s64 Timer::GetPerformanceCounter(const char* name)
@@ -42,8 +42,8 @@ namespace time
 		{
 			return 0;
 		}
-		QueryPerformanceCounter(&it->second.time_end_);
-		return (it->second.time_end_.QuadPart - it->second.time_begin_.QuadPart - GetSuspendTotalPerformanceCounter(name));
+		QueryPerformanceCounter(&it->second.time_end);
+		return (it->second.time_end.QuadPart - it->second.time_begin.QuadPart - GetSuspendTotalPerformanceCounter(name));
 	}
 	void	Timer::RemoveTimer(const char* name)
 	{
@@ -61,9 +61,9 @@ namespace time
 		TimerMapType::iterator it = timers_.find(name);
 		if (timers_.end() == it)
 			return;
-		if (0 <= it->second.time_stop_start_.QuadPart)
+		if (0 <= it->second.time_stop_start.QuadPart)
 			return;
-		QueryPerformanceCounter(&it->second.time_stop_start_);
+		QueryPerformanceCounter(&it->second.time_stop_start);
 	}
 	// タイマーを再開
 	void	Timer::ResumeTimer(const char* name)
@@ -71,12 +71,12 @@ namespace time
 		TimerMapType::iterator it = timers_.find(name);
 		if (timers_.end() == it)
 			return;
-		if (0 > it->second.time_stop_start_.QuadPart)
+		if (0 > it->second.time_stop_start.QuadPart)
 			return;
 		LARGE_INTEGER time;
 		QueryPerformanceCounter(&time);
-		it->second.time_suspemd_total.QuadPart += time.QuadPart - it->second.time_stop_start_.QuadPart;
-		it->second.time_stop_start_.QuadPart = -1;
+		it->second.time_suspend_total.QuadPart += time.QuadPart - it->second.time_stop_start.QuadPart;
+		it->second.time_stop_start.QuadPart = -1;
 	}
 	// 
 	ngl::s64 Timer::GetSuspendTotalPerformanceCounter(const char* name)
@@ -87,8 +87,8 @@ namespace time
 		LARGE_INTEGER time;
 		QueryPerformanceCounter(&time);
 
-		s64 pc = it->second.time_suspemd_total.QuadPart;
-		pc += (0 <= it->second.time_stop_start_.QuadPart) ? time.QuadPart - it->second.time_stop_start_.QuadPart : 0;
+		s64 pc = it->second.time_suspend_total.QuadPart;
+		pc += (0 <= it->second.time_stop_start.QuadPart) ? time.QuadPart - it->second.time_stop_start.QuadPart : 0;
 		return pc;
 	}
 }

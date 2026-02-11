@@ -109,7 +109,7 @@ namespace ngl::render::app
         auto cbh = p_device->GetConstantBufferPool()->Alloc(sizeof(CBTConstants));
         
         // 定数バッファに全データを書き込み
-        if (auto* mapped_ptr = cbh->buffer_.MapAs<CBTConstants>())
+        if (auto* mapped_ptr = cbh->buffer.MapAs<CBTConstants>())
         {
             // CBT固有の設定値
             mapped_ptr->cbt_tree_depth = cbt_tree_depth;
@@ -142,7 +142,7 @@ namespace ngl::render::app
             mapped_ptr->debug_target_bisector_id = debug_target_bisector_id;
             mapped_ptr->debug_target_bisector_depth = debug_target_bisector_depth;
 
-            cbh->buffer_.Unmap();
+            cbh->buffer.Unmap();
         }
         
         return cbh;
@@ -151,7 +151,7 @@ namespace ngl::render::app
     void CBTGpuResources::BindResources(ngl::rhi::ComputePipelineStateDep* pso, ngl::rhi::DescriptorSetDep* desc_set, ngl::rhi::ConstantBufferPooledHandle cb_handle) const
     {
         // Constant Buffer (ConstantBufferPoolから)
-        pso->SetView(desc_set, "CBTTessellationConstants", &cb_handle->cbv_);
+        pso->SetView(desc_set, "CBTTessellationConstants", &cb_handle->cbv);
         
         // CBT Buffer
         pso->SetView(desc_set, "cbt_buffer", cbt_buffer.srv.Get());
@@ -345,7 +345,7 @@ namespace ngl::render::app
                 // CBTテッセレーション定数バッファをバインド（最新フレームの定数バッファを使用）
                 if (!cbt_constant_handles_.empty() && shape_index < cbt_constant_handles_.size())
                 {
-                    pso->SetView(desc_set, "CBTTessellationConstants", &cbt_constant_handles_[shape_index]->cbv_);
+                    pso->SetView(desc_set, "CBTTessellationConstants", &cbt_constant_handles_[shape_index]->cbv);
                 }
             });
 
@@ -433,11 +433,11 @@ namespace ngl::render::app
                         // ConstantBufferPoolから定数バッファを確保
                         auto cbh = command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(CbCbtSumReduction));
                         // 定数バッファに全データを書き込み
-                        if (auto* mapped_ptr = cbh->buffer_.MapAs<CbCbtSumReduction>())
+                        if (auto* mapped_ptr = cbh->buffer.MapAs<CbCbtSumReduction>())
                         {
                             mapped_ptr->target_depth = sum_reduction_cbt_depth;
 
-                            cbh->buffer_.Unmap();
+                            cbh->buffer.Unmap();
                         }
 
                         {
@@ -448,7 +448,7 @@ namespace ngl::render::app
                             ngl::rhi::DescriptorSetDep desc_set = {};
                             {
                                 cbt_gpu_resources_array_[shape_idx].BindResources(cbt_sum_reduction_pso_.Get(), &desc_set, cbt_constant_handles_[shape_idx]);
-                                cbt_sum_reduction_pso_->SetView(&desc_set, "cb_sum_reduction", &cbh->cbv_);
+                                cbt_sum_reduction_pso_->SetView(&desc_set, "cb_sum_reduction", &cbh->cbv);
                             }
                             command_list->SetDescriptorSet(cbt_sum_reduction_pso_.Get(), &desc_set);
 

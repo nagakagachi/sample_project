@@ -14,8 +14,9 @@
 namespace ngl::render::task
 {
 	// Raytracing Pass.
-	struct TaskRtDispatch : public rtg::IGraphicsTaskNode
+	class TaskRtDispatch : public rtg::IGraphicsTaskNode
 	{
+	public:
 		rtg::RtgResourceHandle h_rt_result_{};
 		
 		ngl::res::ResourceHandle <ngl::gfx::ResShader> res_shader_lib_;
@@ -28,7 +29,7 @@ namespace ngl::render::task
 			
 			class gfx::RtSceneManager* p_rt_scene{};
 		} desc_{};
-		bool is_render_skip_debug{};
+		bool is_render_skip_debug_{};
 		
 		// リソースとアクセスを定義するプリプロセス.
 		void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info, const SetupDesc& desc)
@@ -37,7 +38,7 @@ namespace ngl::render::task
 			
 			// Rtgリソースセットアップ.
 			{
-				rtg::RtgResourceDesc2D res_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
+				rtg::RtgResourceDesc2D res_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc_.w, desc_.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
 				// リソースアクセス定義.
 				h_rt_result_ = builder.RecordResourceAccess(*this, builder.CreateResource(res_desc), rtg::AccessType::UAV);
 			}
@@ -102,7 +103,7 @@ namespace ngl::render::task
 			builder.RegisterTaskNodeRenderFunction(this,
 				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
 				{
-					if(is_render_skip_debug)
+					if(is_render_skip_debug_)
 					{
 						return;
 					}
@@ -130,11 +131,11 @@ namespace ngl::render::task
 						int num_ray_type;
 					};
 					auto raytrace_cbh = gfx_commandlist->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(RaytraceInfo));
-					if(auto* mapped = raytrace_cbh->buffer_.MapAs<RaytraceInfo>())
+					if(auto* mapped = raytrace_cbh->buffer.MapAs<RaytraceInfo>())
 					{
 						mapped->num_ray_type = desc_.p_rt_scene->NumHitGroupCountMax();
 						
-						raytrace_cbh->buffer_.Unmap();
+						raytrace_cbh->buffer.Unmap();
 					}
 					
 					// Ray Dispatch.
@@ -145,7 +146,7 @@ namespace ngl::render::task
 						// global resourceのセット.
 						{
 							param.cbv_slot[0] = desc_.p_rt_scene->GetSceneViewCbv();// View.
-							param.cbv_slot[1] = &raytrace_cbh->cbv_;
+							param.cbv_slot[1] = &raytrace_cbh->cbv;
 						}
 						{
 							param.srv_slot;
