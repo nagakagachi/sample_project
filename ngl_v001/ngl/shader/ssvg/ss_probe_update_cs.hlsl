@@ -35,6 +35,18 @@ bool isValidDepth(float d)
     return (0.0 < d && d < 1.0);
 }
 
+// https://gpuopen.com/download/GPUOpen2022_GI1_0.pdf
+// Algorithm 3: Biased shadow-preserving temporal hysteresis 
+float biased_shadow_preserving_temporal_filter_weight(float curr_value, float prev_value, float min_clamp)
+{
+    const float l1 = curr_value;
+    const float l2 = prev_value;
+    float alpha = max(l1 - l2 - min(l1, l2), 0.0) / max(max(l1, l2), 1e-4);
+    //alpha = CalcSquare(clamp(alpha, 0.0, 0.95));// オリジナル.
+    alpha = clamp(alpha, min_clamp, 0.95);// 最低限前回の値を保持するために下限を追加.
+    return alpha;
+}
+
 
 [numthreads(SCREEN_SPACE_PROBE_TILE_SIZE, SCREEN_SPACE_PROBE_TILE_SIZE, 1)]
 void main_cs(
@@ -91,63 +103,64 @@ void main_cs(
             const float3 pixel_pos_vs = CalcViewSpacePosition(current_probe_texel_uv, view_z, cb_ngl_sceneview.cb_proj_mtx);
             const float3 pixel_pos_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(pixel_pos_vs, 1.0));
 
-            #if 1
-                float2 neighbor_probe_depth_x = float2(1.0, 1.0);
-                int2 neighbor_probe_global_pos_x[2];
-                float2 neighbor_probe_depth_y = float2(1.0, 1.0);
-                int2 neighbor_probe_global_pos_y[2];
-                for(int offset_i = 0; offset_i < 1; ++offset_i)
+            // 周辺タイルから近似法線計算. ここは低解像度のタイル単位情報テクスチャでディスパッチしてもよさそう.
+            float2 neighbor_probe_depth_x = float2(1.0, 1.0);
+            int2 neighbor_probe_global_pos_x[2];
+            float2 neighbor_probe_depth_y = float2(1.0, 1.0);
+            int2 neighbor_probe_global_pos_y[2];
+            for(int offset_i = 0; offset_i < 1; ++offset_i)
+            {
+                const int offset_base = offset_i + 1;
+                for(int step_i = 0; step_i < 2; ++step_i)
                 {
-                    const int offset_base = offset_i + 1;
-                    for(int step_i = 0; step_i < 2; ++step_i)
+                    // X方向
+                    if(!isValidDepth(neighbor_probe_depth_x[step_i]))
                     {
-                        // X方向
-                        if(!isValidDepth(neighbor_probe_depth_x[step_i]))
-                        {
-                            const int offset = offset_base * (step_i * 2 - 1);
-                            const float4 ssp_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id + int2(offset, 0), 0));
-                            const int2 ssp_probe_pos_rand_in_tile = int2(int(ssp_info.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(ssp_info.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
-                            
-                            neighbor_probe_depth_x[step_i] = ssp_info.x;
-                            neighbor_probe_global_pos_x[step_i] = (ss_probe_tile_id + int2(offset, 0)) * SCREEN_SPACE_PROBE_TILE_SIZE + ssp_probe_pos_rand_in_tile;
-                        }
-                        // Y方向
-                        if(!isValidDepth(neighbor_probe_depth_y[step_i]))
-                        {
-                            const int offset = offset_base * (step_i * 2 - 1);
-                            const float4 ssp_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id + int2(0, offset), 0));
-                            const int2 ssp_probe_pos_rand_in_tile = int2(int(ssp_info.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(ssp_info.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
+                        const int offset = offset_base * (step_i * 2 - 1);
+                        const float4 ssp_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id + int2(offset, 0), 0));
+                        const int2 ssp_probe_pos_rand_in_tile = int2(int(ssp_info.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(ssp_info.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
                         
-                            neighbor_probe_depth_y[step_i] = ssp_info.x;
-                            neighbor_probe_global_pos_y[step_i] = (ss_probe_tile_id + int2(0, offset)) * SCREEN_SPACE_PROBE_TILE_SIZE + ssp_probe_pos_rand_in_tile;
-                        }
+                        neighbor_probe_depth_x[step_i] = ssp_info.x;
+                        neighbor_probe_global_pos_x[step_i] = (ss_probe_tile_id + int2(offset, 0)) * SCREEN_SPACE_PROBE_TILE_SIZE + ssp_probe_pos_rand_in_tile;
+                    }
+                    // Y方向
+                    if(!isValidDepth(neighbor_probe_depth_y[step_i]))
+                    {
+                        const int offset = offset_base * (step_i * 2 - 1);
+                        const float4 ssp_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id + int2(0, offset), 0));
+                        const int2 ssp_probe_pos_rand_in_tile = int2(int(ssp_info.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(ssp_info.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
+                    
+                        neighbor_probe_depth_y[step_i] = ssp_info.x;
+                        neighbor_probe_global_pos_y[step_i] = (ss_probe_tile_id + int2(0, offset)) * SCREEN_SPACE_PROBE_TILE_SIZE + ssp_probe_pos_rand_in_tile;
                     }
                 }
-                // XYそれぞれdepth有効な要素がとれなかったらセンターのデプスで埋める. 座標は近傍位置のままとする.
-                for(int ni = 0; ni < 1; ++ni)
+            }
+            // XYそれぞれdepth有効な要素がとれなかったらセンターのデプスで埋める.
+            for(int ni = 0; ni <= 1; ++ni)
+            {
+                if(!isValidDepth(neighbor_probe_depth_x[ni]))
                 {
-                    if(!isValidDepth(neighbor_probe_depth_x[ni]))
-                    {
-                        neighbor_probe_depth_x[ni] = d;
-                    }
-                    if(!isValidDepth(neighbor_probe_depth_y[ni]))
-                    {
-                        neighbor_probe_depth_y[ni] = d;
-                    }
+                    neighbor_probe_depth_x[ni] = d;
+                    neighbor_probe_global_pos_x[ni] = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE + int2(SCREEN_SPACE_PROBE_TILE_SIZE / 2, SCREEN_SPACE_PROBE_TILE_SIZE / 2);
                 }
-                // 近傍情報から法線近似.
-                float3 approx_normal_ws = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);// 法線デフォルトはカメラ方向の逆.
+                if(!isValidDepth(neighbor_probe_depth_y[ni]))
                 {
-                    const float3 xn_pixel_pos_vs = CalcViewSpacePosition((neighbor_probe_global_pos_x[0] + 0.5)*depth_size_inv, calc_view_z_from_ndc_z(neighbor_probe_depth_x[0], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
-                    const float3 xp_pixel_pos_vs = CalcViewSpacePosition((neighbor_probe_global_pos_x[1] + 0.5)*depth_size_inv, calc_view_z_from_ndc_z(neighbor_probe_depth_x[1], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
-                    const float3 yn_pixel_pos_vs = CalcViewSpacePosition((neighbor_probe_global_pos_y[0] + 0.5)*depth_size_inv, calc_view_z_from_ndc_z(neighbor_probe_depth_y[0], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
-                    const float3 yp_pixel_pos_vs = CalcViewSpacePosition((neighbor_probe_global_pos_y[1] + 0.5)*depth_size_inv, calc_view_z_from_ndc_z(neighbor_probe_depth_y[1], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+                    neighbor_probe_depth_y[ni] = d;
+                    neighbor_probe_global_pos_y[ni] = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE + int2(SCREEN_SPACE_PROBE_TILE_SIZE / 2, SCREEN_SPACE_PROBE_TILE_SIZE / 2);
+                }
+            }
+            // 近傍情報から法線近似.
+            float3 approx_normal_ws = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);// 法線デフォルトはカメラ方向の逆.
+            {
+                const float3 xn_pixel_pos_vs = CalcViewSpacePosition((neighbor_probe_global_pos_x[0] + 0.5)*depth_size_inv, calc_view_z_from_ndc_z(neighbor_probe_depth_x[0], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+                const float3 xp_pixel_pos_vs = CalcViewSpacePosition((neighbor_probe_global_pos_x[1] + 0.5)*depth_size_inv, calc_view_z_from_ndc_z(neighbor_probe_depth_x[1], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+                const float3 yn_pixel_pos_vs = CalcViewSpacePosition((neighbor_probe_global_pos_y[0] + 0.5)*depth_size_inv, calc_view_z_from_ndc_z(neighbor_probe_depth_y[0], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+                const float3 yp_pixel_pos_vs = CalcViewSpacePosition((neighbor_probe_global_pos_y[1] + 0.5)*depth_size_inv, calc_view_z_from_ndc_z(neighbor_probe_depth_y[1], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
 
-                    // nとpで中央差分による法線計算.
-                    const float3 approx_normal_vs = normalize(cross(xp_pixel_pos_vs - xn_pixel_pos_vs, yp_pixel_pos_vs - yn_pixel_pos_vs));
-                    approx_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, approx_normal_vs);
-                }
-            #endif
+                // nとpで中央差分による法線計算.
+                const float3 approx_normal_vs = normalize(cross(xp_pixel_pos_vs - xn_pixel_pos_vs, yp_pixel_pos_vs - yn_pixel_pos_vs));
+                approx_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, approx_normal_vs);
+            }
 
             // タイル共有情報.
             {
@@ -167,8 +180,7 @@ void main_cs(
     if(1.0 <= ss_probe_hw_depth)
     {
         // ミスタイルはクリアすべきか, 近傍SSプローブやワールドプローブで補填すべきか.
-        //RWScreenSpaceProbeTex[global_pos] = float4(0.0, 0.0, 0.0, 0.0);
-        RWScreenSpaceProbeTex[global_pos].w = 1.0;// ミスタイルは可視扱い.
+        RWScreenSpaceProbeTex[global_pos].r = 1.0;// ミスタイルは可視扱い.
         return;
     }
 
@@ -208,9 +220,12 @@ void main_cs(
     //const float3 hit_debug = (0.0 > curr_ray_t_ws.x)? sample_ray_dir : 0.0;// ヒットしなかったら空が見えているものとしてその方向を格納.
     const float occluted_distance = (0.0 > curr_ray_t_ws.x)? 1.0 : saturate(curr_ray_t_ws.x/trace_distance);// 正規化ヒット距離を格納.
     const float sky_visibility = (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0;// 負ならヒットなしで空が見えている.
-    const float4 hit_debug = float4(occluted_distance, 0.0, 0.0, sky_visibility);
+    
+    //const float temporal_rate = 0.95;
+    const float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, RWScreenSpaceProbeTex[global_pos].r, 0.85);
+
+    const float4 hit_debug = float4(sky_visibility, occluted_distance, 0.0, temporal_rate);
 
     // 仮書き込み.
-    const float temporal_rate = 0.033;
-    RWScreenSpaceProbeTex[global_pos] = lerp( RWScreenSpaceProbeTex[global_pos], hit_debug, temporal_rate);
+    RWScreenSpaceProbeTex[global_pos] = lerp( hit_debug, RWScreenSpaceProbeTex[global_pos], temporal_rate);
 }

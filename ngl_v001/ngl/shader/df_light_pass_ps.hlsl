@@ -275,9 +275,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 
             float4 ss_probe_value = ScreenSpaceProbeTex.SampleLevel(samp, ss_probe_sample_uv, 0);
 
-            //sky_visibility = saturate(length(ss_probe_value.xyz));
-            sky_visibility = saturate(ss_probe_value.w);
-            //sky_visibility = saturate(ss_probe_value.x);
+            sky_visibility = saturate(ss_probe_value.r);
         #else
             uint tex_width, tex_height;
             WcpProbeAtlasTex.GetDimensions(tex_width, tex_height);

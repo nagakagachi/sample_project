@@ -31,8 +31,8 @@ https://nagakagachi.notion.site/RenderGraph-54f0cf4284c7466697b99cc0df81be80
   - build ngl_v001.sln (Visual Studio 2022)
 
 # Render Task Graph
-マルチスレッド/非同期Compute対応レンダリングパイプラインを構築するためにRenderTaskGraph(RTG)というものを実装しています.<br/>
-UE5のRDGに類似したシンプルなRenderGraphのようなものになります.<br/>
+マルチスレッド/非同期Compute対応レンダリングパイプラインを構築するためにRenderTaskGraph(RTG)を実装しています.<br/>
+UE5のRDGに類似したシンプルなRenderGraphです.<br/>
 DirectX12世代で必要になるリソースステート追跡を含めた, レンダリングリソース依存解決を簡単にコーディングすることを目的にしています.<br/>
 ![Image](https://github.com/user-attachments/assets/2178ba19-f7b9-4730-bdf7-e3d6db524eda)
 
@@ -41,10 +41,10 @@ DirectX12世代で必要になるリソースステート追跡を含めた, レ
   - IGraphicsTaskNode
 - 非同期Computeパス
   - IComputeTaskNode
-- リソースの外部化
-  - PropagateResouceToNextFrame
+- リソースの外部化/寿命延長
+  - PropagateResourceToNextFrame
   - 過去フレームのリソース利用(ヒストリバッファ等)
-  - 別のGraphからリソース利用(マルチビューレンダリング等)
+  - 外部リソース登録(別Graph共有/Swapchain等)
  
 に対応.<br/>
 
@@ -76,11 +76,11 @@ struct TaskDepthPass : public rtg::IGraphicsTaskNode
   void Setup(rtg::RenderTaskGraphBuilder& rtg_builder)
   {
     // use new (on currend frame) texture resouce used for DEPTH_TARGET. 
-    h_depth_ = rtg_builder.RecordResourceAccess(*this, rtg_builder.CreateResource(depth_desc), rtg::access_type::DEPTH_TARGET);
+    h_depth_ = rtg_builder.RecordResourceAccess(*this, rtg_builder.CreateResource(depth_desc), rtg::AccessType::DEPTH_TARGET);
 
     // Register RenderFunction.
     builder.RegisterTaskNodeRenderFunction(this,
-      [this](rtg::RenderTaskGraphBuilder& rtg_builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+      [this](rtg::RenderTaskGraphBuilder& rtg_builder, rtg::TaskGraphicsCommandListAllocator commandlist_allocator)
       {
         // Do Render.
       });
@@ -95,14 +95,14 @@ struct TaskGBufferPass : public rtg::IGraphicsTaskNode
   void Setup(rtg::RenderTaskGraphBuilder& rtg_builder, rtg::RtgResourceHandle h_depth_from_prev_pass)
   {
     // use a depth texture rendered in another pass (passed in the argument) as DEPTH_TARGET.
-    h_depth_ = rtg_builder.RecordResourceAccess(*this, h_depth_from_prev_pass, rtg::access_type::DEPTH_TARGET);
+    h_depth_ = rtg_builder.RecordResourceAccess(*this, h_depth_from_prev_pass, rtg::AccessType::DEPTH_TARGET);
 
     // use new (on currend frame) texture resouce used for DEPTH_TARGET. 
-    h_gbuffer_a_ = rtg_builder.RecordResourceAccess(*this, rtg_builder.CreateResource(gbuffer_a_desc), rtg::access_type::RENDER_TARGET);
+    h_gbuffer_a_ = rtg_builder.RecordResourceAccess(*this, rtg_builder.CreateResource(gbuffer_a_desc), rtg::AccessType::RENDER_TARGET);
 
     // Register RenderFunction.
     builder.RegisterTaskNodeRenderFunction(this,
-      [this](rtg::RenderTaskGraphBuilder& rtg_builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+      [this](rtg::RenderTaskGraphBuilder& rtg_builder, rtg::TaskGraphicsCommandListAllocator commandlist_allocator)
       {
         // Do Render.
       });
@@ -118,7 +118,7 @@ Compileによってリソースステート解決(Barrier)が行われるため,
 ```c++
 rtg_manager.Compile(rtg_builder);
 
-rtg_builder.Execute(out_graphics_cmd, out_compute_cmd, p_job_system);
+rtg_builder.Execute(&out_command_set, p_job_system);
 ```
 Compileによってリソーススケジューリングが確定されるため, Pass毎に並列でマルチスレッドレンダリングが可能です.<br/>
 RTGリソース以外の部分でのマルチスレッド対応はユーザの責任となります.<br/>
@@ -139,7 +139,7 @@ struct TaskDepthPass : public rtg::IGraphicsTaskNode
 
     // Register RenderFunction.
     builder.RegisterTaskNodeRenderFunction(this,
-      [this](rtg::RenderTaskGraphBuilder& rtg_builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+      [this](rtg::RenderTaskGraphBuilder& rtg_builder, rtg::TaskGraphicsCommandListAllocator commandlist_allocator)
       {
         // Get allocated resources via handle.
         auto res_depth = rtg_builder.GetAllocatedResource(this, h_depth_);
@@ -157,7 +157,7 @@ struct TaskGBufferPass : public rtg::IGraphicsTaskNode
 
     // Register RenderFunction.
     builder.RegisterTaskNodeRenderFunction(this,
-      [this](rtg::RenderTaskGraphBuilder& rtg_builder, rhi::GraphicsCommandListDep* gfx_commandlist)
+      [this](rtg::RenderTaskGraphBuilder& rtg_builder, rtg::TaskGraphicsCommandListAllocator commandlist_allocator)
       {
         // Get allocated resources via handle.
         auto res_depth = rtg_builder.GetAllocatedResource(this, h_depth_);
