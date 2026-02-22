@@ -74,7 +74,7 @@ void main_cs(
     const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
     const float ss_probe_depth = ss_probe_tile_info.x;
     const int2 ss_probe_pos_rand_in_tile = int2(int(ss_probe_tile_info.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(ss_probe_tile_info.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
-    const float ss_candidate_hit_t = ss_probe_tile_info.w;
+    const float ss_probe_tile_validity = ss_probe_tile_info.w;
 
     uint2 depth_size = cb_ngl_sceneview.cb_render_resolution;
     const float2 depth_size_inv = cb_ngl_sceneview.cb_render_resolution_inv;
@@ -97,7 +97,7 @@ void main_cs(
         // プローブのレイ始点とするピクセルの深度取得.
         const float d = ss_probe_depth;
 
-        if(0.0 <= ss_candidate_hit_t)
+        if(0.0 <= ss_probe_tile_validity)
         {
             const float view_z = calc_view_z_from_ndc_z(d, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
             const float3 pixel_pos_vs = CalcViewSpacePosition(current_probe_texel_uv, view_z, cb_ngl_sceneview.cb_proj_mtx);

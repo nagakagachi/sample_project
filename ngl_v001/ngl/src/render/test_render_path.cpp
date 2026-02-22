@@ -59,6 +59,8 @@ namespace ngl::test
             view_info.view_mat = ngl::math::CalcViewMatrix(view_info.camera_pos, view_info.camera_pose.GetColumn2(), view_info.camera_pose.GetColumn1());
             view_info.proj_mat = ngl::math::CalcReverseInfiniteFarPerspectiveMatrix(view_info.camera_fov_y, view_info.aspect_ratio, view_info.near_z);
             view_info.ndc_z_to_view_z_coef = ngl::math::CalcViewDepthReconstructCoefFromProjectionMatrix(view_info.proj_mat);
+
+            view_info.main_light_dir_ws = render_frame_desc.feature_config.lighting.directional_light_dir;
 		}
 		
 				

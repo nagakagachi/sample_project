@@ -16,6 +16,7 @@ ss_voxel_debug_visualize_cs.hlsl
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 RWTexture2D<float4>	RWTexWork;
+SamplerState		SmpLinearClamp;
 
 
 // デバッグテクスチャに対してDispatch.
@@ -159,7 +160,7 @@ void main_cs(
     }
     else if(9 == cb_ssvg.debug_view_mode)
     {
-        // Probe Atlas Textureの表示.
+        // Screen Space Probe Atlas Textureの表示.
         const int2 texel_pos = dtid.xy;
 
         const float4 probe_data = ScreenSpaceProbeTex.Load(uint3(texel_pos, 0));
@@ -167,16 +168,22 @@ void main_cs(
     }
     else if(10 == cb_ssvg.debug_view_mode)
     {
-        // Probe Atlas Textureの表示.
+        // Screen Space Probe毎にsample_dir方向に対応するOctahedralMapのUVでサンプリングして表示.
+        const float3 sample_dir = -cb_ssvg.main_light_dir_ws;//normalize(float3(0,1,0));
+        
         const int2 texel_pos = dtid.xy;
+        
+        // Spherical Octahedral Map.
+        const int2 ss_probe_tile_base_pos = floor(texel_pos / SCREEN_SPACE_PROBE_TILE_SIZE)*SCREEN_SPACE_PROBE_TILE_SIZE;
+        // Octmapのテクセルが外側をBilinearSamplingしないようにクランプ.
+        //float2 octmap_texel_pos = clamp(OctEncode(sample_dir)*SCREEN_SPACE_PROBE_TILE_SIZE, 0.5, SCREEN_SPACE_PROBE_TILE_SIZE-0.5);
+        float2 octmap_texel_pos = OctEncode(sample_dir)*SCREEN_SPACE_PROBE_TILE_SIZE;
+        float2 ss_probe_sample_texel_pos = ss_probe_tile_base_pos + octmap_texel_pos;
 
-        const int2 probe_local_pos = (texel_pos % SCREEN_SPACE_PROBE_TILE_SIZE);
-        const float2 probe_uv = (float2(probe_local_pos) + float2(0.5, 0.5)) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
-
-        const float3 probe_cell_dir = OctDecode(probe_uv);
-        const float2 probe_oct_uv_debug = OctEncode(probe_cell_dir);
-
-        const float4 probe_data = ScreenSpaceProbeTex.Load(uint3(texel_pos, 0));
-        RWTexWork[dtid.xy] = probe_data * max(0.0, dot(probe_cell_dir, float3(0,1,0))); // OctMapの特定方向のみ表示.
+        // PointSampling.
+        //float4 ss_probe_value = ScreenSpaceProbeTex.Load(uint3(ss_probe_sample_texel_pos, 0));
+        // BilinearSampling. 半球ではないOctahedralMapであるためボーダー部の処理スキップによるカクツキが目立つ..
+        float4 ss_probe_value = ScreenSpaceProbeTex.SampleLevel(SmpLinearClamp, ss_probe_sample_texel_pos / screen_size_f, 0);
+        RWTexWork[dtid.xy] = ss_probe_value.xxxx;
     }
 }

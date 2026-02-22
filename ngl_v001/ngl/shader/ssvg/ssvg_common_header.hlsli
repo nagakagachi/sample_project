@@ -153,9 +153,9 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int bbv_visible_voxel_buffer_size;// 更新プローブ用のワークサイズ.
         int bbv_hollow_voxel_buffer_size;// 削除用中空Voxel情報のワークサイズ.
 
-        int dummy0;
-        int dummy1;
-        int dummy2;
+        int ss_probe_temporal_update_group_size;// 1Fに一つだけ更新するProbeグループのサイズ. 1で毎フレーム更新, 2で2x2のProbeグループのうち1Fで一つだけ更新.
+        float ss_probe_ray_start_offset_scale;// SSプローブ更新時のレイ開始オフセットスケール. 単位はBbvセル幅.
+        float ss_probe_ray_normal_offset_scale;// SSプローブ更新時のレイ始点法線オフセットスケール. 単位はBbvセル幅.
 
         SsvgToroidalGridParam wcp;
         int3 wcp_indirect_cs_thread_group_size;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
@@ -163,10 +163,9 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
         int2 tex_main_view_depth_size;// MainViewのDepthBuffer解像度.
         uint frame_count;
+        int dummy0;
 
-        int ss_probe_temporal_update_group_size;// 1Fに一つだけ更新するProbeグループのサイズ. 1で毎フレーム更新, 2で2x2のProbeグループのうち1Fで一つだけ更新.
-        float ss_probe_ray_start_offset_scale;// SSプローブ更新時のレイ開始オフセットスケール. 単位はBbvセル幅.
-        float ss_probe_ray_normal_offset_scale;// SSプローブ更新時のレイ始点法線オフセットスケール. 単位はBbvセル幅.
+        float3 main_light_dir_ws;
 
         int debug_view_mode;
         

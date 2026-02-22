@@ -22,6 +22,9 @@ namespace ngl::render::task
         ngl::math::Mat34    view_mat = ngl::math::Mat34::Identity();
         ngl::math::Mat44    proj_mat = ngl::math::Mat44::Identity();
         ngl::math::Vec4     ndc_z_to_view_z_coef = {};
+
+        
+        ngl::math::Vec3		main_light_dir_ws = {};
     };
     
 }

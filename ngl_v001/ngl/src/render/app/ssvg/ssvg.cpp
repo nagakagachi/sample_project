@@ -478,6 +478,8 @@ namespace ngl::render::app
             p->ss_probe_ray_start_offset_scale = k_ss_probe_ray_start_offset_scale;
             p->ss_probe_ray_normal_offset_scale = k_ss_probe_ray_normal_offset_scale;
 
+            p->main_light_dir_ws = main_view_info.main_light_dir_ws;
+
             p->debug_view_mode = SsVg::dbg_view_mode_;
             p->debug_bbv_probe_mode = SsVg::dbg_bbv_probe_debug_mode_;
             p->debug_wcp_probe_mode = SsVg::dbg_wcp_probe_debug_mode_;
@@ -971,6 +973,7 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_srv.Get(), wcp_probe_atlas_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_srv.Get(), ss_probe_tex_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
             
             pso_bbv_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
 
