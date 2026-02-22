@@ -61,7 +61,7 @@ void main_cs(
             {
                 // bbvセル可視化
                 const float3 bbv_cell_id = floor((view_origin + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_ssvg.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
-                debug_color.xyz = float4(noise_iqint32(bbv_cell_id.xyzz), noise_iqint32(bbv_cell_id.xzyy), noise_iqint32(bbv_cell_id.xyzx), 1);
+                debug_color.xyz = float4(noise_float_to_float(bbv_cell_id.xyzz), noise_float_to_float(bbv_cell_id.xzyy), noise_float_to_float(bbv_cell_id.xyzx), 1);
 
                 // 簡易フォグ.
                 debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
@@ -70,7 +70,7 @@ void main_cs(
             else if(1 == cb_ssvg.debug_view_mode)
             {
                 // VoxelIDを可視化.
-                debug_color.xyz = float4(noise_iqint32(hit_voxel_index), noise_iqint32(hit_voxel_index*2), noise_iqint32(hit_voxel_index*3), 1);
+                debug_color.xyz = float4(noise_float_to_float(hit_voxel_index), noise_float_to_float(hit_voxel_index*2), noise_float_to_float(hit_voxel_index*3), 1);
                 
                 // 簡易フォグ.
                 debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
@@ -97,13 +97,10 @@ void main_cs(
             else if(5 == cb_ssvg.debug_view_mode)
             {
             }
-            else if(6 == cb_ssvg.debug_view_mode)
-            {
-            }
         }
         RWTexWork[dtid.xy] = debug_color;
     }
-    else if(7 == cb_ssvg.debug_view_mode)
+    else if(6 == cb_ssvg.debug_view_mode)
     {
         // Brick単位Traceのテスト. Brickの占有フラグが適切に設定または除去されているかのテスト.
         const float trace_distance = 10000.0;          
@@ -119,7 +116,7 @@ void main_cs(
         if(0.0 <= curr_ray_t_ws.x)
         {
             // VoxelIDを可視化.
-            debug_color.xyz = float4(noise_iqint32(hit_voxel_index), noise_iqint32(hit_voxel_index*2), noise_iqint32(hit_voxel_index*3), 1);
+            debug_color.xyz = float4(noise_float_to_float(hit_voxel_index), noise_float_to_float(hit_voxel_index*2), noise_float_to_float(hit_voxel_index*3), 1);
             
             // 簡易フォグ.
             debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate((curr_ray_t_ws.x - 20.0)/100.0), 1.0/1.2) * 0.8);
@@ -127,7 +124,7 @@ void main_cs(
         }
         RWTexWork[dtid.xy] = debug_color;
     }
-    if(8 == cb_ssvg.debug_view_mode)
+    if(7 == cb_ssvg.debug_view_mode)
     {
         // Voxel上面図X-Ray表示.
         const int3 bv_full_reso = cb_ssvg.bbv.grid_resolution * k_bbv_per_voxel_resolution;
@@ -150,7 +147,7 @@ void main_cs(
 
         RWTexWork[dtid.xy] = float4(write_data, write_data, write_data, 1.0);
     }
-    else if(9 == cb_ssvg.debug_view_mode)
+    else if(8 == cb_ssvg.debug_view_mode)
     {
         // Probe Atlas Textureの表示.
         const int2 texel_pos = dtid.xy * 0.1;
@@ -160,7 +157,26 @@ void main_cs(
         const float4 probe_data = WcpProbeAtlasTex.Load(uint3(texel_pos, 0));
         RWTexWork[dtid.xy] = probe_data.xxxx;
     }
+    else if(9 == cb_ssvg.debug_view_mode)
+    {
+        // Probe Atlas Textureの表示.
+        const int2 texel_pos = dtid.xy;
+
+        const float4 probe_data = ScreenSpaceProbeTex.Load(uint3(texel_pos, 0));
+        RWTexWork[dtid.xy] = probe_data;
+    }
     else if(10 == cb_ssvg.debug_view_mode)
     {
+        // Probe Atlas Textureの表示.
+        const int2 texel_pos = dtid.xy;
+
+        const int2 probe_local_pos = (texel_pos % SCREEN_SPACE_PROBE_TILE_SIZE);
+        const float2 probe_uv = (float2(probe_local_pos) + float2(0.5, 0.5)) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+
+        const float3 probe_cell_dir = OctDecode(probe_uv);
+        const float2 probe_oct_uv_debug = OctEncode(probe_cell_dir);
+
+        const float4 probe_data = ScreenSpaceProbeTex.Load(uint3(texel_pos, 0));
+        RWTexWork[dtid.xy] = probe_data * max(0.0, dot(probe_cell_dir, float3(0,1,0))); // OctMapの特定方向のみ表示.
     }
 }

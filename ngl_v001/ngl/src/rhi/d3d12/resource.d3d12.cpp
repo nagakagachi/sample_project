@@ -227,7 +227,7 @@ namespace ngl
 
 			if (FAILED(resource_->Map(0, &read_range, &map_ptr_)))
 			{
-				std::cout << "[ERROR] Resouce Map" << std::endl;
+				std::cout << "[ERROR] Resource Map" << std::endl;
 				map_ptr_ = nullptr;
 				return nullptr;
 			}
@@ -413,7 +413,7 @@ namespace ngl
 			}
 			if (FAILED(resource_->Map(0, nullptr, &map_ptr_)))
 			{
-				std::cout << "[ERROR] Resouce Map" << std::endl;
+				std::cout << "[ERROR] Resource Map" << std::endl;
 				map_ptr_ = nullptr;
 				return nullptr;
 			}

@@ -19,6 +19,9 @@ struct SceneViewInfo
     //	for calc_view_z_from_ndc_z(ndc_z, cb_ndc_z_to_view_z_coef)
 	float4	cb_ndc_z_to_view_z_coef;
 
+    int2    cb_render_resolution;
+    float2  cb_render_resolution_inv;
+
 	float	cb_time_sec;
 };
 

@@ -20,7 +20,7 @@ namespace ngl::rtg
 	using RtgNameType = text::HashText<64>;
 
 	
-	enum class ETASK_TYPE : int
+	enum class ETaskType : int
 	{
 		GRAPHICS = 0,
 		COMPUTE,
@@ -28,31 +28,31 @@ namespace ngl::rtg
 
 	// リソースアクセス時のリソース解釈.
 	// ひとまず用途のみ指定してそこから書き込みや読み取りなどは自明ということにする. 必要になったら情報追加するなど.
-	using ACCESS_TYPE = int;
-	struct access_type
+	using AccessTypeValue = int;
+	struct AccessType
 	{
-		static constexpr ACCESS_TYPE INVALID		= {0};
+		static constexpr AccessTypeValue INVALID		= {0};
 		
-		static constexpr ACCESS_TYPE RENDER_TARGET	= {1};
-		static constexpr ACCESS_TYPE DEPTH_TARGET	= {2};
-		static constexpr ACCESS_TYPE SHADER_READ	= 3;
-		static constexpr ACCESS_TYPE UAV			= 4;
+		static constexpr AccessTypeValue RENDER_TARGET	= {1};
+		static constexpr AccessTypeValue DEPTH_TARGET	= {2};
+		static constexpr AccessTypeValue SHADER_READ	= 3;
+		static constexpr AccessTypeValue UAV			= 4;
 		
-		static constexpr ACCESS_TYPE _MAX			= 5;
+		static constexpr AccessTypeValue _MAX			= 5;
 	};
 
-	using ACCESS_TYPE_MASK = int;
-	struct access_type_mask
+	using AccessTypeMaskValue = int;
+	struct AccessTypeMask
 	{
-		static constexpr ACCESS_TYPE_MASK RENDER_TARGET	= 1 << (access_type::RENDER_TARGET);
-		static constexpr ACCESS_TYPE_MASK DEPTH_TARGET		= 1 << (access_type::DEPTH_TARGET);
-		static constexpr ACCESS_TYPE_MASK SHADER_READ		= 1 << (access_type::SHADER_READ);
-		static constexpr ACCESS_TYPE_MASK UAV				= 1 << (access_type::UAV);
+		static constexpr AccessTypeMaskValue RENDER_TARGET	= 1 << (AccessType::RENDER_TARGET);
+		static constexpr AccessTypeMaskValue DEPTH_TARGET		= 1 << (AccessType::DEPTH_TARGET);
+		static constexpr AccessTypeMaskValue SHADER_READ		= 1 << (AccessType::SHADER_READ);
+		static constexpr AccessTypeMaskValue UAV				= 1 << (AccessType::UAV);
 	};
-	inline bool RtgIsWriteAccess(ACCESS_TYPE type)
+	inline bool RtgIsWriteAccess(AccessTypeValue type)
 	{
-		constexpr auto k_write_assecc_mask = access_type_mask::RENDER_TARGET | access_type_mask::DEPTH_TARGET | access_type_mask::UAV;
-		const ACCESS_TYPE_MASK mask = 1 << type;
+		constexpr auto k_write_assecc_mask = AccessTypeMask::RENDER_TARGET | AccessTypeMask::DEPTH_TARGET | AccessTypeMask::UAV;
+		const AccessTypeMaskValue mask = 1 << type;
 		return 0 != (k_write_assecc_mask & mask);
 	}
 	
@@ -176,12 +176,12 @@ namespace ngl::rtg
 						Do Render
 					});
 	*/
-	struct ITaskNode
+	class ITaskNode
 	{
 	public:
 		virtual ~ITaskNode() {}
 		// Type.
-		virtual ETASK_TYPE TaskType() const = 0;
+		virtual ETaskType TaskType() const = 0;
 	public:
 		const RtgNameType& GetDebugNodeName() const { return debug_node_name_; }
 	protected:
@@ -245,7 +245,7 @@ namespace ngl::rtg
 		rhi::EResourceFormat format = {};
 		int require_width_ = {};
 		int require_height_ = {};
-		ACCESS_TYPE_MASK	usage_ = {};// 要求する RenderTarget, DepthStencil, UAV等の用途.
+		AccessTypeMaskValue	usage_ = {};// 要求する RenderTarget, DepthStencil, UAV等の用途.
 	};
 	
 	// 内部リソースプール用.

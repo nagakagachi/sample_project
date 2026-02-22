@@ -6,20 +6,19 @@
 namespace ngl::gfx::scene
 {
 
-    struct _SceneMeshGameUpdateCallbackArg
+    struct SceneMeshGameUpdateCallbackArg
     {
         int dummy;
     };
-    using SceneMeshGameUpdateCallbackArg = const _SceneMeshGameUpdateCallbackArg&;
-    using SceneMeshGameUpdateCallback = std::function<void(SceneMeshGameUpdateCallbackArg)>;
+    using SceneMeshGameUpdateCallbackArgRef = const SceneMeshGameUpdateCallbackArg&;
+    using SceneMeshGameUpdateCallback = std::function<void(SceneMeshGameUpdateCallbackArgRef)>;
 
-    
-    struct _SceneMeshRenderUpdateCallbackArg
+    struct SceneMeshRenderUpdateCallbackArg
     {
         rhi::GraphicsCommandListDep* command_list{};
     };
-    using SceneMeshRenderUpdateCallbackArg = const _SceneMeshRenderUpdateCallbackArg&;
-    using SceneMeshRenderUpdateCallback = std::function<void(SceneMeshRenderUpdateCallbackArg)>;
+    using SceneMeshRenderUpdateCallbackArgRef = const SceneMeshRenderUpdateCallbackArg&;
+    using SceneMeshRenderUpdateCallback = std::function<void(SceneMeshRenderUpdateCallbackArgRef)>;
 
 
     class SceneMesh
@@ -69,37 +68,32 @@ namespace ngl::gfx::scene
             assert(fwk::GfxSceneEntityId::IsValid(gfx_mesh_entity_.proxy_info_.proxy_id_));
             assert(gfx_mesh_entity_.proxy_info_.scene_);
 
-            if(game_update_callback_)
+            if (game_update_callback_)
             {
-                // GameThread更新の追加処理.
-                _SceneMeshGameUpdateCallbackArg arg;
-                {
-                    // TODO. GameThread更新の引数を必要に応じて設定.
-                }
+                // TODO. GameThread更新の引数を必要に応じて設定.
+                SceneMeshGameUpdateCallbackArg arg{};
                 game_update_callback_(arg);
             }
 
             // GfxScene上のSceneMesh Proxyの情報を更新するRenderCommandを登録. RenderThread実行されるGfxに安全に情報送付するためのもの.
-            //  ProxyはIDによってRenderPassからアクセス可能で, GfxScene上のSceneMeshの描画パラメータ送付に利用される.
-            fwk::PushCommonRenderCommand([this](fwk::ComonRenderCommandArg arg)
+            fwk::PushCommonRenderCommand([this](fwk::CommonRenderCommandArgRef arg)
                                          {
                 // TODO. Entityが破棄されると即時Proxyが破棄されるため, 破棄フレームでもRenderThreadで安全にアクセスできるようにEntityの破棄リスト対応する必要がある.
                 auto* proxy = gfx_mesh_entity_.GetProxy();
                 assert(proxy);
 
-                if(render_update_callback_)
+                if (render_update_callback_)
                 {
                     // Callbackがあれば呼び出し. 呼び出されるCallback内でのGameThread-RenderThreadのDataRace対策はCallback実装者の責任.
-                    _SceneMeshRenderUpdateCallbackArg arg_render_update;
-                    {
-                        arg_render_update.command_list = arg.command_list;
-                    }
+                    SceneMeshRenderUpdateCallbackArg arg_render_update{};
+                    arg_render_update.command_list = arg.command_list;
                     render_update_callback_(arg_render_update);
                 }
 
                 // gfx_meshのproxyに描画用の情報を設定.
                 proxy->model_ = &model_;
-                proxy->transform_ = transform_; });
+                proxy->transform_ = transform_;
+            });
         }
         fwk::GfxSceneEntityId GetMeshProxyId() const
         {
@@ -125,7 +119,7 @@ namespace ngl::gfx::scene
             /*
                 // 例.
                 scene_mesh->SetModelResourceOptionCallback(
-                    [this](BindModelResourceOptionCallbackArg arg)
+                    [this](BindModelResourceOptionCallbackArgRef arg)
                     { 
                         arg.pso->SetView(arg.desc_set, "optional_resource", model_optional_resource);
                     });
@@ -134,14 +128,14 @@ namespace ngl::gfx::scene
 
         
         // DrawShapeを独自の実装で置き換える.
-        void SetProceduralDrawShapeFunc(const DrawShapeOverrideFuncion& func)
+        void SetProceduralDrawShapeFunc(const DrawShapeOverrideFunction& func)
         {
             model_.draw_shape_override_ = func;
             
             /*
                 // 例.
                 scene_mesh->SetProceduralDrawShapeFunc(
-                    [this](DrawShapeOverrideFuncionArg arg)
+                    [this](DrawShapeOverrideFunctionArgRef arg)
                     { 
                         arg.p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
                         arg.p_command_list->DrawInstanced(6, 1, 0, 0); 
@@ -151,7 +145,7 @@ namespace ngl::gfx::scene
         }
 
         // Game更新のコールバックを設定.
-        // 基底クラスSceneMeshのGameThreaed更新時にコールバックされます.
+        // 基底クラスSceneMeshのGameThread更新時にコールバックされます.
         void SetGameUpdateCallback(const SceneMeshGameUpdateCallback& func)
         {
             game_update_callback_ = func;
@@ -159,14 +153,14 @@ namespace ngl::gfx::scene
             /*
                 // 例.
                 scene_mesh->SetGameUpdateCallback(
-                    [this](SceneMeshGameUpdateCallbackArg arg)
+                    [this](SceneMeshGameUpdateCallbackArgRef arg)
                     { 
                         // GameThread更新の追加処理.
                     });
             */
         }
-        // Rennder更新のコールバックを設定.
-        // 基底クラスSceneMeshのRenderThreaed更新時にコールバックされます.
+        // Render更新のコールバックを設定.
+        // 基底クラスSceneMeshのRenderThread更新時にコールバックされます.
         void SetRenderUpdateCallback(const SceneMeshRenderUpdateCallback& func)
         {
             render_update_callback_ = func;
@@ -174,7 +168,7 @@ namespace ngl::gfx::scene
             /*
                 // 例.
                 scene_mesh->SetRenderUpdateCallback(
-                    [this](SceneMeshRenderUpdateCallbackArg arg)
+                    [this](SceneMeshRenderUpdateCallbackArgRef arg)
                     { 
                         // RenderThread更新の追加処理.
                     });

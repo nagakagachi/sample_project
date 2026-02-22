@@ -65,8 +65,9 @@ namespace ngl::render::task
 	
 	
 	// DirectionalShadowパス.
-	struct TaskDirectionalShadowPass : public rtg::IGraphicsTaskNode
+	class TaskDirectionalShadowPass : public rtg::IGraphicsTaskNode
 	{
+	public:
 		rtg::RtgResourceHandle h_shadow_depth_atlas_{};
 
 		rhi::ConstantBufferPooledHandle	shadow_sample_cbh_{};
@@ -78,13 +79,13 @@ namespace ngl::render::task
 			rhi::ConstantBufferPooledHandle scene_cbv{};
 			
 			fwk::GfxScene* gfx_scene{};
-			const std::vector<fwk::GfxSceneEntityId>* p_mesh_proxy_id_array_{};
+			const std::vector<fwk::GfxSceneEntityId>* p_mesh_proxy_id_array{};
 
 			math::Vec3 directional_light_dir{};
 
 			bool		dbg_per_cascade_multithread = true;
 		} desc_{};
-		bool is_render_skip_debug{};
+		bool is_render_skip_debug_{};
 		
 		// リソースとアクセスを定義するプリプロセス.
 		void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
@@ -114,7 +115,7 @@ namespace ngl::render::task
 					rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(shadowmap_atlas_reso, shadowmap_atlas_reso, gfx::MaterialPassPsoCreator_depth::k_depth_format);
 
 				// リソースアクセス定義.
-				h_shadow_depth_atlas_ = builder.RecordResourceAccess(*this, builder.CreateResource(depth_desc), rtg::access_type::DEPTH_TARGET);
+				h_shadow_depth_atlas_ = builder.RecordResourceAccess(*this, builder.CreateResource(depth_desc), rtg::AccessType::DEPTH_TARGET);
 			}
 			
 			// ShadowSample用の定数バッファ.
@@ -148,7 +149,7 @@ namespace ngl::render::task
 				csm_param_.split_rate[ci] = split_rate;
 				csm_param_.split_distance_ws[ci] = split_rate * shadowmap_far_range;
 			}
-			const math::Vec3 lightview_forward = desc.directional_light_dir;
+			const math::Vec3 lightview_forward = desc_.directional_light_dir;
 			const math::Vec3 lightview_helper_side_unit = (0.9f > std::abs(lightview_forward.x))? math::Vec3::UnitX() : math::Vec3::UnitZ();
 			const math::Vec3 lightview_up = math::Vec3::Normalize(math::Vec3::Cross(lightview_forward, lightview_helper_side_unit));
 			const math::Vec3 lightview_side = math::Vec3::Normalize(math::Vec3::Cross(lightview_up, lightview_forward));
@@ -222,7 +223,7 @@ namespace ngl::render::task
 				csm_param_.cascade_tile_size_y[ci] = shadowmap_single_reso;
 			}
 
-			if(auto* mapped = shadow_sample_cbh_->buffer_.MapAs<SceneDirectionalShadowSampleInfo>())
+			if(auto* mapped = shadow_sample_cbh_->buffer.MapAs<SceneDirectionalShadowSampleInfo>())
 			{
 				assert(csm_param_.k_cascade_count < mapped->k_directional_shadow_cascade_cb_max);// バッファサイズが足りているか.
 
@@ -247,14 +248,14 @@ namespace ngl::render::task
 					mapped->cb_cascade_far_distance4[ci/4].data[ci%4] = csm_param_.split_distance_ws[ci];
 				}
 				
-				shadow_sample_cbh_->buffer_.Unmap();
+				shadow_sample_cbh_->buffer.Unmap();
 			}
 			
 			// Render処理のLambdaをRTGに登録.
 			builder.RegisterTaskNodeRenderFunction(this,
 				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
 				{
-					if(is_render_skip_debug)
+					if(is_render_skip_debug_)
 					{
 						return;
 					}
@@ -292,7 +293,7 @@ namespace ngl::render::task
 							
 						// Cascade用の定数バッファを都度生成.
 						auto shadow_cb_h = thread_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(SceneDirectionalShadowRenderInfo));
-						if (auto* mapped = shadow_cb_h->buffer_.MapAs<SceneDirectionalShadowRenderInfo>())
+						if (auto* mapped = shadow_cb_h->buffer.MapAs<SceneDirectionalShadowRenderInfo>())
 						{
 							const auto csm_info_index = cascade_index;
 								
@@ -302,7 +303,7 @@ namespace ngl::render::task
 							mapped->cb_shadow_view_inv_mtx = ngl::math::Mat34::Inverse(csm_param_.light_view_mtx[csm_info_index]);
 							mapped->cb_shadow_proj_inv_mtx = ngl::math::Mat44::Inverse(csm_param_.light_ortho_mtx[csm_info_index]);
 							
-							shadow_cb_h->buffer_.Unmap();
+							shadow_cb_h->buffer.Unmap();
 						}
 
 						const auto cascade_tile_w = csm_param_.cascade_tile_size_x[cascade_index];
@@ -314,11 +315,11 @@ namespace ngl::render::task
 						// Mesh Rendering.
 						gfx::RenderMeshResource render_mesh_res = {};
 						{
-							render_mesh_res.cbv_sceneview = {"cb_ngl_sceneview", &desc_.scene_cbv->cbv_};
-							render_mesh_res.cbv_d_shadowview = {"cb_ngl_shadowview", &shadow_cb_h->cbv_};
+							render_mesh_res.cbv_sceneview = {"cb_ngl_sceneview", &desc_.scene_cbv->cbv};
+							render_mesh_res.cbv_d_shadowview = {"cb_ngl_shadowview", &shadow_cb_h->cbv};
 						}
 
-						ngl::gfx::RenderMeshWithMaterial(*thread_command_list, gfx::MaterialPassPsoCreator_d_shadow::k_name, desc_.gfx_scene, *desc_.p_mesh_proxy_id_array_, render_mesh_res);
+						ngl::gfx::RenderMeshWithMaterial(*thread_command_list, gfx::MaterialPassPsoCreator_d_shadow::k_name, desc_.gfx_scene, *desc_.p_mesh_proxy_id_array, render_mesh_res);
 					};
 
 					if(desc_.dbg_per_cascade_multithread)

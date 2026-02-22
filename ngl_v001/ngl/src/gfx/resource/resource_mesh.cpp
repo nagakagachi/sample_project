@@ -92,7 +92,7 @@ namespace gfx
         // UploadBufferからコピーするコマンドを発行. 適切に遅延破棄させるため個々のRefをコピーキャプチャ.
         auto req_buffer = p_mesh_geom_buffer->rhi_buffer_;
         auto req_init_state = p_mesh_geom_buffer->rhi_init_state_;
-        fwk::PushCommonRenderCommand([upload_buffer, req_buffer, req_init_state](fwk::_CommonRenderCommandArg arg)
+        fwk::PushCommonRenderCommand([upload_buffer, req_buffer, req_init_state](fwk::CommonRenderCommandArgRef arg)
         {
             arg.command_list->GetDevice();
             auto p_commandlist = arg.command_list;

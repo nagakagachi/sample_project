@@ -312,39 +312,62 @@ int3 GetVec3ComponentReorderIndexByMagnitude(float3 v)
 
 
 //--------------------------------------------------------------------------------
-// ランダム
-uint noise_iqint32_orig(uint2 p)  
+#define NGL_F32_PRESISION (2.3283064365386962890625e-10) // 2^-32
+// https://www.shadertoy.com/view/4tXyWN
+uint hash_uint32_iq(uint2 p)  
 {  
     p *= uint2(73333, 7777);  
     p ^= uint2(3333777777, 3333777777) >> (p >> 28);  
     uint n = p.x * p.y;  
     return n ^ n >> 15;  
 }
-float noise_iqint32(float pos)  
+float noise_float_to_float(float pos)  
 {  
-    uint value = noise_iqint32_orig(asuint(pos.xx));  
-    return value * 2.3283064365386962890625e-10;  
+    uint value = hash_uint32_iq(asuint(pos.xx));  
+    return value * NGL_F32_PRESISION;
 }
-float noise_iqint32(float2 pos)  
+float noise_float_to_float(float2 pos)  
 {  
-    uint value = noise_iqint32_orig(asuint(pos.xy));  
-    return value * 2.3283064365386962890625e-10;  
+    uint value = hash_uint32_iq(asuint(pos.xy));  
+    return value * NGL_F32_PRESISION;
 }
-float noise_iqint32(float3 pos)  
+float noise_float_to_float(float3 pos)  
 {  
-    uint value = noise_iqint32_orig(asuint(pos.xy)) + noise_iqint32_orig(asuint(pos.zz));
-    return value * 2.3283064365386962890625e-10;  
+    uint value = hash_uint32_iq(asuint(pos.xy)) + hash_uint32_iq(asuint(pos.zz));
+    return value * NGL_F32_PRESISION;  
 }
-float noise_iqint32(float4 pos)  
+float noise_float_to_float(float4 pos)  
 {  
-    uint value = noise_iqint32_orig(asuint(pos.xy)) + noise_iqint32_orig(asuint(pos.zw));  
-    return value * 2.3283064365386962890625e-10;  
+    uint value = hash_uint32_iq(asuint(pos.xy)) + hash_uint32_iq(asuint(pos.zw));  
+    return value * NGL_F32_PRESISION;  
+}
+float2 noise_float3_to_float2(float3 pos)
+{  
+    const uint3 uint_v3 = asuint(pos);
+    const uint seed0 = uint_v3.x + (uint_v3.y ^ uint_v3.z);
+    const uint seed1 = uint_v3.y + (uint_v3.z ^ uint_v3.x);
+    const uint seed2 = uint_v3.z + (uint_v3.x ^ uint_v3.y);
+    uint value0 = hash_uint32_iq(uint2(seed0, seed1));
+    uint value1 = hash_uint32_iq(uint2(seed1, seed2));
+    return uint2(value0, value1) * NGL_F32_PRESISION;  
+}
+float3 noise_float4_to_float3(float4 pos)
+{  
+    const uint4 uint_v4 = asuint(pos);
+    const uint seed0 = uint_v4.x + (uint_v4.y ^ uint_v4.z);
+    const uint seed1 = uint_v4.y + (uint_v4.z ^ uint_v4.w);
+    const uint seed2 = uint_v4.z + (uint_v4.w ^ uint_v4.x);
+    const uint seed3 = uint_v4.w + (uint_v4.x ^ uint_v4.y);
+    uint value0 = hash_uint32_iq(uint2(seed0, seed1));
+    uint value1 = hash_uint32_iq(uint2(seed1, seed2));
+    uint value2 = hash_uint32_iq(uint2(seed2, seed3));
+    return uint3(value0, value1, value2) * NGL_F32_PRESISION;  
 }
 
 float3 random_unit_vector3(float2 seed)
 {
-    const float angleY = noise_iqint32(seed.xyxy) * NGL_2PI;
-    const float angleX = asin(noise_iqint32(seed.yyxx)*2.0 - 1.0);
+    const float angleY = noise_float_to_float(seed.xyxy) * NGL_2PI;
+    const float angleX = asin(noise_float_to_float(seed.yyxx)*2.0 - 1.0);
     float3 sample_ray_dir;
     sample_ray_dir.y = sin(angleX);
     sample_ray_dir.x = cos(angleX) * cos(angleY);
@@ -354,21 +377,32 @@ float3 random_unit_vector3(float2 seed)
 
 // Fibonacci球面分布方向を取得.
 // indexのmoduloは呼び出し側の責任とする.
-float3 fibonacci_sphere_point(int index, int sample_count_max)
+float3 fibonacci_sphere_point(int index, int sample_count_max, float angle_offset)
 {
     const float phi = NGL_GOLDEN_ANGLE;//NGL_PI * (3.0 - sqrt(5.0)); // 黄金角
     const float y = 1.0 - (index / float(sample_count_max - 1)) * 2.0;// ここで 1 になると後段の sqrt に 0.0 が入って計算破綻する.
     const float horizontal_radius = sqrt((1.0 - y * y) + NGL_EPSILON);// sqrtに1が入らないようにするための安全策として加算で済ませるパターン.
-    const float theta = phi * index;
+    const float theta = (phi * index) + angle_offset;
     const float x = cos(theta) * horizontal_radius;
     const float z = sin(theta) * horizontal_radius;
     return float3(x, y, z);
 }
-// Fibonacci螺旋分布のサンプルポイントを計算.
+float3 fibonacci_sphere_point(int index, int sample_count_max)
+{
+    return fibonacci_sphere_point(index, sample_count_max, 0.0);
+}
+// 密度一定のFibonacci螺旋分布で2D点列を計算.
 float2 fibonacci_spiral_point(int index, int sample_count_max, float angle_offset)
 {
     const float2 sample_dir = cos(float(index) * NGL_GOLDEN_ANGLE + angle_offset + float2(0, NGL_HALF_PI));// cos, sin は90度オフセットで得られる.
     const float2 sample_offset = sample_dir * sqrt(float(index)/float(sample_count_max));
+    return sample_offset;
+}
+// 中心に偏りのあるFibonacci螺旋分布で2D点列を計算.
+float2 fibonacci_spiral_point_sq(int index, int sample_count_max, float angle_offset)
+{
+    const float2 sample_dir = cos(float(index) * NGL_GOLDEN_ANGLE + angle_offset + float2(0, NGL_HALF_PI));// cos, sin は90度オフセットで得られる.
+    const float2 sample_offset = sample_dir * (float(index)/float(sample_count_max));
     return sample_offset;
 }
 
@@ -381,29 +415,38 @@ float InterleavedGradientNoise(float2 pixel_coord)
     const float3 magic = float3(0.06711056, 0.00583715, 52.9829189);
     return frac(magic.z * frac(dot(pixel_coord, magic.xy)));
 }
-// Golden Noise
+// Gold Noise
 // https://www.shadertoy.com/view/ltB3zD
 // Optimized hash function for golden ratio based noise
-float GoldenNoise(float2 xy, float seed)
+// Divergentな値で特定の値(994, 581)などを与えるとNaNになる謎の不具合があるため注意.
+float GoldNoise(float2 xy, float seed)
 {
     return frac(tan(distance(xy * NGL_PHI, xy) * seed) * xy.x);
 }
 
-float GoldenNoise(float2 xy)
+float GoldNoise(float2 xy)
 {
-    return GoldenNoise(xy, 1.0);
+    return GoldNoise(xy, 1.0);
 }
 
-float GoldenNoise(float3 xyz, float seed)
+float GoldNoise(float3 xyz, float seed)
 {
     return frac(tan(distance(xyz.xy * NGL_PHI, xyz.yz) * seed) * xyz.x);
 }
 
-float GoldenNoise(float3 xyz)
+float GoldNoise(float3 xyz)
 {
-    return GoldenNoise(xyz, 1.0);
+    return GoldNoise(xyz, 1.0);
 }
 
+
+
+
+// --------------------------------------------------------------
+// Octahedron Mapping
+// A Survey of Efficient Representations for Independent Unit Vectors (Journal of Computer Graphics Techniques Vol. 3, No. 2, 2014)
+// https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
+// https://twitter.com/Stubbesaurus/status/937994790553227264
 
 // Octahedron Mapping.
 float2 OctWrap(float2 v)
@@ -411,6 +454,7 @@ float2 OctWrap(float2 v)
     //return (1.0 - abs(v.yx)) * (v.xy >= 0.0 ? 1.0 : -1.0);
     return (1.0 - abs(v.yx)) * select(v.xy >= 0.0, 1.0, -1.0);
 }
+// Unit Vector -> Spherical Octahedron UV[0,1].
 // 1,0,0 のような基底ベクトルの場合に結果のUVが 1,0 等になるため, テクセル座標として利用する場合はclampするなど注意が必要.
 float2 OctEncode(float3 n)
 {
@@ -418,7 +462,8 @@ float2 OctEncode(float3 n)
     n.xy = n.z >= 0.0 ? n.xy : OctWrap(n.xy);
     n.xy = n.xy * 0.5 + 0.5;
     return n.xy;
-} 
+}
+// Spherical Octahedron UV[0,1] -> Unit Vector.
 float3 OctDecode(float2 f)
 {
     f = f * 2.0 - 1.0;
@@ -431,5 +476,23 @@ float3 OctDecode(float2 f)
     return normalize(n);
 }
 
-
+// +Z Hemispherical Unit Vector -> Octahedron UV[0,1].
+float2 OctEncodeHemi(float3 n)
+{
+    // Project the hemisphere onto the hemi-octahedron,
+    // and then into the xy plane
+    float2 p = n.xy * (1.0 / (abs(n.x) + abs(n.y) + n.z));
+    // Rotate and scale the center diamond to the unit square
+    float2 signed_oct_coord = float2(p.x + p.y, p.x - p.y);// [-1,1]
+    return signed_oct_coord * 0.5 + 0.5;// [-1,1] -> [0,1]
+}
+// Octahedron UV[0,1] -> +Z Hemispherical Unit Vector.
+float3 OctDecodeHemi(float2 f)
+{
+    f = f * 2.0 - 1.0;// [0,1] -> [-1,1]
+    // Rotate and scale the unit square back to the center diamond
+    float2 temp = float2(f.x + f.y, f.x - f.y) * 0.5;
+    float3 v = float3(temp, 1.0 - abs(temp.x) - abs(temp.y));
+    return normalize(v);
+}
 #endif

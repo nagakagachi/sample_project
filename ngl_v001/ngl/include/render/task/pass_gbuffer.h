@@ -15,8 +15,9 @@
 namespace ngl::render::task
 {
 	// GBufferパス.
-	struct TaskGBufferPass : public rtg::IGraphicsTaskNode
+	class TaskGBufferPass : public rtg::IGraphicsTaskNode
 	{
+	public:
 		rtg::RtgResourceHandle h_depth_{};
 		rtg::RtgResourceHandle h_gb0_{};
 		rtg::RtgResourceHandle h_gb1_{};
@@ -32,9 +33,9 @@ namespace ngl::render::task
 			rhi::ConstantBufferPooledHandle scene_cbv{};
 			
 			fwk::GfxScene* gfx_scene{};
-			const std::vector<fwk::GfxSceneEntityId>* p_mesh_proxy_id_array_{};
+			const std::vector<fwk::GfxSceneEntityId>* p_mesh_proxy_id_array{};
 		} desc_{};
-		bool is_render_skip_debug{};
+		bool is_render_skip_debug_{};
 		
 		// リソースとアクセスを定義するプリプロセス.
 		void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
@@ -53,15 +54,15 @@ namespace ngl::render::task
 				constexpr auto k_velocity_format = gfx::MaterialPassPsoCreator_gbuffer::k_velocity_format;
 				
 				// GBuffer0 BaseColor.xyz, Occlusion.w
-				rtg::RtgResourceDesc2D gbuffer0_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, k_gbuffer0_format);
+				rtg::RtgResourceDesc2D gbuffer0_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc_.w, desc_.h, k_gbuffer0_format);
 				// GBuffer1 WorldNormal.xyz, 1bitOption.w
-				rtg::RtgResourceDesc2D gbuffer1_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, k_gbuffer1_format);
+				rtg::RtgResourceDesc2D gbuffer1_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc_.w, desc_.h, k_gbuffer1_format);
 				// GBuffer2 Roughness, Metallic, Optional, MaterialId
-				rtg::RtgResourceDesc2D gbuffer2_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, k_gbuffer2_format);
+				rtg::RtgResourceDesc2D gbuffer2_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc_.w, desc_.h, k_gbuffer2_format);
 				// GBuffer3 Emissive.xyz, Unused.w
-				rtg::RtgResourceDesc2D gbuffer3_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, k_gbuffer3_format);
+				rtg::RtgResourceDesc2D gbuffer3_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc_.w, desc_.h, k_gbuffer3_format);
 				// Velocity xy
-				rtg::RtgResourceDesc2D velocity_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, k_velocity_format);
+				rtg::RtgResourceDesc2D velocity_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc_.w, desc_.h, k_velocity_format);
 
 				// DepthのFormat取得.
 				const auto depth_desc = builder.GetResourceHandleDesc(h_depth);
@@ -70,22 +71,22 @@ namespace ngl::render::task
 				if(!h_async_write_tex.IsInvalid())
 				{
 					// 試しにAsyncComputeで書き込まれたリソースを読み取り.
-					builder.RecordResourceAccess(*this, h_async_write_tex, rtg::access_type::SHADER_READ);
+					builder.RecordResourceAccess(*this, h_async_write_tex, rtg::AccessType::SHADER_READ);
 				}
 			
-				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::access_type::DEPTH_TARGET);
-				h_gb0_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer0_desc), rtg::access_type::RENDER_TARGET);
-				h_gb1_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer1_desc), rtg::access_type::RENDER_TARGET);
-				h_gb2_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer2_desc), rtg::access_type::RENDER_TARGET);
-				h_gb3_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer3_desc), rtg::access_type::RENDER_TARGET);
-				h_velocity_ = builder.RecordResourceAccess(*this, builder.CreateResource(velocity_desc), rtg::access_type::RENDER_TARGET);
+				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::AccessType::DEPTH_TARGET);
+				h_gb0_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer0_desc), rtg::AccessType::RENDER_TARGET);
+				h_gb1_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer1_desc), rtg::AccessType::RENDER_TARGET);
+				h_gb2_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer2_desc), rtg::AccessType::RENDER_TARGET);
+				h_gb3_ = builder.RecordResourceAccess(*this, builder.CreateResource(gbuffer3_desc), rtg::AccessType::RENDER_TARGET);
+				h_velocity_ = builder.RecordResourceAccess(*this, builder.CreateResource(velocity_desc), rtg::AccessType::RENDER_TARGET);
 			}
 
 			// Render処理のLambdaをRTGに登録.
 			builder.RegisterTaskNodeRenderFunction(this,
 				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
 				{
-					if(is_render_skip_debug)
+					if(is_render_skip_debug_)
 					{
 						return;
 					}
@@ -125,9 +126,9 @@ namespace ngl::render::task
 					// Mesh Rendering.
 					gfx::RenderMeshResource render_mesh_res = {};
 					{
-						render_mesh_res.cbv_sceneview = {"cb_ngl_sceneview", &desc_.scene_cbv->cbv_};
+						render_mesh_res.cbv_sceneview = {"cb_ngl_sceneview", &desc_.scene_cbv->cbv};
 					}
-                    ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_gbuffer::k_name, desc_.gfx_scene, *desc_.p_mesh_proxy_id_array_, render_mesh_res);
+					ngl::gfx::RenderMeshWithMaterial(*gfx_commandlist, gfx::MaterialPassPsoCreator_gbuffer::k_name, desc_.gfx_scene, *desc_.p_mesh_proxy_id_array, render_mesh_res);
 				}
 			);
 		}

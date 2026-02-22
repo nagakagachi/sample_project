@@ -168,11 +168,33 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
             // チャンネル切り替え.
             if(0 == cb_final_screen_pass.enable_general_debug)
             {
+                // RGB.
                 general_debug_vis = tex_general_debug.SampleLevel(samp, input.uv, 0);
             }
             else if(1 == cb_final_screen_pass.enable_general_debug)
             {
+                // AAA.
                 general_debug_vis = tex_general_debug.SampleLevel(samp, input.uv, 0).aaaa;
+            }
+            else if(2 == cb_final_screen_pass.enable_general_debug)
+            {
+                // RRR.
+                general_debug_vis = tex_general_debug.SampleLevel(samp, input.uv, 0).rrrr;
+            }
+            else if(3 == cb_final_screen_pass.enable_general_debug)
+            {
+                // GGG.
+                general_debug_vis = tex_general_debug.SampleLevel(samp, input.uv, 0).gggg;
+            }
+            else if(4 == cb_final_screen_pass.enable_general_debug)
+            {
+                // BBB.
+                general_debug_vis = tex_general_debug.SampleLevel(samp, input.uv, 0).bbbb;
+            }
+            else if(5 == cb_final_screen_pass.enable_general_debug)
+            {
+                // Finite Check.
+                general_debug_vis = any(!isfinite(tex_general_debug.SampleLevel(samp, input.uv, 0)))? float4(1,0,0,1) : float4(0,0,0,1);
             }
             
             color.rgb = lerp(color.rgb, general_debug_vis.rgb, slider_fill_step);

@@ -15,20 +15,20 @@ namespace ngl::render::app
 
     struct ToroidalGridArea
     {
-        math::Vec3i center_cell_id_ = {};
-        math::Vec3i center_cell_id_prev_ = {};
-        math::Vec3 min_pos_ = {};
-        math::Vec3 min_pos_prev_ = {};
-        math::Vec3i toroidal_offset_ = {};
-        math::Vec3i toroidal_offset_prev_ = {};
-        math::Vec3i min_pos_delta_cell_ = {};
+        math::Vec3i center_cell_id = {};
+        math::Vec3i center_cell_id_prev = {};
+        math::Vec3 min_pos = {};
+        math::Vec3 min_pos_prev = {};
+        math::Vec3i toroidal_offset = {};
+        math::Vec3i toroidal_offset_prev = {};
+        math::Vec3i min_pos_delta_cell = {};
 
-        math::Vec3u resolution_ = math::Vec3u(32);
-        float       cell_size_ = 3.0f;
+        math::Vec3u resolution = math::Vec3u(32);
+        float       cell_size = 3.0f;
 
         u32 total_count = {};
         
-        u32         flatten_2d_width_ = {};
+        u32         flatten_2d_width = {};
     };
     class ToroidalGridUpdater
     {
@@ -126,6 +126,7 @@ namespace ngl::render::app
 
         ngl::rhi::ConstantBufferPooledHandle GetDispatchCbh() const { return cbh_dispatch_; }
         rhi::RefSrvDep GetWcpProbeAtlasTex() const { return wcp_probe_atlas_tex_.srv; }
+        rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_.srv; }
 
     private:
         bool is_first_dispatch_ = true;
@@ -159,6 +160,12 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_bbv_debug_probe_ = {};
         ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_wcp_debug_probe_ = {};
 
+
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_clear_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_preupdate_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_update_ = {};
+
+
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
 
         // Bitmask Brick Voxel. Bbv.
@@ -189,6 +196,11 @@ namespace ngl::render::app
         ComputeBufferSet wcp_visible_surface_list_indirect_arg_ = {};
         ComputeBufferSet wcp_buffer_ = {};
         ComputeTextureSet wcp_probe_atlas_tex_ = {};
+
+        
+        // ScreenSpaceProbe.
+        ComputeTextureSet ss_probe_tile_info_tex_ = {}; // 1/8 解像度のProbeタイル用情報. r:probe local pos, gb:hw depth, a: todo.
+        ComputeTextureSet ss_probe_tex_ = {};// 8x8 texel per probe.
 
     };
 
@@ -248,14 +260,15 @@ namespace ngl::render::app
 
 
 
-	struct RenderTaskSsvgBegin : public ngl::rtg::IGraphicsTaskNode
-	{
+    class RenderTaskSsvgBegin : public ngl::rtg::IGraphicsTaskNode
+    {
+    public:
 		struct SetupDesc
 		{
-			int w{};
-			int h{};
+            int w{};
+            int h{};
 			
-			rhi::ConstantBufferPooledHandle scene_cbv{};
+            rhi::ConstantBufferPooledHandle scene_cbv{};
             render::app::SsVg* p_ssvg = {};
 		};
 		SetupDesc desc_{};
@@ -288,14 +301,15 @@ namespace ngl::render::app
 	};
     
 
-	struct RenderTaskSsvgViewVoxelInjection : public ngl::rtg::IGraphicsTaskNode
-	{
+    class RenderTaskSsvgViewVoxelInjection : public ngl::rtg::IGraphicsTaskNode
+    {
+    public:
 		struct SetupDesc
 		{
-			int w{};
-			int h{};
+            int w{};
+            int h{};
 			
-			rhi::ConstantBufferPooledHandle scene_cbv{};
+            rhi::ConstantBufferPooledHandle scene_cbv{};
             render::app::SsVg* p_ssvg = {};
 
             //ngl::rtg::RtgResourceHandle h_depth{};
@@ -315,12 +329,12 @@ namespace ngl::render::app
 			// Rtgリソースセットアップ.
 			{
 				// リソースアクセス定義.
-				desc_.depth_buffer_info.primary.h_depth = builder.RecordResourceAccess(*this, desc_.depth_buffer_info.primary.h_depth, ngl::rtg::access_type::SHADER_READ);
+                desc_.depth_buffer_info.primary.h_depth = builder.RecordResourceAccess(*this, desc_.depth_buffer_info.primary.h_depth, ngl::rtg::AccessType::SHADER_READ);
 
                 for(int i = 0; i < desc_.depth_buffer_info.sub_array.size(); ++i)
                 {
                     // ハンドルへのアクセスレコード(ハンドル変わる可能性があるので更新).
-                    desc_.depth_buffer_info.sub_array[i].h_depth = builder.RecordResourceAccess(*this, desc_.depth_buffer_info.sub_array[i].h_depth, ngl::rtg::access_type::SHADER_READ);
+                    desc_.depth_buffer_info.sub_array[i].h_depth = builder.RecordResourceAccess(*this, desc_.depth_buffer_info.sub_array[i].h_depth, ngl::rtg::AccessType::SHADER_READ);
                 }
 			}
 			// Render処理のLambdaをRTGに登録.
@@ -348,7 +362,7 @@ namespace ngl::render::app
                                 InjectionSourceDepthBufferViewInfo sub_view_info = desc_.depth_buffer_info.sub_array[i];// copy.
                                 sub_view_info.hw_depth_srv = res_sub_depth.srv_;// リソース設定.
 
-                                injection_depth_buffer_info.sub_array.push_back(sub_view_info);
+                                    injection_depth_buffer_info.sub_array.push_back(sub_view_info);
                             }
                         }
                     }
@@ -360,17 +374,18 @@ namespace ngl::render::app
 		}
 	};
 
-	struct RenderTaskSsvgUpdate : public ngl::rtg::IGraphicsTaskNode
-	{
+    class RenderTaskSsvgUpdate : public ngl::rtg::IGraphicsTaskNode
+    {
+    public:
 		ngl::rtg::RtgResourceHandle h_depth_{};
 		ngl::rtg::RtgResourceHandle h_work_{};
 
 		struct SetupDesc
 		{
-			int w{};
-			int h{};
+            int w{};
+            int h{};
 			
-			rhi::ConstantBufferPooledHandle scene_cbv{};
+            rhi::ConstantBufferPooledHandle scene_cbv{};
             render::app::SsVg* p_ssvg = {};
 
             ngl::rtg::RtgResourceHandle h_depth{};
@@ -389,11 +404,11 @@ namespace ngl::render::app
 			// Rtgリソースセットアップ.
 			{
 				// リソース定義.
-				ngl::rtg::RtgResourceDesc2D work_desc = ngl::rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R32G32B32A32_FLOAT);
+                ngl::rtg::RtgResourceDesc2D work_desc = ngl::rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R32G32B32A32_FLOAT);
 
 				// リソースアクセス定義.
-				h_depth_ = builder.RecordResourceAccess(*this, desc.h_depth, rtg::access_type::SHADER_READ);
-                h_work_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_desc), rtg::access_type::UAV);
+                h_depth_ = builder.RecordResourceAccess(*this, desc.h_depth, rtg::AccessType::SHADER_READ);
+                h_work_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_desc), rtg::AccessType::UAV);
 			}
 
 			// Render処理のLambdaをRTGに登録.

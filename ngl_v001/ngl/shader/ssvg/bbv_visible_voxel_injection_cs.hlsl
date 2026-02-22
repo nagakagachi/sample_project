@@ -23,7 +23,6 @@ ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 ConstantBuffer<BbvSurfaceInjectionViewInfo> cb_injection_src_view_info;
 
 Texture2D			TexHardwareDepth;
-SamplerState		SmpHardwareDepth;
 
 
 // ThreadGroupタイル単位でスキップする最適化のグループタイル幅. 1より大きい数値で実行.
@@ -62,6 +61,7 @@ void main_cs(
         }
     #endif
 
+    const float3 camera_pos = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
     // ハードウェア深度取得. AtlasTexture対応のためオフセット考慮.
     float d = TexHardwareDepth.Load(int3(dtid.xy + cb_injection_src_view_info.cb_view_depth_buffer_offset_size.xy, 0)).r;
@@ -79,7 +79,11 @@ void main_cs(
         // DepthBufferに紐づいたView情報で復元.
         const float2 screen_uv = (float2(dtid.xy) + float2(0.5, 0.5)) / float2(cb_injection_src_view_info.cb_view_depth_buffer_offset_size.zw);
         // Orthoも含めて対応するためPositionを直接復元.
-        const float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4(CalcViewSpacePosition(screen_uv, view_z, cb_injection_src_view_info.cb_proj_mtx), 1.0));
+        float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4(CalcViewSpacePosition(screen_uv, view_z, cb_injection_src_view_info.cb_proj_mtx), 1.0));
+
+        // 実際の表面の奥側にBbvを充填するために, 視線方向にbbvの1セル分オフセット
+        //pixel_pos_ws += normalize(pixel_pos_ws - camera_pos) * cb_ssvg.bbv.cell_size * k_bbv_per_voxel_resolution_inv * 1.0;
+
 
         // PixelWorldPosition->VoxelCoord
         const float3 voxel_coordf = (pixel_pos_ws - cb_ssvg.bbv.grid_min_pos) * cb_ssvg.bbv.cell_size_inv;

@@ -4,8 +4,8 @@
 // マテリアルテクスチャパスの有効チェック等用.
 #include <filesystem>
 
-#include "gfx/mesh_loader_assimp.h"
-#include "gfx/texture_loader_directxtex.h"
+#include "gfx/resource/mesh_loader_assimp.h"
+#include "gfx/resource/texture_loader_directxtex.h"
 
 namespace ngl
 {

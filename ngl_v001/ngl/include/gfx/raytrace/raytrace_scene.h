@@ -16,8 +16,8 @@
 #include "rhi/d3d12/resource.d3d12.h"
 
 
-#include "resource/resource_mesh.h"
-#include "game_scene.h"
+#include "gfx/resource/resource_mesh.h"
+#include "gfx/game_scene.h"
 
 #include "resource/resource_manager.h"
 #include "gfx/resource/resource_shader.h"
@@ -78,7 +78,7 @@ namespace ngl
 		class RtBlas
 		{
 		public:
-			enum SETUP_TYPE : int
+			enum ESetupType : int
 			{
 				NONE,
 				BLAS_TRIANGLE,
@@ -120,7 +120,7 @@ namespace ngl
 			std::vector<RtBlasGeometryDesc> geometry_desc_array_;
 
 			// setup data.
-			SETUP_TYPE		setup_type_ = SETUP_TYPE::NONE;
+			ESetupType		setup_type_ = ESetupType::NONE;
 			
 			// build info.
 			// Setupでバッファや設定を登録される. これを用いてRenderThreadでCommandListにビルドタスクを発行する.
@@ -137,7 +137,7 @@ namespace ngl
 		class RtTlas
 		{
 		public:
-			enum SETUP_TYPE : int
+			enum ESetupType : int
 			{
 				NONE,
 				TLAS,
@@ -184,7 +184,7 @@ namespace ngl
 			bool is_built_ = false;
 
 			// setup data.
-			SETUP_TYPE		setup_type_ = SETUP_TYPE::NONE;
+			ESetupType		setup_type_ = ESetupType::NONE;
 
 			std::vector<RtBlas*> blas_array_ = {};
 			std::vector<uint32_t> instance_blas_id_array_;

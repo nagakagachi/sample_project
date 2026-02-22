@@ -57,7 +57,7 @@ namespace ngl::render::task
                     res_desc.SetupAsAbsoluteSize(setup_desc_.w, setup_desc_.h, rhi::EResourceFormat::Format_D32_FLOAT);
                     h_depth = builder.CreateResource(res_desc);
                 }
-                h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::access_type::DEPTH_TARGET);
+                h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::AccessType::DEPTH_TARGET);
             
                 if (h_light.IsInvalid())
                 {
@@ -65,7 +65,7 @@ namespace ngl::render::task
                     res_desc.SetupAsAbsoluteSize(setup_desc_.w, setup_desc_.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
                     h_light = builder.CreateResource(res_desc);
                 }
-                h_light_ = builder.RecordResourceAccess(*this, h_light, rtg::access_type::RENDER_TARGET);
+                h_light_ = builder.RecordResourceAccess(*this, h_light, rtg::AccessType::RENDER_TARGET);
             }
 
             {
@@ -158,13 +158,13 @@ namespace ngl::render::task
                         float   debug_mip_bias;
                     };
                     auto cbh = p_cb_pool->Alloc(sizeof(CbSkyBox));
-                    if (auto map_ptr = cbh->buffer_.MapAs<CbSkyBox>())
+                    if (auto map_ptr = cbh->buffer.MapAs<CbSkyBox>())
                     {
                         map_ptr->exposure = 1.0f;
                         map_ptr->panorama_mode = is_panorama_mode;;
                         map_ptr->debug_mip_bias = setup_desc_.debug_mip_bias;
                         
-                        cbh->buffer_.Unmap();
+                        cbh->buffer.Unmap();
                     }
                     
                     // Viewport.
@@ -179,8 +179,8 @@ namespace ngl::render::task
                     command_list->SetPipelineState(pso_.Get());
                     ngl::rhi::DescriptorSetDep desc_set = {};
 
-                    pso_->SetView(&desc_set, "cb_ngl_sceneview", &setup_desc_.scene_cbv->cbv_);
-                    pso_->SetView(&desc_set, "cb_skybox", &cbh->cbv_);
+                    pso_->SetView(&desc_set, "cb_ngl_sceneview", &setup_desc_.scene_cbv->cbv);
+                    pso_->SetView(&desc_set, "cb_skybox", &cbh->cbv);
                     pso_->SetView(&desc_set, "tex_skybox_cube", cube_srv);
                     
                     pso_->SetView(&desc_set, "tex_skybox_panorama", skybox_proxy->panorama_texture_srv_.Get());

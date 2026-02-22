@@ -132,7 +132,7 @@ namespace ngl
 
 
 		private:
-			// Resouce基底ポインタを保持するオブジェクトの参照カウンタ.
+			// Resource基底ポインタを保持するオブジェクトの参照カウンタ.
 			//	これにより実体をハンドルで共有しつつ, ハンドルの参照が無くなった際の保持オブジェクトのデストラクタで実体の破棄をカスタマイズする.
 			detail::RhiObjectHolderHandle raw_handle_;
 

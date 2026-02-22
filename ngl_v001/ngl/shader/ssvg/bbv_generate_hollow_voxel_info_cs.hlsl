@@ -19,7 +19,6 @@ ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 ConstantBuffer<BbvSurfaceInjectionViewInfo> cb_injection_src_view_info;
 
 Texture2D			TexHardwareDepth;
-SamplerState		SmpHardwareDepth;
 
 
 // ThreadGroupタイル単位でスキップする最適化のグループタイル幅. 1より大きい数値で実行.

@@ -175,7 +175,7 @@ namespace ngl
 			~ScopedEventMarker();
 
 		private:
-			CommandListBaseDep* p_command_list_{};
+			CommandListBaseDep* p_command_list{};
 		};
 	}
 }

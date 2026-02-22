@@ -77,6 +77,10 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     // 非可視表面Voxel除去用スタックの1要素のコンポーネント数.
     #define k_component_count_RemoveVoxelList 4
 
+    // ScreenSpaceProbeタイルサイズ. 1ProbeあたりのOctahedralMapAtlasの幅.
+    #define SCREEN_SPACE_PROBE_TILE_SIZE 8
+    #define SCREEN_SPACE_PROBE_TILE_SIZE_INV (1.0 / float(SCREEN_SPACE_PROBE_TILE_SIZE))
+
 
     // シェーダとCppで一致させる.
     // Voxel追加データバッファ. Bbv一つ毎の外部データ.
@@ -159,7 +163,10 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
         int2 tex_main_view_depth_size;// MainViewのDepthBuffer解像度.
         uint frame_count;
-        int dummy3;
+
+        int ss_probe_temporal_update_group_size;// 1Fに一つだけ更新するProbeグループのサイズ. 1で毎フレーム更新, 2で2x2のProbeグループのうち1Fで一つだけ更新.
+        float ss_probe_ray_start_offset_scale;// SSプローブ更新時のレイ開始オフセットスケール. 単位はBbvセル幅.
+        float ss_probe_ray_normal_offset_scale;// SSプローブ更新時のレイ始点法線オフセットスケール. 単位はBbvセル幅.
 
         int debug_view_mode;
         

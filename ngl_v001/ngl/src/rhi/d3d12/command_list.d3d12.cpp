@@ -700,20 +700,20 @@ namespace ngl
 
 
 		ScopedEventMarker::ScopedEventMarker(CommandListBaseDep* p_command_list, const char* label)
-			:p_command_list_(p_command_list)
+			:p_command_list(p_command_list)
 		{
-			if(p_command_list_)
+			if(p_command_list)
 			{	
-				p_command_list_->BeginMarker(label);
+				p_command_list->BeginMarker(label);
 			}
 		}
 		ScopedEventMarker::~ScopedEventMarker()
 		{
-			if(p_command_list_)
+			if(p_command_list)
 			{
-				p_command_list_->EndMarker();
+				p_command_list->EndMarker();
 			}
-			p_command_list_ = {};
+			p_command_list = {};
 		}
 
 	}

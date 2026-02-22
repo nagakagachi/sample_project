@@ -160,8 +160,9 @@ MtlPsOutput MtlPsEntryPoint(MtlPsInput input)
         // デバッグ
         if(false)
         {
-            output.roughness = 0.3;
-            output.metalness = 1.0;
+            output.base_color = float3(0.0, 0.0, 0.0);
+            output.roughness = 0.4;
+            output.metalness = 0.0;
         }
     }
 

@@ -36,6 +36,6 @@ namespace gfx
     
     void RenderMeshWithMaterial(
         rhi::GraphicsCommandListDep& command_list, const char* pass_name,
-        fwk::GfxScene* gfx_scene, const std::vector<fwk::GfxSceneEntityId>& mesh_proxy_id_array, const RenderMeshResource& render_mesh_resouce);
+        fwk::GfxScene* gfx_scene, const std::vector<fwk::GfxSceneEntityId>& mesh_proxy_id_array, const RenderMeshResource& render_mesh_resource);
 }
 }

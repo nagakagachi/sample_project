@@ -45,7 +45,7 @@
     <ClInclude Include="include\gfx\material\material_shader_manager.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="include\gfx\mesh_loader_assimp.h">
+    <ClInclude Include="include\gfx\resource\mesh_loader_assimp.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="include\gfx\raytrace_scene.h">
@@ -75,7 +75,7 @@
     <ClInclude Include="include\gfx\rtg\rtg_command_list_pool.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
-    <ClInclude Include="include\gfx\texture_loader_directxtex.h">
+    <ClInclude Include="include\gfx\resource\texture_loader_directxtex.h">
       <Filter>ヘッダー ファイル</Filter>
     </ClInclude>
     <ClInclude Include="include\imgui\imgui_interface.h">
@@ -332,7 +332,7 @@
     <ClCompile Include="src\gfx\material\material_shader_manager.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="src\gfx\mesh_loader_assimp.cpp">
+    <ClCompile Include="src\gfx\resource\mesh_loader_assimp.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
     <ClCompile Include="src\gfx\raytrace_scene.cpp">
@@ -356,7 +356,7 @@
     <ClCompile Include="src\gfx\rtg\graph_builder.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
-    <ClCompile Include="src\gfx\texture_loader_directxtex.cpp">
+    <ClCompile Include="src\gfx\resource\texture_loader_directxtex.cpp">
       <Filter>ソース ファイル</Filter>
     </ClCompile>
     <ClCompile Include="src\imgui\imgui_interface.cpp">

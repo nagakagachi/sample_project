@@ -115,10 +115,10 @@ namespace res
 		
 
 	private:
-		friend class ResoucePrivateAccess;
+		friend class ResourcePrivateAccess;
 		detail::ResourceHolderHandle GetRawHandle() { return raw_handle_; }
 
-		// Resouce基底ポインタを保持するオブジェクトの参照カウンタ.
+		// Resource基底ポインタを保持するオブジェクトの参照カウンタ.
 		//	これにより実体をハンドルで共有しつつ, ハンドルの参照が無くなった際の保持オブジェクトのデストラクタで実体の破棄をカスタマイズする.
 		detail::ResourceHolderHandle raw_handle_;
 	};
@@ -146,7 +146,7 @@ namespace res
 		static constexpr char k_resource_type_name[k_resource_type_name_len] = #CLASS_NAME;\
 		const char* GetResourceTypeName() const override final { return k_resource_type_name;}
 	
-	// Resouce基底.
+	// Resource基底.
 	//	派生クラスはクラススコープで NGL_RES_MEMBER_DECLARE(クラス名) を記述すること.
 	class Resource : public NonCopyableTp<Resource>, public IResourceRenderUpdater
 	{
@@ -163,7 +163,7 @@ namespace res
 
 		const char* GetFileName() const { return filename_.c_str(); }
 	private:
-		friend class ResoucePrivateAccess;
+		friend class ResourcePrivateAccess;
 
 		void SetResourceInfo(const char* filename);
 
@@ -176,7 +176,7 @@ namespace res
 
 
 	// Privateアクセス用.
-	class ResoucePrivateAccess
+	class ResourcePrivateAccess
 	{
 	public:
 		static inline void SetResourceInfo(Resource* p_res, const char* filename)

@@ -41,7 +41,7 @@ namespace ngl::gfx
                         *(u32*)(p_img + bi) = color_rgba8;
                     }
                 }
-                // Subresouce設定.
+                // Subresource設定.
                 {
                     auto& subresource_info = load_desc.from_desc.upload_subresource_info_array[0];// Mip0のみなので.
 

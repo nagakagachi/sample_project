@@ -46,7 +46,7 @@ namespace ngl::gfx::scene
             assert(gfx_skybox_entity_.proxy_info_.scene_);
 
             // GfxScene上のSkyBox Proxyの情報を更新するRenderCommand. ProxyはIDによってRenderPassからアクセス可能で, SkyBoxの描画パラメータ送付に利用される.
-            fwk::PushCommonRenderCommand([this](fwk::ComonRenderCommandArg arg)
+            fwk::PushCommonRenderCommand([this](fwk::CommonRenderCommandArgRef arg)
             {
                 // TODO. Entityが破棄されると即時Proxyが破棄されるため, 破棄フレームでもRenderThreadで安全にアクセスできるようにEntityの破棄リスト対応する必要がある.
                 auto* proxy = gfx_skybox_entity_.GetProxy();
@@ -90,7 +90,7 @@ namespace ngl::gfx::scene
                 constexpr auto next_state = rhi::EResourceState::ShaderRead;
                 conv_diffuse_cubemap_state_ = next_state;
                 const auto prevent_aliasing_mode = prevent_aliasing_mode_diffuse_;
-                ngl::fwk::PushCommonRenderCommand([this, prev_state, next_state, prevent_aliasing_mode](ngl::fwk::ComonRenderCommandArg arg)
+                ngl::fwk::PushCommonRenderCommand([this, prev_state, next_state, prevent_aliasing_mode](ngl::fwk::CommonRenderCommandArgRef arg)
                 {
                     auto& global_res = gfx::GlobalRenderResource::Instance();
                     auto* command_list = arg.command_list;
@@ -108,18 +108,18 @@ namespace ngl::gfx::scene
                             u32 use_mip_to_prevent_undersampling;
                         };
                         auto cbh = device->GetConstantBufferPool()->Alloc(sizeof(CbConvCubemapDiffuse));
-                        if (auto* map_ptr = cbh->buffer_.MapAs<CbConvCubemapDiffuse>())
+                        if (auto* map_ptr = cbh->buffer.MapAs<CbConvCubemapDiffuse>())
                         {
                             map_ptr->use_mip_to_prevent_undersampling = prevent_aliasing_mode;// Mipによるエイリアシング抑制有効.
                         
-                            cbh->buffer_.Unmap();
+                            cbh->buffer.Unmap();
                         }
                     
                         // UAVステートへ.
                        command_list->ResourceBarrier(conv_diffuse_cubemap_.Get(), prev_state, rhi::EResourceState::UnorderedAccess);
                 
                        rhi::DescriptorSetDep descset{};
-                        pso_conv_cube_diffuse_->SetView(&descset, "cb_conv_cubemap_diffuse", &cbh->cbv_);
+                        pso_conv_cube_diffuse_->SetView(&descset, "cb_conv_cubemap_diffuse", &cbh->cbv);
                        pso_conv_cube_diffuse_->SetView(&descset, "tex_cube", generated_cubemap_plane_array_srv_.Get());
                        pso_conv_cube_diffuse_->SetView(&descset, "samp", global_res.default_resource_.sampler_linear_wrap.Get());
                        pso_conv_cube_diffuse_->SetView(&descset, "uav_cubemap_as_array", conv_diffuse_cubemap_plane_array_uav_.Get());
@@ -135,7 +135,7 @@ namespace ngl::gfx::scene
             }
 
             const u32 specular_ibl_mip_count = conv_ggx_specular_cubemap_->GetMipCount();
-            // Supecular.
+            // Specular.
             for (u32 mip_i = 0; mip_i < specular_ibl_mip_count; ++mip_i)
             {
                 constexpr u32 k_cubemap_plane_count = 6;
@@ -147,7 +147,7 @@ namespace ngl::gfx::scene
                 constexpr auto next_state = rhi::EResourceState::ShaderRead;
                 conv_ggx_specular_cubemap_state_ = next_state;
                 const auto prevent_aliasing_mode = prevent_aliasing_mode_specular_;
-                ngl::fwk::PushCommonRenderCommand([this, target_mip_level, target_roughness,  prev_state, next_state, prevent_aliasing_mode](ngl::fwk::ComonRenderCommandArg arg)
+                ngl::fwk::PushCommonRenderCommand([this, target_mip_level, target_roughness,  prev_state, next_state, prevent_aliasing_mode](ngl::fwk::CommonRenderCommandArgRef arg)
                 {
                     auto& global_res = gfx::GlobalRenderResource::Instance();
                     auto* command_list = arg.command_list;
@@ -171,19 +171,19 @@ namespace ngl::gfx::scene
                             float roughness;
                         };
                         auto cbh = device->GetConstantBufferPool()->Alloc(sizeof(CbConvCubemapGgxSpecular));
-                        if (auto* map_ptr = cbh->buffer_.MapAs<CbConvCubemapGgxSpecular>())
+                        if (auto* map_ptr = cbh->buffer.MapAs<CbConvCubemapGgxSpecular>())
                         {
                             map_ptr->use_mip_to_prevent_undersampling = prevent_aliasing_mode;// Mipによるエイリアシング抑制有効.
                             map_ptr->roughness = target_roughness;
                         
-                            cbh->buffer_.Unmap();
+                            cbh->buffer.Unmap();
                         }
                     
                         // UAVステートへ.
                        command_list->ResourceBarrier(conv_ggx_specular_cubemap_.Get(), prev_state, rhi::EResourceState::UnorderedAccess);
                                    
                        rhi::DescriptorSetDep descset{};
-                       pso_conv_cube_ggx_specular_->SetView(&descset, "cb_conv_cubemap_ggx_specular", &cbh->cbv_);
+                    pso_conv_cube_ggx_specular_->SetView(&descset, "cb_conv_cubemap_ggx_specular", &cbh->cbv);
                        pso_conv_cube_ggx_specular_->SetView(&descset, "tex_cube", generated_cubemap_plane_array_srv_.Get());
                        pso_conv_cube_ggx_specular_->SetView(&descset, "samp", global_res.default_resource_.sampler_linear_wrap.Get());
                        pso_conv_cube_ggx_specular_->SetView(&descset, "uav_cubemap_as_array", mip_uav.Get());
@@ -201,7 +201,7 @@ namespace ngl::gfx::scene
             
         }
         
-        bool SetupAsPanorama(rhi::DeviceDep* p_device, const char* sky_testure_file_path)
+        bool SetupAsPanorama(rhi::DeviceDep* p_device, const char* sky_texture_file_path)
         {
             auto& res_mgr = res::ResourceManager::Instance();
             
@@ -210,7 +210,7 @@ namespace ngl::gfx::scene
                 desc.mode = gfx::ResTexture::ECreateMode::FROM_FILE;
             }
             // ソースのパノラマイメージロード.
-            res_sky_texture_ = res_mgr.LoadResource<gfx::ResTexture>(p_device, sky_testure_file_path, &desc);
+            res_sky_texture_ = res_mgr.LoadResource<gfx::ResTexture>(p_device, sky_texture_file_path, &desc);
 
 
             // 内部で生成するCubemap.
@@ -387,7 +387,7 @@ namespace ngl::gfx::scene
                 const rhi::EResourceState cubemap_init_state = generated_cubemap_state_;
                 constexpr rhi::EResourceState cubemap_next_state = rhi::EResourceState::ShaderRead;
                 generated_cubemap_state_ = cubemap_next_state;
-                ngl::fwk::PushCommonRenderCommand([this, cubemap_init_state, cubemap_next_state](ngl::fwk::ComonRenderCommandArg arg)
+                ngl::fwk::PushCommonRenderCommand([this, cubemap_init_state, cubemap_next_state](ngl::fwk::CommonRenderCommandArgRef arg)
                 {
                     auto& global_res = gfx::GlobalRenderResource::Instance();
                     auto* command_list = arg.command_list;
@@ -430,7 +430,7 @@ namespace ngl::gfx::scene
                 const rhi::EResourceState init_state = conv_ggx_dfg_lut_state_;
                 constexpr rhi::EResourceState next_state = rhi::EResourceState::ShaderRead;
                 conv_ggx_dfg_lut_state_ = next_state;
-                ngl::fwk::PushCommonRenderCommand([this, init_state, next_state](ngl::fwk::ComonRenderCommandArg arg)
+                ngl::fwk::PushCommonRenderCommand([this, init_state, next_state](ngl::fwk::CommonRenderCommandArgRef arg)
                 {
                     auto& global_res = gfx::GlobalRenderResource::Instance();
                     auto* command_list = arg.command_list;

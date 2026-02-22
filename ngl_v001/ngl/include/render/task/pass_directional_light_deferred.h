@@ -15,8 +15,9 @@
 namespace ngl::render::task
 {
 	// Lightingパス.
-	struct TaskLightPass : public rtg::IGraphicsTaskNode
+	class TaskLightPass : public rtg::IGraphicsTaskNode
 	{
+	public:
 		rtg::RtgResourceHandle h_gb0_{};
 		rtg::RtgResourceHandle h_gb1_{};
 		rtg::RtgResourceHandle h_gb2_{};
@@ -27,6 +28,7 @@ namespace ngl::render::task
 		rtg::RtgResourceHandle h_light_{};
 		
 		rtg::RtgResourceHandle h_shadowmap_{};
+		rtg::RtgResourceHandle h_ssao_{};
 		
 		rtg::RtgResourceHandle h_bent_normal_{};
 		
@@ -41,24 +43,29 @@ namespace ngl::render::task
 
 			fwk::GfxScene* scene{};
 			fwk::GfxSceneEntityId skybox_proxy_id{};
+
+            float d_lit_intensity{math::k_pi_f};
+            float sky_lit_intensity{1.0f};
 			
             render::app::SsVg* p_ssvg = {};
             bool is_enable_gi_lighting = false;
-            float gi_probe_sample_offset_distance{ 0.5f };
+            float probe_sample_offset_view{ 0.0f };// Probeサンプル位置をビュー方向にオフセットする量[距離単位].
+            float probe_sample_offset_surface_normal{ 0.0f };// Probeサンプル位置を法線方向にオフセットする量[距離単位].
+            float probe_sample_offset_bent_normal{ 0.0f };// Probeサンプル位置をベントノーマル方向にオフセットする量[距離単位].
 
 			bool enable_feedback_blur_test{};
             bool dbg_view_ssvg_sky_visibility = false;
 		} desc_{};
-		bool is_render_skip_debug{};
+		bool is_render_skip_debug_{};
 		
 		// リソースとアクセスを定義するプリプロセス.
 		void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
 			rtg::RtgResourceHandle h_light,
 			rtg::RtgResourceHandle h_gb0, rtg::RtgResourceHandle h_gb1, rtg::RtgResourceHandle h_gb2, rtg::RtgResourceHandle h_gb3, rtg::RtgResourceHandle h_velocity,
 			rtg::RtgResourceHandle h_linear_depth, rtg::RtgResourceHandle h_prev_light,
-			rtg::RtgResourceHandle h_shadowmap,
+			rtg::RtgResourceHandle h_shadowmap, rtg::RtgResourceHandle h_ssao,
 			rtg::RtgResourceHandle h_async_compute_result,
-            rtg::RtgResourceHandle h_bent_normal,
+		    rtg::RtgResourceHandle h_bent_normal,
 			const SetupDesc& desc)
 		{
 			// Rtgリソースセットアップ.
@@ -66,35 +73,40 @@ namespace ngl::render::task
 				desc_ = desc;
 				
 				// リソースアクセス定義.
-				h_gb0_ = builder.RecordResourceAccess(*this, h_gb0, rtg::access_type::SHADER_READ);
-				h_gb1_ = builder.RecordResourceAccess(*this, h_gb1, rtg::access_type::SHADER_READ);
-				h_gb2_ = builder.RecordResourceAccess(*this, h_gb2, rtg::access_type::SHADER_READ);
-				h_gb3_ = builder.RecordResourceAccess(*this, h_gb3, rtg::access_type::SHADER_READ);
-				h_velocity_ = builder.RecordResourceAccess(*this, h_velocity, rtg::access_type::SHADER_READ);
-				h_linear_depth_ = builder.RecordResourceAccess(*this, h_linear_depth, rtg::access_type::SHADER_READ);
-				h_shadowmap_ = builder.RecordResourceAccess(*this, h_shadowmap, rtg::access_type::SHADER_READ);
+				h_gb0_ = builder.RecordResourceAccess(*this, h_gb0, rtg::AccessType::SHADER_READ);
+				h_gb1_ = builder.RecordResourceAccess(*this, h_gb1, rtg::AccessType::SHADER_READ);
+				h_gb2_ = builder.RecordResourceAccess(*this, h_gb2, rtg::AccessType::SHADER_READ);
+				h_gb3_ = builder.RecordResourceAccess(*this, h_gb3, rtg::AccessType::SHADER_READ);
+				h_velocity_ = builder.RecordResourceAccess(*this, h_velocity, rtg::AccessType::SHADER_READ);
+				h_linear_depth_ = builder.RecordResourceAccess(*this, h_linear_depth, rtg::AccessType::SHADER_READ);
+				h_shadowmap_ = builder.RecordResourceAccess(*this, h_shadowmap, rtg::AccessType::SHADER_READ);
+
+                if(!h_ssao.IsInvalid())
+                {
+					h_ssao_ = builder.RecordResourceAccess(*this, h_ssao, rtg::AccessType::SHADER_READ);
+                }
 
 				h_prev_light_ = {};
 				if(!h_prev_light.IsInvalid())
 				{
-					h_prev_light_ = builder.RecordResourceAccess(*this, h_prev_light, rtg::access_type::SHADER_READ);
+					h_prev_light_ = builder.RecordResourceAccess(*this, h_prev_light, rtg::AccessType::SHADER_READ);
 				}
 				if(!h_async_compute_result.IsInvalid())
 				{
 					// Asyncの結果を読み取りだけレコードしてFenceさせる.
-					builder.RecordResourceAccess(*this, h_async_compute_result, rtg::access_type::SHADER_READ);
+					builder.RecordResourceAccess(*this, h_async_compute_result, rtg::AccessType::SHADER_READ);
 				}
                 if(!h_bent_normal.IsInvalid())
                 {
-                    h_bent_normal_ = builder.RecordResourceAccess(*this, h_bent_normal, rtg::access_type::SHADER_READ);
+					h_bent_normal_ = builder.RecordResourceAccess(*this, h_bent_normal, rtg::AccessType::SHADER_READ);
                 }
 
 				if (h_light.IsInvalid())
 				{
-					rtg::RtgResourceDesc2D light_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
+					rtg::RtgResourceDesc2D light_desc = rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc_.w, desc_.h, rhi::EResourceFormat::Format_R16G16B16A16_FLOAT);
 					h_light = builder.CreateResource(light_desc);
 				}
-				h_light_ = builder.RecordResourceAccess(*this, h_light, rtg::access_type::RENDER_TARGET);// このTaskで新規生成したRenderTargetを出力先とする.
+				h_light_ = builder.RecordResourceAccess(*this, h_light, rtg::AccessType::RENDER_TARGET);// このTaskで新規生成したRenderTargetを出力先とする.
 			}
 			
 			{
@@ -138,7 +150,7 @@ namespace ngl::render::task
 			builder.RegisterTaskNodeRenderFunction(this,
 				[this](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
 				{
-					if(is_render_skip_debug)
+					if(is_render_skip_debug_)
 					{
 						return;
 					}
@@ -159,8 +171,15 @@ namespace ngl::render::task
 					auto res_prev_light = builder.GetAllocatedResource(this, h_prev_light_);// 前回フレームリソースのテスト.
 					auto res_light = builder.GetAllocatedResource(this, h_light_);
 					auto res_shadowmap = builder.GetAllocatedResource(this, h_shadowmap_);
+
+					auto res_ssao = builder.GetAllocatedResource(this, h_ssao_);
+                    auto srv_ssao = res_ssao.srv_;
+                    if(!res_ssao.tex_.IsValid())
+                    {
+                        srv_ssao = global_res.default_resource_.tex_white->ref_view_;
+                    }
                     
-                    auto res_bent_normal = builder.GetAllocatedResource(this, h_bent_normal_);
+					auto res_bent_normal = builder.GetAllocatedResource(this, h_bent_normal_);
                     auto srv_bent_normal = res_bent_normal.srv_;
 					if(!res_bent_normal.tex_.IsValid())
                     {
@@ -194,21 +213,32 @@ namespace ngl::render::task
 					{
 						int enable_feedback_blur_test{};
 						int is_first_frame{};
+
+                        float d_lit_intensity{1.0f};
+                        float sky_lit_intensity{1.0f};
+    
                         int is_enable_gi{};
-                        float gi_probe_sample_offset_distance{ 0.5f };
+                        float probe_sample_offset_view{ 0.0f };
+                        float probe_sample_offset_surface_normal{ 0.0f };
+                        float probe_sample_offset_bent_normal{ 0.0f };
                         int dbg_view_ssvg_sky_visibility{};
 					};
 					auto lighting_cbh = gfx_commandlist->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(CbLightingPass));
-					if(auto* p_mapped = lighting_cbh->buffer_.MapAs<CbLightingPass>())
+					if(auto* p_mapped = lighting_cbh->buffer.MapAs<CbLightingPass>())
 					{
 						p_mapped->enable_feedback_blur_test = desc_.enable_feedback_blur_test;
 						p_mapped->is_first_frame = is_first_frame ? 1 : 0;
 
-                        p_mapped->is_enable_gi = (desc_.p_ssvg != nullptr && desc_.is_enable_gi_lighting) ? 1 : 0;
-                        p_mapped->gi_probe_sample_offset_distance = desc_.gi_probe_sample_offset_distance;
-                        p_mapped->dbg_view_ssvg_sky_visibility = desc_.dbg_view_ssvg_sky_visibility ? 1 : 0;
+						p_mapped->d_lit_intensity = desc_.d_lit_intensity;//skybox_proxy->directional_light_intensity;
+						p_mapped->sky_lit_intensity = desc_.sky_lit_intensity;//skybox_proxy->sky_light_intensity
 
-						lighting_cbh->buffer_.Unmap();
+						p_mapped->is_enable_gi = (desc_.p_ssvg != nullptr && desc_.is_enable_gi_lighting) ? 1 : 0;
+						p_mapped->probe_sample_offset_view = desc_.probe_sample_offset_view;
+						p_mapped->probe_sample_offset_surface_normal = desc_.probe_sample_offset_surface_normal;
+						p_mapped->probe_sample_offset_bent_normal = desc_.probe_sample_offset_bent_normal;
+						p_mapped->dbg_view_ssvg_sky_visibility = desc_.dbg_view_ssvg_sky_visibility ? 1 : 0;
+
+						lighting_cbh->buffer.Unmap();
 					}
 					
 					// Viewport.
@@ -223,9 +253,9 @@ namespace ngl::render::task
 					gfx_commandlist->SetPipelineState(pso_.Get());
 					ngl::rhi::DescriptorSetDep desc_set = {};
 
-					pso_->SetView(&desc_set, "cb_ngl_sceneview", &desc_.scene_cbv->cbv_);
-					pso_->SetView(&desc_set, "cb_ngl_shadowview", &desc_.ref_shadow_cbv->cbv_);
-					pso_->SetView(&desc_set, "cb_ngl_lighting_pass", &lighting_cbh->cbv_);
+					pso_->SetView(&desc_set, "cb_ngl_sceneview", &desc_.scene_cbv->cbv);
+					pso_->SetView(&desc_set, "cb_ngl_shadowview", &desc_.ref_shadow_cbv->cbv);
+					pso_->SetView(&desc_set, "cb_ngl_lighting_pass", &lighting_cbh->cbv);
 						
 					pso_->SetView(&desc_set, "tex_lineardepth", res_linear_depth.srv_.Get());
 					pso_->SetView(&desc_set, "tex_gbuffer0", res_gb0.srv_.Get());
@@ -236,7 +266,8 @@ namespace ngl::render::task
 					pso_->SetView(&desc_set, "tex_prev_light", ref_prev_lit.Get());
 
 					pso_->SetView(&desc_set, "tex_shadowmap", res_shadowmap.srv_.Get());
-                    pso_->SetView(&desc_set, "tex_bent_normal", srv_bent_normal.Get());
+					pso_->SetView(&desc_set, "tex_ssao", srv_ssao.Get());
+					pso_->SetView(&desc_set, "tex_bent_normal", srv_bent_normal.Get());
 
 					pso_->SetView(&desc_set, "tex_ibl_diffuse", skybox_proxy->ibl_diffuse_cubemap_plane_array_srv_.Get());
 					pso_->SetView(&desc_set, "tex_ibl_specular", skybox_proxy->ibl_ggx_specular_cubemap_plane_array_srv_.Get());
@@ -246,9 +277,9 @@ namespace ngl::render::task
 					pso_->SetView(&desc_set, "samp_shadow", gfx::GlobalRenderResource::Instance().default_resource_.sampler_shadow_linear.Get());
 
 
-                    if(desc_.p_ssvg)
+					if(desc_.p_ssvg)
                     {
-                        desc_.p_ssvg->SetDescriptor(pso_.Get(), &desc_set);
+						desc_.p_ssvg->SetDescriptor(pso_.Get(), &desc_set);
                     }
 
 						

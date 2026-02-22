@@ -139,7 +139,7 @@ namespace res
 
 		// 新規生成.
 		auto p_res = new RES_TYPE();
-		res::ResoucePrivateAccess::SetResourceInfo(p_res, filename);
+		res::ResourcePrivateAccess::SetResourceInfo(p_res, filename);
 
 
 		// Resourceタイプ別のロード処理.
@@ -152,14 +152,14 @@ namespace res
 		// Handle生成.
 		auto handle = ResourceHandle(p_res, &deleter_instance_);
 		// 内部管理用RawHandle取得. handleの内部参照カウンタ共有.
-		auto raw_handle = ResoucePrivateAccess::GetRawHandle(handle);
+		auto raw_handle = ResourcePrivateAccess::GetRawHandle(handle);
 		// データベースに登録.
 		Register(raw_handle);
 
 		if (p_res->IsNeedRenderThreadInitialize())
 		{
 			// RenderThreadでの初期化処理を汎用RenderComamndで登録. ハンドル参照を値キャプチャしてカウント保証.
-			fwk::PushCommonRenderCommand([raw_handle](fwk::_CommonRenderCommandArg arg)
+			fwk::PushCommonRenderCommand([raw_handle](fwk::CommonRenderCommandArgRef arg)
 			{
 				auto device = arg.command_list->GetDevice();
 				raw_handle->p_res_->RenderThreadInitialize(device, arg.command_list);

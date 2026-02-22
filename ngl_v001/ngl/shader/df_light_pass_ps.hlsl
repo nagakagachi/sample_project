@@ -23,8 +23,13 @@ struct CbLightingPass
 	int enable_feedback_blur_test;
 	int is_first_frame;
 
+    float d_lit_intensity;
+    float sky_lit_intensity;
+
     int is_enable_gi;
-    float gi_probe_sample_offset_distance;
+    float probe_sample_offset_view;
+    float probe_sample_offset_surface_normal;
+    float probe_sample_offset_bent_normal;
     int dbg_view_ssvg_sky_visibility;
 };
 ConstantBuffer<CbLightingPass> cb_ngl_lighting_pass;
@@ -36,6 +41,7 @@ Texture2D tex_gbuffer2;
 Texture2D tex_gbuffer3;
 Texture2D tex_prev_light;
 Texture2D tex_shadowmap;
+Texture2D tex_ssao;// rgb:bent normal, a:AO.
 Texture2D tex_bent_normal;// BentNormalテクスチャ.
 
 SamplerState samp;
@@ -59,18 +65,12 @@ void EvalDirectionalLightStandard
 	float3 base_color, float roughness, float metalness
 )
 {
-	const float3 F = brdf_schlick_roughness_F(compute_F0_default(base_color, metalness), roughness, N, V, L);// Roughnessを考慮したFresnel
-	const float3 kD = (1.0 - F);
-
 	const float3 diffuse_term = brdf_lambert(base_color, roughness, metalness, N, V, L);
 	const float3 specular_term = brdf_standard_ggx(base_color, roughness, metalness, N, V, L);
-	const float3 brdf = specular_term + diffuse_term;
+    
 	const float cos_term = saturate(dot(N, L));
 
-	//out_diffuse = (float3)0;
-	out_diffuse = cos_term * diffuse_term * kD * light_intensity;
-	
-	//out_specular = (float3)0;
+	out_diffuse = cos_term * diffuse_term * light_intensity;
 	out_specular = cos_term * specular_term * light_intensity;
 }
 
@@ -86,7 +86,6 @@ void EvalIblDiffuseStandard
 {
 	const float3 L_Reflect = 2 * dot( V, N ) * N - V;
 	const float3 F = brdf_schlick_roughness_F(compute_F0_default(base_color, metalness), roughness, N, V, L_Reflect);// Roughnessを考慮したFresnel
-	const float3 kD = (1.0 - F);
 
 	const float3 brdf_diffuse = brdf_lambert(base_color, roughness, metalness, N, V, L_Reflect);// diffuse BRDF.
 
@@ -100,7 +99,7 @@ void EvalIblDiffuseStandard
 	const float3 irradiance_diffuse = tex_cube_ibl_diffuse.SampleLevel(samp, N, 0).rgb;
 
 	// FresnelでDiffuseとSpecularに分配.
-	out_diffuse = brdf_diffuse * kD * irradiance_diffuse;
+	out_diffuse = brdf_diffuse * irradiance_diffuse;
 	out_specular = irradiance_specular * (F * specular_dfg.x + specular_dfg.y);
 }
 
@@ -200,23 +199,22 @@ uint2 calc_probe_octahedral_map_atlas_texel_base_pos(uint index, uint tex_width)
 
 float4 main_ps(VS_OUTPUT input) : SV_TARGET
 {	
+    const float2 screen_uv = input.uv;
 	// リニアView深度.
-	const float ld = tex_lineardepth.Load(int3(input.pos.xy, 0)).r;// LightingBufferとGBufferが同じ解像度前提でLoad.
-	if(1e7 <= ld)
+	const float ld = tex_lineardepth.SampleLevel(samp, screen_uv, 0).r;// LightingBufferとGBufferが同じ解像度前提でLoad.
+	if(65535.0 <= ld)
 	{
-		// 天球扱い.
-		//return float4(0.0, 0.0, 0.5, 0.0);
 		discard;
 	}
-	float depth_visualize = pow(saturate(ld / 200.0), 1.0/0.8);
 	
 	// LightingBufferとGBufferが同じ解像度前提でLoad.
-	const float4 gb0 = tex_gbuffer0.Load(int3(input.pos.xy, 0));
-	const float4 gb1 = tex_gbuffer1.Load(int3(input.pos.xy, 0));
-	const float4 gb2 = tex_gbuffer2.Load(int3(input.pos.xy, 0));
-	const float4 gb3 = tex_gbuffer3.Load(int3(input.pos.xy, 0));
-    const float4 bent_normal_sample = tex_bent_normal.Load(int3(input.pos.xy, 0));
-	const float4 prev_light = tex_prev_light.Load(int3(input.pos.xy, 0));
+	const float4 gb0 = tex_gbuffer0.SampleLevel(samp, screen_uv, 0);
+	const float4 gb1 = tex_gbuffer1.SampleLevel(samp, screen_uv, 0);
+	const float4 gb2 = tex_gbuffer2.SampleLevel(samp, screen_uv, 0);
+	const float4 gb3 = tex_gbuffer3.SampleLevel(samp, screen_uv, 0);
+    const float4 ssao_sample = tex_ssao.SampleLevel(samp, screen_uv, 0);
+    const float4 bent_normal_sample = tex_bent_normal.SampleLevel(samp, screen_uv, 0);
+	const float4 prev_light = tex_prev_light.SampleLevel(samp, screen_uv, 0);
 
 	// GBuffer Decode.
 	float3 gb_base_color = gb0.xyz;
@@ -238,7 +236,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	const float3 to_pixel_ray_ws = normalize(to_pixel_vec_ws);
 
 	
-	const float3 lit_intensity = float3(1.0, 1.0, 1.0) * NGL_PI * 1.5;
+	const float3 lit_intensity = float3(1.0, 1.0, 1.0) * cb_ngl_lighting_pass.d_lit_intensity;
 	const float3 lit_dir = normalize(cb_ngl_shadowview.cb_shadow_view_inv_mtx[0]._m02_m12_m22);// InvShadowViewMtxから向きベクトルを取得.
 
 
@@ -259,59 +257,81 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	}
 
     // GIのテスト(Dynamic Sky Visibility).
-    float sky_visibility = 1.0;;
+    float sky_visibility = 1.0;
     if(cb_ngl_lighting_pass.is_enable_gi)
     {
-        uint tex_width, tex_height;
-        WcpProbeAtlasTex.GetDimensions(tex_width, tex_height);
-        const float2 texel_size = 1.0 / float2(tex_width, tex_height);
-
-        const float2 octmap_local_texel_pos = OctEncode(gb_normal_ws)*k_probe_octmap_width;
-        float3 probe_sample_pos_ws = pixel_pos_ws;
         #if 1
-            // BentNormalでサンプル位置をオフセットすることでライトリーク緩和の検証.
-            {
-                const float k_bent_normal_offset_distance = cb_ngl_lighting_pass.gi_probe_sample_offset_distance;//0.5;
+            // ScreenSpaceProbeテスト.
+            uint2 ss_probe_tex_size;
+            ScreenSpaceProbeTex.GetDimensions(ss_probe_tex_size.x, ss_probe_tex_size.y);
+            const float2 ss_probe_texel_uv_size = 1.0 / float2(ss_probe_tex_size);
 
-                const float3 bent_normal_ws = bent_normal_sample.xyz;
-                probe_sample_pos_ws += bent_normal_ws * k_bent_normal_offset_distance;
-            }
+            // Spherical Octahedral Map.
+            const int2 ss_probe_tile_base_pos = floor(screen_uv * ss_probe_tex_size / SCREEN_SPACE_PROBE_TILE_SIZE)*SCREEN_SPACE_PROBE_TILE_SIZE;
+            // Octmapのテクセルが外側をBilinearSamplingしないようにクランプ.
+            float2 octmap_texel_pos = clamp(OctEncode(gb_normal_ws)*SCREEN_SPACE_PROBE_TILE_SIZE, 0.5, SCREEN_SPACE_PROBE_TILE_SIZE-0.5);
+            float2 ss_probe_sample_texel_pos = ss_probe_tile_base_pos + octmap_texel_pos;
+            float2 ss_probe_sample_uv = ss_probe_sample_texel_pos * ss_probe_texel_uv_size;
+
+            float4 ss_probe_value = ScreenSpaceProbeTex.SampleLevel(samp, ss_probe_sample_uv, 0);
+
+            sky_visibility = saturate(ss_probe_value.r);
+        #else
+            uint tex_width, tex_height;
+            WcpProbeAtlasTex.GetDimensions(tex_width, tex_height);
+            const float2 texel_size = 1.0 / float2(tex_width, tex_height);
+
+            const float2 octmap_local_texel_pos = OctEncode(gb_normal_ws)*k_probe_octmap_width;
+            float3 probe_sample_pos_ws = pixel_pos_ws;
+            #if 1
+                // BentNormalでサンプル位置をオフセットすることでライトリーク緩和の検証.
+                {
+                    // View Offset.
+                    probe_sample_pos_ws += V * cb_ngl_lighting_pass.probe_sample_offset_view;
+
+                    // Surface Normal Offset.
+                    probe_sample_pos_ws += gb_normal_ws * cb_ngl_lighting_pass.probe_sample_offset_surface_normal;
+
+                    // BentNormal Offset.
+                    probe_sample_pos_ws += bent_normal_sample.xyz * cb_ngl_lighting_pass.probe_sample_offset_bent_normal;
+                }
+            #endif
+
+            const float3 voxel_coordf = (probe_sample_pos_ws - cb_ssvg.wcp.grid_min_pos) * cb_ssvg.wcp.cell_size_inv;
+            const int3 voxel_base_coord = floor(voxel_coordf - 0.5);
+            const float3 coord_frac = frac(voxel_coordf - 0.5);
+
+                const int3 vtx_pos[8] = {
+                    int3(0, 0, 0),int3(1, 0, 0),
+                    int3(0, 1, 0),int3(1, 1, 0),
+                    int3(0, 0, 1),int3(1, 0, 1),
+                    int3(0, 1, 1),int3(1, 1, 1)
+                };
+
+                uint voxel_indexs[8];
+                float2 octmap_uvs[8];
+                for (int i = 0; i < 8; ++i)
+                {
+                    voxel_indexs[i] = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + vtx_pos[i], cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
+                    octmap_uvs[i] = (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_indexs[i], cb_ssvg.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
+                }
+
+                // k_wcp_probe_distance_max で正規化された [0,1] のDistanceProbe.
+                float4 dir_d[2];
+                for (int i = 0; i < 2; ++i)
+                {
+                    dir_d[i].x = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 0], 0).r;
+                    dir_d[i].y = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 2], 0).r;
+                    dir_d[i].z = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 4], 0).r;
+                    dir_d[i].w = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 6], 0).r;
+                }
+                
+                const float4 lerp_d_x = lerp(dir_d[0], dir_d[1], coord_frac.x);// x補間
+                const float2 lerp_d_y = lerp(lerp_d_x.xz, lerp_d_x.yw, coord_frac.y);// y補間
+                const float lerp_d_z = lerp(lerp_d_y.x, lerp_d_y.y, coord_frac.z);// z補間
+                
+            sky_visibility = lerp_d_z;
         #endif
-
-        const float3 voxel_coordf = (probe_sample_pos_ws - cb_ssvg.wcp.grid_min_pos) * cb_ssvg.wcp.cell_size_inv;
-        const int3 voxel_base_coord = floor(voxel_coordf - 0.5);
-        const float3 coord_frac = frac(voxel_coordf - 0.5);
-
-            const int3 vtx_pos[8] = {
-                int3(0, 0, 0),int3(1, 0, 0),
-                int3(0, 1, 0),int3(1, 1, 0),
-                int3(0, 0, 1),int3(1, 0, 1),
-                int3(0, 1, 1),int3(1, 1, 1)
-            };
-
-            uint voxel_indexs[8];
-            float2 octmap_uvs[8];
-            for (int i = 0; i < 8; ++i)
-            {
-                voxel_indexs[i] = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + vtx_pos[i], cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
-                octmap_uvs[i] = (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_indexs[i], cb_ssvg.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
-            }
-
-            // k_wcp_probe_distance_max で正規化された [0,1] のDistanceProbe.
-            float4 dir_d[2];
-            for (int i = 0; i < 2; ++i)
-            {
-                dir_d[i].x = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 0], 0).r;
-                dir_d[i].y = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 2], 0).r;
-                dir_d[i].z = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 4], 0).r;
-                dir_d[i].w = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 6], 0).r;
-            }
-            
-            const float4 lerp_d_x = lerp(dir_d[0], dir_d[1], coord_frac.x);// x補間
-            const float2 lerp_d_y = lerp(lerp_d_x.xz, lerp_d_x.yw, coord_frac.y);// y補間
-            const float lerp_d_z = lerp(lerp_d_y.x, lerp_d_y.y, coord_frac.z);// z補間
-
-        sky_visibility = lerp_d_z;
     }
 	
 	// IBL.
@@ -319,14 +339,8 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		float3 ibl_diffuse, ibl_specular;
 		EvalIblDiffuseStandard(ibl_diffuse, ibl_specular, tex_ibl_diffuse, tex_ibl_specular, tex_ibl_dfg, samp, gb_normal_ws, V, gb_base_color, gb_roughness, gb_metalness);
 
-		lit_color += (ibl_diffuse + ibl_specular) * sky_visibility;
-		
-		//lit_color = ibl_diffuse + ibl_specular;// テスト
-		//lit_color = ibl_diffuse;// テスト.
-		//lit_color = ibl_specular;// テスト.
+		lit_color += (ibl_diffuse + ibl_specular) * cb_ngl_lighting_pass.sky_lit_intensity * sky_visibility * ssao_sample.a;
 	}
-
-
 
 
     // ------------------------------------------------------------------------------

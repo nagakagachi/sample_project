@@ -1,5 +1,5 @@
 ﻿
-#include "gfx/texture_loader_directxtex.h"
+#include "gfx/resource/texture_loader_directxtex.h"
 
 #include <numeric>
 

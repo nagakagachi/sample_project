@@ -1,17 +1,43 @@
 # Copilot Instructions
 
+## 人間とのやり取り
+- **回答は日本語で行うこと**
+
 ## File Encoding Rules
 - **新規作成のh, cppファイルは UTF-8 BOM付きとする**
-- This prevents "Characters that cannot be displayed in current code page (932)" warnings in Visual Studio
-- Ensures proper handling of Japanese comments if needed
+
+## Naming Conventions (最大公約数)
+- **対象範囲: ngl_v001/ngl/include, ngl_v001/ngl/src, ngl_v001/ngl/shader, sample_app の自作コードのみ**
+- **外部依存 (ngl_v001/ngl/external など) と生成物は対象外**
+
+### C++ File Naming
+- **原則 snake_case** (例: `gfx_framework.h`, `test_render_path.cpp`)
+- **プラットフォーム/バックエンドのサフィックスは現状利用を許容** (例: `device.d3d12.h`)
+
+### C++ Type Naming
+- **クラス/構造体/型: PascalCase** (例: `GraphicsFramework`, `RenderFrameDesc`)
+- **列挙体: `E` プレフィックスを許容** (例: `EResourceState`, `EShaderStage`)
+- **例外**
+  - material_shader_manager は 自動生成コードとの対応をわかりやすくするため例外とする
+
+### C++ Member/Function/Constant
+- **classメンバー変数: snake_case + 末尾 `_` を推奨** (例: `p_window_`, `swapchain_rtvs_`)
+- **structメンバー変数: snake_case（末尾 `_` なし）を推奨** (例: `param`, `xyz`)
+- **ポインタ/参照系の接頭辞: `p_` / `ref_` を推奨** (例: `p_device_`, `ref_swapchain_`)
+- **関数名: PascalCase を推奨** (例: `Initialize`, `BeginFrame`)
+- **定数: `k_` プレフィックス + snake_case を推奨** (例: `k_pi_f`)
+- **マクロ: 大文字 + `NGL_` プレフィックスを許容**
+- **既存コードに lower_snake の関数名など混在があるため、厳格な強制はしない**
 
 ## HLSL Shader Naming Rules
-- **HLSLシェーダファイルはファイル名末尾のSuffixでシェーダステージを明示する**
+- **.hlsliファイルはシェーダインクルードファイルとしてSnakeCaseとする**
+- 例: `common_functions.hlsli`, `lighting_models.hlsli`
+- **.hlslファイルは末尾にシェーダステージを示すSuffixを付加する**
 - VertexShader = `_vs.hlsl`
 - PixelShader = `_ps.hlsl`
 - ComputeShader = `_cs.hlsl`
+- DxrShader = `_lib.hlsl`
 - 例: `sample_pixel_shader_ps.hlsl`
-- 対応シェーダステージは今後追加予定
 
 ## HLSL Shader Entry Point Naming Rules
 - **シェーダのエントリポイント名は `main_[シェーダステージSuffix]` とする**
@@ -19,34 +45,47 @@
 - VertexShader = `main_vs`
 - ComputeShader = `main_cs`
 
-## CBT Tessellation Development Guidelines
+## Architecture Overview: Render Task Graph (RTG)
 
-### ConstantBuffer Management
-- **ConstantBufferPoolを使用してダブルバッファリング問題を回避する**
-- 毎フレーム`device->GetConstantBufferPool()->Alloc()`で新規確保
-- `UpdateConstants()`は`ConstantBufferPooledHandle`を返す
-- `BindResources()`で`ConstantBufferPooledHandle`を受け取る設計
+このプロジェクトはグラフィックスパイプラインを **RenderTaskGraph (RTG)** で管理する設計です。
 
-### Shader-CPU Data Structure Alignment
-- **パディングは配列ではなく個別変数で定義する**
-- ❌ `uint32_t padding[3];` (シェーダとC++で挙動差異)
-- ✅ `uint32_t padding1, padding2, padding3;` (明示的制御)
-- 16byteアライメントを厳密に管理する
+### 基本概念
+- **Pass/Task の依存関係をグラフで管理**
+- **RTG がリソース割り当てと状態遷移を統括**
+- **構築→最適化→実行のフローで処理**
 
-### Important Point System
-- **カメラ特化ではなく汎用的なimportant_point概念を使用**
-- `SetImportantPoint()/GetImportantPoint()` APIでワールド座標指定
-- シェーダ内で`world_to_object`変換してオブジェクト空間で処理
-- テッセレーション評価基準の柔軟性を確保
+## Project Structure & Namespaces
 
-### Resource Binding Patterns
-- **CBTリソースのバインドはBindResources()で統一**
-- ConstantBufferPooledHandleを明示的に渡す
-- 複数シェイプでの一貫した処理パターン
-- 早期リターンによる効率的な範囲チェック
+### モジュール構成
+```
+ngl_v001/ngl/
+├── include/
+│   ├── rhi/           - RHI層 (D3D12抽象化、CommandList/DescriptorPool)
+│   ├── gfx/           - 低レベルグラフィックス (RenderTaskGraph, リソース管理)
+│   ├── framework/     - フレームワーク層 (GfxScene, エンティティシステム)
+│   ├── render/        - レンダリング実装 (Pass, Feature, RTG構築)
+│   ├── resource/      - リソースハンドル、キャッシング
+│   ├── math/          - 数学ユーティリティ
+│   ├── memory/        - メモリ管理（PoolAllocator等）
+│   └── util/          - 一般ユーティリティ (Handle factory, NonCopyable等)
+└── src/               - 対応する実装ファイル
+```
 
-### Code Organization
-- **CBT関連定数は`cbt_tess_common.hlsli`に集約**
-- Bisectorコマンドビットマスク定数を適切に定義
-- ヘルパー関数による処理の抽象化
-- 包括的なコメントでアルゴリズムを説明
+### Namespace 階層
+- **`ngl`**: Root namespace
+- **`ngl::rhi`**: D3D12 低レベルインタフェース
+- **`ngl::gfx`**: グラフィックス中核
+- **`ngl::rtg`**: RenderTaskGraph 関連（ヘッダは gfx/rtg 配下）
+- **`ngl::fwk`**: フレームワーク（GfxScene等）
+- **`ngl::render`**: レンダリング実装、Pass、Feature
+- **`ngl::res`**: リソース管理
+
+## File Layout (Structure Only)
+
+### C++ ファイル対応規則
+- `include/` と `src/` は同じパス/ファイル名で対応させる
+  - 例: `include/framework/gfx_framework.h` ↔ `src/framework/gfx_framework.cpp`
+  - 例: `include/render/test_render_path.h` ↔ `src/render/test_render_path.cpp`
+
+
+

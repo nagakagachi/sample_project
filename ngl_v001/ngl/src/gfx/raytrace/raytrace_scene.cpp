@@ -1,4 +1,4 @@
-﻿#include "gfx/raytrace_scene.h"
+﻿#include "gfx/raytrace/raytrace_scene.h"
 
 #include <unordered_map>
 #include <algorithm>
@@ -35,7 +35,7 @@ namespace ngl
 			// コピー.
 			geometry_desc_array_ = geometry_desc_array;
 
-			setup_type_ = SETUP_TYPE::BLAS_TRIANGLE;
+			setup_type_ = ESetupType::BLAS_TRIANGLE;
 			geom_desc_array_.clear();
 			geom_desc_array_.reserve(geometry_desc_array.size());// 予約.
 			for (auto& g : geometry_desc_array)
@@ -157,7 +157,7 @@ namespace ngl
 			}
 
 			// BLAS Build (Triangle Geometry).
-			if (SETUP_TYPE::BLAS_TRIANGLE == setup_type_)
+			if (ESetupType::BLAS_TRIANGLE == setup_type_)
 			{
 				// Setupで準備した情報からASをビルドするコマンドを発行.
 				// Build後は入力に利用したVertexBufferやIndexBufferは不要となるとのこと.
@@ -178,7 +178,7 @@ namespace ngl
 		}
 		bool RtBlas::IsSetuped() const
 		{
-			return SETUP_TYPE::NONE != setup_type_;
+			return ESetupType::NONE != setup_type_;
 		}
 		bool RtBlas::IsBuilt() const
 		{
@@ -237,7 +237,7 @@ namespace ngl
 				return false;
 			}
 
-			setup_type_ = SETUP_TYPE::TLAS;
+			setup_type_ = ESetupType::TLAS;
 
 
 
@@ -405,7 +405,7 @@ namespace ngl
 			}
 
 			// TLAS Build .
-			if (SETUP_TYPE::TLAS == setup_type_)
+			if (ESetupType::TLAS == setup_type_)
 			{
 				// ASビルドコマンドを発行.
 				// 
@@ -425,7 +425,7 @@ namespace ngl
 		}
 		bool RtTlas::IsSetuped() const
 		{
-			return SETUP_TYPE::NONE != setup_type_;
+			return ESetupType::NONE != setup_type_;
 		}
 		bool RtTlas::IsBuilt() const
 		{
@@ -1685,11 +1685,11 @@ namespace ngl
 				int num_ray_type;
 			};
 			auto raytrace_cbh = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(RaytraceInfo));
-			if(auto* mapped = raytrace_cbh->buffer_.MapAs<RaytraceInfo>())
+			if(auto* mapped = raytrace_cbh->buffer.MapAs<RaytraceInfo>())
 			{
 				mapped->num_ray_type = p_rt_scene_->NumHitGroupCountMax();
 
-				raytrace_cbh->buffer_.Unmap();
+				raytrace_cbh->buffer.Unmap();
 			}
 			
 
@@ -1701,7 +1701,7 @@ namespace ngl
 				// global resourceのセット.
 				{
 					param.cbv_slot[0] = p_rt_scene_->GetSceneViewCbv();// View.
-					param.cbv_slot[1] = &raytrace_cbh->cbv_;// Raytrace.
+					param.cbv_slot[1] = &raytrace_cbh->cbv;// Raytrace.
 				}
 				{
 					param.srv_slot;
@@ -1917,7 +1917,7 @@ namespace ngl
 			// 定数バッファ更新.
 			{
 				const auto cb_index = frame_count_ % std::size(cbh_scene_view);
-				if (auto* mapped = static_cast<CbSceneView*>(cbh_scene_view[cb_index]->buffer_.Map()))
+				if (auto* mapped = static_cast<CbSceneView*>(cbh_scene_view[cb_index]->buffer.Map()))
 				{
 					mapped->cb_view_mtx = view_mat;
 					mapped->cb_proj_mtx = proj_mat;
@@ -1926,7 +1926,7 @@ namespace ngl
 
 					mapped->cb_ndc_z_to_view_z_coef = ndc_z_to_view_z_coef;
 
-					cbh_scene_view[cb_index]->buffer_.Unmap();
+					cbh_scene_view[cb_index]->buffer.Unmap();
 				}
 			}
 		}
@@ -1955,7 +1955,7 @@ namespace ngl
 				return nullptr;
 			
 			const auto cb_index = frame_count_ % std::size(cbh_scene_view);
-			return (cbh_scene_view[cb_index]->buffer_.IsValid())? &cbh_scene_view[cb_index]->cbv_ : nullptr;
+			return (cbh_scene_view[cb_index]->buffer.IsValid())? &cbh_scene_view[cb_index]->cbv : nullptr;
 		}
 		const rhi::ConstantBufferViewDep* RtSceneManager::GetSceneViewCbv() const
 		{
@@ -1963,7 +1963,7 @@ namespace ngl
 				return nullptr;
 			
 			const auto cb_index = frame_count_ % std::size(cbh_scene_view);
-			return (cbh_scene_view[cb_index]->buffer_.IsValid())? &cbh_scene_view[cb_index]->cbv_ : nullptr;
+			return (cbh_scene_view[cb_index]->buffer.IsValid())? &cbh_scene_view[cb_index]->cbv : nullptr;
 		}
 
 		void RtSceneManager::DispatchRay(rhi::GraphicsCommandListDep* p_command_list, const DispatchRayParam& param)
