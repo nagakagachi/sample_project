@@ -1,6 +1,7 @@
 ﻿
 #include "rhi/d3d12/device.d3d12.h"
 #include "rhi/d3d12/command_list.d3d12.h"
+#include "rhi/d3d12/shader.d3d12.h"
 
 #include <array>
 #include <algorithm>
@@ -256,10 +257,26 @@ namespace ngl
 				cb_pool_.Initialize(this);
 			}
 
+			// PipelineState wrapper cache.
+			{
+				p_pipeline_state_cache_.reset(new PipelineStateObjectCacheDep());
+				PipelineStateObjectCacheDep::Desc cache_desc = {};
+				cache_desc.enable_cache = desc_.enable_pipeline_state_cache;
+				cache_desc.max_graphics_entries = desc_.pipeline_state_cache_graphics_capacity;
+				cache_desc.max_compute_entries = desc_.pipeline_state_cache_compute_capacity;
+				p_pipeline_state_cache_->Initialize(cache_desc);
+			}
+
 			return true;
 		}
 		void DeviceDep::Finalize()
 		{
+			if (p_pipeline_state_cache_)
+			{
+				p_pipeline_state_cache_->Finalize();
+				p_pipeline_state_cache_.reset();
+			}
+
 			cb_pool_.Finalize();
 			gb_.Finalize();
 

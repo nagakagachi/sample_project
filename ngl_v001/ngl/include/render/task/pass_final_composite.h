@@ -143,11 +143,8 @@ namespace ngl::render::task
 				desc.blend_state.target_blend_states[0].blend_enable = false;
 				desc.blend_state.target_blend_states[0].write_mask = ~ngl::u8(0);
 
-				pso_.Reset(new rhi::GraphicsPipelineStateDep());
-				if (!pso_->Initialize(p_device, desc))
-				{
-					assert(false);
-				}
+                auto* pso_cache = p_device->GetPipelineStateCache();
+                pso_ = pso_cache->GetOrCreate(p_device, desc);
 			}
 			
 			// Render処理のLambdaをRTGに登録.

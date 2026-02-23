@@ -1,5 +1,9 @@
 ﻿#pragma once
 
+#include <list>
+#include <mutex>
+#include <unordered_map>
+
 #include "rhi/rhi.h"
 #include "rhi/rhi_ref.h"
 #include "rhi/rhi_object_garbage_collect.h"
@@ -396,6 +400,68 @@ namespace rhi
 		u32										threadgroup_size_x_ = 0;
 		u32										threadgroup_size_y_ = 0;
 		u32										threadgroup_size_z_ = 0;
+	};
+
+	// PipelineStateDep wrapper cache (device scoped).
+	class PipelineStateObjectCacheDep
+	{
+	public:
+		struct Desc
+		{
+			bool enable_cache = true;
+			u32	 max_graphics_entries = 256;
+			u32	 max_compute_entries = 256;
+		};
+
+		PipelineStateObjectCacheDep();
+		~PipelineStateObjectCacheDep();
+
+		void Initialize(const Desc& desc);
+		void Finalize();
+		void Clear();
+
+		bool IsEnabled() const { return desc_.enable_cache; }
+
+		RhiRef<GraphicsPipelineStateDep> GetOrCreate(DeviceDep* p_device, const GraphicsPipelineStateDep::Desc& desc);
+		RhiRef<ComputePipelineStateDep> GetOrCreate(DeviceDep* p_device, const ComputePipelineStateDep::Desc& desc);
+
+	private:
+		struct GraphicsEntry
+		{
+			u64							key_hash = 0;
+			GraphicsPipelineStateDep::Desc desc = {};
+			RhiRef<GraphicsPipelineStateDep> pso = {};
+		};
+		struct ComputeEntry
+		{
+			u64							key_hash = 0;
+			ComputePipelineStateDep::Desc desc = {};
+			RhiRef<ComputePipelineStateDep> pso = {};
+		};
+
+		using GraphicsLruList = std::list<GraphicsEntry>;
+		using ComputeLruList = std::list<ComputeEntry>;
+
+		u64 CalcHashU64(const void* blob, int byte_size) const;
+
+		void TouchGraphicsEntry(GraphicsLruList::iterator it);
+		void TouchComputeEntry(ComputeLruList::iterator it);
+		void EvictGraphicsIfNeeded();
+		void EvictComputeIfNeeded();
+
+		void RemoveGraphicsBinEntry(u64 hash, GraphicsLruList::iterator it);
+		void RemoveComputeBinEntry(u64 hash, ComputeLruList::iterator it);
+
+		Desc desc_ = {};
+
+		std::mutex graphics_mutex_{};
+		std::mutex compute_mutex_{};
+
+		GraphicsLruList graphics_lru_{};
+		ComputeLruList compute_lru_{};
+
+		std::unordered_map<u64, std::vector<GraphicsLruList::iterator>> graphics_bins_{};
+		std::unordered_map<u64, std::vector<ComputeLruList::iterator>> compute_bins_{};
 	};
 	
 }

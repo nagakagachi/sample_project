@@ -108,7 +108,6 @@ namespace ngl::render::app
         // Helper function to create compute shader PSO
         auto CreateComputePSO = [&](const char* shader_path) -> ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep>
         {
-            auto pso                                          = ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep>(new ngl::rhi::ComputePipelineStateDep());
             ngl::rhi::ComputePipelineStateDep::Desc cpso_desc = {};
             {
                 ngl::gfx::ResShader::LoadDesc cs_load_desc = {};
@@ -119,6 +118,12 @@ namespace ngl::render::app
                     p_device, NGL_RENDER_SHADER_PATH(shader_path), &cs_load_desc);
                 cpso_desc.cs = &cs_load_handle->data_;
             }
+            auto* pso_cache = p_device->GetPipelineStateCache();
+            if (pso_cache)
+            {
+                return pso_cache->GetOrCreate(p_device, cpso_desc);
+            }
+            auto pso = ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep>(new ngl::rhi::ComputePipelineStateDep());
             pso->Initialize(p_device, cpso_desc);
             return pso;
         };
@@ -152,7 +157,6 @@ namespace ngl::render::app
                 pso_bbv_debug_visualize_ = CreateComputePSO("ssvg/debug_util/voxel_debug_visualize_cs.hlsl");
                 
                 {
-                    pso_bbv_debug_probe_ = ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep>(new ngl::rhi::GraphicsPipelineStateDep());
                     ngl::rhi::GraphicsPipelineStateDep::Desc gpso_desc = {};
                     {
                         ngl::gfx::ResShader::LoadDesc vs_load_desc = {};
@@ -181,14 +185,22 @@ namespace ngl::render::app
                     gpso_desc.depth_stencil_state.depth_write_enable = true;
                     gpso_desc.depth_stencil_state.stencil_enable = false;
                     gpso_desc.depth_stencil_format = rhi::EResourceFormat::Format_D32_FLOAT;
-                    
-                    if(!pso_bbv_debug_probe_->Initialize(p_device, gpso_desc))
+
+                    auto* pso_cache = p_device->GetPipelineStateCache();
+                    if (pso_cache)
                     {
-                        return false;
+                        pso_bbv_debug_probe_ = pso_cache->GetOrCreate(p_device, gpso_desc);
+                    }
+                    else
+                    {
+                        pso_bbv_debug_probe_.Reset(new ngl::rhi::GraphicsPipelineStateDep());
+                        if(!pso_bbv_debug_probe_->Initialize(p_device, gpso_desc))
+                        {
+                            return false;
+                        }
                     }
                 }
                 {
-                    pso_wcp_debug_probe_ = ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep>(new ngl::rhi::GraphicsPipelineStateDep());
                     ngl::rhi::GraphicsPipelineStateDep::Desc gpso_desc = {};
                     {
                         ngl::gfx::ResShader::LoadDesc vs_load_desc = {};
@@ -218,9 +230,18 @@ namespace ngl::render::app
                     gpso_desc.depth_stencil_state.stencil_enable = false;
                     gpso_desc.depth_stencil_format = rhi::EResourceFormat::Format_D32_FLOAT;
 
-                    if(!pso_wcp_debug_probe_->Initialize(p_device, gpso_desc))
+                    auto* pso_cache = p_device->GetPipelineStateCache();
+                    if (pso_cache)
                     {
-                        return false;
+                        pso_wcp_debug_probe_ = pso_cache->GetOrCreate(p_device, gpso_desc);
+                    }
+                    else
+                    {
+                        pso_wcp_debug_probe_.Reset(new ngl::rhi::GraphicsPipelineStateDep());
+                        if(!pso_wcp_debug_probe_->Initialize(p_device, gpso_desc))
+                        {
+                            return false;
+                        }
                     }
                 }
             }

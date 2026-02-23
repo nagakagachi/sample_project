@@ -48,21 +48,19 @@ namespace ngl::render::task
 			}
 
 			{
-				pso_ = ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep>(new ngl::rhi::ComputePipelineStateDep());
+				ngl::rhi::ComputePipelineStateDep::Desc cpso_desc = {};
 				{
-					ngl::rhi::ComputePipelineStateDep::Desc cpso_desc = {};
-					{
-						ngl::gfx::ResShader::LoadDesc cs_load_desc = {};
-						cs_load_desc.stage = ngl::rhi::EShaderStage::Compute;
-						cs_load_desc.shader_model_version = k_shader_model;
-						cs_load_desc.entry_point_name = "main_cs";
-						auto cs_load_handle = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
-							p_device, NGL_RENDER_SHADER_PATH("test/async_task_test_cs.hlsl"), &cs_load_desc
-						);
-						cpso_desc.cs = &cs_load_handle->data_;
-					}
-					pso_->Initialize(p_device, cpso_desc);
+					ngl::gfx::ResShader::LoadDesc cs_load_desc = {};
+					cs_load_desc.stage = ngl::rhi::EShaderStage::Compute;
+					cs_load_desc.shader_model_version = k_shader_model;
+					cs_load_desc.entry_point_name = "main_cs";
+					auto cs_load_handle = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
+						p_device, NGL_RENDER_SHADER_PATH("test/async_task_test_cs.hlsl"), &cs_load_desc
+					);
+					cpso_desc.cs = &cs_load_handle->data_;
 				}
+				auto* pso_cache = p_device->GetPipelineStateCache();
+				pso_ = pso_cache->GetOrCreate(p_device, cpso_desc);
 			}
 			
 			// Render処理のLambdaをRTGに登録.
