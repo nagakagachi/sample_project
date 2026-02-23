@@ -417,5 +417,56 @@ namespace gfx
         out_mesh.shape_array_.resize(1);
         out_mesh.shape_array_[0].Initialize(p_device, init_source_data_copy);
     }
+
+    bool InitializeMeshDataFromLayout(MeshData& out_mesh, rhi::DeviceDep* p_device)
+    {
+        if (!p_device)
+            return false;
+        if (out_mesh.raw_data_mem_.empty() || out_mesh.shape_layout_array_.empty())
+            return false;
+
+        auto* base_ptr = out_mesh.raw_data_mem_.data();
+        out_mesh.shape_array_.resize(out_mesh.shape_layout_array_.size());
+
+        for (int shape_i = 0; shape_i < out_mesh.shape_layout_array_.size(); ++shape_i)
+        {
+            const auto& layout = out_mesh.shape_layout_array_[shape_i];
+
+            MeshShapeInitializeSourceData init_data{};
+            init_data.num_vertex_ = layout.num_vertex;
+            init_data.num_primitive_ = layout.num_primitive;
+
+            if (0 <= layout.offset_position)
+                init_data.position_ = reinterpret_cast<math::Vec3*>(base_ptr + layout.offset_position);
+            if (0 <= layout.offset_normal)
+                init_data.normal_ = reinterpret_cast<math::Vec3*>(base_ptr + layout.offset_normal);
+            if (0 <= layout.offset_tangent)
+                init_data.tangent_ = reinterpret_cast<math::Vec3*>(base_ptr + layout.offset_tangent);
+            if (0 <= layout.offset_binormal)
+                init_data.binormal_ = reinterpret_cast<math::Vec3*>(base_ptr + layout.offset_binormal);
+
+            for (int ci = 0; ci < layout.num_color_ch; ++ci)
+            {
+                if (0 <= layout.offset_color[ci])
+                {
+                    init_data.color_.push_back(reinterpret_cast<VertexColor*>(base_ptr + layout.offset_color[ci]));
+                }
+            }
+            for (int ci = 0; ci < layout.num_uv_ch; ++ci)
+            {
+                if (0 <= layout.offset_uv[ci])
+                {
+                    init_data.texcoord_.push_back(reinterpret_cast<math::Vec2*>(base_ptr + layout.offset_uv[ci]));
+                }
+            }
+
+            if (0 <= layout.offset_index)
+                init_data.index_ = reinterpret_cast<uint32_t*>(base_ptr + layout.offset_index);
+
+            out_mesh.shape_array_[shape_i].Initialize(p_device, init_data);
+        }
+
+        return true;
+    }
 }
 }

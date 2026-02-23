@@ -2,10 +2,298 @@
 #include "resource/resource_manager.h"
 
 // マテリアルテクスチャパスの有効チェック等用.
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
 #include <filesystem>
+#include <string>
+#include <vector>
 
+#include "file/file.h"
 #include "gfx/resource/mesh_loader_assimp.h"
 #include "gfx/resource/texture_loader_directxtex.h"
+
+namespace
+{
+	constexpr char k_mesh_cache_magic[4] = {'N', 'G', 'L', 'M'};
+	constexpr ngl::u32 k_mesh_cache_version = 1;
+	constexpr const char* k_mesh_cache_dir = "../ngl/data/cache";
+
+	struct MeshCacheHeader
+	{
+		char magic[4] = {};
+		ngl::u32 version = 0;
+		ngl::u64 source_hash = 0;
+		ngl::u32 raw_data_size = 0;
+		ngl::u32 shape_count = 0;
+		ngl::u32 material_count = 0;
+	};
+
+	void WriteBytes(std::vector<ngl::u8>& out, const void* data, size_t size)
+	{
+		const auto* ptr = reinterpret_cast<const ngl::u8*>(data);
+		out.insert(out.end(), ptr, ptr + size);
+	}
+
+	template<typename T>
+	void WritePod(std::vector<ngl::u8>& out, const T& value)
+	{
+		WriteBytes(out, &value, sizeof(T));
+	}
+
+	bool ReadBytes(const std::vector<ngl::u8>& data, size_t& offset, void* dst, size_t size)
+	{
+		if (offset + size > data.size())
+			return false;
+		memcpy(dst, data.data() + offset, size);
+		offset += size;
+		return true;
+	}
+
+	template<typename T>
+	bool ReadPod(const std::vector<ngl::u8>& data, size_t& offset, T& out_value)
+	{
+		return ReadBytes(data, offset, &out_value, sizeof(T));
+	}
+
+	void WriteString(std::vector<ngl::u8>& out, const std::string& str)
+	{
+		const ngl::u16 len = static_cast<ngl::u16>(std::min<size_t>(str.size(), 0xFFFF));
+		WritePod(out, len);
+		if (len > 0)
+			WriteBytes(out, str.data(), len);
+	}
+
+	bool ReadString(const std::vector<ngl::u8>& data, size_t& offset, std::string& out)
+	{
+		ngl::u16 len = 0;
+		if (!ReadPod(data, offset, len))
+			return false;
+		if (offset + len > data.size())
+			return false;
+		out.assign(reinterpret_cast<const char*>(data.data() + offset), len);
+		offset += len;
+		return true;
+	}
+
+	void WriteLayout(std::vector<ngl::u8>& out, const ngl::gfx::MeshShapeLayout& layout)
+	{
+		WritePod(out, layout.total_size_in_byte);
+		WritePod(out, layout.num_primitive);
+		WritePod(out, layout.num_vertex);
+		WritePod(out, layout.offset_position);
+		WritePod(out, layout.offset_normal);
+		WritePod(out, layout.offset_tangent);
+		WritePod(out, layout.offset_binormal);
+		WritePod(out, layout.num_color_ch);
+		for (int i = 0; i < layout.offset_color.size(); ++i)
+			WritePod(out, layout.offset_color[i]);
+		WritePod(out, layout.num_uv_ch);
+		for (int i = 0; i < layout.offset_uv.size(); ++i)
+			WritePod(out, layout.offset_uv[i]);
+		WritePod(out, layout.offset_index);
+	}
+
+	bool ReadLayout(const std::vector<ngl::u8>& data, size_t& offset, ngl::gfx::MeshShapeLayout& out_layout)
+	{
+		if (!ReadPod(data, offset, out_layout.total_size_in_byte))
+			return false;
+		if (!ReadPod(data, offset, out_layout.num_primitive))
+			return false;
+		if (!ReadPod(data, offset, out_layout.num_vertex))
+			return false;
+		if (!ReadPod(data, offset, out_layout.offset_position))
+			return false;
+		if (!ReadPod(data, offset, out_layout.offset_normal))
+			return false;
+		if (!ReadPod(data, offset, out_layout.offset_tangent))
+			return false;
+		if (!ReadPod(data, offset, out_layout.offset_binormal))
+			return false;
+		if (!ReadPod(data, offset, out_layout.num_color_ch))
+			return false;
+		for (int i = 0; i < out_layout.offset_color.size(); ++i)
+		{
+			if (!ReadPod(data, offset, out_layout.offset_color[i]))
+				return false;
+		}
+		if (!ReadPod(data, offset, out_layout.num_uv_ch))
+			return false;
+		for (int i = 0; i < out_layout.offset_uv.size(); ++i)
+		{
+			if (!ReadPod(data, offset, out_layout.offset_uv[i]))
+				return false;
+		}
+		if (!ReadPod(data, offset, out_layout.offset_index))
+			return false;
+		return true;
+	}
+
+	bool BuildMeshCachePath(const char* src_path, ngl::u64 src_hash, std::filesystem::path& out_path)
+	{
+		if (!src_path || src_hash == 0)
+			return false;
+		const auto SanitizeCacheBaseName = [](const std::filesystem::path& path)
+		{
+			std::string name = path.filename().string();
+			if (name.empty())
+				name = "mesh";
+			for (char& ch : name)
+			{
+				if (ch < 32 || ch == '<' || ch == '>' || ch == ':' || ch == '"' || ch == '/' || ch == '\\' || ch == '|' || ch == '?' || ch == '*')
+					ch = '_';
+			}
+			for (auto it = name.rbegin(); it != name.rend(); ++it)
+			{
+				if (*it == '.' || *it == ' ')
+					*it = '_';
+				else
+					break;
+			}
+			return name;
+		};
+		std::filesystem::path cache_dir(k_mesh_cache_dir);
+		std::error_code ec;
+		std::filesystem::create_directories(cache_dir, ec);
+		if (ec)
+			return false;
+
+		const std::filesystem::path src_fs_path(src_path);
+		const std::string base_name = SanitizeCacheBaseName(src_fs_path);
+		char hash_text[32] = {};
+		std::snprintf(hash_text, sizeof(hash_text), "%016llx", static_cast<unsigned long long>(src_hash));
+		out_path = cache_dir / (base_name + "_" + hash_text + ".meshcache");
+		return true;
+	}
+
+	bool LoadMeshCache(
+		const std::filesystem::path& cache_path,
+		ngl::u64 expected_hash,
+		ngl::gfx::MeshData& out_mesh,
+		std::vector<ngl::assimp::MaterialTextureSet>& out_material,
+		std::vector<int>& out_shape_material_index)
+	{
+		std::vector<ngl::u8> file_data;
+		if (!ngl::file::ReadFileToBuffer(cache_path.string().c_str(), file_data))
+			return false;
+
+		size_t offset = 0;
+		MeshCacheHeader header{};
+		if (!ReadBytes(file_data, offset, header.magic, sizeof(header.magic)))
+			return false;
+		if (!ReadPod(file_data, offset, header.version))
+			return false;
+		if (!ReadPod(file_data, offset, header.source_hash))
+			return false;
+		if (!ReadPod(file_data, offset, header.raw_data_size))
+			return false;
+		if (!ReadPod(file_data, offset, header.shape_count))
+			return false;
+		if (!ReadPod(file_data, offset, header.material_count))
+			return false;
+
+		if (memcmp(header.magic, k_mesh_cache_magic, sizeof(k_mesh_cache_magic)) != 0)
+			return false;
+		if (header.version != k_mesh_cache_version)
+			return false;
+		if (header.source_hash != expected_hash)
+			return false;
+
+		out_mesh.shape_layout_array_.clear();
+		out_mesh.shape_layout_array_.resize(header.shape_count);
+		for (ngl::u32 i = 0; i < header.shape_count; ++i)
+		{
+			if (!ReadLayout(file_data, offset, out_mesh.shape_layout_array_[i]))
+				return false;
+		}
+
+		out_shape_material_index.clear();
+		out_shape_material_index.resize(header.shape_count);
+		for (ngl::u32 i = 0; i < header.shape_count; ++i)
+		{
+			int index = 0;
+			if (!ReadPod(file_data, offset, index))
+				return false;
+			out_shape_material_index[i] = index;
+		}
+
+		out_material.clear();
+		out_material.resize(header.material_count);
+		for (ngl::u32 i = 0; i < header.material_count; ++i)
+		{
+			std::string tex;
+			if (!ReadString(file_data, offset, tex))
+				return false;
+			out_material[i].tex_base_color = tex;
+			if (!ReadString(file_data, offset, tex))
+				return false;
+			out_material[i].tex_normal = tex;
+			if (!ReadString(file_data, offset, tex))
+				return false;
+			out_material[i].tex_occlusion = tex;
+			if (!ReadString(file_data, offset, tex))
+				return false;
+			out_material[i].tex_roughness = tex;
+			if (!ReadString(file_data, offset, tex))
+				return false;
+			out_material[i].tex_metalness = tex;
+		}
+
+		out_mesh.raw_data_mem_.resize(header.raw_data_size);
+		if (!ReadBytes(file_data, offset, out_mesh.raw_data_mem_.data(), header.raw_data_size))
+			return false;
+
+		return true;
+	}
+
+	bool SaveMeshCache(
+		const std::filesystem::path& cache_path,
+		ngl::u64 src_hash,
+		const ngl::gfx::MeshData& mesh,
+		const std::vector<ngl::assimp::MaterialTextureSet>& material,
+		const std::vector<int>& shape_material_index)
+	{
+		MeshCacheHeader header{};
+		memcpy(header.magic, k_mesh_cache_magic, sizeof(k_mesh_cache_magic));
+		header.version = k_mesh_cache_version;
+		header.source_hash = src_hash;
+		header.raw_data_size = static_cast<ngl::u32>(mesh.raw_data_mem_.size());
+		header.shape_count = static_cast<ngl::u32>(mesh.shape_layout_array_.size());
+		header.material_count = static_cast<ngl::u32>(material.size());
+
+		std::vector<ngl::u8> out_data;
+		out_data.reserve(sizeof(MeshCacheHeader) + header.raw_data_size);
+
+		WriteBytes(out_data, header.magic, sizeof(header.magic));
+		WritePod(out_data, header.version);
+		WritePod(out_data, header.source_hash);
+		WritePod(out_data, header.raw_data_size);
+		WritePod(out_data, header.shape_count);
+		WritePod(out_data, header.material_count);
+
+		for (const auto& layout : mesh.shape_layout_array_)
+			WriteLayout(out_data, layout);
+
+		for (int i = 0; i < shape_material_index.size(); ++i)
+		{
+			const int index = shape_material_index[i];
+			WritePod(out_data, index);
+		}
+
+		for (const auto& mtl : material)
+		{
+			WriteString(out_data, mtl.tex_base_color);
+			WriteString(out_data, mtl.tex_normal);
+			WriteString(out_data, mtl.tex_occlusion);
+			WriteString(out_data, mtl.tex_roughness);
+			WriteString(out_data, mtl.tex_metalness);
+		}
+
+		WriteBytes(out_data, mesh.raw_data_mem_.data(), mesh.raw_data_mem_.size());
+
+		return ngl::file::WriteFileFromBuffer(cache_path.string().c_str(), out_data);
+	}
+}
 
 namespace ngl
 {
@@ -33,9 +321,32 @@ namespace res
 		// glTFなどに含まれるマテリアル情報も読み取り. テクスチャの読み込みは別途にするか.
 		std::vector<assimp::MaterialTextureSet> material_array = {};
 		std::vector<int> shape_material_index_array = {};
-		const bool result_load_mesh = assimp::LoadMeshData(p_res->data_, material_array, shape_material_index_array, p_device, p_res->GetFileName());
-		if(!result_load_mesh)
-			return false;
+		std::vector<gfx::MeshShapeLayout> shape_layout_array = {};
+
+		const u64 src_hash = file::CalcFileHashFNV1a64(p_res->GetFileName());
+		std::filesystem::path cache_path;
+		bool cache_hit = false;
+		if (BuildMeshCachePath(p_res->GetFileName(), src_hash, cache_path))
+		{
+			cache_hit = LoadMeshCache(cache_path, src_hash, p_res->data_, material_array, shape_material_index_array);
+		}
+
+		if (cache_hit)
+		{
+			if (!gfx::InitializeMeshDataFromLayout(p_res->data_, p_device))
+				return false;
+		}
+		else
+		{
+			const bool result_load_mesh = assimp::LoadMeshData(p_res->data_, material_array, shape_material_index_array, shape_layout_array, p_device, p_res->GetFileName());
+			if (!result_load_mesh)
+				return false;
+
+			if (BuildMeshCachePath(p_res->GetFileName(), src_hash, cache_path))
+			{
+				SaveMeshCache(cache_path, src_hash, p_res->data_, material_array, shape_material_index_array);
+			}
+		}
 
 		
 		// -------------------------------------------------------------------------
