@@ -192,19 +192,6 @@ void main_cs(
             RWRemoveVoxelList[(target_index) + 1] = bitmask_u32_offset;
             RWRemoveVoxelList[(target_index) + 2] = bitmask_append;
             RWRemoveVoxelList[(target_index) + 3] = 0;// 予備.
-
-
-                // FIXME. デバッグ.
-                const int debug_target_index = (current_visible_count + 1) * k_component_count_RemoveVoxelList*2;
-                const float3 debug_hit_pos_ws = view_ray_origin + ray_dir_ws * (curr_ray_t_ws.x + 0.001);
-                RWRemoveVoxelDebugList[(debug_target_index) + 0] = view_ray_origin.y;
-                RWRemoveVoxelDebugList[(debug_target_index) + 1] = pixel_pos_ws.y;
-                RWRemoveVoxelDebugList[(debug_target_index) + 2] = trace_distance;
-                RWRemoveVoxelDebugList[(debug_target_index) + 3] = curr_ray_t_ws.x;
-                RWRemoveVoxelDebugList[(debug_target_index) + 4] = d;
-                RWRemoveVoxelDebugList[(debug_target_index) + 5] = 0;
-                RWRemoveVoxelDebugList[(debug_target_index) + 6] = 0;
-                RWRemoveVoxelDebugList[(debug_target_index) + 7] = 0;
         }
         else
         {

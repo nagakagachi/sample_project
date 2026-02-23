@@ -185,7 +185,6 @@ namespace ngl::render::app
         
         // 除去用リスト.
         ComputeBufferSet bbv_removal_list_ = {};
-        ComputeBufferSet bbv_removal_debug_list_ = {};
         ComputeBufferSet bbv_removal_indirect_arg_ = {};
 
 

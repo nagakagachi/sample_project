@@ -290,16 +290,6 @@ namespace ngl::render::app
         }
         
         {
-            bbv_removal_debug_list_.InitializeAsTyped(p_device,
-                                           rhi::BufferDep::Desc{
-                                               .element_byte_size = sizeof(float),
-                                               .element_count     = (bbv_hollow_voxel_list_count_max_+1) * k_component_count_RemoveVoxelList*2,// 0番目にアトミックカウンタ用途.　格納情報にuint2相当が必要且つAtomic操作のために2倍サイズのScalarバッファとしている.
-
-                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
-                                               .heap_type = rhi::EResourceHeapType::Default},
-                                           rhi::EResourceFormat::Format_R32_FLOAT);
-        }
-        {
             bbv_removal_indirect_arg_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = sizeof(uint32_t),
@@ -656,13 +646,11 @@ namespace ngl::render::app
                         pso_bbv_removal_list_build_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
                         pso_bbv_removal_list_build_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                         pso_bbv_removal_list_build_->SetView(&desc_set, "RWRemoveVoxelList", bbv_removal_list_.uav.Get());
-                        pso_bbv_removal_list_build_->SetView(&desc_set, "RWRemoveVoxelDebugList", bbv_removal_debug_list_.uav.Get());
 
                         p_command_list->SetPipelineState(pso_bbv_removal_list_build_.Get());
                         p_command_list->SetDescriptorSet(pso_bbv_removal_list_build_.Get(), &desc_set);
                         pso_bbv_removal_list_build_->DispatchHelper(p_command_list, target_depth_info.atlas_resolution.x, target_depth_info.atlas_resolution.y, 1);  // Screen処理でDispatch.
                         p_command_list->ResourceUavBarrier(bbv_removal_list_.buffer.Get());
-                        p_command_list->ResourceUavBarrier(bbv_removal_debug_list_.buffer.Get());
                     }
                     // RemoveVoxelListのIndirectArg生成.
                     {

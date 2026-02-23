@@ -44,10 +44,6 @@ RWBuffer<uint>		RWVisibleVoxelList;
 Buffer<uint>		RemoveVoxelList;
 RWBuffer<uint>		RWRemoveVoxelList;
 
-// RemoveVoxelのデバッグ用情報を格納するリスト. RemoveVoxelListと同じ要素数と運用.
-RWBuffer<float>		RWRemoveVoxelDebugList;
-
-
 Buffer<float>		UpdateProbeWork;
 RWBuffer<float>		RWUpdateProbeWork;
 
