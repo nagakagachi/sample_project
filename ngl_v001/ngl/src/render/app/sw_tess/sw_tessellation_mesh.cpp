@@ -264,8 +264,9 @@ namespace ngl::render::app
                     );
                     cpso_desc.cs = &cs_load_handle->data_;
                 }
-                pso->Initialize(p_device, cpso_desc);
-                return pso;
+                
+                auto* pso_cache = p_device->GetPipelineStateCache();
+                return pso_cache->GetOrCreate(p_device, cpso_desc);
             };
 
             // Initialize all compute shaders

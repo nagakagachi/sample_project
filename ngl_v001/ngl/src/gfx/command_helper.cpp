@@ -100,8 +100,8 @@ namespace gfx
             	rhi::ComputePipelineStateDep::Desc pso_desc{};
             	pso_desc.cs = &res_shader->data_;
 
-            	if (!pso_gen_cube_mip_->Initialize(p_command_list->GetDevice(), pso_desc))
-            		assert(false);
+                auto* pso_cache = p_command_list->GetDevice()->GetPipelineStateCache();
+                pso_gen_cube_mip_ = pso_cache->GetOrCreate(p_command_list->GetDevice(), pso_desc);
 	        }
         	
         	// UAV状態で連続呼び出し.
@@ -112,7 +112,6 @@ namespace gfx
         	{
         		FuncGenerateCubemapMip(p_command_list, pso_gen_cube_mip_.Get(), p_texture, p_sampler, i);
         	}
-        	//FuncGenerateCubemapMip(p_command_list, pso_gen_cube_mip_.Get(), p_texture, p_sampler, 1);
 
         	// ステートを戻す.
         	p_command_list->ResourceBarrier(p_texture, rhi::EResourceState::UnorderedAccess, resource_state);

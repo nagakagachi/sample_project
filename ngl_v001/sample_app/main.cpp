@@ -363,7 +363,7 @@ bool AppGame::Initialize()
         const char* mesh_file_box = "K:\\GitHub\\sample_projct_lib\\ngl_v001\\ngl\\external\\assimp\\test\\models\\FBX\\box.fbx";
 
         // シーンモデル.
-#if 0
+#if 1
         // Sponza.
         const char* mesh_file_sponza = "../ngl/data/model/sponza_gltf/glTF/Sponza.gltf";
         const float sponza_scale     = 1.0f;
@@ -605,7 +605,7 @@ bool AppGame::Initialize()
     }
 #endif
 
-#if 1
+#if 0
     // SSVG.
     ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f);
     ngl::render::app::SsVg::dbg_view_mode_ = 9;

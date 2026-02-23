@@ -302,6 +302,7 @@ namespace ngl::gfx::scene
             }
 
             
+            auto* pso_cache = p_device->GetPipelineStateCache();
             // PSOセットアップ.
             {
                 pso_panorama_to_cube_.Reset(new rhi::ComputePipelineStateDep());
@@ -319,8 +320,7 @@ namespace ngl::gfx::scene
                     rhi::ComputePipelineStateDep::Desc pso_desc{};
                     pso_desc.cs = &res_shader->data_;
 
-                    if (!pso_panorama_to_cube_->Initialize(p_device, pso_desc))
-                        assert(false);
+                    pso_panorama_to_cube_ = pso_cache->GetOrCreate(p_device, pso_desc);
                 }
                 
                 pso_conv_cube_diffuse_.Reset(new rhi::ComputePipelineStateDep());
@@ -338,8 +338,7 @@ namespace ngl::gfx::scene
                     rhi::ComputePipelineStateDep::Desc pso_desc{};
                     pso_desc.cs = &res_shader->data_;
 
-                    if (!pso_conv_cube_diffuse_->Initialize(p_device, pso_desc))
-                        assert(false);
+                    pso_conv_cube_diffuse_ = pso_cache->GetOrCreate(p_device, pso_desc);
                 }
                 
                 pso_conv_cube_ggx_specular_.Reset(new rhi::ComputePipelineStateDep());
@@ -357,8 +356,7 @@ namespace ngl::gfx::scene
                     rhi::ComputePipelineStateDep::Desc pso_desc{};
                     pso_desc.cs = &res_shader->data_;
 
-                    if (!pso_conv_cube_ggx_specular_->Initialize(p_device, pso_desc))
-                        assert(false);
+                    pso_conv_cube_ggx_specular_ = pso_cache->GetOrCreate(p_device, pso_desc);
                 }
 
                 pso_conv_dfg_lut_.Reset(new rhi::ComputePipelineStateDep());
@@ -376,8 +374,7 @@ namespace ngl::gfx::scene
                     rhi::ComputePipelineStateDep::Desc pso_desc{};
                     pso_desc.cs = &res_shader->data_;
 
-                    if (!pso_conv_dfg_lut_->Initialize(p_device, pso_desc))
-                        assert(false);
+                    pso_conv_dfg_lut_ = pso_cache->GetOrCreate(p_device, pso_desc);
                 }
             }
 
