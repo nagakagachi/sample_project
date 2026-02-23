@@ -143,6 +143,7 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_remove_hollow_voxel_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_voxelize_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_generate_visible_voxel_indirect_arg_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_generate_remove_voxel_indirect_arg_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_element_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_visible_surface_element_update_ = {};
 
@@ -185,6 +186,7 @@ namespace ngl::render::app
         // 除去用リスト.
         ComputeBufferSet bbv_remove_voxel_list_ = {};
         ComputeBufferSet bbv_remove_voxel_debug_list_ = {};
+        ComputeBufferSet bbv_remove_voxel_indirect_arg_ = {};
 
 
         // World Cache Probe. Wcp.

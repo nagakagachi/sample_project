@@ -130,6 +130,7 @@ namespace ngl::render::app
             pso_bbv_remove_hollow_voxel_ = CreateComputePSO("ssvg/bbv_remove_hollow_voxel_cs.hlsl");
             pso_bbv_voxelize_     = CreateComputePSO("ssvg/bbv_visible_voxel_injection_cs.hlsl");
             pso_bbv_generate_visible_voxel_indirect_arg_ = CreateComputePSO("ssvg/bbv_generate_visible_surface_list_indirect_arg_cs.hlsl");
+            pso_bbv_generate_remove_voxel_indirect_arg_ = CreateComputePSO("ssvg/bbv_generate_remove_voxel_list_indirect_arg_cs.hlsl");
             pso_bbv_element_update_ = CreateComputePSO("ssvg/bbv_element_update_cs.hlsl");
             pso_bbv_visible_surface_element_update_ = CreateComputePSO("ssvg/bbv_visible_surface_element_update_cs.hlsl");
 
@@ -297,6 +298,16 @@ namespace ngl::render::app
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
                                            rhi::EResourceFormat::Format_R32_FLOAT);
+        }
+        {
+            bbv_remove_voxel_indirect_arg_.InitializeAsTyped(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(uint32_t),
+                                               .element_count     = 3,
+
+                                               .bind_flag = rhi::ResourceBindFlag::UnorderedAccess | rhi::ResourceBindFlag::IndirectArg,
+                                               .heap_type = rhi::EResourceHeapType::Default},
+                                           rhi::EResourceFormat::Format_R32_UINT);
         }
 
         {
@@ -653,6 +664,23 @@ namespace ngl::render::app
                         p_command_list->ResourceUavBarrier(bbv_remove_voxel_list_.buffer.Get());
                         p_command_list->ResourceUavBarrier(bbv_remove_voxel_debug_list_.buffer.Get());
                     }
+                    // RemoveVoxelListのIndirectArg生成.
+                    {
+                        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "GenerateRemoveVoxelIndirectArg");
+
+                        bbv_remove_voxel_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
+
+                        ngl::rhi::DescriptorSetDep desc_set = {};
+                        pso_bbv_generate_remove_voxel_indirect_arg_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                        pso_bbv_generate_remove_voxel_indirect_arg_->SetView(&desc_set, "RemoveVoxelList", bbv_remove_voxel_list_.srv.Get());
+                        pso_bbv_generate_remove_voxel_indirect_arg_->SetView(&desc_set, "RWRemoveVoxelIndirectArg", bbv_remove_voxel_indirect_arg_.uav.Get());
+
+                        p_command_list->SetPipelineState(pso_bbv_generate_remove_voxel_indirect_arg_.Get());
+                        p_command_list->SetDescriptorSet(pso_bbv_generate_remove_voxel_indirect_arg_.Get(), &desc_set);
+                        pso_bbv_generate_remove_voxel_indirect_arg_->DispatchHelper(p_command_list, 1, 1, 1);
+
+                        bbv_remove_voxel_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::IndirectArgument);
+                    }
                     // リストに則って実際に除去するパス.
                     {
                         NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "RemoveHollowVoxel");
@@ -663,7 +691,7 @@ namespace ngl::render::app
                         pso_bbv_remove_hollow_voxel_->SetView(&desc_set, "RemoveVoxelList", bbv_remove_voxel_list_.srv.Get());
                         p_command_list->SetPipelineState(pso_bbv_remove_hollow_voxel_.Get());
                         p_command_list->SetDescriptorSet(pso_bbv_remove_hollow_voxel_.Get(), &desc_set);
-                        pso_bbv_remove_hollow_voxel_->DispatchHelper(p_command_list, bbv_hollow_voxel_list_count_max_, 1, 1);// 現状は最大数分Dispatch. あとでIndirectArg化.
+                        p_command_list->DispatchIndirect(bbv_remove_voxel_indirect_arg_.buffer.Get());
 
                         p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
                     }
