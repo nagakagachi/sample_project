@@ -44,12 +44,18 @@ namespace ngl::fwk
 		// Graphics Device.
 		{
 			ngl::rhi::DeviceDep::Desc device_desc{};
-#if _DEBUG
-			device_desc.enable_debug_layer = true;	// デバッグレイヤ有効化.
-#endif
-			device_desc.frame_descriptor_size = 1000000;// D3D12 最大100万.
-			device_desc.persistent_descriptor_size = 1000000;
-			if (!device_.Initialize(p_window_, device_desc))
+            {
+    #if _DEBUG
+                device_desc.enable_debug_layer = true;	// デバッグレイヤ有効化.
+    #endif
+                device_desc.frame_descriptor_size = 1000000;// D3D12 最大100万.
+                device_desc.persistent_descriptor_size = 1000000;
+
+                device_desc.enable_pipeline_state_cache = true;
+                device_desc.pipeline_state_cache_graphics_capacity = 512;
+                device_desc.pipeline_state_cache_compute_capacity = 512;
+            }
+            if (!device_.Initialize(p_window_, device_desc))
 			{
 				std::cout << "[ERROR] Initialize Device" << std::endl;
 				return false;

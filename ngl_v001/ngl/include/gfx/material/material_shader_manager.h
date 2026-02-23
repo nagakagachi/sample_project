@@ -63,6 +63,7 @@
 
 #include "gfx/common_struct.h"
 #include "rhi/rhi.h"
+#include "rhi/rhi_ref.h"
 #include "util/singleton.h"
 
 namespace ngl::gfx
@@ -93,7 +94,7 @@ namespace gfx
     {
     public:
         virtual ~IMaterialPassPsoCreator() = default;
-        virtual rhi::GraphicsPipelineStateDep* Create(rhi::DeviceDep* p_device, const MaterialPassPsoDesc& pass_pso_desc);
+        virtual rhi::RhiRef<rhi::GraphicsPipelineStateDep> Create(rhi::DeviceDep* p_device, const MaterialPassPsoDesc& pass_pso_desc);
     };
 
 
@@ -106,7 +107,7 @@ namespace gfx
     public:
         // Pass識別名, 検索に利用するためマテリアルシェーダなどに記述するPass名と一致している必要がある.
         static constexpr char k_name[] = "depth";
-        rhi::GraphicsPipelineStateDep* Create(rhi::DeviceDep* p_device, const MaterialPassPsoDesc& pass_pso_desc) override;
+        rhi::RhiRef<rhi::GraphicsPipelineStateDep> Create(rhi::DeviceDep* p_device, const MaterialPassPsoDesc& pass_pso_desc) override;
         
         // Depth.
         static constexpr auto k_depth_format = rhi::EResourceFormat::Format_D32_FLOAT;
@@ -120,7 +121,7 @@ namespace gfx
     public:
         // Pass識別名, 検索に利用するためマテリアルシェーダなどに記述するPass名と一致している必要がある.
         static constexpr char k_name[] = "gbuffer";
-        rhi::GraphicsPipelineStateDep* Create(rhi::DeviceDep* p_device, const MaterialPassPsoDesc& pass_pso_desc) override;
+        rhi::RhiRef<rhi::GraphicsPipelineStateDep> Create(rhi::DeviceDep* p_device, const MaterialPassPsoDesc& pass_pso_desc) override;
         
         // Depth.
         static constexpr auto k_depth_format = MaterialPassPsoCreator_depth::k_depth_format;// rhi::EResourceFormat::Format_D32_FLOAT;
@@ -143,7 +144,7 @@ namespace gfx
     public:
         // Pass識別名, 検索に利用するためマテリアルシェーダなどに記述するPass名と一致している必要がある.
         static constexpr char k_name[] = "d_shadow";
-        rhi::GraphicsPipelineStateDep* Create(rhi::DeviceDep* p_device, const MaterialPassPsoDesc& pass_pso_desc) override;
+        rhi::RhiRef<rhi::GraphicsPipelineStateDep> Create(rhi::DeviceDep* p_device, const MaterialPassPsoDesc& pass_pso_desc) override;
         
         // Depth.
         static constexpr auto k_depth_format = rhi::EResourceFormat::Format_D32_FLOAT;

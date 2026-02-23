@@ -107,12 +107,8 @@ namespace ngl::render::task
                         desc.depth_stencil_state.depth_func = rhi::ECompFunc::GreaterEqual;// ReverseZでPreZ描画されていない最遠方ピクセルのみ描画.
                     }
                 }
-                pso_.Reset(new rhi::GraphicsPipelineStateDep());
-                if (!pso_->Initialize(p_device, desc))
-                {
-                    assert(false);
-                    return false;
-                }
+                auto* pso_cache = p_device->GetPipelineStateCache();
+                pso_ = pso_cache->GetOrCreate(p_device, desc);
             }
 
             builder.RegisterTaskNodeRenderFunction(this,

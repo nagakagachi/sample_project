@@ -51,6 +51,7 @@ namespace ngl
 		class ComputeCommandQueueDep;
 
 		class DeviceDep;
+		class PipelineStateObjectCacheDep;
 
 
 		namespace helper
@@ -79,6 +80,9 @@ namespace ngl
 				// フレームで連続Descriptorを確保するためのバッファのサイズ
 				u32		frame_descriptor_size		= 500000;
 				bool	enable_debug_layer			= false;
+				bool	enable_pipeline_state_cache = true;
+				u32		pipeline_state_cache_graphics_capacity = 512;
+				u32		pipeline_state_cache_compute_capacity = 512;
 			};
 
 			DeviceDep();
@@ -122,6 +126,11 @@ namespace ngl
 			ConstantBufferPool* GetConstantBufferPool() 
 			{
 				return &cb_pool_;
+			}
+
+			PipelineStateObjectCacheDep* GetPipelineStateCache()
+			{
+				return p_pipeline_state_cache_.get();
 			}
 
 		public:
@@ -177,6 +186,8 @@ namespace ngl
 
 			// ConstantBufferPool. フレームでの返却管理などのためにDeviceに持たせている.
 			ConstantBufferPool		cb_pool_{};
+
+			std::unique_ptr<PipelineStateObjectCacheDep>	p_pipeline_state_cache_{};
 		};
 
 

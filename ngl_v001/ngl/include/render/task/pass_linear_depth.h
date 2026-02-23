@@ -62,11 +62,8 @@ namespace ngl::render::task
 				
 				ngl::rhi::ComputePipelineStateDep::Desc pso_desc = {};
 				pso_desc.cs = &res_shader->data_;
-				pso_.Reset(new rhi::ComputePipelineStateDep());
-				if (!pso_->Initialize(p_device, pso_desc))
-				{
-					assert(false);
-				}
+				auto* pso_cache = p_device->GetPipelineStateCache();
+				pso_ = pso_cache->GetOrCreate(p_device, pso_desc);
 			}
 			
 			// Render処理のLambdaをRTGに登録.

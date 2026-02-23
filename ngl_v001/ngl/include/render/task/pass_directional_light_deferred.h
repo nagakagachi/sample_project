@@ -139,11 +139,8 @@ namespace ngl::render::task
 						desc.render_target_formats[0] = builder.GetResourceHandleDesc(h_light_).desc.format;//light_desc.desc.format;
 					}
 				}
-				pso_.Reset(new rhi::GraphicsPipelineStateDep());
-				if (!pso_->Initialize(p_device, desc))
-				{
-					assert(false);
-				}
+				auto* pso_cache = p_device->GetPipelineStateCache();
+                pso_ = pso_cache->GetOrCreate(p_device, desc);
 			}
 			
 			// Render処理のLambdaをRTGに登録.

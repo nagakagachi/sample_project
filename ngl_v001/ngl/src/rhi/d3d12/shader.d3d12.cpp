@@ -1243,15 +1243,15 @@ namespace rhi
 
 
 	// PSOキャッシュ関連用の簡易マネージャ.
-	class PipelineStateCacheManager : public ngl::Singleton<PipelineStateCacheManager>
+	class RhiPipelineStateCache : public ngl::Singleton<RhiPipelineStateCache>
 	{
 		using CacheBinKey = u64;
 		
 	public:
-		PipelineStateCacheManager()
+		RhiPipelineStateCache()
 		{
 		}
-		~PipelineStateCacheManager()
+		~RhiPipelineStateCache()
 		{
 			Finalize();
 		}
@@ -1764,11 +1764,11 @@ namespace rhi
 			root_signature_desc.ps = desc.ps;
 			
 			// Cacheを効かせるためにRootSigもCache.
-			view_layout_ = PipelineStateCacheManager::Instance().Cache(p_device, root_signature_desc);
+			view_layout_ = RhiPipelineStateCache::Instance().Cache(p_device, root_signature_desc);
 			pso_desc.pRootSignature = view_layout_->GetD3D12RootSignature();
 		}
 		// PsoもCache.
-		pso_ = PipelineStateCacheManager::Instance().Cache(p_device, pso_desc);
+		pso_ = RhiPipelineStateCache::Instance().Cache(p_device, pso_desc);
 
 		return true;
 	}
@@ -1820,11 +1820,11 @@ namespace rhi
 			root_signature_desc.cs = desc.cs;
 
 			// Cacheを効かせるためにRootSigもCache.
-			view_layout_ = PipelineStateCacheManager::Instance().Cache(p_device, root_signature_desc);
+			view_layout_ = RhiPipelineStateCache::Instance().Cache(p_device, root_signature_desc);
 			pso_desc.pRootSignature = view_layout_->GetD3D12RootSignature();
 		}
 		// PsoもCache.
-		pso_ = PipelineStateCacheManager::Instance().Cache(p_device, pso_desc);
+		pso_ = RhiPipelineStateCache::Instance().Cache(p_device, pso_desc);
 		
 		// ComputeのThreadGroupSize情報.
 		{
@@ -1855,6 +1855,235 @@ namespace rhi
 		const u32 ny = (thread_count_y + (threadgroup_size_y_ - 1)) / threadgroup_size_y_;
 		const u32 nz = (thread_count_z + (threadgroup_size_z_ - 1)) / threadgroup_size_z_;
 		p_command_list->Dispatch(nx, ny, nz);
+	}
+
+	// -------------------------------------------------------------------------------------------------------------------------------------------------
+	// -------------------------------------------------------------------------------------------------------------------------------------------------
+	PipelineStateObjectCacheDep::PipelineStateObjectCacheDep()
+	{
+	}
+	PipelineStateObjectCacheDep::~PipelineStateObjectCacheDep()
+	{
+		Finalize();
+	}
+
+	void PipelineStateObjectCacheDep::Initialize(const Desc& desc)
+	{
+		desc_ = desc;
+		if (!desc_.enable_cache)
+		{
+			Clear();
+		}
+	}
+	void PipelineStateObjectCacheDep::Finalize()
+	{
+		Clear();
+	}
+	void PipelineStateObjectCacheDep::Clear()
+	{
+		{
+			std::scoped_lock<std::mutex> lock(graphics_mutex_);
+			graphics_lru_.clear();
+			graphics_bins_.clear();
+		}
+		{
+			std::scoped_lock<std::mutex> lock(compute_mutex_);
+			compute_lru_.clear();
+			compute_bins_.clear();
+		}
+	}
+
+	u64 PipelineStateObjectCacheDep::CalcHashU64(const void* blob, int byte_size) const
+	{
+		const char* data = reinterpret_cast<const char*>(blob);
+		const int window_size = static_cast<int>(sizeof(u64));
+		const int window_count = byte_size / window_size;
+		const int residual_byte = byte_size - (window_count * window_size);
+		u64 v = 0;
+		for (int w = 0; w < window_count; ++w)
+		{
+			const u64 wv = *reinterpret_cast<const u64*>(data + (w * window_size));
+			v = v ^ wv;
+		}
+		for (int r = 0; r < residual_byte; ++r)
+		{
+			const char c = *(data + (window_count * window_size + r));
+			v = v ^ static_cast<u64>(c);
+		}
+		return v;
+	}
+
+	void PipelineStateObjectCacheDep::TouchGraphicsEntry(GraphicsLruList::iterator it)
+	{
+		graphics_lru_.splice(graphics_lru_.begin(), graphics_lru_, it);
+	}
+	void PipelineStateObjectCacheDep::TouchComputeEntry(ComputeLruList::iterator it)
+	{
+		compute_lru_.splice(compute_lru_.begin(), compute_lru_, it);
+	}
+
+	void PipelineStateObjectCacheDep::RemoveGraphicsBinEntry(u64 hash, GraphicsLruList::iterator it)
+	{
+		auto bin_it = graphics_bins_.find(hash);
+		if (bin_it == graphics_bins_.end())
+		{
+			return;
+		}
+		auto& vec = bin_it->second;
+		for (auto vec_it = vec.begin(); vec_it != vec.end(); ++vec_it)
+		{
+			if (*vec_it == it)
+			{
+				vec.erase(vec_it);
+				break;
+			}
+		}
+		if (vec.empty())
+		{
+			graphics_bins_.erase(bin_it);
+		}
+	}
+	void PipelineStateObjectCacheDep::RemoveComputeBinEntry(u64 hash, ComputeLruList::iterator it)
+	{
+		auto bin_it = compute_bins_.find(hash);
+		if (bin_it == compute_bins_.end())
+		{
+			return;
+		}
+		auto& vec = bin_it->second;
+		for (auto vec_it = vec.begin(); vec_it != vec.end(); ++vec_it)
+		{
+			if (*vec_it == it)
+			{
+				vec.erase(vec_it);
+				break;
+			}
+		}
+		if (vec.empty())
+		{
+			compute_bins_.erase(bin_it);
+		}
+	}
+
+	void PipelineStateObjectCacheDep::EvictGraphicsIfNeeded()
+	{
+		if (0 == desc_.max_graphics_entries)
+		{
+			graphics_lru_.clear();
+			graphics_bins_.clear();
+			return;
+		}
+		while (graphics_lru_.size() > desc_.max_graphics_entries)
+		{
+			auto it = std::prev(graphics_lru_.end());
+			RemoveGraphicsBinEntry(it->key_hash, it);
+			graphics_lru_.erase(it);
+		}
+	}
+	void PipelineStateObjectCacheDep::EvictComputeIfNeeded()
+	{
+		if (0 == desc_.max_compute_entries)
+		{
+			compute_lru_.clear();
+			compute_bins_.clear();
+			return;
+		}
+		while (compute_lru_.size() > desc_.max_compute_entries)
+		{
+			auto it = std::prev(compute_lru_.end());
+			RemoveComputeBinEntry(it->key_hash, it);
+			compute_lru_.erase(it);
+		}
+	}
+
+	RhiRef<GraphicsPipelineStateDep> PipelineStateObjectCacheDep::GetOrCreate(DeviceDep* p_device, const GraphicsPipelineStateDep::Desc& desc)
+	{
+		if (!desc_.enable_cache)
+		{
+			RhiRef<GraphicsPipelineStateDep> pso;
+			pso.Reset(new GraphicsPipelineStateDep());
+			if (!pso->Initialize(p_device, desc))
+			{
+				assert(false);
+				return {};
+			}
+			return pso;
+		}
+
+		const u64 key_hash = CalcHashU64(&desc, sizeof(desc));
+		std::scoped_lock<std::mutex> lock(graphics_mutex_);
+		auto bin_it = graphics_bins_.find(key_hash);
+		if (bin_it != graphics_bins_.end())
+		{
+			for (auto it : bin_it->second)
+			{
+				if (0 == std::memcmp(&(it->desc), &desc, sizeof(desc)))
+				{
+					TouchGraphicsEntry(it);
+					return it->pso;
+				}
+			}
+		}
+
+		GraphicsEntry entry = {};
+		entry.key_hash = key_hash;
+		entry.desc = desc;
+		entry.pso.Reset(new GraphicsPipelineStateDep());
+		if (!entry.pso->Initialize(p_device, desc))
+		{
+			assert(false);
+			return {};
+		}
+		graphics_lru_.push_front(entry);
+		auto inserted_it = graphics_lru_.begin();
+		graphics_bins_[key_hash].push_back(inserted_it);
+		EvictGraphicsIfNeeded();
+		return inserted_it->pso;
+	}
+
+	RhiRef<ComputePipelineStateDep> PipelineStateObjectCacheDep::GetOrCreate(DeviceDep* p_device, const ComputePipelineStateDep::Desc& desc)
+	{
+		if (!desc_.enable_cache)
+		{
+			RhiRef<ComputePipelineStateDep> pso;
+			pso.Reset(new ComputePipelineStateDep());
+			if (!pso->Initialize(p_device, desc))
+			{
+				assert(false);
+				return {};
+			}
+			return pso;
+		}
+
+		const u64 key_hash = CalcHashU64(&desc, sizeof(desc));
+		std::scoped_lock<std::mutex> lock(compute_mutex_);
+		auto bin_it = compute_bins_.find(key_hash);
+		if (bin_it != compute_bins_.end())
+		{
+			for (auto it : bin_it->second)
+			{
+				if (0 == std::memcmp(&(it->desc), &desc, sizeof(desc)))
+				{
+					TouchComputeEntry(it);
+					return it->pso;
+				}
+			}
+		}
+
+		ComputeEntry entry = {};
+		entry.key_hash = key_hash;
+		entry.desc = desc;
+		entry.pso.Reset(new ComputePipelineStateDep());
+		if (!entry.pso->Initialize(p_device, desc))
+		{
+			assert(false);
+			return {};
+		}
+		compute_lru_.push_front(entry);
+		auto inserted_it = compute_lru_.begin();
+		compute_bins_[key_hash].push_back(inserted_it);
+		EvictComputeIfNeeded();
+		return inserted_it->pso;
 	}
 
 }

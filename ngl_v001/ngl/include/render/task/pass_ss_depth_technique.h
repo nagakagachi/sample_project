@@ -69,11 +69,8 @@ namespace ngl::render::task
                 
                 ngl::rhi::ComputePipelineStateDep::Desc pso_desc = {};
                 pso_desc.cs = &res_shader->data_;
-				pso_gtao_demo_.Reset(new rhi::ComputePipelineStateDep());
-				if (!pso_gtao_demo_->Initialize(p_device, pso_desc))
-                {
-                    assert(false);
-                }
+				auto* pso_cache = p_device->GetPipelineStateCache();
+				pso_gtao_demo_ = pso_cache->GetOrCreate(p_device, pso_desc);
             }
             // BentNormal.
 			{
@@ -87,11 +84,8 @@ namespace ngl::render::task
 				
 				ngl::rhi::ComputePipelineStateDep::Desc pso_desc = {};
 				pso_desc.cs = &res_shader->data_;
-				pso_bent_normal_.Reset(new rhi::ComputePipelineStateDep());
-				if (!pso_bent_normal_->Initialize(p_device, pso_desc))
-				{
-					assert(false);
-				}
+				auto* pso_cache = p_device->GetPipelineStateCache();
+				pso_bent_normal_ = pso_cache->GetOrCreate(p_device, pso_desc);
 			}
 
 			
