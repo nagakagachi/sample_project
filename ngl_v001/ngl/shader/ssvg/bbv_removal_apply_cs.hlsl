@@ -1,7 +1,7 @@
 
 #if 0
 
-bbv_remove_hollow_voxel_cs.hlsl
+bbv_removal_apply_cs.hlsl
 
 中空になったBbvを除去する.
 前段で作成した中空Voxelリストを参照して処理.
@@ -10,7 +10,7 @@ bbv_remove_hollow_voxel_cs.hlsl
 
 #include "ssvg_util.hlsli"
 
-// とりあえず中空Voxelバッファに対してDispatch. Indirect化はあとで.
+// 中空Voxelリストに対してDispatch.
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,

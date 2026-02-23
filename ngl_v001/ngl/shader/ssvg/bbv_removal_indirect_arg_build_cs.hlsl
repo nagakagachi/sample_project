@@ -1,7 +1,7 @@
 
 #if 0
 
-bbv_generate_remove_voxel_list_indirect_arg_cs.hlsl
+bbv_removal_indirect_arg_build_cs.hlsl
 
 #endif
 

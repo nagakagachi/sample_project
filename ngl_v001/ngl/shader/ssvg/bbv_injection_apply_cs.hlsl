@@ -1,9 +1,9 @@
 
 #if 0
 
-bbv_visible_voxel_injection_cs.hlsl
+bbv_injection_apply_cs.hlsl
 
-深度バッファをもとに可視表面のVoxel情報をBbvに充填する.
+深度バッファをもとに可視表面のVoxel情報をBbvに注入する.
 また, フレームでの可視Voxel処理用リストの生成.
 
 ViewとしてはPerspectiveなMainViewに加えてShadowMapViewも同一シェーダでInjectionしたい.

@@ -1,7 +1,7 @@
 
 #if 0
 
-bbv_generate_hollow_voxel_info_cs.hlsl
+bbv_removal_list_build_cs.hlsl
 
 ハードウェア深度バッファより手前にある中空になったBbvCellを除去するための情報を生成する.
 

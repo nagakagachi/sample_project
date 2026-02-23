@@ -96,7 +96,7 @@ namespace ngl::render::app
             const ngl::render::task::RenderPassViewInfo& main_view_info, const math::Vec2i& render_resolution
             );
 
-        void Dispatch_Bbv_View(rhi::GraphicsCommandListDep* p_command_list,
+        void Dispatch_Bbv_OccupancyUpdate_View(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
             const ngl::render::task::RenderPassViewInfo& main_view_info, const InjectionSourceDepthBufferInfo& depth_buffer_info
             );
@@ -139,11 +139,11 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_clear_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_begin_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_begin_view_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_hollow_voxel_info_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_remove_hollow_voxel_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_voxelize_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_removal_list_build_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_removal_apply_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_injection_apply_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_generate_visible_voxel_indirect_arg_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_generate_remove_voxel_indirect_arg_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_removal_indirect_arg_build_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_element_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_visible_surface_element_update_ = {};
 
@@ -184,9 +184,9 @@ namespace ngl::render::app
         ComputeBufferSet bbv_fine_update_voxel_probe_buffer_ = {};
         
         // 除去用リスト.
-        ComputeBufferSet bbv_remove_voxel_list_ = {};
-        ComputeBufferSet bbv_remove_voxel_debug_list_ = {};
-        ComputeBufferSet bbv_remove_voxel_indirect_arg_ = {};
+        ComputeBufferSet bbv_removal_list_ = {};
+        ComputeBufferSet bbv_removal_debug_list_ = {};
+        ComputeBufferSet bbv_removal_indirect_arg_ = {};
 
 
         // World Cache Probe. Wcp.
@@ -233,7 +233,7 @@ namespace ngl::render::app
             const ngl::render::task::RenderPassViewInfo& main_view_info, const math::Vec2i& render_resolution);
             
 
-        void DispatchViewVoxelInjection(rhi::GraphicsCommandListDep* p_command_list,
+        void DispatchViewBbvOccupancyUpdate(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
             const ngl::render::task::RenderPassViewInfo& main_view_info,
             
@@ -370,7 +370,7 @@ namespace ngl::render::app
                     }
 
                     
-                    desc_.p_ssvg->DispatchViewVoxelInjection(gfx_commandlist, desc_.scene_cbv, view_info, injection_depth_buffer_info);
+                    desc_.p_ssvg->DispatchViewBbvOccupancyUpdate(gfx_commandlist, desc_.scene_cbv, view_info, injection_depth_buffer_info);
 				}
 			);
 		}
