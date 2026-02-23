@@ -2,7 +2,9 @@
 #ifndef _NGL_FILE_H_
 #define _NGL_FILE_H_
 
+#include <cstddef>
 #include <memory>
+#include <vector>
 
 #include "util/types.h"
 
@@ -11,6 +13,11 @@ namespace ngl
 	namespace file
 	{
 		u32 calcFileSize(const char* filePath);
+
+		bool ReadFileToBuffer(const char* filePath, std::vector<u8>& out_data);
+		bool WriteFileFromBuffer(const char* filePath, const void* data, size_t size);
+		bool WriteFileFromBuffer(const char* filePath, const std::vector<u8>& data);
+		u64 CalcFileHashFNV1a64(const char* filePath);
 
 		class FileObject
 		{

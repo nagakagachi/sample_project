@@ -34,6 +34,7 @@ namespace ngl
             gfx::MeshData& out_mesh,
             std::vector<MaterialTextureSet>& out_material_tex_set,
             std::vector<int>& out_shape_material_index,
+            std::vector<gfx::MeshShapeLayout>& out_shape_layouts,
             rhi::DeviceDep* p_device, const char* filename)
         {
             // ReadFileで読み込まれたメモリ等はAssimp::Importerインスタンスの寿命でクリーンアップされる.
@@ -66,48 +67,7 @@ namespace ngl
                 return false;
             }
 
-            struct ShapeDataOffsetInfo
-            {
-                ShapeDataOffsetInfo()
-                {
-                    total_size_in_byte = 0;
-
-                    num_prim   = 0;
-                    num_vertex = 0;
-
-                    num_color_ch = 0;
-                    num_uv_ch    = 0;
-
-                    offset_position = -1;
-                    offset_normal   = -1;
-                    offset_tangent  = -1;
-                    offset_binormal = -1;
-
-                    offset_color.fill(-1);
-                    offset_uv.fill(-1);
-
-                    offset_index = -1;
-                }
-
-                int total_size_in_byte = 0;
-
-                int num_prim   = 0;
-                int num_vertex = 0;
-
-                int offset_position = -1;
-                int offset_normal   = -1;
-                int offset_tangent  = -1;
-                int offset_binormal = -1;
-
-                int num_color_ch;
-                std::array<int, 8> offset_color;
-                int num_uv_ch;
-                std::array<int, 8> offset_uv;
-
-                int offset_index = -1;
-            };
-
-            std::vector<ShapeDataOffsetInfo> offset_info;
+            std::vector<gfx::MeshShapeLayout> offset_info;
             std::vector<assimp::MaterialTextureSet> material_info_array;
             std::vector<int> shape_material_index_array;
 
@@ -135,14 +95,21 @@ namespace ngl
                     const int num_uv_ch    = std::min(p_ai_mesh->GetNumUVChannels(), (uint32_t)gfx::MeshVertexSemantic::SemanticCount(gfx::EMeshVertexSemanticKind::TEXCOORD));  // Texcoordのサポート最大数でクランプ.
 
                     offset_info.push_back({});
-                    auto& info        = offset_info.back();
-                    info.num_prim     = num_prim;
-                    info.num_vertex   = num_vertex;
-                    info.num_color_ch = num_color_ch;
-                    info.num_uv_ch    = num_uv_ch;
+                    auto& info = offset_info.back();
+                    info.total_size_in_byte = 0;
+                    info.num_primitive = num_prim;
+                    info.num_vertex    = num_vertex;
+                    info.num_color_ch  = num_color_ch;
+                    info.num_uv_ch     = num_uv_ch;
+                    info.offset_position = -1;
+                    info.offset_normal   = -1;
+                    info.offset_tangent  = -1;
+                    info.offset_binormal = -1;
+                    info.offset_color.fill(-1);
+                    info.offset_uv.fill(-1);
+                    info.offset_index = -1;
 
                     // 総サイズとオフセット計算.
-                    info.total_size_in_byte = 0;
                     // Position.
                     {
                         info.offset_position    = info.total_size_in_byte + total_size_in_byte;
@@ -273,7 +240,7 @@ namespace ngl
 
                 // マッピング.
                 {
-                    init_data.num_primitive_ = info.num_prim;
+                    init_data.num_primitive_ = info.num_primitive;
                     init_data.num_vertex_    = info.num_vertex;
 
                     init_data.position_ = (ngl::math::Vec3*)&ptr[info.offset_position];
@@ -369,6 +336,9 @@ namespace ngl
             out_material_tex_set = std::move(material_info_array);
             // Shape Material Infomation.
             out_shape_material_index = std::move(shape_material_index_array);
+            // Shape Layout Infomation.
+            out_mesh.shape_layout_array_ = offset_info;
+            out_shape_layouts = std::move(offset_info);
 
             return true;
         }

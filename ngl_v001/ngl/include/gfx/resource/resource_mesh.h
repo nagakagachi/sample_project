@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#include <array>
+#include <cstdint>
 #include <vector>
 
 #include "math/math.h"
@@ -139,6 +141,25 @@ namespace ngl
 			std::vector<math::Vec2*>	texcoord_{};
 		};
 
+		struct MeshShapeLayout
+		{
+			int32_t total_size_in_byte = 0;
+			int32_t num_primitive = 0;
+			int32_t num_vertex = 0;
+
+			int32_t offset_position = -1;
+			int32_t offset_normal = -1;
+			int32_t offset_tangent = -1;
+			int32_t offset_binormal = -1;
+
+			int32_t num_color_ch = 0;
+			std::array<int32_t, k_mesh_vertex_semantic_color_max_count> offset_color = {};
+			int32_t num_uv_ch = 0;
+			std::array<int32_t, k_mesh_vertex_semantic_texcoord_max_count> offset_uv = {};
+
+			int32_t offset_index = -1;
+		};
+
 		// Mesh Shape Data.
 		// 頂点属性の情報のメモリ実態は親のMeshDataが保持し, ロードや初期化でマッピングされる.
 		class MeshShapePart
@@ -188,6 +209,9 @@ namespace ngl
 			// ジオメトリ情報のRawDataメモリ. 個々でメモリ確保してマッピングする場合に利用.
 			std::vector<uint8_t> raw_data_mem_;
 
+			// 各Shapeのレイアウト情報.
+			std::vector<MeshShapeLayout> shape_layout_array_;
+
             // 各Shape情報.
 			std::vector<MeshShapePart> shape_array_;
 		};
@@ -195,6 +219,9 @@ namespace ngl
         // MeshShapeInitializeSourceDataからMeshDataを生成する. 内部に必要なメモリを別途確保する.
         // リソースではなくプログラムからメッシュ生成し, ResMeshのシェイプ部分のみオーバーライドすることが可能.
         void GenerateMeshDataProcedural(MeshData& out_mesh, rhi::DeviceDep* p_device, const MeshShapeInitializeSourceData& init_source_data);
+
+		// MeshDataのraw_data_mem_とshape_layout_array_から各Shapeを初期化する.
+		bool InitializeMeshDataFromLayout(MeshData& out_mesh, rhi::DeviceDep* p_device);
 
 
 		// Meshデータにマテリアル情報が含まれる場合の取り出し用.
