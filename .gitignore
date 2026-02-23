@@ -198,6 +198,9 @@ PublishScripts/
 *.nupkg
 # NuGet Symbol Packages
 *.snupkg
+
+# NGL external build artifacts (setup_solution.bat)
+ngl_v001/external_build/
 # The packages folder can be ignored because of Package Restore
 **/[Pp]ackages/*
 # except build/, which is used as an MSBuild target.

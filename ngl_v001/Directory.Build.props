@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project>
+  <PropertyGroup>
+    <NglExternalRoot Condition="'$(NglExternalRoot)'==''">$(MSBuildThisFileDirectory)external_build\install</NglExternalRoot>
+    <NglAssimpRoot>$(NglExternalRoot)\assimp\$(Configuration)</NglAssimpRoot>
+    <NglDirectXTexRoot>$(NglExternalRoot)\DirectXTex\$(Configuration)</NglDirectXTexRoot>
+    <NglAssimpIncludeDir>$(NglAssimpRoot)\include</NglAssimpIncludeDir>
+    <NglDirectXTexIncludeDir>$(NglDirectXTexRoot)\include</NglDirectXTexIncludeDir>
+    <NglAssimpLibDir>$(NglAssimpRoot)\lib</NglAssimpLibDir>
+    <NglDirectXTexLibDir>$(NglDirectXTexRoot)\lib</NglDirectXTexLibDir>
+    <NglAssimpBinDir>$(NglAssimpRoot)\bin</NglAssimpBinDir>
+  </PropertyGroup>
+</Project>

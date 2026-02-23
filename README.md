@@ -17,17 +17,12 @@ https://nagakagachi.notion.site/RenderGraph-54f0cf4284c7466697b99cc0df81be80
 
 # Build
   - clone
-  - git submodule update --init --recursive
-  - build external/assimp (cmake)
-    - cd assimp
-    - cmake CMakeLists.txt 
-    - cmake --build . --config Release
-  - build external/DirectXTex (cmake)
-    - cd DirectXTex
-    - mkdir out
-    - cd out
-    - cmake ../CMakeLists.txt 
-    - cmake --build . --config Release
+  - run setup_solution.bat
+    - this batch runs: git submodule update --init --recursive
+    - this batch runs: cmake configure/build ngl_v001/deps (Debug/Release)
+  - restore NuGet packages (Visual Studio: NuGet パッケージの復元)
+    - explicitly restore via Visual Studio, or rely on auto-restore during the first VS build
+    - auto-restore depends on Visual Studio settings (NuGet Package Restore enabled)
   - build ngl_v001.sln (Visual Studio 2022)
 
 # Render Task Graph

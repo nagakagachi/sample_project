@@ -4,7 +4,7 @@
 
 #include "rhi/d3d12/device.d3d12.h"
 
-#include "DirectXTex/DirectXTex.h"
+#include "DirectXTex.h"
 
 namespace ngl
 {
