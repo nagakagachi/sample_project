@@ -74,6 +74,7 @@ void main_cs(
     const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
     const float ss_probe_depth = ss_probe_tile_info.x;
     const int2 ss_probe_pos_rand_in_tile = int2(int(ss_probe_tile_info.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(ss_probe_tile_info.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
+    const float2 ss_probe_approx_normal_oct = ss_probe_tile_info.zw;
 
     uint2 depth_size = cb_ngl_sceneview.cb_render_resolution;
     const float2 depth_size_inv = cb_ngl_sceneview.cb_render_resolution_inv;
@@ -82,6 +83,17 @@ void main_cs(
     const int2 current_probe_texel_pos = ss_probe_tile_pixel_start + ss_probe_pos_rand_in_tile;
     const float2 current_probe_texel_uv = (float2(current_probe_texel_pos) + float2(0.5, 0.5)) * depth_size_inv;// ピクセル中心への半ピクセルオフセット考慮.
     
+
+
+        // デバッグのためタイルの代表法線を出力即リターン
+        if(false)
+        {
+            RWScreenSpaceProbeTex[global_pos] = float4(OctDecode(ss_probe_approx_normal_oct) * 0.5 + 0.5, 1);
+            return;
+        }
+
+
+
     // タイルのプローブ配置情報を代表して取得.
     if(all(probe_atlas_local_pos == 0))
     {
@@ -102,6 +114,10 @@ void main_cs(
             const float3 pixel_pos_vs = CalcViewSpacePosition(current_probe_texel_uv, view_z, cb_ngl_sceneview.cb_proj_mtx);
             const float3 pixel_pos_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(pixel_pos_vs, 1.0));
 
+#if 1
+            // 事前計算した近似法線をそのまま利用.
+            const float3 approx_normal_ws = OctDecode(ss_probe_approx_normal_oct);
+#else
             // 周辺タイルから近似法線計算. ここは低解像度のタイル単位情報テクスチャでディスパッチしてもよさそう.
             float2 neighbor_probe_depth_x = float2(1.0, 1.0);
             int2 neighbor_probe_global_pos_x[2];
@@ -160,6 +176,7 @@ void main_cs(
                 const float3 approx_normal_vs = normalize(cross(xp_pixel_pos_vs - xn_pixel_pos_vs, yp_pixel_pos_vs - yn_pixel_pos_vs));
                 approx_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, approx_normal_vs);
             }
+#endif
 
             // タイル共有情報.
             {
