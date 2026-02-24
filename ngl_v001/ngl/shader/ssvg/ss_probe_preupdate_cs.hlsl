@@ -97,8 +97,6 @@ void main_cs(
     else
     {
         RWScreenSpaceProbeTileInfoTex[probe_id].x = 1.0;
-        // 配置失敗の場合はBbvレイトレース距離を負数.
-        RWScreenSpaceProbeTileInfoTex[probe_id].w = -1.0;
     }
 
 }
