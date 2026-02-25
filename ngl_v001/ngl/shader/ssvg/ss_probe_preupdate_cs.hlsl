@@ -53,7 +53,7 @@ void main_cs(
 
         uint select_probe_pos_index = uint(prev_probe_info.y);
         // 前回が失敗だった場合, または一定の確率でランダム選択.
-        const float re_select_threshold = 0.01;// 再選択確率.
+        const float re_select_threshold = 0.5;// 再選択確率.
         if(!isValidDepth(prev_probe_info.x) || re_select_threshold > noise_float_to_float(float3(asfloat(ss_probe_tile_pixel_start.x), asfloat(ss_probe_tile_pixel_start.y), asfloat(cb_ssvg.frame_count))))
         {
             select_probe_pos_index += 1;// 少しずらす(適当).
