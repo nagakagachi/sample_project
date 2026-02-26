@@ -448,6 +448,35 @@ float GoldNoise(float3 xyz)
 // https://knarkowicz.wordpress.com/2014/04/16/octahedron-normal-vector-encoding/
 // https://twitter.com/Stubbesaurus/status/937994790553227264
 
+// Build an orthonormal basis from a unit normal.
+// Reference: Building an Orthonormal Basis, Revisited (Frisvad 2012).
+void BuildOrthonormalBasis(float3 n, out float3 t, out float3 b)
+{
+    const float sign = (n.z >= 0.0) ? 1.0 : -1.0;
+    const float a = -1.0 / (sign + n.z);
+    const float b2 = n.x * n.y * a;
+    t = float3(1.0 + sign * n.x * n.x * a, sign * b2, -sign * n.x);
+    b = float3(b2, sign + n.y * n.y * a, -n.y);
+}
+
+// Normalize with fallback when the input is near-zero.
+float3 NormalizeOrFallback(float3 v, float3 fallback_dir)
+{
+    return (dot(v, v) > 1e-6) ? normalize(v) : normalize(fallback_dir);
+}
+
+float3 ClampDirToHemisphere(float3 dir, float3 hemi_normal)
+{
+    const float3 n = NormalizeOrFallback(hemi_normal, float3(0.0, 0.0, 1.0));
+    float3 d = NormalizeOrFallback(dir, n);
+    const float nd = dot(d, n);
+    if (nd < 0.0)
+    {
+        d = d - n * nd;
+    }
+    return NormalizeOrFallback(d, n);
+}
+
 // Octahedron Mapping.
 float2 OctWrap(float2 v)
 {
@@ -494,5 +523,17 @@ float3 OctDecodeHemi(float2 f)
     float2 temp = float2(f.x + f.y, f.x - f.y) * 0.5;
     float3 v = float3(temp, 1.0 - abs(temp.x) - abs(temp.y));
     return normalize(v);
+}
+
+float2 OctEncodeHemiByNormal(float3 dir_ws, float3 hemi_normal_ws)
+{
+    const float3 n = NormalizeOrFallback(hemi_normal_ws, float3(0.0, 0.0, 1.0));
+    float3 t;
+    float3 b;
+    BuildOrthonormalBasis(n, t, b);
+
+    const float3 d = ClampDirToHemisphere(dir_ws, n);
+    const float3 local_dir = float3(dot(d, t), dot(d, b), dot(d, n));
+    return OctEncodeHemi(local_dir);
 }
 #endif

@@ -985,6 +985,7 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_srv.Get(), wcp_probe_atlas_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_srv.Get(), ss_probe_tex_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ss_probe_tile_info_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
             
             pso_bbv_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
@@ -1154,6 +1155,7 @@ namespace ngl::render::app
         assert(ssvg_instance_);
         p_pso->SetView(p_desc_set, k_shader_bind_name_wcp_atlas_srv.Get(), ssvg_instance_->GetWcpProbeAtlasTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_srv.Get(), ssvg_instance_->GetSsProbeTex().Get());
+        p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ssvg_instance_->GetSsProbeTileInfoTex().Get());
         p_pso->SetView(p_desc_set, "cb_ssvg", &ssvg_instance_->GetDispatchCbh()->cbv);
     }
 

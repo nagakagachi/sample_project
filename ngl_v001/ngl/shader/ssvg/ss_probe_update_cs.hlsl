@@ -84,16 +84,6 @@ void main_cs(
     const float2 current_probe_texel_uv = (float2(current_probe_texel_pos) + float2(0.5, 0.5)) * depth_size_inv;// ピクセル中心への半ピクセルオフセット考慮.
     
 
-
-        // デバッグのためタイルの代表法線を出力即リターン
-        if(false)
-        {
-            RWScreenSpaceProbeTex[global_pos] = float4(OctDecode(ss_probe_approx_normal_oct) * 0.5 + 0.5, 1);
-            return;
-        }
-
-
-
     // タイルのプローブ配置情報を代表して取得.
     if(all(probe_atlas_local_pos == 0))
     {
@@ -139,14 +129,36 @@ void main_cs(
     // カメラ座標.
     const float3 view_origin = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
+    const float3 fallback_dir_ws = NormalizeOrFallback(view_origin - ss_probe_pos_ws, float3(0.0, 0.0, 1.0));
+    const float3 base_normal_ws = NormalizeOrFallback(ss_probe_approx_normal_ws, fallback_dir_ws);
+    float3 basis_t_ws;
+    float3 basis_b_ws;
+    BuildOrthonormalBasis(base_normal_ws, basis_t_ws, basis_b_ws);
+
     #if 0
         // 担当アトラステクセルのOctahedral方向の固定レイ方向.
-        const float3 sample_ray_dir = OctDecode(float2(probe_atlas_local_pos + 0.5)*SCREEN_SPACE_PROBE_TILE_SIZE_INV);
+        const float2 hemi_uv = float2(probe_atlas_local_pos + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+        const float3 sample_ray_dir_local = OctDecodeHemi(hemi_uv);
     #else
         // OctMapセル毎にレイを発行. セル内でJitter.
         const float2 noise_float2 = noise_float3_to_float2(float3(global_pos.xy, float(frame_rand))) * 2.0 - 1.0;
-        const float3 sample_ray_dir = OctDecode(((float2(probe_atlas_local_pos) + 0.5 + noise_float2*0.5)*SCREEN_SPACE_PROBE_TILE_SIZE_INV));
+        const float2 hemi_uv = (float2(probe_atlas_local_pos) + 0.5 + noise_float2 * 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+        const float3 sample_ray_dir_local = OctDecodeHemi(hemi_uv);
     #endif
+    const float3 sample_ray_dir = sample_ray_dir_local.x * basis_t_ws + sample_ray_dir_local.y * basis_b_ws + sample_ray_dir_local.z * base_normal_ws;
+
+
+
+        // デバッグのためタイルの代表法線を出力即リターン
+        if(false)
+        {
+            //RWScreenSpaceProbeTex[global_pos] = float4(sample_ray_dir_local, 1);
+            RWScreenSpaceProbeTex[global_pos] = float4(sample_ray_dir, 1);
+            //RWScreenSpaceProbeTex[global_pos] = float4(hemi_uv, 0.0, 1);
+            return;
+        }
+
+
 
     // レイ方向オフセット. sqrt(3.0).
     const float ray_start_offset_scale = cb_ssvg.ss_probe_ray_start_offset_scale;
@@ -174,7 +186,7 @@ void main_cs(
     const float sky_visibility = (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0;// 負ならヒットなしで空が見えている.
     
     //const float temporal_rate = 0.95;
-    const float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, RWScreenSpaceProbeTex[global_pos].r, 0.85);
+    const float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, RWScreenSpaceProbeTex[global_pos].r, 0.89);
 
     const float4 hit_debug = float4(sky_visibility, occluted_distance, 0.0, temporal_rate);
 
