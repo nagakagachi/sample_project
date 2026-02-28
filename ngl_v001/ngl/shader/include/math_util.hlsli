@@ -524,7 +524,7 @@ float3 OctDecodeHemi(float2 f)
     float3 v = float3(temp, 1.0 - abs(temp.x) - abs(temp.y));
     return normalize(v);
 }
-
+// ワールド空間の法線から、半球マッピングでオクタヘドロンエンコードしたUVを計算.
 float2 OctEncodeHemiByNormal(float3 dir_ws, float3 hemi_normal_ws)
 {
     const float3 n = NormalizeOrFallback(hemi_normal_ws, float3(0.0, 0.0, 1.0));

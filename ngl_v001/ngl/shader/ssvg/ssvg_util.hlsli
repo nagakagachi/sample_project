@@ -74,6 +74,45 @@ ConstantBuffer<SsvgParam> cb_ssvg;
 
 // ------------------------------------------------------------------------------------------------------------------------
 
+float3 SspDecodeRayDirLocal(float2 oct_uv)
+{
+    #if NGL_SSP_HEMI_OCTMAP
+        return OctDecodeHemi(oct_uv);
+    #else
+        return OctDecode(oct_uv);
+    #endif
+}
+
+float3 SspBuildSampleRayDirFromLocal(float3 local_dir, float3 basis_t_ws, float3 basis_b_ws, float3 base_normal_ws)
+{
+    #if NGL_SSP_HEMI_OCTMAP
+        return local_dir.x * basis_t_ws + local_dir.y * basis_b_ws + local_dir.z * base_normal_ws;
+    #else
+        return local_dir;
+    #endif
+}
+float3 SspBuildSampleRayDirFromLocal(float3 local_dir, float3 base_normal_ws)
+{
+    #if NGL_SSP_HEMI_OCTMAP
+        // 内部で接空間構築するバージョン.
+        float3 basis_t_ws;
+        float3 basis_b_ws;
+        BuildOrthonormalBasis(base_normal_ws, basis_t_ws, basis_b_ws);
+        return SspBuildSampleRayDirFromLocal(local_dir, basis_t_ws, basis_b_ws, base_normal_ws);
+    #else
+        return local_dir;
+    #endif
+}
+
+float2 SspEncodeDirByNormal(float3 dir_ws, float3 base_normal_ws)
+{
+    #if NGL_SSP_HEMI_OCTMAP
+        return OctEncodeHemiByNormal(dir_ws, base_normal_ws);
+    #else
+        return OctEncode(dir_ws);
+    #endif
+}
+
 
 #if 0
     // シンプルなインデックスフラット化.

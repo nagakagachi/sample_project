@@ -173,14 +173,14 @@ void main_cs(
         
         const int2 texel_pos = dtid.xy;
         
-        // Spherical Octahedral Map.
+        // ScreenSpaceProbe Octahedral Map.
         const int2 ss_probe_tile_id = int2(floor(float2(texel_pos) / SCREEN_SPACE_PROBE_TILE_SIZE));
         const int2 ss_probe_tile_base_pos = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
         const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
         const float3 ss_probe_tile_normal_ws = OctDecode(ss_probe_tile_info.zw);
         // Octmapのテクセルが外側をBilinearSamplingしないようにクランプ.
         //float2 octmap_texel_pos = clamp(OctEncode(sample_dir)*SCREEN_SPACE_PROBE_TILE_SIZE, 0.5, SCREEN_SPACE_PROBE_TILE_SIZE-0.5);
-        float2 octmap_texel_pos = clamp(OctEncodeHemiByNormal(sample_dir, ss_probe_tile_normal_ws) * SCREEN_SPACE_PROBE_TILE_SIZE, 0.5, SCREEN_SPACE_PROBE_TILE_SIZE-0.5);
+        float2 octmap_texel_pos = clamp(SspEncodeDirByNormal(sample_dir, ss_probe_tile_normal_ws) * SCREEN_SPACE_PROBE_TILE_SIZE, 0.5, SCREEN_SPACE_PROBE_TILE_SIZE-0.5);
         float2 ss_probe_sample_texel_pos = ss_probe_tile_base_pos + octmap_texel_pos;
 
         // PointSampling.

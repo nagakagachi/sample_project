@@ -266,14 +266,14 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
             ScreenSpaceProbeTex.GetDimensions(ss_probe_tex_size.x, ss_probe_tex_size.y);
             const float2 ss_probe_texel_uv_size = 1.0 / float2(ss_probe_tex_size);
 
-            // Spherical Octahedral Map.
+            // ScreenSpaceProbe Octahedral Map.
 			const float2 ss_probe_tex_size_f = float2(ss_probe_tex_size);
 			const int2 ss_probe_tile_id = int2(floor(screen_uv * ss_probe_tex_size_f / SCREEN_SPACE_PROBE_TILE_SIZE));
 			const int2 ss_probe_tile_base_pos = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
 			const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
 			const float3 ss_probe_tile_normal_ws = OctDecode(ss_probe_tile_info.zw);
             // Octmapのテクセルが外側をBilinearSamplingしないようにクランプ.
-			float2 octmap_texel_pos = clamp(OctEncodeHemiByNormal(gb_normal_ws, ss_probe_tile_normal_ws) * SCREEN_SPACE_PROBE_TILE_SIZE, 0.5, SCREEN_SPACE_PROBE_TILE_SIZE-0.5);
+			float2 octmap_texel_pos = clamp(SspEncodeDirByNormal(gb_normal_ws, ss_probe_tile_normal_ws) * SCREEN_SPACE_PROBE_TILE_SIZE, 0.5, SCREEN_SPACE_PROBE_TILE_SIZE-0.5);
             float2 ss_probe_sample_texel_pos = ss_probe_tile_base_pos + octmap_texel_pos;
             float2 ss_probe_sample_uv = ss_probe_sample_texel_pos * ss_probe_texel_uv_size;
 

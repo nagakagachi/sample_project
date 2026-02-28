@@ -131,21 +131,18 @@ void main_cs(
 
     const float3 fallback_dir_ws = NormalizeOrFallback(view_origin - ss_probe_pos_ws, float3(0.0, 0.0, 1.0));
     const float3 base_normal_ws = NormalizeOrFallback(ss_probe_approx_normal_ws, fallback_dir_ws);
-    float3 basis_t_ws;
-    float3 basis_b_ws;
-    BuildOrthonormalBasis(base_normal_ws, basis_t_ws, basis_b_ws);
 
     #if 0
         // 担当アトラステクセルのOctahedral方向の固定レイ方向.
-        const float2 hemi_uv = float2(probe_atlas_local_pos + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
-        const float3 sample_ray_dir_local = OctDecodeHemi(hemi_uv);
+        const float2 octmap_uv = float2(probe_atlas_local_pos + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+        const float3 sample_ray_dir_local = SspDecodeRayDirLocal(octmap_uv);
     #else
         // OctMapセル毎にレイを発行. セル内でJitter.
         const float2 noise_float2 = noise_float3_to_float2(float3(global_pos.xy, float(frame_rand))) * 2.0 - 1.0;
-        const float2 hemi_uv = (float2(probe_atlas_local_pos) + 0.5 + noise_float2 * 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
-        const float3 sample_ray_dir_local = OctDecodeHemi(hemi_uv);
+        const float2 octmap_uv = (float2(probe_atlas_local_pos) + 0.5 + noise_float2 * 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+        const float3 sample_ray_dir_local = SspDecodeRayDirLocal(octmap_uv);
     #endif
-    const float3 sample_ray_dir = sample_ray_dir_local.x * basis_t_ws + sample_ray_dir_local.y * basis_b_ws + sample_ray_dir_local.z * base_normal_ws;
+    const float3 sample_ray_dir = SspBuildSampleRayDirFromLocal(sample_ray_dir_local, base_normal_ws);
 
 
 
