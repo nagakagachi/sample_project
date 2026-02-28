@@ -11,8 +11,12 @@ ScreenSpaceProbe更新.
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
 
+#ifndef NGL_SSP_RAY_COUNT
+// Adjust this for ray budget per tile.
+#define NGL_SSP_RAY_COUNT (SCREEN_SPACE_PROBE_TILE_SIZE * SCREEN_SPACE_PROBE_TILE_SIZE)
+#endif
+
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
-//Texture2D			           TexHardwareDepth;
 
 
 // -------------------------------------
@@ -26,6 +30,11 @@ groupshared float3 ss_probe_pos_ws;
 
 // ScreenSpaceProbe配置位置の近似法線情報.
 groupshared float3 ss_probe_approx_normal_ws;
+
+// Ray temporary storage per tile.
+groupshared float4 ss_ray_sample_cache[NGL_SSP_RAY_COUNT];
+
+groupshared uint ss_ray_sample_accum[NGL_SSP_RAY_COUNT * 4];// accum_count, sky_visibility_bool,,
 
 // -------------------------------------
 
@@ -52,6 +61,7 @@ float biased_shadow_preserving_temporal_filter_weight(float curr_value, float pr
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,
 	uint3 gtid : SV_GroupThreadID,
+    uint gindex : SV_GroupIndex,
 	uint3 gid : SV_GroupID
 )
 {
@@ -68,7 +78,6 @@ void main_cs(
     // Tile内で今回処理するテクセルを決定して最小限のテクスチャ読み取り.
     const int2 ss_probe_tile_id = probe_id;
     const int2 ss_probe_tile_pixel_start = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
-
 
     // ScreenSpaceProbeTexelTile情報テクスチャから取得.
     const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
@@ -117,8 +126,7 @@ void main_cs(
     }
     GroupMemoryBarrierWithGroupSync();// タイル代表情報の共有メモリ書き込み待ち.
 
-
-    // この後さらに共有メモリでバリアする場合などはリターンできなくなるかも.
+    // タイルが有効なプローブを持たない場合は終了.
     if(!isValidDepth(ss_probe_hw_depth))
     {
         // ミスタイルはクリアすべきか, 近傍SSプローブやワールドプローブで補填すべきか.
@@ -126,36 +134,20 @@ void main_cs(
         return;
     }
 
+    // 作業用Sharedメモリクリア.
+    {
+        ss_ray_sample_cache[gindex] = float4(0.0, 0.0, 0.0, 0.0);
+
+        ss_ray_sample_accum[gindex * 4 + 0] = 0;// accum_count
+        ss_ray_sample_accum[gindex * 4 + 1] = 0;// sky_visibility_bool
+        ss_ray_sample_accum[gindex * 4 + 2] = 0;// unused
+        ss_ray_sample_accum[gindex * 4 + 3] = 0;// unused
+    }
+    GroupMemoryBarrierWithGroupSync();
+    
     // カメラ座標.
     const float3 view_origin = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
-
-    const float3 fallback_dir_ws = NormalizeOrFallback(view_origin - ss_probe_pos_ws, float3(0.0, 0.0, 1.0));
-    const float3 base_normal_ws = NormalizeOrFallback(ss_probe_approx_normal_ws, fallback_dir_ws);
-
-    #if 0
-        // 担当アトラステクセルのOctahedral方向の固定レイ方向.
-        const float2 octmap_uv = float2(probe_atlas_local_pos + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
-        const float3 sample_ray_dir_local = SspDecodeRayDirLocal(octmap_uv);
-    #else
-        // OctMapセル毎にレイを発行. セル内でJitter.
-        const float2 noise_float2 = noise_float3_to_float2(float3(global_pos.xy, float(frame_rand))) * 2.0 - 1.0;
-        const float2 octmap_uv = (float2(probe_atlas_local_pos) + 0.5 + noise_float2 * 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
-        const float3 sample_ray_dir_local = SspDecodeRayDirLocal(octmap_uv);
-    #endif
-    const float3 sample_ray_dir = SspBuildSampleRayDirFromLocal(sample_ray_dir_local, base_normal_ws);
-
-
-
-        // デバッグのためタイルの代表法線を出力即リターン
-        if(false)
-        {
-            //RWScreenSpaceProbeTex[global_pos] = float4(sample_ray_dir_local, 1);
-            RWScreenSpaceProbeTex[global_pos] = float4(sample_ray_dir, 1);
-            //RWScreenSpaceProbeTex[global_pos] = float4(hemi_uv, 0.0, 1);
-            return;
-        }
-
-
+    const float3 base_normal_ws = ss_probe_approx_normal_ws;
 
     // レイ方向オフセット. sqrt(3.0).
     const float ray_start_offset_scale = cb_ssvg.ss_probe_ray_start_offset_scale;
@@ -163,30 +155,73 @@ void main_cs(
     // 近似法線方向オフセット.
     const float ray_origin_normal_offset_scale = cb_ssvg.ss_probe_ray_normal_offset_scale;
     const float ray_origin_normal_offset = cb_ssvg.bbv.cell_size * k_bbv_per_voxel_resolution_inv * ray_origin_normal_offset_scale;
+    const float3 ray_origin_base = ss_probe_pos_ws + ss_probe_approx_normal_ws * ray_origin_normal_offset;
 
-    const float3 sample_ray_origin = ss_probe_pos_ws + sample_ray_dir * ray_origin_start_offset + ss_probe_approx_normal_ws * ray_origin_normal_offset;
+    // レイ生成 + トレース結果をSharedに格納.
+    const uint ray_index = gindex;
+    const uint ray_count = NGL_SSP_RAY_COUNT;
+    if(ray_index < ray_count)
+    {
+        #if 1
+            // OctMapセルの方向にレイ発行. 半球方向と逆の場合は反転マッピング.
+            const float2 noise_float2 = noise_float3_to_float2(float3(global_pos.xy, float(frame_rand))) * 2.0 - 1.0;
+            const float2 octmap_uv = (float2(probe_atlas_local_pos) + 0.5 + noise_float2 * 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+            const float3 sample_ray_dir_local = SspDecodeRayDirLocal(octmap_uv);
+            
+            float3 sample_ray_dir = SspBuildSampleRayDirFromLocal(sample_ray_dir_local, base_normal_ws);
+            //　常に法線方向に制限する.
+            if(dot(sample_ray_dir, base_normal_ws) < 0.0)
+            {
+                sample_ray_dir = reflect(sample_ray_dir, base_normal_ws);
+            }
+        #else
+            // 半球方向ランダム検証 RayGuidingしたい.
+            const float2 rand01 = noise_float3_to_float2(float3(global_pos.xy, float(frame_rand + ray_index * 131u)));
+            const float cos_theta = rand01.x;
+            const float sin_theta = sqrt(saturate(1.0 - cos_theta * cos_theta));
+            const float phi = rand01.y * NGL_2PI;
+            const float3 local_dir = float3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
 
-    // タイルのスクリーンスペースプローブ位置から, タイル内スレッド毎にレイトレース.
-    const float trace_distance = 30.0;
-    int hit_voxel_index = -1;
-    float4 debug_ray_info;
-    float4 curr_ray_t_ws = 
-    trace_bbv
-    (
-        hit_voxel_index, debug_ray_info,
-        sample_ray_origin, sample_ray_dir, trace_distance, 
-        cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
-        cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
+            const float3 sample_ray_dir = SspBuildSampleRayDirFromLocal(local_dir, base_normal_ws);
+        #endif
 
-    //const float3 hit_debug = (0.0 > curr_ray_t_ws.x)? sample_ray_dir : 0.0;// ヒットしなかったら空が見えているものとしてその方向を格納.
-    const float occluted_distance = (0.0 > curr_ray_t_ws.x)? 1.0 : saturate(curr_ray_t_ws.x/trace_distance);// 正規化ヒット距離を格納.
-    const float sky_visibility = (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0;// 負ならヒットなしで空が見えている.
+
+        const float3 sample_ray_origin = ray_origin_base + sample_ray_dir * ray_origin_start_offset;
+        // タイルのスクリーンスペースプローブ位置からレイトレース.
+        const float trace_distance = 30.0;
+        int hit_voxel_index = -1;
+        float4 debug_ray_info;
+        float4 curr_ray_t_ws = 
+        trace_bbv(
+            hit_voxel_index, debug_ray_info,
+            sample_ray_origin, sample_ray_dir, trace_distance, 
+            cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
+            cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
+
+        const float sky_visibility = (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0;// 負ならヒットなしで空が見えている.
+
+        const float2 oct_uv = SspEncodeDirByNormal(sample_ray_dir, base_normal_ws);// レイ方向を法線基準のOctahedralマップUVにエンコードして格納.
+        const int2 oct_cell_id = int2(oct_uv * SCREEN_SPACE_PROBE_TILE_SIZE);
+        const int oct_cell_index = oct_cell_id.y * SCREEN_SPACE_PROBE_TILE_SIZE + oct_cell_id.x;
+
+        // スレッド毎に結果を保存.
+        ss_ray_sample_cache[ray_index] = float4(1.0, sky_visibility, oct_cell_index, 0.0);
+
+        
+            InterlockedAdd(ss_ray_sample_accum[oct_cell_index * 4 + 0], 1);// accum_count
+            InterlockedAdd(ss_ray_sample_accum[oct_cell_index * 4 + 1], uint(sky_visibility));// sky_visibility_bool
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    uint hit_count = ss_ray_sample_accum[gindex * 4 + 0];// accum_count
+    float sum_sky_visibility = ss_ray_sample_accum[gindex * 4 + 1];// sky_visibility_boolの合計.
     
-    //const float temporal_rate = 0.95;
-    const float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, RWScreenSpaceProbeTex[global_pos].r, 0.89);
+    const float4 prev_probe = RWScreenSpaceProbeTex[global_pos];
+    const float inv_hit_count = (hit_count > 0)? (1.0 / float(hit_count)) : 1.0;
+    const float sky_visibility = (hit_count > 0)? (sum_sky_visibility * inv_hit_count) : prev_probe.r;
 
-    const float4 hit_debug = float4(sky_visibility, occluted_distance, 0.0, temporal_rate);
+    const float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_probe.r, 0.89);
+    const float4 hit_debug = float4(sky_visibility, 0.0, 0.0, temporal_rate);
 
-    // 仮書き込み.
-    RWScreenSpaceProbeTex[global_pos] = lerp( hit_debug, RWScreenSpaceProbeTex[global_pos], temporal_rate);
+    RWScreenSpaceProbeTex[global_pos] = lerp( hit_debug, prev_probe, temporal_rate);
 }
