@@ -31,9 +31,6 @@ groupshared float3 ss_probe_pos_ws;
 // ScreenSpaceProbe配置位置の近似法線情報.
 groupshared float3 ss_probe_approx_normal_ws;
 
-// Ray temporary storage per tile.
-groupshared float4 ss_ray_sample_cache[NGL_SSP_RAY_COUNT];
-
 groupshared uint ss_ray_sample_accum[NGL_SSP_RAY_COUNT * 4];// accum_count, sky_visibility_bool,,
 
 // -------------------------------------
@@ -72,7 +69,7 @@ void main_cs(
     const int2 probe_id = gid.xy * cb_ssvg.ss_probe_temporal_update_group_size + frame_skip_probe_offset;// プローブフレームスキップ考慮.
     const int2 global_pos = probe_id * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos;// グローバルテクセル位置計算.
     
-    const uint frame_rand = hash_uint32_iq(probe_id + cb_ssvg.frame_count);
+    //const uint frame_rand = hash_uint32_iq(probe_id + cb_ssvg.frame_count);
 
 
     // Tile内で今回処理するテクセルを決定して最小限のテクスチャ読み取り.
@@ -136,8 +133,6 @@ void main_cs(
 
     // 作業用Sharedメモリクリア.
     {
-        ss_ray_sample_cache[gindex] = float4(0.0, 0.0, 0.0, 0.0);
-
         ss_ray_sample_accum[gindex * 4 + 0] = 0;// accum_count
         ss_ray_sample_accum[gindex * 4 + 1] = 0;// sky_visibility_bool
         ss_ray_sample_accum[gindex * 4 + 2] = 0;// unused
@@ -148,6 +143,9 @@ void main_cs(
     // カメラ座標.
     const float3 view_origin = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
     const float3 base_normal_ws = ss_probe_approx_normal_ws;
+    float3 base_tangent_ws;
+    float3 base_bitangent_ws;
+    BuildOrthonormalBasis(base_normal_ws, base_tangent_ws, base_bitangent_ws);
 
     // レイ方向オフセット. sqrt(3.0).
     const float ray_start_offset_scale = cb_ssvg.ss_probe_ray_start_offset_scale;
@@ -158,32 +156,44 @@ void main_cs(
     const float3 ray_origin_base = ss_probe_pos_ws + ss_probe_approx_normal_ws * ray_origin_normal_offset;
 
     // レイ生成 + トレース結果をSharedに格納.
-    const uint ray_index = gindex;
     const uint ray_count = NGL_SSP_RAY_COUNT;
-    if(ray_index < ray_count)
+
+    for(int sample_index = 0; sample_index < 1; ++sample_index)
     {
+        const uint ray_index = gindex + ray_count * sample_index;
+
+        float3 sample_ray_dir;
         #if 1
-            // OctMapセルの方向にレイ発行. 半球方向と逆の場合は反転マッピング.
-            const float2 noise_float2 = noise_float3_to_float2(float3(global_pos.xy, float(frame_rand))) * 2.0 - 1.0;
-            const float2 octmap_uv = (float2(probe_atlas_local_pos) + 0.5 + noise_float2 * 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
-            const float3 sample_ray_dir_local = SspDecodeRayDirLocal(octmap_uv);
-            
-            float3 sample_ray_dir = SspBuildSampleRayDirFromLocal(sample_ray_dir_local, base_normal_ws);
-            //　常に法線方向に制限する.
+        {
+            // Cos分布半球方向ランダム.
+            const float3 unit_v3 = random_unit_vector3(float2(asfloat(global_pos.x + ray_index^cb_ssvg.frame_count * 17u), asfloat(global_pos.y + ray_index^cb_ssvg.frame_count * 31u)));
+            const float3 local_dir = normalize(unit_v3 + float3(0.0, 0.0, 1.0));
+            sample_ray_dir = local_dir.x * base_tangent_ws + local_dir.y * base_bitangent_ws + local_dir.z * base_normal_ws;
+        }
+        #elif 1
+        {
+            // 半球方向一様ランダム.
+            float3 local_dir = random_unit_vector3(float2(asfloat(global_pos.x + ray_index^cb_ssvg.frame_count * 17u), asfloat(global_pos.y + ray_index^cb_ssvg.frame_count * 31u)));
+            local_dir.z = abs(local_dir.z);
+            sample_ray_dir = local_dir.x * base_tangent_ws + local_dir.y * base_bitangent_ws + local_dir.z * base_normal_ws;
+        }
+        #else
+        {
+            // OctMapセルに対応する方向にレイ発行. 半球方向と逆の場合は反転マッピング.
+            const float2 noise_float2 = noise_float3_to_float2(float3(global_pos.xy, float(cb_ssvg.frame_count + ray_index)));
+            const float2 octmap_uv = (float2(probe_atlas_local_pos) + noise_float2) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+            sample_ray_dir = OctDecode(octmap_uv);
+            // 常に法線方向に制限する.
             if(dot(sample_ray_dir, base_normal_ws) < 0.0)
             {
-                sample_ray_dir = reflect(sample_ray_dir, base_normal_ws);
+                sample_ray_dir = sample_ray_dir - 2.0 * dot(sample_ray_dir, base_normal_ws) * base_normal_ws;
             }
-        #else
-            // 半球方向ランダム検証 RayGuidingしたい.
-            const float2 rand01 = noise_float3_to_float2(float3(global_pos.xy, float(frame_rand + ray_index * 131u)));
-            const float cos_theta = rand01.x;
-            const float sin_theta = sqrt(saturate(1.0 - cos_theta * cos_theta));
-            const float phi = rand01.y * NGL_2PI;
-            const float3 local_dir = float3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
-
-            const float3 sample_ray_dir = SspBuildSampleRayDirFromLocal(local_dir, base_normal_ws);
+        }
         #endif
+
+            // デバッグ用にサンプル方向をデバッグ出力.
+            //RWScreenSpaceProbeTex[global_pos] = float4(sample_ray_dir, 1.0);
+            //return;
 
 
         const float3 sample_ray_origin = ray_origin_base + sample_ray_dir * ray_origin_start_offset;
@@ -203,13 +213,10 @@ void main_cs(
         const float2 oct_uv = SspEncodeDirByNormal(sample_ray_dir, base_normal_ws);// レイ方向を法線基準のOctahedralマップUVにエンコードして格納.
         const int2 oct_cell_id = int2(oct_uv * SCREEN_SPACE_PROBE_TILE_SIZE);
         const int oct_cell_index = oct_cell_id.y * SCREEN_SPACE_PROBE_TILE_SIZE + oct_cell_id.x;
-
-        // スレッド毎に結果を保存.
-        ss_ray_sample_cache[ray_index] = float4(1.0, sky_visibility, oct_cell_index, 0.0);
-
         
-            InterlockedAdd(ss_ray_sample_accum[oct_cell_index * 4 + 0], 1);// accum_count
-            InterlockedAdd(ss_ray_sample_accum[oct_cell_index * 4 + 1], uint(sky_visibility));// sky_visibility_bool
+        // Result Accumulation.
+        InterlockedAdd(ss_ray_sample_accum[oct_cell_index * 4 + 0], 1);// accum_count
+        InterlockedAdd(ss_ray_sample_accum[oct_cell_index * 4 + 1], uint(sky_visibility));// sky_visibility_bool
     }
     GroupMemoryBarrierWithGroupSync();
 
@@ -220,8 +227,10 @@ void main_cs(
     const float inv_hit_count = (hit_count > 0)? (1.0 / float(hit_count)) : 1.0;
     const float sky_visibility = (hit_count > 0)? (sum_sky_visibility * inv_hit_count) : prev_probe.r;
 
-    const float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_probe.r, 0.89);
-    const float4 hit_debug = float4(sky_visibility, 0.0, 0.0, temporal_rate);
+    const float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_probe.r, 0.66);
+    
+    float4 hit_debug = float4(sky_visibility, 0.0, 0.0, float(hit_count) * 0.025);
+    hit_debug = lerp(hit_debug, prev_probe, temporal_rate);// 補間.
 
-    RWScreenSpaceProbeTex[global_pos] = lerp( hit_debug, prev_probe, temporal_rate);
+    RWScreenSpaceProbeTex[global_pos] = hit_debug;
 }
