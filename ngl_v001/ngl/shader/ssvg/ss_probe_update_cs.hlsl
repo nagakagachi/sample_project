@@ -166,14 +166,14 @@ void main_cs(
         #if 1
         {
             // Cos分布半球方向ランダム.
-            const float3 unit_v3 = random_unit_vector3(float2(asfloat(global_pos.x + ray_index^cb_ssvg.frame_count * 17u), asfloat(global_pos.y + ray_index^cb_ssvg.frame_count * 31u)));
+            const float3 unit_v3 = random_unit_vector3(float2(asfloat(global_pos.x + ray_index^cb_ssvg.frame_count), asfloat(global_pos.y + ray_index^cb_ssvg.frame_count)));
             const float3 local_dir = normalize(unit_v3 + float3(0.0, 0.0, 1.0));
             sample_ray_dir = local_dir.x * base_tangent_ws + local_dir.y * base_bitangent_ws + local_dir.z * base_normal_ws;
         }
         #elif 1
         {
             // 半球方向一様ランダム.
-            float3 local_dir = random_unit_vector3(float2(asfloat(global_pos.x + ray_index^cb_ssvg.frame_count * 17u), asfloat(global_pos.y + ray_index^cb_ssvg.frame_count * 31u)));
+            float3 local_dir = random_unit_vector3(float2(asfloat(global_pos.x + ray_index^cb_ssvg.frame_count), asfloat(global_pos.y + ray_index^cb_ssvg.frame_count)));
             local_dir.z = abs(local_dir.z);
             sample_ray_dir = local_dir.x * base_tangent_ws + local_dir.y * base_bitangent_ws + local_dir.z * base_normal_ws;
         }
