@@ -31,12 +31,23 @@ void main_cs(
 	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
 	const float2 screen_size_f = float2(cb_ssvg.tex_main_view_depth_size.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
+    const int2 texel_pos = dtid.xy;
     
 	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 	const float3 view_origin = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
     
     const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_ngl_sceneview.cb_proj_mtx);
     const float3 ray_dir_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(to_pixel_ray_vs, 0.0));
+
+
+    // ScreenSpaceProbe Octahedral Map.
+    const int2 ss_probe_tile_id = int2(floor(float2(texel_pos) / SCREEN_SPACE_PROBE_TILE_SIZE));
+    const int2 ss_probe_tile_base_pos = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
+    const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
+    const float ss_probe_depth = ss_probe_tile_info.x;
+    const float3 ss_probe_tile_normal_ws = OctDecode(ss_probe_tile_info.zw);
+    const int2 ss_probe_pos_in_tile = int2(int(ss_probe_tile_info.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(ss_probe_tile_info.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
+
 
     if(6 >= cb_ssvg.debug_view_mode)
     {
@@ -161,32 +172,41 @@ void main_cs(
     else if(9 == cb_ssvg.debug_view_mode)
     {
         // Screen Space Probe Atlas Textureの表示.
-        const int2 texel_pos = dtid.xy;
-
         const float4 probe_data = ScreenSpaceProbeTex.Load(uint3(texel_pos, 0));
         RWTexWork[dtid.xy] = probe_data;
     }
     else if(10 == cb_ssvg.debug_view_mode)
     {
-        // Screen Space Probe毎にsample_dir方向に対応するOctahedralMapのUVでサンプリングして表示.
-        const float3 sample_dir = -cb_ssvg.main_light_dir_ws;//normalize(float3(0,1,0));
-        
-        const int2 texel_pos = dtid.xy;
-        
-        // ScreenSpaceProbe Octahedral Map.
-        const int2 ss_probe_tile_id = int2(floor(float2(texel_pos) / SCREEN_SPACE_PROBE_TILE_SIZE));
-        const int2 ss_probe_tile_base_pos = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
-        const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
-        const float3 ss_probe_tile_normal_ws = OctDecode(ss_probe_tile_info.zw);
+        // Screen Space ProbeのSkyVisibility投影デバッグ.
+        const float3 sample_dir = -cb_ssvg.main_light_dir_ws;
+    
         // Octmapのテクセルが外側をBilinearSamplingしないようにクランプ.
-        //float2 octmap_texel_pos = clamp(OctEncode(sample_dir)*SCREEN_SPACE_PROBE_TILE_SIZE, 0.5, SCREEN_SPACE_PROBE_TILE_SIZE-0.5);
         float2 octmap_texel_pos = clamp(SspEncodeDirByNormal(sample_dir, ss_probe_tile_normal_ws) * SCREEN_SPACE_PROBE_TILE_SIZE, 0.5, SCREEN_SPACE_PROBE_TILE_SIZE-0.5);
         float2 ss_probe_sample_texel_pos = ss_probe_tile_base_pos + octmap_texel_pos;
 
-        // PointSampling.
-        //float4 ss_probe_value = ScreenSpaceProbeTex.Load(uint3(ss_probe_sample_texel_pos, 0));
         // BilinearSampling. 半球ではないOctahedralMapであるためボーダー部の処理スキップによるカクツキが目立つ..
         float4 ss_probe_value = ScreenSpaceProbeTex.SampleLevel(SmpLinearClamp, ss_probe_sample_texel_pos / screen_size_f, 0);
         RWTexWork[dtid.xy] = ss_probe_value.xxxx;
+    }
+    else if(11 == cb_ssvg.debug_view_mode)
+    {
+        // Screen Space Probe の Normalデバッグ.
+        RWTexWork[dtid.xy] = float4(ss_probe_tile_normal_ws * 0.5 + 0.5, 1.0);
+    }
+    else if(12 == cb_ssvg.debug_view_mode)
+    {
+        // Screen Space Probe の Tile内配置Positionデバッグ.
+        const int2 ss_probe_tile_id = int2(floor(float2(texel_pos) / SCREEN_SPACE_PROBE_TILE_SIZE));
+        const int2 ss_probe_tile_base_pos = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
+        const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
+        if(isValidDepth(ss_probe_depth) && all(ss_probe_tile_base_pos + ss_probe_pos_in_tile == texel_pos))
+        {
+            const float debug_d = 0.01 / (ss_probe_depth + 1e-6);
+            RWTexWork[dtid.xy] = float4(cos(debug_d) * 0.5 + 0.5, cos(debug_d * 0.5)*0.5+0.5, cos(debug_d * 0.25)*0.5+0.5, 1.0);
+        }
+        else
+        {
+            RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
+        }
     }
 }

@@ -72,6 +72,15 @@ RWTexture2D<float4>    RWScreenSpaceProbeTileInfoTex;
 // ssvgのメインパラメータ.
 ConstantBuffer<SsvgParam> cb_ssvg;
 
+
+
+// ------------------------------------------------------------------------------------------------------------------------
+bool isValidDepth(float d)
+{
+    // 深度が有効範囲内かどうかを判定.
+    return (0.0 < d && d < 1.0);
+}
+
 // ------------------------------------------------------------------------------------------------------------------------
 
 float3 SspDecodeRayDirLocal(float2 oct_uv)

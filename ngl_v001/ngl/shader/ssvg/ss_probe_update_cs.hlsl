@@ -35,12 +35,6 @@ groupshared uint ss_ray_sample_accum[NGL_SSP_RAY_COUNT * 4];// accum_count, sky_
 
 // -------------------------------------
 
-bool isValidDepth(float d)
-{
-    // 
-    return (0.0 < d && d < 1.0);
-}
-
 // https://gpuopen.com/download/GPUOpen2022_GI1_0.pdf
 // Algorithm 3: Biased shadow-preserving temporal hysteresis 
 float biased_shadow_preserving_temporal_filter_weight(float curr_value, float prev_value, float min_clamp)

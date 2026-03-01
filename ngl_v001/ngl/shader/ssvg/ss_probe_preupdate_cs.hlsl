@@ -16,12 +16,6 @@ Texture2D			           TexHardwareDepth;
 
 // -------------------------------------
 
-bool isValidDepth(float d)
-{
-    // 
-    return (0.0 < d && d < 1.0);
-}
-
 #define DISPATCH_GROUP_SIZE_X SCREEN_SPACE_PROBE_TILE_SIZE
 #define DISPATCH_GROUP_SIZE_Y SCREEN_SPACE_PROBE_TILE_SIZE
 
@@ -52,11 +46,14 @@ void main_cs(
         const float4 prev_probe_info = RWScreenSpaceProbeTileInfoTex[probe_id];
 
         uint select_probe_pos_index = uint(prev_probe_info.y);
-        // 前回が失敗だった場合, または一定の確率でランダム選択.
-        const float re_select_threshold = 0.5;// 再選択確率.
-        if(!isValidDepth(prev_probe_info.x) || re_select_threshold > noise_float_to_float(float3(asfloat(ss_probe_tile_pixel_start.x), asfloat(ss_probe_tile_pixel_start.y), asfloat(cb_ssvg.frame_count))))
+        const float re_select_threshold = 0.5;// 強制再選択確率.
+        if(1.0 > re_select_threshold)
         {
-            select_probe_pos_index += 1;// 少しずらす(適当).
+            const float re_select_rand_f = noise_float_to_float(float3(asfloat(ss_probe_tile_pixel_start.x), asfloat(ss_probe_tile_pixel_start.y), asfloat(cb_ssvg.frame_count)));
+            if(re_select_threshold > re_select_rand_f)
+            {
+                select_probe_pos_index = asuint(re_select_rand_f) % SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT;// 少しずらす(適当).
+            }
         }
 
         // 何回かリトライする.
@@ -68,10 +65,10 @@ void main_cs(
             // プローブの配置テクセルの深度取得.
             probe_depth = TexHardwareDepth.Load(int3(current_probe_texel_pos, 0)).r;
             if(isValidDepth(probe_depth))
-                break;
+                break;// 有効な深度であれば発見終了.
 
             // 次のセルを選択(ランダム).
-            select_probe_pos_index = hash_uint32_iq(probe_id * select_probe_pos_index + (cb_ssvg.frame_count ^ probe_id));
+            select_probe_pos_index = hash_uint32_iq(probe_id + (cb_ssvg.frame_count ^ probe_id));
         }
     #else
         const uint select_probe_pos_index = hash_uint32_iq(probe_id + (probe_id ^ cb_ssvg.frame_count));

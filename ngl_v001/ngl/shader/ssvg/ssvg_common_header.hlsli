@@ -89,6 +89,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     // ScreenSpaceProbeタイルサイズ. 1ProbeあたりのOctahedralMapAtlasの幅.
     #define SCREEN_SPACE_PROBE_TILE_SIZE 8
     #define SCREEN_SPACE_PROBE_TILE_SIZE_INV (1.0 / float(SCREEN_SPACE_PROBE_TILE_SIZE))
+    #define SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT (SCREEN_SPACE_PROBE_TILE_SIZE * SCREEN_SPACE_PROBE_TILE_SIZE)
 
 
     // シェーダとCppで一致させる.
