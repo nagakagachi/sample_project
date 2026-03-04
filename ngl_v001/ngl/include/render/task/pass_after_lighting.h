@@ -9,7 +9,7 @@
 #include "gfx/rtg/graph_builder.h"
 #include "gfx/command_helper.h"
 
-#include "render/app/ssvg/ssvg.h"
+#include "render/app/srvs/srvs.h"
 
 namespace ngl::render::task
 {

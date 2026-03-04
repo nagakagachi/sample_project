@@ -52,7 +52,7 @@ TextureCube tex_ibl_specular;
 Texture2D tex_ibl_dfg;
 
 // GI
-#include "ssvg/ssvg_util.hlsli"
+#include "srvs/srvs_util.hlsli"
 
 
 // DirectionalLight評価. 標準.

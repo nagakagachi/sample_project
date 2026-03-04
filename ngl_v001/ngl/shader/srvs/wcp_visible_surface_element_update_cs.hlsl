@@ -8,7 +8,7 @@ wcp_visible_surface_element_update_cs.hlsl
 #endif
 
 
-#include "ssvg_util.hlsli"
+#include "srvs_util.hlsli"
 
 
 #define RAY_SAMPLE_COUNT_PER_VOXEL 8

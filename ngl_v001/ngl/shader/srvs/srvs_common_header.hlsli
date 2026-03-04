@@ -1,10 +1,10 @@
-#ifndef NGL_SHADER_SSVG_COMMON_HEADER_H
-#define NGL_SHADER_SSVG_COMMON_HEADER_H
+#ifndef NGL_SHADER_SRVS_COMMON_HEADER_H
+#define NGL_SHADER_SRVS_COMMON_HEADER_H
 #include "../include/ngl_shader_config.hlsli"
 
 #if 0
 
-ssvg_common_header.hlsli
+srvs_common_header.hlsli
 
 hlsl/C++共通ヘッダ.
 
@@ -187,4 +187,4 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     };
 
 
-#endif // NGL_SHADER_SSVG_COMMON_HEADER_H
+#endif // NGL_SHADER_SRVS_COMMON_HEADER_H

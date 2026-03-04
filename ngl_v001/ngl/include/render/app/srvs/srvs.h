@@ -1,5 +1,6 @@
 ﻿/*
-    sw_tessellation_mesh.h
+    srvs.h
+    screen-reconstructed voxel structure.
 */
 
 #pragma once

@@ -7,7 +7,7 @@ ScreenSpaceProbe用テクスチャクリア.
 
 #endif
 
-#include "ssvg_util.hlsli"
+#include "srvs_util.hlsli"
 
 [numthreads(8, 8, 1)]
 void main_cs(

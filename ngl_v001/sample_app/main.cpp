@@ -37,7 +37,7 @@
 #include "gfx/material/material_shader_manager.h"
 
 // Render Path
-#include "render/app/ssvg/ssvg.h"
+#include "render/app/srvs/srvs.h"
 #include "render/app/sw_tess/sw_tessellation_mesh.h"
 #include "render/test_render_path.h"
 
@@ -63,7 +63,7 @@ static int dbgw_view_general_debug_buffer  = -1;
 static int dbgw_view_general_debug_channel = 0;
 static float dbgw_view_general_debug_rate  = 0.5f;
 
-// SSVG.
+// Srvs. Screen Reconstructed Voxel Structure.
 static bool dbgw_view_ssvg_sky_visibility               = false;
 static bool dbgw_enable_gi_lighting                     = true;
 static float dbgw_gi_probe_sample_offset_view           = 0.0f;
@@ -606,7 +606,7 @@ bool AppGame::Initialize()
 #endif
 
 #if 1
-    // SSVG.
+    // Srvs.
     ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f);
     ngl::render::app::SsVg::dbg_view_mode_ = 9;
 #endif

@@ -12,7 +12,7 @@ OctahedralMapの境界部を内側の値で埋める.
 #endif
 
 
-#include "ssvg_util.hlsli"
+#include "srvs_util.hlsli"
 
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(

@@ -6,7 +6,7 @@ bbv_removal_indirect_arg_build_cs.hlsl
 #endif
 
 
-#include "ssvg_util.hlsli"
+#include "srvs_util.hlsli"
 
 RWBuffer<uint> RWRemoveVoxelIndirectArg;
 

@@ -1,9 +1,9 @@
-#ifndef NGL_SHADER_SSVG_UTIL_H
-#define NGL_SHADER_SSVG_UTIL_H
+#ifndef NGL_SHADER_SRVS_UTIL_H
+#define NGL_SHADER_SRVS_UTIL_H
 
 #if 0
 
-ssvg_util.hlsli
+srvs_util.hlsli
 
 #endif
 
@@ -12,7 +12,7 @@ ssvg_util.hlsli
 #include "../include/bit_util.hlsli"
 
 // cpp/hlsl共通定義用ヘッダ.
-#include "ssvg_common_header.hlsli"
+#include "srvs_common_header.hlsli"
 
 
 // Probe更新系のCS ThreadGroupSize. Indirectのため共有ヘッダに定義.
@@ -631,4 +631,4 @@ float3 decode_uint_to_range1_vec3(uint code)
 }
 
 
-#endif // NGL_SHADER_SSVG_UTIL_H
+#endif // NGL_SHADER_SRVS_UTIL_H

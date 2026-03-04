@@ -137,7 +137,7 @@
     <ClInclude Include="include\gfx\rtg\graph_builder.h" />
     <ClInclude Include="include\gfx\rtg\rtg_command_list_pool.h" />
     <ClInclude Include="include\gfx\rtg\rtg_common.h" />
-    <ClInclude Include="include\render\app\ssvg\ssvg.h" />
+    <ClInclude Include="include\render\app\srvs\srvs.h" />
     <ClInclude Include="include\render\app\sw_tess\concurrent_binary_tree.h" />
     <ClInclude Include="include\render\app\sw_tess\half_edge_mesh.h" />
     <ClInclude Include="include\render\app\sw_tess\sw_tessellation_mesh.h" />
@@ -237,7 +237,7 @@
     <ClCompile Include="src\memory\tlsf_memory_pool.cpp" />
     <ClCompile Include="src\platform\win\window.win.cpp" />
     <ClCompile Include="src\render\app\common\render_app_common.cpp" />
-    <ClCompile Include="src\render\app\ssvg\ssvg.cpp" />
+    <ClCompile Include="src\render\app\srvs\srvs.cpp" />
     <ClCompile Include="src\render\app\sw_tess\concurrent_binary_tree.cpp" />
     <ClCompile Include="src\render\app\sw_tess\half_edge_mesh.cpp" />
     <ClCompile Include="src\render\app\sw_tess\sw_tessellation_mesh.cpp" />

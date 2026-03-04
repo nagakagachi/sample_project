@@ -6,7 +6,7 @@ wcp_generate_visible_surface_list_indirect_arg_cs.hlsl
 #endif
 
 
-#include "ssvg_util.hlsli"
+#include "srvs_util.hlsli"
 
 RWBuffer<uint>		RWVisibleSurfaceListIndirectArg;
 

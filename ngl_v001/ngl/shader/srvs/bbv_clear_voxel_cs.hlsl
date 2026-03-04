@@ -6,7 +6,7 @@ bbv_clear_voxel_cs.hlsl
 #endif
 
 
-#include "ssvg_util.hlsli"
+#include "srvs_util.hlsli"
 
 
 // DepthBufferに対してDispatch.

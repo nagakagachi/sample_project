@@ -8,7 +8,7 @@ bbv_visible_surface_element_update_cs.hlsl
 
 #endif
 
-#include "ssvg_util.hlsli"
+#include "srvs_util.hlsli"
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
 

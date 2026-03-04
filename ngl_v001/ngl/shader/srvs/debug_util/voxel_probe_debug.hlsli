@@ -5,7 +5,7 @@
 */
 
 
-#include "../ssvg_util.hlsli"
+#include "../srvs_util.hlsli"
 #include "../../include/scene_view_struct.hlsli"
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;

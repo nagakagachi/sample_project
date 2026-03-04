@@ -8,7 +8,7 @@ ss_voxel_debug_visualize_cs.hlsl
 #endif
 
 
-#include "../ssvg_util.hlsli"
+#include "../srvs_util.hlsli"
 
 // SceneView定数バッファ構造定義.
 #include "../../include/scene_view_struct.hlsli"
