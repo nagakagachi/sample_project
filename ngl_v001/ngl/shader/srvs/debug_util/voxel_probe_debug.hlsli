@@ -63,8 +63,8 @@ VS_OUTPUT main_vs(VS_INPUT input)
     const uint instance_vtx_id = input.vertex_id % 6;
 
 
-    const int3 voxel_coord = index_to_voxel_coord(instance_id, cb_ssvg.bbv.grid_resolution);
-    const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution), cb_ssvg.bbv.grid_resolution);
+    const int3 voxel_coord = index_to_voxel_coord(instance_id, cb_srvs.bbv.grid_resolution);
+    const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_coord, cb_srvs.bbv.grid_toroidal_offset, cb_srvs.bbv.grid_resolution), cb_srvs.bbv.grid_resolution);
 
     // Bbv固有データ.
     const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
@@ -72,17 +72,17 @@ VS_OUTPUT main_vs(VS_INPUT input)
     
 
     // Bbv追加データ.
-    const float3 probe_pos_ws = (float3(voxel_coord) + 0.5) * cb_ssvg.bbv.cell_size + cb_ssvg.bbv.grid_min_pos;
+    const float3 probe_pos_ws = (float3(voxel_coord) + 0.5) * cb_srvs.bbv.cell_size + cb_srvs.bbv.grid_min_pos;
 
 
     float4 color = float4(1,1,1,1);
 
     // 表示位置.
     const float3 instance_pos = probe_pos_ws;
-    float draw_scale = cb_ssvg.debug_probe_radius;
+    float draw_scale = cb_srvs.debug_probe_radius;
     if(0 != (bbv_occupied_flag))
     {
-        draw_scale *= cb_ssvg.debug_probe_near_geom_scale;
+        draw_scale *= cb_srvs.debug_probe_near_geom_scale;
     }
 
     const int vtx_index = particle_quad_index[ instance_vtx_id ];
@@ -149,7 +149,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     // Bbv追加データ.
     const BbvOptionalData voxel_optional_data = BitmaskBrickVoxelOptionData[voxel_index];
 
-    if(0 == cb_ssvg.debug_bbv_probe_mode)
+    if(0 == cb_srvs.debug_bbv_probe_mode)
     {
         const float surface_distance = length_int_vector3(voxel_optional_data.to_surface_vector);
         #if 1

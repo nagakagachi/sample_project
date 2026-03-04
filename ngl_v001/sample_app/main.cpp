@@ -64,13 +64,13 @@ static int dbgw_view_general_debug_channel = 0;
 static float dbgw_view_general_debug_rate  = 0.5f;
 
 // Srvs. Screen Reconstructed Voxel Structure.
-static bool dbgw_view_ssvg_sky_visibility               = false;
+static bool dbgw_view_srvs_sky_visibility               = false;
 static bool dbgw_enable_gi_lighting                     = true;
 static float dbgw_gi_probe_sample_offset_view           = 0.0f;
 static float dbgw_gi_probe_sample_offset_surface_normal = 0.0f;
 static float dbgw_gi_probe_sample_offset_bent_normal    = 0.5f;
-static bool dbgw_enable_ssvg_injection_pass = true;
-static bool dbgw_enable_ssvg_rejection_pass = true;
+static bool dbgw_enable_srvs_injection_pass = true;
+static bool dbgw_enable_srvs_rejection_pass = true;
 
 static bool dbgw_enable_gtao_demo = true;
 
@@ -188,7 +188,7 @@ private:
     // RaytraceScene.
     ngl::gfx::RtSceneManager rt_scene_;
 
-    ngl::render::app::SsVg ssvg_;
+    ngl::render::app::ScreenReconstructedVoxelStructure srvs_;
 
     ngl::fwk::GfxScene gfx_scene_{};
     ngl::gfx::scene::SceneSkyBox skybox_{};
@@ -233,7 +233,7 @@ AppGame::~AppGame()
         skybox_.FinalizeGfx();
 
         rt_scene_ = {};
-        ssvg_.Finalize();
+        srvs_.Finalize();
 
         // リソース参照クリア.
         mesh_entity_array_.clear();
@@ -607,8 +607,8 @@ bool AppGame::Initialize()
 
 #if 1
     // Srvs.
-    ssvg_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f);
-    ngl::render::app::SsVg::dbg_view_mode_ = 9;
+    srvs_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f);
+    ngl::render::app::ScreenReconstructedVoxelStructure::dbg_view_mode_ = 9;
 #endif
 
     // Texture Rexource読み込みのテスト.
@@ -771,7 +771,7 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("View Directional Shadow Atlas", &dbgw_view_dshadow);
             ImGui::Checkbox("View Half Dot Gray", &dbgw_view_half_dot_gray);
             // sky visibilityデバッグ.
-            ImGui::Checkbox("View Ssvg Sky Visibility", &dbgw_view_ssvg_sky_visibility);
+            ImGui::Checkbox("View Srvs Sky Visibility", &dbgw_view_srvs_sky_visibility);
             ImGui::Checkbox("Enable GI Lighting", &dbgw_enable_gi_lighting);
             ImGui::SliderFloat("Probe Sample Offset View", &dbgw_gi_probe_sample_offset_view, 0.0f, 10.0f);
             ImGui::SliderFloat("Probe Sample Offset Surface Normal", &dbgw_gi_probe_sample_offset_surface_normal, 0.0f, 10.0f);
@@ -789,7 +789,7 @@ bool AppGame::ExecuteApp()
                 ImGui::RadioButton("DirectionalShadowAtlas", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::DirectionalShadowAtlas);
                 ImGui::RadioButton("GtaoDemo", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::GtaoDemo);
                 ImGui::RadioButton("BentNormalTest", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::BentNormalTest);
-                ImGui::RadioButton("SsvgDebugTexture", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::SsvgDebugTexture);
+                ImGui::RadioButton("SrvsDebugTexture", &dbgw_view_general_debug_buffer, ngl::test::EDebugBufferMode::SrvsDebugTexture);
             }
             ImGui::SliderInt("Channel", &dbgw_view_general_debug_channel, 0, 10);
             ImGui::SliderFloat("Slider Rate", &dbgw_view_general_debug_rate, 0.0f, 1.0f);
@@ -810,28 +810,28 @@ bool AppGame::ExecuteApp()
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-            if (ImGui::CollapsingHeader("Ssvg"))
+            if (ImGui::CollapsingHeader("Srvs"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
                 
-                ImGui::Checkbox("Enable Injection", &dbgw_enable_ssvg_injection_pass);
-                ImGui::Checkbox("Enable Rejection", &dbgw_enable_ssvg_rejection_pass);
+                ImGui::Checkbox("Enable Injection", &dbgw_enable_srvs_injection_pass);
+                ImGui::Checkbox("Enable Rejection", &dbgw_enable_srvs_rejection_pass);
 
                 ImGui::SetNextItemOpen(true, ImGuiCond_Once);
                 if (ImGui::CollapsingHeader("Voxel Debug"))
                 {
                     NGL_IMGUI_SCOPED_INDENT(10.0f);
-                    ImGui::SliderInt("Debug Texture Mode", &ngl::render::app::SsVg::dbg_view_mode_, -1, 16);
+                    ImGui::SliderInt("Debug Texture Mode", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_view_mode_, -1, 16);
                 }
 
                 if (ImGui::CollapsingHeader("Probe Debug"))
                 {
                     NGL_IMGUI_SCOPED_INDENT(10.0f);
-                    ImGui::SliderInt("Wcp Probe Mode", &ngl::render::app::SsVg::dbg_wcp_probe_debug_mode_, -1, 10);
-                    ImGui::SliderInt("Bbv Probe Mode", &ngl::render::app::SsVg::dbg_bbv_probe_debug_mode_, -1, 10);
+                    ImGui::SliderInt("Wcp Probe Mode", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_wcp_probe_debug_mode_, -1, 10);
+                    ImGui::SliderInt("Bbv Probe Mode", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_bbv_probe_debug_mode_, -1, 10);
 
-                    ImGui::SliderFloat("Probe Scale", &ngl::render::app::SsVg::dbg_probe_scale_, 0.01f, 10.0f);
-                    ImGui::SliderFloat("Probe Near Geometry Scale", &ngl::render::app::SsVg::dbg_probe_near_geom_scale_, 0.01f, 10.0f);
+                    ImGui::SliderFloat("Probe Scale", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_probe_scale_, 0.01f, 10.0f);
+                    ImGui::SliderFloat("Probe Near Geometry Scale", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_, 0.01f, 10.0f);
                 }
             }
 
@@ -1118,16 +1118,16 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
                 }
                 // GI.
                 {
-                    if (ssvg_.IsValid())
+                    if (srvs_.IsValid())
                     {
-                        render_frame_desc.feature_config.gi.p_ssvg                             = &ssvg_;
+                        render_frame_desc.feature_config.gi.p_srvs                             = &srvs_;
                         render_frame_desc.feature_config.gi.enable_gi_lighting                 = dbgw_enable_gi_lighting;
                         render_frame_desc.feature_config.gi.probe_sample_offset_view           = dbgw_gi_probe_sample_offset_view;
                         render_frame_desc.feature_config.gi.probe_sample_offset_surface_normal = dbgw_gi_probe_sample_offset_surface_normal;
                         render_frame_desc.feature_config.gi.probe_sample_offset_bent_normal    = dbgw_gi_probe_sample_offset_bent_normal;
 
-                        render_frame_desc.feature_config.gi.enable_ssvg_injection_pass = dbgw_enable_ssvg_injection_pass;
-                        render_frame_desc.feature_config.gi.enable_ssvg_rejection_pass = dbgw_enable_ssvg_rejection_pass;
+                        render_frame_desc.feature_config.gi.enable_srvs_injection_pass = dbgw_enable_srvs_injection_pass;
+                        render_frame_desc.feature_config.gi.enable_srvs_rejection_pass = dbgw_enable_srvs_rejection_pass;
                     }
                 }
                 // GTAO.
@@ -1156,7 +1156,7 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
                 render_frame_desc.debugview_subview_result            = dbgw_enable_sub_view_path;
                 render_frame_desc.debugview_raytrace_result           = dbgw_enable_raytrace_pass;
 
-                render_frame_desc.debugview_ssvg_sky_visibility = dbgw_view_ssvg_sky_visibility;
+                render_frame_desc.debugview_srvs_sky_visibility = dbgw_view_srvs_sky_visibility;
 
                 render_frame_desc.debugview_gbuffer               = dbgw_view_gbuffer;
                 render_frame_desc.debugview_dshadow               = dbgw_view_dshadow;

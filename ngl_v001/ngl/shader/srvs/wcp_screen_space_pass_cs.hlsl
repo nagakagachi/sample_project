@@ -38,7 +38,7 @@ void main_cs(
 	const float3 view_origin = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
 	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
-	const float2 screen_size_f = float2(cb_ssvg.tex_main_view_depth_size.xy);
+	const float2 screen_size_f = float2(cb_srvs.tex_main_view_depth_size.xy);
 	const float2 screen_uv = (screen_pos_f / screen_size_f);
 
     #if 1 < THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH
@@ -47,7 +47,7 @@ void main_cs(
         const uint tile_skip_id_x = gid.x%skip_tile_size;
         const uint tile_skip_id_y = gid.y%skip_tile_size;
 
-        const uint skip_frame_id = cb_ssvg.frame_count % (skip_tile_size*skip_tile_size);
+        const uint skip_frame_id = cb_srvs.frame_count % (skip_tile_size*skip_tile_size);
         const uint skip_frame_id_y = skip_frame_id / (skip_tile_size);
         const uint skip_frame_id_x = skip_frame_id % (skip_tile_size);
 
@@ -74,12 +74,12 @@ void main_cs(
     const float3 pixel_pos_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
 
     // PixelWorldPosition->VoxelCoord
-    const float3 voxel_coordf = (pixel_pos_ws - cb_ssvg.wcp.grid_min_pos) * cb_ssvg.wcp.cell_size_inv;
+    const float3 voxel_coordf = (pixel_pos_ws - cb_srvs.wcp.grid_min_pos) * cb_srvs.wcp.cell_size_inv;
     const int3 voxel_coord = floor(voxel_coordf);
-    if(all(voxel_coord >= 0) && all(voxel_coord < cb_ssvg.wcp.grid_resolution))
+    if(all(voxel_coord >= 0) && all(voxel_coord < cb_srvs.wcp.grid_resolution))
     {
-        int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution);
-        uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.wcp.grid_resolution);
+        int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_srvs.wcp.grid_toroidal_offset, cb_srvs.wcp.grid_resolution);
+        uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_srvs.wcp.grid_resolution);
 
         shared_work[gindex] = uint2(voxel_index, 1);
     }
@@ -118,14 +118,14 @@ void main_cs(
         {
             // Visible判定フレーム番号を書き込み.
             uint old_atomic_work;
-            InterlockedExchange(RWWcpProbeBuffer[voxel_index].atomic_work, cb_ssvg.frame_count, old_atomic_work);
+            InterlockedExchange(RWWcpProbeBuffer[voxel_index].atomic_work, cb_srvs.frame_count, old_atomic_work);
 
             // 交換前の値でVisible判定フレーム番号が現在フレームと異なるならリストへ登録. 別スレッドで同じVoxelを処理している場合の重複を除去する.
-            if(cb_ssvg.frame_count !=  old_atomic_work)
+            if(cb_srvs.frame_count !=  old_atomic_work)
             {
                 int current_visible_count;
                 InterlockedAdd(RWSurfaceProbeCellList[0], 1, current_visible_count);
-                if(cb_ssvg.wcp_visible_voxel_buffer_size > current_visible_count)
+                if(cb_srvs.wcp_visible_voxel_buffer_size > current_visible_count)
                 {
                     // 追加可能であれば登録. 登録位置はindex0のカウンタを除いた位置.
                     RWSurfaceProbeCellList[current_visible_count + 1] = voxel_index;

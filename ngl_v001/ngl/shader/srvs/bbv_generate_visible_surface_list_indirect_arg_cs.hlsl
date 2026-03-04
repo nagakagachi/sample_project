@@ -23,7 +23,7 @@ void main_cs(
 {
 
     const uint visible_voxel_count = VisibleVoxelList[0];
-    RWVisibleVoxelIndirectArg[0] = (visible_voxel_count + (cb_ssvg.bbv_indirect_cs_thread_group_size.x - 1)) / cb_ssvg.bbv_indirect_cs_thread_group_size.x;
+    RWVisibleVoxelIndirectArg[0] = (visible_voxel_count + (cb_srvs.bbv_indirect_cs_thread_group_size.x - 1)) / cb_srvs.bbv_indirect_cs_thread_group_size.x;
     RWVisibleVoxelIndirectArg[1] = 1;
     RWVisibleVoxelIndirectArg[2] = 1;
     

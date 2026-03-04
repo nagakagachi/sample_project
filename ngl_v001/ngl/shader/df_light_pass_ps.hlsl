@@ -30,7 +30,7 @@ struct CbLightingPass
     float probe_sample_offset_view;
     float probe_sample_offset_surface_normal;
     float probe_sample_offset_bent_normal;
-    int dbg_view_ssvg_sky_visibility;
+    int dbg_view_srvs_sky_visibility;
 };
 ConstantBuffer<CbLightingPass> cb_ngl_lighting_pass;
 
@@ -301,7 +301,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
                 }
             #endif
 
-            const float3 voxel_coordf = (probe_sample_pos_ws - cb_ssvg.wcp.grid_min_pos) * cb_ssvg.wcp.cell_size_inv;
+            const float3 voxel_coordf = (probe_sample_pos_ws - cb_srvs.wcp.grid_min_pos) * cb_srvs.wcp.cell_size_inv;
             const int3 voxel_base_coord = floor(voxel_coordf - 0.5);
             const float3 coord_frac = frac(voxel_coordf - 0.5);
 
@@ -316,8 +316,8 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
                 float2 octmap_uvs[8];
                 for (int i = 0; i < 8; ++i)
                 {
-                    voxel_indexs[i] = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + vtx_pos[i], cb_ssvg.wcp.grid_toroidal_offset, cb_ssvg.wcp.grid_resolution), cb_ssvg.wcp.grid_resolution);
-                    octmap_uvs[i] = (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_indexs[i], cb_ssvg.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
+                    voxel_indexs[i] = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + vtx_pos[i], cb_srvs.wcp.grid_toroidal_offset, cb_srvs.wcp.grid_resolution), cb_srvs.wcp.grid_resolution);
+                    octmap_uvs[i] = (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_indexs[i], cb_srvs.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
                 }
 
                 // k_wcp_probe_distance_max で正規化された [0,1] のDistanceProbe.
@@ -377,7 +377,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
     // デバッグ表示.
     // ------------------------------------------------------------------------------
         // sky_visibilityテスト.
-        if(cb_ngl_lighting_pass.dbg_view_ssvg_sky_visibility)
+        if(cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
         {
             lit_color = sky_visibility;
         }

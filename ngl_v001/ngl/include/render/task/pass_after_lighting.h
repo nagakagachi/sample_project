@@ -26,7 +26,7 @@ namespace ngl::render::task
 			int h{};
 			rhi::ConstantBufferPooledHandle scene_cbv{};
 
-            render::app::SsVg* p_ssvg = {};
+            render::app::ScreenReconstructedVoxelStructure* p_srvs = {};
 		} desc_{};
 		bool is_render_skip_debug_{};
 		
@@ -36,7 +36,7 @@ namespace ngl::render::task
 			rtg::RtgResourceHandle h_depth,
 			const SetupDesc& desc)
 		{
-            if(desc.p_ssvg == nullptr)
+            if(desc.p_srvs == nullptr)
             {
                 return;
             }
@@ -70,7 +70,7 @@ namespace ngl::render::task
 					assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
 					assert(res_light.tex_.IsValid() && res_light.srv_.IsValid());
 
-					desc_.p_ssvg->DebugDraw(gfx_commandlist,
+					desc_.p_srvs->DebugDraw(gfx_commandlist,
 						desc_.scene_cbv,
                         res_depth.tex_, res_depth.dsv_,
                         res_light.tex_, res_light.rtv_);

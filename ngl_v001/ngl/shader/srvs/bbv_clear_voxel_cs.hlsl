@@ -19,7 +19,7 @@ void main_cs(
 )
 {
     // 全Voxelをクリア.
-    uint voxel_count = cb_ssvg.bbv.grid_resolution.x * cb_ssvg.bbv.grid_resolution.y * cb_ssvg.bbv.grid_resolution.z;
+    uint voxel_count = cb_srvs.bbv.grid_resolution.x * cb_srvs.bbv.grid_resolution.y * cb_srvs.bbv.grid_resolution.z;
     if(dtid.x < voxel_count)
     {
         RWBitmaskBrickVoxelOptionData[dtid.x] = (BbvOptionalData)0;

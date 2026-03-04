@@ -73,12 +73,12 @@ namespace ngl::render::app
 
 
 
-    // BitmaskBrickVoxel:Bbv.
-    class BitmaskBrickVoxel
+    // BitmaskBrickVoxelGi:Bbv.
+    class BitmaskBrickVoxelGi
     {
     public:
-        BitmaskBrickVoxel() = default;
-        ~BitmaskBrickVoxel();
+        BitmaskBrickVoxelGi() = default;
+        ~BitmaskBrickVoxelGi();
 
         // 初期化
         struct InitArg
@@ -208,7 +208,7 @@ namespace ngl::render::app
     };
 
     
-    class SsVg
+    class ScreenReconstructedVoxelStructure
     {
     public:
         static int dbg_view_mode_;
@@ -220,8 +220,8 @@ namespace ngl::render::app
         static float dbg_probe_near_geom_scale_;
 
     public:
-        SsVg() = default;
-        ~SsVg();
+        ScreenReconstructedVoxelStructure() = default;
+        ~ScreenReconstructedVoxelStructure();
 
         // 初期化
         bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u bbv_resolution, float bbv_cell_size, math::Vec3u wcp_resolution, float wcp_cell_size);
@@ -257,13 +257,13 @@ namespace ngl::render::app
 
     private:
             bool is_initialized_ = false;
-            BitmaskBrickVoxel* ssvg_instance_;
+            BitmaskBrickVoxelGi* bbvgi_instance_;
     };
 
 
 
 
-    class RenderTaskSsvgBegin : public ngl::rtg::IGraphicsTaskNode
+    class RenderTaskSrvsBegin : public ngl::rtg::IGraphicsTaskNode
     {
     public:
 		struct SetupDesc
@@ -272,7 +272,7 @@ namespace ngl::render::app
             int h{};
 			
             rhi::ConstantBufferPooledHandle scene_cbv{};
-            render::app::SsVg* p_ssvg = {};
+            render::app::ScreenReconstructedVoxelStructure* p_srvs = {};
 		};
 		SetupDesc desc_{};
 		
@@ -280,13 +280,13 @@ namespace ngl::render::app
 		void Setup(ngl::rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const ngl::render::task::RenderPassViewInfo& view_info,
 			const SetupDesc& desc)
 		{
-            if(!desc.p_ssvg)
+            if(!desc.p_srvs)
                 return;
 
 			desc_ = desc;
             
-            // ssvgへの情報直接設定をBeginで実行.
-            desc_.p_ssvg->SetImportantPointInfo(view_info.camera_pos, view_info.camera_pose.GetColumn2());
+            // srvsへの情報直接設定をBeginで実行.
+            desc_.p_srvs->SetImportantPointInfo(view_info.camera_pos, view_info.camera_pose.GetColumn2());
 
 			// Render処理のLambdaをRTGに登録.
 			builder.RegisterTaskNodeRenderFunction(this,
@@ -294,9 +294,9 @@ namespace ngl::render::app
 				{
 					command_list_allocator.Alloc(1);
 					auto gfx_commandlist = command_list_allocator.GetOrCreate(0);
-					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RenderTaskSsvgBegin");
+					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RenderTaskSrvsBegin");
 
-                    desc_.p_ssvg->DispatchBegin(gfx_commandlist, desc_.scene_cbv, 
+                    desc_.p_srvs->DispatchBegin(gfx_commandlist, desc_.scene_cbv, 
                         view_info, math::Vec2i(desc_.w, desc_.h));
 				}
 			);
@@ -304,7 +304,7 @@ namespace ngl::render::app
 	};
     
 
-    class RenderTaskSsvgViewVoxelInjection : public ngl::rtg::IGraphicsTaskNode
+    class RenderTaskSrvsViewVoxelInjection : public ngl::rtg::IGraphicsTaskNode
     {
     public:
 		struct SetupDesc
@@ -313,7 +313,7 @@ namespace ngl::render::app
             int h{};
 			
             rhi::ConstantBufferPooledHandle scene_cbv{};
-            render::app::SsVg* p_ssvg = {};
+            render::app::ScreenReconstructedVoxelStructure* p_srvs = {};
 
             //ngl::rtg::RtgResourceHandle h_depth{};
 
@@ -325,7 +325,7 @@ namespace ngl::render::app
 		void Setup(ngl::rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const ngl::render::task::RenderPassViewInfo& view_info,
 			const SetupDesc& desc)
 		{
-            if(!desc.p_ssvg)
+            if(!desc.p_srvs)
                 return;
 
 			desc_ = desc;// コピー.
@@ -346,7 +346,7 @@ namespace ngl::render::app
 				{
 					command_list_allocator.Alloc(1);
 					auto gfx_commandlist = command_list_allocator.GetOrCreate(0);
-					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RenderTaskSsvgViewVoxelInjection");
+					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RenderTaskSrvsViewVoxelInjection");
 
                     InjectionSourceDepthBufferInfo injection_depth_buffer_info{};
                     {
@@ -371,13 +371,13 @@ namespace ngl::render::app
                     }
 
                     
-                    desc_.p_ssvg->DispatchViewBbvOccupancyUpdate(gfx_commandlist, desc_.scene_cbv, view_info, injection_depth_buffer_info);
+                    desc_.p_srvs->DispatchViewBbvOccupancyUpdate(gfx_commandlist, desc_.scene_cbv, view_info, injection_depth_buffer_info);
 				}
 			);
 		}
 	};
 
-    class RenderTaskSsvgUpdate : public ngl::rtg::IGraphicsTaskNode
+    class RenderTaskSrvsUpdate : public ngl::rtg::IGraphicsTaskNode
     {
     public:
 		ngl::rtg::RtgResourceHandle h_depth_{};
@@ -389,7 +389,7 @@ namespace ngl::render::app
             int h{};
 			
             rhi::ConstantBufferPooledHandle scene_cbv{};
-            render::app::SsVg* p_ssvg = {};
+            render::app::ScreenReconstructedVoxelStructure* p_srvs = {};
 
             ngl::rtg::RtgResourceHandle h_depth{};
 		};
@@ -399,7 +399,7 @@ namespace ngl::render::app
 		void Setup(ngl::rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const ngl::render::task::RenderPassViewInfo& view_info,
 			const SetupDesc& desc)
 		{
-            if(!desc.p_ssvg)
+            if(!desc.p_srvs)
                 return;
 
 			desc_ = desc;
@@ -420,7 +420,7 @@ namespace ngl::render::app
 				{
 					command_list_allocator.Alloc(1);
 					auto gfx_commandlist = command_list_allocator.GetOrCreate(0);
-					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RenderTaskSsvgUpdate");
+					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RenderTaskSrvsUpdate");
 
 					// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
 					auto res_depth = builder.GetAllocatedResource(this, h_depth_);
@@ -428,7 +428,7 @@ namespace ngl::render::app
 					assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
                     assert(res_work.tex_.IsValid() && res_work.uav_.IsValid());
 
-                    desc_.p_ssvg->DispatchUpdate(gfx_commandlist, desc_.scene_cbv, 
+                    desc_.p_srvs->DispatchUpdate(gfx_commandlist, desc_.scene_cbv, 
                         view_info, res_depth.tex_, res_depth.srv_,
                         res_work.tex_, res_work.uav_);
 				}

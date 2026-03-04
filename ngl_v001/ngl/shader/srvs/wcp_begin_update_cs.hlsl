@@ -25,7 +25,7 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
-    uint probe_count = cb_ssvg.wcp.grid_resolution.x * cb_ssvg.wcp.grid_resolution.y * cb_ssvg.wcp.grid_resolution.z;
+    uint probe_count = cb_srvs.wcp.grid_resolution.x * cb_srvs.wcp.grid_resolution.y * cb_srvs.wcp.grid_resolution.z;
 
     if(0 == dtid.x)
     {
@@ -33,7 +33,7 @@ void main_cs(
         RWSurfaceProbeCellList[0] = 0;
     }
 
-    if(all(cb_ssvg.wcp.grid_move_cell_delta == int3(0,0,0)))
+    if(all(cb_srvs.wcp.grid_move_cell_delta == int3(0,0,0)))
     {
         // 移動無しなら何もしない.
         return;
@@ -41,12 +41,12 @@ void main_cs(
 
     if(dtid.x < probe_count)
     {
-        int3 voxel_coord = index_to_voxel_coord(dtid.x, cb_ssvg.wcp.grid_resolution);
+        int3 voxel_coord = index_to_voxel_coord(dtid.x, cb_srvs.wcp.grid_resolution);
         // 移動によるInvalidateチェック..
         // バッファ上のVoxelアドレスをToroidalマッピング前の座標に変換. 修正版.
-        int3 linear_voxel_coord = (voxel_coord - cb_ssvg.wcp.grid_toroidal_offset_prev + cb_ssvg.wcp.grid_resolution) % cb_ssvg.wcp.grid_resolution;
-        int3 voxel_coord_toroidal_curr = linear_voxel_coord - cb_ssvg.wcp.grid_move_cell_delta;
-        bool is_invalidate_area = any(voxel_coord_toroidal_curr < 0) || any(voxel_coord_toroidal_curr >= (cb_ssvg.wcp.grid_resolution));// 範囲外の領域に進行した場合はその領域をInvalidate.
+        int3 linear_voxel_coord = (voxel_coord - cb_srvs.wcp.grid_toroidal_offset_prev + cb_srvs.wcp.grid_resolution) % cb_srvs.wcp.grid_resolution;
+        int3 voxel_coord_toroidal_curr = linear_voxel_coord - cb_srvs.wcp.grid_move_cell_delta;
+        bool is_invalidate_area = any(voxel_coord_toroidal_curr < 0) || any(voxel_coord_toroidal_curr >= (cb_srvs.wcp.grid_resolution));// 範囲外の領域に進行した場合はその領域をInvalidate.
 
         if(is_invalidate_area)
         {
@@ -54,7 +54,7 @@ void main_cs(
             RWWcpProbeBuffer[dtid.x] = (WcpProbeData)0;
             
             {
-                uint2 probe_2d_map_pos = uint2(dtid.x % cb_ssvg.wcp.flatten_2d_width, dtid.x / cb_ssvg.wcp.flatten_2d_width);
+                uint2 probe_2d_map_pos = uint2(dtid.x % cb_srvs.wcp.flatten_2d_width, dtid.x / cb_srvs.wcp.flatten_2d_width);
                 for(int oct_j = 0; oct_j < k_probe_octmap_width_with_border; ++oct_j)
                 {
                     for(int oct_i = 0; oct_i < k_probe_octmap_width_with_border; ++oct_i)

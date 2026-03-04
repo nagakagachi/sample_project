@@ -49,7 +49,7 @@ void main_cs(
         const float re_select_threshold = 0.5;// 強制再選択確率.
         if(1.0 > re_select_threshold)
         {
-            const float re_select_rand_f = noise_float_to_float(float3(asfloat(ss_probe_tile_pixel_start.x), asfloat(ss_probe_tile_pixel_start.y), asfloat(cb_ssvg.frame_count)));
+            const float re_select_rand_f = noise_float_to_float(float3(asfloat(ss_probe_tile_pixel_start.x), asfloat(ss_probe_tile_pixel_start.y), asfloat(cb_srvs.frame_count)));
             if(re_select_threshold > re_select_rand_f)
             {
                 select_probe_pos_index = asuint(re_select_rand_f) % SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT;// 少しずらす(適当).
@@ -68,10 +68,10 @@ void main_cs(
                 break;// 有効な深度であれば発見終了.
 
             // 次のセルを選択(ランダム).
-            select_probe_pos_index = hash_uint32_iq(probe_id + (cb_ssvg.frame_count ^ probe_id));
+            select_probe_pos_index = hash_uint32_iq(probe_id + (cb_srvs.frame_count ^ probe_id));
         }
     #else
-        const uint select_probe_pos_index = hash_uint32_iq(probe_id + (probe_id ^ cb_ssvg.frame_count));
+        const uint select_probe_pos_index = hash_uint32_iq(probe_id + (probe_id ^ cb_srvs.frame_count));
         probe_pos_in_tile = uint2(select_probe_pos_index * SCREEN_SPACE_PROBE_TILE_SIZE_INV, select_probe_pos_index) % SCREEN_SPACE_PROBE_TILE_SIZE;
         // このフレームでのプローブ配置テクセル位置をタイル内ランダム選択.
         current_probe_texel_pos = ss_probe_tile_pixel_start + probe_pos_in_tile;

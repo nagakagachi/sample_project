@@ -29,14 +29,14 @@ void main_cs(
 {
     // VisibleCoarseVoxelListを利用するバージョン.
     const uint visible_voxel_count = VisibleVoxelList[0]; // 0番目にアトミックカウンタが入っている.
-    const uint update_element_index = (dtid.x * (BBV_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT+1) + (cb_ssvg.frame_count%(BBV_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT+1)));
+    const uint update_element_index = (dtid.x * (BBV_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT+1) + (cb_srvs.frame_count%(BBV_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT+1)));
     if(visible_voxel_count < update_element_index)
         return;
 
     const uint voxel_index = VisibleVoxelList[update_element_index+1]; // 1番目以降に有効Voxelインデックスが入っている.
     // voxel_indexからtoroidal考慮したVoxelIDを計算する.
-    int3 voxel_coord_toroidal = index_to_voxel_coord(voxel_index, cb_ssvg.bbv.grid_resolution);
-    int3 voxel_coord = voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution -cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
+    int3 voxel_coord_toroidal = index_to_voxel_coord(voxel_index, cb_srvs.bbv.grid_resolution);
+    int3 voxel_coord = voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_srvs.bbv.grid_resolution -cb_srvs.bbv.grid_toroidal_offset, cb_srvs.bbv.grid_resolution);
 
     const uint bbv_coarse_occupancy_info_addr = bbv_voxel_coarse_occupancy_info_addr(voxel_index);
     const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);

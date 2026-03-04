@@ -35,19 +35,19 @@ namespace ngl::render::app
 
 
     // デバッグ.
-    int SsVg::dbg_view_mode_ = -1;
-    int SsVg::dbg_bbv_probe_debug_mode_ = -1;
-    int SsVg::dbg_wcp_probe_debug_mode_ = -1;
-    float SsVg::dbg_probe_scale_ = 1.0f;
-    float SsVg::dbg_probe_near_geom_scale_ = 0.2f;
+    int ScreenReconstructedVoxelStructure::dbg_view_mode_ = -1;
+    int ScreenReconstructedVoxelStructure::dbg_bbv_probe_debug_mode_ = -1;
+    int ScreenReconstructedVoxelStructure::dbg_wcp_probe_debug_mode_ = -1;
+    float ScreenReconstructedVoxelStructure::dbg_probe_scale_ = 1.0f;
+    float ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_ = 0.2f;
     
-    using SsvgShaderBindName = ngl::text::HashText<128>;
-    constexpr SsvgShaderBindName k_shader_bind_name_wcp_atlas_srv = "WcpProbeAtlasTex";
-    constexpr SsvgShaderBindName k_shader_bind_name_wcp_atlas_uav = "RWWcpProbeAtlasTex";
-    constexpr SsvgShaderBindName k_shader_bind_name_ssprobe_srv = "ScreenSpaceProbeTex";
-    constexpr SsvgShaderBindName k_shader_bind_name_ssprobe_uav = "RWScreenSpaceProbeTex";
-    constexpr SsvgShaderBindName k_shader_bind_name_ssprobe_tile_info_srv = "ScreenSpaceProbeTileInfoTex";
-    constexpr SsvgShaderBindName k_shader_bind_name_ssprobe_tile_info_uav = "RWScreenSpaceProbeTileInfoTex";
+    using SrvsShaderBindName = ngl::text::HashText<128>;
+    constexpr SrvsShaderBindName k_shader_bind_name_wcp_atlas_srv = "WcpProbeAtlasTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_wcp_atlas_uav = "RWWcpProbeAtlasTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_srv = "ScreenSpaceProbeTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_uav = "RWScreenSpaceProbeTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_tile_info_srv = "ScreenSpaceProbeTileInfoTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_tile_info_uav = "RWScreenSpaceProbeTileInfoTex";
 
     void ToroidalGridUpdater::Initialize(const math::Vec3u& grid_resolution, float bbv_cell_size)
     {
@@ -84,12 +84,12 @@ namespace ngl::render::app
     }
 
 
-    BitmaskBrickVoxel::~BitmaskBrickVoxel()
+    BitmaskBrickVoxelGi::~BitmaskBrickVoxelGi()
     {
     }
 
     // 初期化
-    bool BitmaskBrickVoxel::Initialize(ngl::rhi::DeviceDep* p_device, const InitArg& init_arg)
+    bool BitmaskBrickVoxelGi::Initialize(ngl::rhi::DeviceDep* p_device, const InitArg& init_arg)
     {
         bbv_grid_updater_.Initialize(init_arg.voxel_resolution, init_arg.voxel_size);
         wcp_grid_updater_.Initialize(init_arg.probe_resolution, init_arg.probe_cell_size);
@@ -385,19 +385,19 @@ namespace ngl::render::app
         return true;
     }
 
-    void BitmaskBrickVoxel::SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir)
+    void BitmaskBrickVoxelGi::SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir)
     {
         important_point_ = pos;
         important_dir_   = dir;
     }
 
     
-    void BitmaskBrickVoxel::Dispatch_Begin(rhi::GraphicsCommandListDep* p_command_list,
+    void BitmaskBrickVoxelGi::Dispatch_Begin(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
                         const ngl::render::task::RenderPassViewInfo& main_view_info, const math::Vec2i& render_resolution
                         )
     {
-        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "SsVg_Dispatch_Begin");
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_Begin");
 
         auto& global_res = gfx::GlobalRenderResource::Instance();
 
@@ -425,9 +425,9 @@ namespace ngl::render::app
 
         const math::Vec2i hw_depth_size = render_resolution;
 
-        cbh_dispatch_ = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(SsvgParam));
+        cbh_dispatch_ = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(SrvsParam));
         {
-            auto* p = cbh_dispatch_->buffer.MapAs<SsvgParam>();
+            auto* p = cbh_dispatch_->buffer.MapAs<SrvsParam>();
 
             //Bbv
             {
@@ -478,12 +478,12 @@ namespace ngl::render::app
 
             p->main_light_dir_ws = main_view_info.main_light_dir_ws;
 
-            p->debug_view_mode = SsVg::dbg_view_mode_;
-            p->debug_bbv_probe_mode = SsVg::dbg_bbv_probe_debug_mode_;
-            p->debug_wcp_probe_mode = SsVg::dbg_wcp_probe_debug_mode_;
+            p->debug_view_mode = ScreenReconstructedVoxelStructure::dbg_view_mode_;
+            p->debug_bbv_probe_mode = ScreenReconstructedVoxelStructure::dbg_bbv_probe_debug_mode_;
+            p->debug_wcp_probe_mode = ScreenReconstructedVoxelStructure::dbg_wcp_probe_debug_mode_;
 
-            p->debug_probe_radius = SsVg::dbg_probe_scale_ * 0.5f * bbv_grid_updater_.Get().cell_size / k_bbv_per_voxel_resolution;
-            p->debug_probe_near_geom_scale = SsVg::dbg_probe_near_geom_scale_;
+            p->debug_probe_radius = ScreenReconstructedVoxelStructure::dbg_probe_scale_ * 0.5f * bbv_grid_updater_.Get().cell_size / k_bbv_per_voxel_resolution;
+            p->debug_probe_near_geom_scale = ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_;
 
             cbh_dispatch_->buffer.Unmap();
         }
@@ -495,7 +495,7 @@ namespace ngl::render::app
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvInitClear");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_bbv_clear_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                pso_bbv_clear_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
                 pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
 
@@ -510,7 +510,7 @@ namespace ngl::render::app
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpInitClear");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_wcp_clear_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                pso_wcp_clear_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_wcp_clear_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
                 pso_wcp_clear_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_uav.Get(), wcp_probe_atlas_tex_.uav.Get());
 
@@ -545,7 +545,7 @@ namespace ngl::render::app
 
             ngl::rhi::DescriptorSetDep desc_set = {};
             pso_bbv_begin_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-                pso_bbv_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                pso_bbv_begin_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
             pso_bbv_begin_update_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
             pso_bbv_begin_update_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
 
@@ -558,7 +558,7 @@ namespace ngl::render::app
         }
     }
 
-    void BitmaskBrickVoxel::Dispatch_Bbv_OccupancyUpdate_View(rhi::GraphicsCommandListDep* p_command_list,
+    void BitmaskBrickVoxelGi::Dispatch_Bbv_OccupancyUpdate_View(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
                         const ngl::render::task::RenderPassViewInfo& main_view_info,
             
@@ -608,7 +608,7 @@ namespace ngl::render::app
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvBeginViewUpdate");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_bbv_begin_view_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                pso_bbv_begin_view_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_bbv_begin_view_update_->SetView(&desc_set, "RWVisibleVoxelList", bbv_fine_update_voxel_list_.uav.Get());
                 pso_bbv_begin_view_update_->SetView(&desc_set, "RWRemoveVoxelList", bbv_removal_list_.uav.Get());
 
@@ -640,7 +640,7 @@ namespace ngl::render::app
                         pso_bbv_removal_list_build_->SetView(&desc_set, "TexHardwareDepth", target_depth_info.hw_depth_srv.Get());
                         pso_bbv_removal_list_build_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                         pso_bbv_removal_list_build_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv);
-                        pso_bbv_removal_list_build_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                        pso_bbv_removal_list_build_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                         pso_bbv_removal_list_build_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                         pso_bbv_removal_list_build_->SetView(&desc_set, "RWRemoveVoxelList", bbv_removal_list_.uav.Get());
 
@@ -656,7 +656,7 @@ namespace ngl::render::app
                         bbv_removal_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
 
                         ngl::rhi::DescriptorSetDep desc_set = {};
-                        pso_bbv_removal_indirect_arg_build_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                        pso_bbv_removal_indirect_arg_build_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                         pso_bbv_removal_indirect_arg_build_->SetView(&desc_set, "RemoveVoxelList", bbv_removal_list_.srv.Get());
                         pso_bbv_removal_indirect_arg_build_->SetView(&desc_set, "RWRemoveVoxelIndirectArg", bbv_removal_indirect_arg_.uav.Get());
 
@@ -671,7 +671,7 @@ namespace ngl::render::app
                         NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvApplyRemoval");
 
                         ngl::rhi::DescriptorSetDep desc_set = {};
-                        pso_bbv_removal_apply_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                        pso_bbv_removal_apply_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                         pso_bbv_removal_apply_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
                         pso_bbv_removal_apply_->SetView(&desc_set, "RemoveVoxelList", bbv_removal_list_.srv.Get());
                         p_command_list->SetPipelineState(pso_bbv_removal_apply_.Get());
@@ -700,7 +700,7 @@ namespace ngl::render::app
                     
                     pso_bbv_injection_apply_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                     pso_bbv_injection_apply_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv);
-                    pso_bbv_injection_apply_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                    pso_bbv_injection_apply_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
 
                     pso_bbv_injection_apply_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
                     pso_bbv_injection_apply_->SetView(&desc_set, "RWVisibleVoxelList", bbv_fine_update_voxel_list_.uav.Get());
@@ -735,7 +735,7 @@ namespace ngl::render::app
             bbv_fine_update_voxel_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
 
             ngl::rhi::DescriptorSetDep desc_set = {};
-            pso_bbv_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+            pso_bbv_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
             pso_bbv_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
             pso_bbv_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "RWVisibleVoxelIndirectArg", bbv_fine_update_voxel_indirect_arg_.uav.Get());
 
@@ -752,7 +752,7 @@ namespace ngl::render::app
 
             ngl::rhi::DescriptorSetDep desc_set = {};
             pso_bbv_visible_surface_element_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-                pso_bbv_visible_surface_element_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                pso_bbv_visible_surface_element_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
             pso_bbv_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
             pso_bbv_visible_surface_element_update_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
 
@@ -769,11 +769,11 @@ namespace ngl::render::app
         }
     }
     
-    void BitmaskBrickVoxel::Dispatch_Bbv_Main(rhi::GraphicsCommandListDep* p_command_list,
+    void BitmaskBrickVoxelGi::Dispatch_Bbv_Main(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv
                         )
     {
-        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Ssvg_Dispatch_Bbv_Main");
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_Bbv_Main");
 
         auto& global_res = gfx::GlobalRenderResource::Instance();
 
@@ -783,7 +783,7 @@ namespace ngl::render::app
 
             ngl::rhi::DescriptorSetDep desc_set = {};
             pso_bbv_element_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-                pso_bbv_element_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                pso_bbv_element_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
             pso_bbv_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
             pso_bbv_element_update_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
 
@@ -795,12 +795,12 @@ namespace ngl::render::app
         }
     }
     
-    void BitmaskBrickVoxel::Dispatch_Wcp(rhi::GraphicsCommandListDep* p_command_list,
+    void BitmaskBrickVoxelGi::Dispatch_Wcp(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
                         const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
                         )
     {
-        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Ssvg_Dispatch_Wcp");
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_Wcp");
 
         auto& global_res = gfx::GlobalRenderResource::Instance();
 
@@ -814,7 +814,7 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_ss_probe_preupdate_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
                 pso_ss_probe_preupdate_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-                pso_ss_probe_preupdate_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                pso_ss_probe_preupdate_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_ss_probe_preupdate_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                 pso_ss_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_.uav.Get());
 
@@ -831,7 +831,7 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 //pso_ss_probe_update_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
                 pso_ss_probe_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-                pso_ss_probe_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                pso_ss_probe_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_ss_probe_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ss_probe_tile_info_tex_.srv.Get());
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_uav.Get(), ss_probe_tex_.uav.Get());
@@ -853,7 +853,7 @@ namespace ngl::render::app
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_wcp_begin_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-                pso_wcp_begin_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                pso_wcp_begin_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
                 pso_wcp_begin_update_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_uav.Get(), wcp_probe_atlas_tex_.uav.Get());
                 pso_wcp_begin_update_->SetView(&desc_set, "RWSurfaceProbeCellList", wcp_visible_surface_list_.uav.Get());
@@ -874,7 +874,7 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_wcp_visible_surface_proc_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
                 pso_wcp_visible_surface_proc_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-                pso_wcp_visible_surface_proc_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                pso_wcp_visible_surface_proc_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_wcp_visible_surface_proc_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
                 pso_wcp_visible_surface_proc_->SetView(&desc_set, "RWSurfaceProbeCellList", wcp_visible_surface_list_.uav.Get());
 
@@ -892,7 +892,7 @@ namespace ngl::render::app
                 wcp_visible_surface_list_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_wcp_generate_visible_surface_list_indirect_arg_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                pso_wcp_generate_visible_surface_list_indirect_arg_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_wcp_generate_visible_surface_list_indirect_arg_->SetView(&desc_set, "SurfaceProbeCellList", wcp_visible_surface_list_.srv.Get());
                 pso_wcp_generate_visible_surface_list_indirect_arg_->SetView(&desc_set, "RWVisibleSurfaceListIndirectArg", wcp_visible_surface_list_indirect_arg_.uav.Get());
 
@@ -908,7 +908,7 @@ namespace ngl::render::app
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_wcp_visible_surface_element_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-                pso_wcp_visible_surface_element_update_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                pso_wcp_visible_surface_element_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_wcp_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
 
                 pso_wcp_visible_surface_element_update_->SetView(&desc_set, "SurfaceProbeCellList", wcp_visible_surface_list_.srv.Get());
@@ -931,7 +931,7 @@ namespace ngl::render::app
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_wcp_coarse_ray_sample_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-                pso_wcp_coarse_ray_sample_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                pso_wcp_coarse_ray_sample_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_wcp_coarse_ray_sample_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
 
                 pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
@@ -950,7 +950,7 @@ namespace ngl::render::app
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpFillProbeOctmapAtlasBorder");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_wcp_fill_probe_octmap_atlas_border_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+                pso_wcp_fill_probe_octmap_atlas_border_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_wcp_fill_probe_octmap_atlas_border_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_uav.Get(), wcp_probe_atlas_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_wcp_fill_probe_octmap_atlas_border_.Get());
@@ -964,24 +964,24 @@ namespace ngl::render::app
         }
     }
     
-    void BitmaskBrickVoxel::Dispatch_Debug(rhi::GraphicsCommandListDep* p_command_list,
+    void BitmaskBrickVoxelGi::Dispatch_Debug(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
                         const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
                         rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav)
     {
-        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "SsVg_Dispatch_Debug");
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_Debug");
 
         auto& global_res = gfx::GlobalRenderResource::Instance();
 
         // デバッグ描画準備.
-        if(0 <= SsVg::dbg_view_mode_)
+        if(0 <= ScreenReconstructedVoxelStructure::dbg_view_mode_)
         {
             const math::Vec2i work_tex_size = math::Vec2i(static_cast<int>(work_tex->GetWidth()), static_cast<int>(work_tex->GetHeight()));
 
             ngl::rhi::DescriptorSetDep desc_set = {};
             pso_bbv_debug_visualize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-            pso_bbv_debug_visualize_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+            pso_bbv_debug_visualize_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_srv.Get(), wcp_probe_atlas_tex_.srv.Get());
@@ -998,12 +998,12 @@ namespace ngl::render::app
         }
     }
 
-    void BitmaskBrickVoxel::DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
+    void BitmaskBrickVoxelGi::DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
         rhi::ConstantBufferPooledHandle scene_cbv, 
         rhi::RefTextureDep hw_depth_tex, rhi::RefDsvDep hw_depth_dsv,
         rhi::RefTextureDep lighting_tex, rhi::RefRtvDep lighting_rtv)
     {
-        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Ssvg_Debug");
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Debug");
 
         
         // Viewport.
@@ -1015,7 +1015,7 @@ namespace ngl::render::app
             p_command_list->SetRenderTargets(&p_rtv, 1, hw_depth_dsv.Get());
         }
 
-        if (0 <= SsVg::dbg_bbv_probe_debug_mode_)
+        if (0 <= ScreenReconstructedVoxelStructure::dbg_bbv_probe_debug_mode_)
         {
             NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvProbeDebug");
 
@@ -1024,7 +1024,7 @@ namespace ngl::render::app
 
             pso_bbv_debug_probe_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
             
-            pso_bbv_debug_probe_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+            pso_bbv_debug_probe_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
             pso_bbv_debug_probe_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
             pso_bbv_debug_probe_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
             pso_bbv_debug_probe_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
@@ -1035,7 +1035,7 @@ namespace ngl::render::app
             p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
             p_command_list->DrawInstanced(6 * bbv_grid_updater_.Get().total_count, 1, 0, 0);
         }
-        if (0 <= SsVg::dbg_wcp_probe_debug_mode_)
+        if (0 <= ScreenReconstructedVoxelStructure::dbg_wcp_probe_debug_mode_)
         {
             NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpProbeDebug");
 
@@ -1044,7 +1044,7 @@ namespace ngl::render::app
 
             pso_wcp_debug_probe_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
 
-            pso_wcp_debug_probe_->SetView(&desc_set, "cb_ssvg", &cbh_dispatch_->cbv);
+            pso_wcp_debug_probe_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
             pso_wcp_debug_probe_->SetView(&desc_set, "WcpProbeBuffer", wcp_buffer_.srv.Get());
             pso_wcp_debug_probe_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_srv.Get(), wcp_probe_atlas_tex_.srv.Get());
             pso_wcp_debug_probe_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
@@ -1062,16 +1062,16 @@ namespace ngl::render::app
     // ----------------------------------------------------------------
 
     
-    SsVg::~SsVg()
+    ScreenReconstructedVoxelStructure::~ScreenReconstructedVoxelStructure()
     {
         Finalize();
     }
 
     // 初期化
-    bool SsVg::Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u bbv_resolution, float bbv_cell_size, math::Vec3u wcp_resolution, float wcp_cell_size)
+    bool ScreenReconstructedVoxelStructure::Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u bbv_resolution, float bbv_cell_size, math::Vec3u wcp_resolution, float wcp_cell_size)
     {
-        ssvg_instance_ = new BitmaskBrickVoxel();
-        BitmaskBrickVoxel::InitArg init_arg = {};
+        bbvgi_instance_ = new BitmaskBrickVoxelGi();
+        BitmaskBrickVoxelGi::InitArg init_arg = {};
         {
             init_arg.voxel_resolution = bbv_resolution;
             init_arg.voxel_size       = bbv_cell_size;
@@ -1079,10 +1079,10 @@ namespace ngl::render::app
             init_arg.probe_resolution = wcp_resolution;
             init_arg.probe_cell_size  = wcp_cell_size;
         }
-        if(!ssvg_instance_->Initialize(p_device, init_arg))
+        if(!bbvgi_instance_->Initialize(p_device, init_arg))
         {
-            delete ssvg_instance_;
-            ssvg_instance_ = nullptr;
+            delete bbvgi_instance_;
+            bbvgi_instance_ = nullptr;
             return false;
         }
 
@@ -1090,74 +1090,74 @@ namespace ngl::render::app
         return true;
     }
     // 破棄
-    void SsVg::Finalize()
+    void ScreenReconstructedVoxelStructure::Finalize()
     {
-        if(ssvg_instance_)
+        if(bbvgi_instance_)
         {
-            delete ssvg_instance_;
-            ssvg_instance_ = nullptr;
+            delete bbvgi_instance_;
+            bbvgi_instance_ = nullptr;
         }
         is_initialized_ = false;
     }
 
-    void SsVg::DispatchBegin(rhi::GraphicsCommandListDep* p_command_list,
+    void ScreenReconstructedVoxelStructure::DispatchBegin(rhi::GraphicsCommandListDep* p_command_list,
         rhi::ConstantBufferPooledHandle scene_cbv, 
         const ngl::render::task::RenderPassViewInfo& main_view_info, const math::Vec2i& render_resolution)
     {
-        if(ssvg_instance_)
+        if(bbvgi_instance_)
         {
-            ssvg_instance_->Dispatch_Begin(p_command_list, scene_cbv, main_view_info, render_resolution);
+            bbvgi_instance_->Dispatch_Begin(p_command_list, scene_cbv, main_view_info, render_resolution);
         }
     }
-    void SsVg::DispatchViewBbvOccupancyUpdate(rhi::GraphicsCommandListDep* p_command_list,
+    void ScreenReconstructedVoxelStructure::DispatchViewBbvOccupancyUpdate(rhi::GraphicsCommandListDep* p_command_list,
         rhi::ConstantBufferPooledHandle scene_cbv, 
         const ngl::render::task::RenderPassViewInfo& main_view_info, 
         const InjectionSourceDepthBufferInfo& depth_buffer_info)
     {
-        if(ssvg_instance_)
+        if(bbvgi_instance_)
         {
-            ssvg_instance_->Dispatch_Bbv_OccupancyUpdate_View(p_command_list, scene_cbv, main_view_info, depth_buffer_info);
+            bbvgi_instance_->Dispatch_Bbv_OccupancyUpdate_View(p_command_list, scene_cbv, main_view_info, depth_buffer_info);
         }
     }
-    void SsVg::DispatchUpdate(rhi::GraphicsCommandListDep* p_command_list,
+    void ScreenReconstructedVoxelStructure::DispatchUpdate(rhi::GraphicsCommandListDep* p_command_list,
         rhi::ConstantBufferPooledHandle scene_cbv, 
         const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
         rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav)
     {
-        if(ssvg_instance_)
+        if(bbvgi_instance_)
         {
-            ssvg_instance_->Dispatch_Bbv_Main(p_command_list, scene_cbv);
-            ssvg_instance_->Dispatch_Wcp(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
-            ssvg_instance_->Dispatch_Debug(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv, work_tex, work_uav);
+            bbvgi_instance_->Dispatch_Bbv_Main(p_command_list, scene_cbv);
+            bbvgi_instance_->Dispatch_Wcp(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
+            bbvgi_instance_->Dispatch_Debug(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv, work_tex, work_uav);
         }
     }
 
-    void SsVg::DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
+    void ScreenReconstructedVoxelStructure::DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
         rhi::ConstantBufferPooledHandle scene_cbv, 
         rhi::RefTextureDep hw_depth_tex, rhi::RefDsvDep hw_depth_dsv,
         rhi::RefTextureDep lighting_tex, rhi::RefRtvDep lighting_rtv)
     {
-        if(ssvg_instance_)
+        if(bbvgi_instance_)
         {
-            ssvg_instance_->DebugDraw(p_command_list, scene_cbv, hw_depth_tex, hw_depth_dsv, lighting_tex, lighting_rtv);
+            bbvgi_instance_->DebugDraw(p_command_list, scene_cbv, hw_depth_tex, hw_depth_dsv, lighting_tex, lighting_rtv);
         }
     }
 
-    void SsVg::SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir)
+    void ScreenReconstructedVoxelStructure::SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir)
     {
-        if(ssvg_instance_)
+        if(bbvgi_instance_)
         {
-            ssvg_instance_->SetImportantPointInfo(pos, dir);
+            bbvgi_instance_->SetImportantPointInfo(pos, dir);
         }
     }
 
-    void SsVg::SetDescriptor(rhi::PipelineStateBaseDep* p_pso, rhi::DescriptorSetDep* p_desc_set) const
+    void ScreenReconstructedVoxelStructure::SetDescriptor(rhi::PipelineStateBaseDep* p_pso, rhi::DescriptorSetDep* p_desc_set) const
     {
-        assert(ssvg_instance_);
-        p_pso->SetView(p_desc_set, k_shader_bind_name_wcp_atlas_srv.Get(), ssvg_instance_->GetWcpProbeAtlasTex().Get());
-        p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_srv.Get(), ssvg_instance_->GetSsProbeTex().Get());
-        p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ssvg_instance_->GetSsProbeTileInfoTex().Get());
-        p_pso->SetView(p_desc_set, "cb_ssvg", &ssvg_instance_->GetDispatchCbh()->cbv);
+        assert(bbvgi_instance_);
+        p_pso->SetView(p_desc_set, k_shader_bind_name_wcp_atlas_srv.Get(), bbvgi_instance_->GetWcpProbeAtlasTex().Get());
+        p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_srv.Get(), bbvgi_instance_->GetSsProbeTex().Get());
+        p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), bbvgi_instance_->GetSsProbeTileInfoTex().Get());
+        p_pso->SetView(p_desc_set, "cb_srvs", &bbvgi_instance_->GetDispatchCbh()->cbv);
     }
 
 }  // namespace ngl::render::app

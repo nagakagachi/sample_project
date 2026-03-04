@@ -133,7 +133,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     };
 
 
-    struct SsvgToroidalGridParam
+    struct SrvsToroidalGridParam
     {
         int3 grid_resolution;
         float cell_size;
@@ -155,10 +155,10 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     };
 
     // Dispatchパラメータ.
-    struct SsvgParam
+    struct SrvsParam
     {
         // bitmask brick voxel関連パラメータ.
-        SsvgToroidalGridParam bbv;
+        SrvsToroidalGridParam bbv;
         int3 bbv_indirect_cs_thread_group_size;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
         int bbv_visible_voxel_buffer_size;// 更新プローブ用のワークサイズ.
         int bbv_hollow_voxel_buffer_size;// 削除用中空Voxel情報のワークサイズ.
@@ -167,7 +167,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         float ss_probe_ray_start_offset_scale;// SSプローブ更新時のレイ開始オフセットスケール. 単位はBbvセル幅.
         float ss_probe_ray_normal_offset_scale;// SSプローブ更新時のレイ始点法線オフセットスケール. 単位はBbvセル幅.
 
-        SsvgToroidalGridParam wcp;
+        SrvsToroidalGridParam wcp;
         int3 wcp_indirect_cs_thread_group_size;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
         int wcp_visible_voxel_buffer_size;// 更新プローブ用のワークサイズ.
 

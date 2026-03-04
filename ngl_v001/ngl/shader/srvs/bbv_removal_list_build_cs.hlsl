@@ -48,7 +48,7 @@ void main_cs(
         const uint skip_tile_size = THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH;// SxS個のタイルグループ毎に1Fに1タイルだけ処理するシンプル軽量化.
         const uint tile_skip_id_x = gid.x%skip_tile_size;
         const uint tile_skip_id_y = gid.y%skip_tile_size;
-        const uint skip_frame_id = cb_ssvg.frame_count % (skip_tile_size*skip_tile_size);
+        const uint skip_frame_id = cb_srvs.frame_count % (skip_tile_size*skip_tile_size);
         const uint skip_frame_id_y = skip_frame_id / (skip_tile_size);
         const uint skip_frame_id_x = skip_frame_id % (skip_tile_size);
         if((tile_skip_id_x != skip_frame_id_x) || (tile_skip_id_y != skip_frame_id_y))
@@ -76,7 +76,7 @@ void main_cs(
     const float3 ray_dir_ws = normalize(to_pixel_vec_ws);
     // 深度バッファの手前までレイトレース.
     // Note:適当な固定値ではなく, DDA相当の計算で1セル分バックトレースしたい
-    const float trace_distance = dot(ray_dir_ws, to_pixel_vec_ws) - cb_ssvg.bbv.cell_size*k_bbv_per_voxel_resolution_inv*0.9;
+    const float trace_distance = dot(ray_dir_ws, to_pixel_vec_ws) - cb_srvs.bbv.cell_size*k_bbv_per_voxel_resolution_inv*0.9;
 
 
     int hit_voxel_index = -1;
@@ -85,20 +85,20 @@ void main_cs(
     float4 curr_ray_t_ws = trace_bbv(
         hit_voxel_index, debug_ray_info,
         view_ray_origin, ray_dir_ws, trace_distance, 
-        cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
-        cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
+        cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
+        cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
 
     if(0.0 <= curr_ray_t_ws.x)
     {
         const float3 hit_pos_ws = view_ray_origin + ray_dir_ws * (curr_ray_t_ws.x + 0.001);// ヒット位置は表面なので除去したいVoxelに侵入するためオフセット.
 
         // PixelWorldPosition->VoxelCoord
-        const float3 voxel_coordf = (hit_pos_ws - cb_ssvg.bbv.grid_min_pos) * cb_ssvg.bbv.cell_size_inv;
+        const float3 voxel_coordf = (hit_pos_ws - cb_srvs.bbv.grid_min_pos) * cb_srvs.bbv.cell_size_inv;
         const int3 voxel_coord = floor(voxel_coordf);
-        if(all(voxel_coord >= 0) && all(voxel_coord < cb_ssvg.bbv.grid_resolution))
+        if(all(voxel_coord >= 0) && all(voxel_coord < cb_srvs.bbv.grid_resolution))
         {
-            int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
-            uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution);
+            int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_srvs.bbv.grid_toroidal_offset, cb_srvs.bbv.grid_resolution);
+            uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_srvs.bbv.grid_resolution);
 
             {
                 // 占有ビットマスク.
@@ -183,7 +183,7 @@ void main_cs(
     {
         int current_visible_count;
         InterlockedAdd(RWRemoveVoxelList[0], 1, current_visible_count);
-        if(cb_ssvg.bbv_hollow_voxel_buffer_size > current_visible_count)
+        if(cb_srvs.bbv_hollow_voxel_buffer_size > current_visible_count)
         {
             // 登録位置はindex0のカウンタを除いた位置(+1).
             const int target_index = (current_visible_count + 1) * k_component_count_RemoveVoxelList;

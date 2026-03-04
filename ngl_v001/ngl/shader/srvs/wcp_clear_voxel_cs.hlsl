@@ -19,13 +19,13 @@ void main_cs(
 )
 {
     // 全Voxelをクリア.
-    uint probe_count = cb_ssvg.wcp.grid_resolution.x * cb_ssvg.wcp.grid_resolution.y * cb_ssvg.wcp.grid_resolution.z;
+    uint probe_count = cb_srvs.wcp.grid_resolution.x * cb_srvs.wcp.grid_resolution.y * cb_srvs.wcp.grid_resolution.z;
     if(dtid.x < probe_count)
     {
         RWWcpProbeBuffer[dtid.x] = (WcpProbeData)0;
 
         {
-            uint2 probe_2d_map_pos = uint2(dtid.x % cb_ssvg.wcp.flatten_2d_width, dtid.x / cb_ssvg.wcp.flatten_2d_width);
+            uint2 probe_2d_map_pos = uint2(dtid.x % cb_srvs.wcp.flatten_2d_width, dtid.x / cb_srvs.wcp.flatten_2d_width);
             for(int oct_j = 0; oct_j < k_probe_octmap_width_with_border; ++oct_j)
             {
                 for(int oct_i = 0; oct_i < k_probe_octmap_width_with_border; ++oct_i)

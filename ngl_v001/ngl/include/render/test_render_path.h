@@ -18,7 +18,7 @@ namespace ngl
     {
         namespace app
         {
-            class SsVg;
+            class ScreenReconstructedVoxelStructure;
         }
     }  // namespace render
 }  // namespace ngl
@@ -37,14 +37,14 @@ namespace ngl::test
     };
     struct RenderFeatureGi
     {
-        render::app::SsVg* p_ssvg = {};
+        render::app::ScreenReconstructedVoxelStructure* p_srvs = {};
         bool enable_gi_lighting   = false;
         float probe_sample_offset_view{0.0f};
         float probe_sample_offset_surface_normal{0.0f};
         float probe_sample_offset_bent_normal{0.0f};
 
-        bool enable_ssvg_injection_pass{true};
-        bool enable_ssvg_rejection_pass{true};
+        bool enable_srvs_injection_pass{true};
+        bool enable_srvs_rejection_pass{true};
     };
     struct RenderFeatureConfig
     {
@@ -68,7 +68,7 @@ namespace ngl::test
 
             GtaoDemo,
             BentNormalTest,
-            SsvgDebugTexture,
+            SrvsDebugTexture,
 
             _MAX
         };
@@ -117,7 +117,7 @@ namespace ngl::test
         bool debugview_raytrace_result           = false;
         bool debugview_gbuffer                   = false;
         bool debugview_dshadow                   = false;
-        bool debugview_ssvg_sky_visibility       = false;
+        bool debugview_srvs_sky_visibility       = false;
 
         int debugview_general_debug_buffer  = -1;  // EDebugBufferMode
         int debugview_general_debug_channel = 0;

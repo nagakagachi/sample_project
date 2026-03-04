@@ -69,8 +69,8 @@ Texture2D<float4>      ScreenSpaceProbeTileInfoTex;
 RWTexture2D<float4>    RWScreenSpaceProbeTileInfoTex;
 
 
-// ssvgのメインパラメータ.
-ConstantBuffer<SsvgParam> cb_ssvg;
+// srvsのメインパラメータ.
+ConstantBuffer<SrvsParam> cb_srvs;
 
 
 
@@ -159,7 +159,7 @@ float2 SspEncodeDirByNormal(float3 dir_ws, float3 base_normal_ws)
 
 // リニアなVoxel座標をループするToroidalマッピングに変換する.
 //  ToroidalMapping座標をリニア座標に戻す変換は
-//      voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution - cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution)
+//      voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_srvs.bbv.grid_resolution - cb_srvs.bbv.grid_toroidal_offset, cb_srvs.bbv.grid_resolution)
 //  という使い方で可能.
 int3 voxel_coord_toroidal_mapping(int3 voxel_coord, int3 toroidal_offset, int3 resolution)
 {

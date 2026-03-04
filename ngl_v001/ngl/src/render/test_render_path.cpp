@@ -328,30 +328,30 @@ namespace ngl::test
 					
                 
                     
-                    // Ssvg Begin Pass.
-                    auto* task_ssvg_begin = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskSsvgBegin>();
+                    // Srvs Begin Pass.
+                    auto* task_srvs_begin = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskSrvsBegin>();
                     {
-                        ngl::render::app::RenderTaskSsvgBegin::SetupDesc setup_desc{};
+                        ngl::render::app::RenderTaskSrvsBegin::SetupDesc setup_desc{};
                         {
 							setup_desc.w = screen_w;
 							setup_desc.h = screen_h;
                             
 							setup_desc.scene_cbv = scene_cb_h;
 
-							setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
+							setup_desc.p_srvs = render_frame_desc.feature_config.gi.p_srvs;
                         }
-                        task_ssvg_begin->Setup(rtg_builder, p_device, view_info, setup_desc);
+                        task_srvs_begin->Setup(rtg_builder, p_device, view_info, setup_desc);
                     }
-                    // Ssvg View Voxel Injection Pass.
-                    auto* task_ssvg_view_voxel_injection = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskSsvgViewVoxelInjection>();
+                    // Srvs View Voxel Injection Pass.
+                    auto* task_srvs_view_voxel_injection = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskSrvsViewVoxelInjection>();
                     {
-                        ngl::render::app::RenderTaskSsvgViewVoxelInjection::SetupDesc setup_desc{};
+                        ngl::render::app::RenderTaskSrvsViewVoxelInjection::SetupDesc setup_desc{};
                         {
 							setup_desc.w = screen_w;
 							setup_desc.h = screen_h;
                             
 							setup_desc.scene_cbv = scene_cb_h;
-							setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
+							setup_desc.p_srvs = render_frame_desc.feature_config.gi.p_srvs;
 
                             // main view DepthBuffer登録.
                             {
@@ -361,8 +361,8 @@ namespace ngl::test
 								setup_desc.depth_buffer_info.primary.atlas_resolution = math::Vec2i(screen_w, screen_h);
 								setup_desc.depth_buffer_info.primary.h_depth = task_depth->h_depth_;
 
-								setup_desc.depth_buffer_info.primary.is_enable_injection_pass = (render_frame_desc.feature_config.gi.enable_ssvg_injection_pass) && true;// Voxel充填利用するか.
-								setup_desc.depth_buffer_info.primary.is_enable_removal_pass = (render_frame_desc.feature_config.gi.enable_ssvg_rejection_pass) && true;// Voxel除去に利用するか.
+								setup_desc.depth_buffer_info.primary.is_enable_injection_pass = (render_frame_desc.feature_config.gi.enable_srvs_injection_pass) && true;// Voxel充填利用するか.
+								setup_desc.depth_buffer_info.primary.is_enable_removal_pass = (render_frame_desc.feature_config.gi.enable_srvs_rejection_pass) && true;// Voxel除去に利用するか.
                             }
 
                             // ShadowMapのDepthBuffer登録. 高速化のためにフレーム毎にカスケードスキップするのもありかもしれない.
@@ -376,31 +376,31 @@ namespace ngl::test
 									shadow_depth_info.atlas_resolution = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_size_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_size_y[cascade_idx]);
 									shadow_depth_info.h_depth = task_d_shadow->h_shadow_depth_atlas_;
                                     
-									shadow_depth_info.is_enable_injection_pass = (render_frame_desc.feature_config.gi.enable_ssvg_injection_pass) && true;// Voxel充填に利用するか.
-									shadow_depth_info.is_enable_removal_pass = (render_frame_desc.feature_config.gi.enable_ssvg_rejection_pass) && true;// Voxel除去に利用するか.
+									shadow_depth_info.is_enable_injection_pass = (render_frame_desc.feature_config.gi.enable_srvs_injection_pass) && true;// Voxel充填に利用するか.
+									shadow_depth_info.is_enable_removal_pass = (render_frame_desc.feature_config.gi.enable_srvs_rejection_pass) && true;// Voxel除去に利用するか.
                                 }
 
 									setup_desc.depth_buffer_info.sub_array.push_back(shadow_depth_info);
                             }   
                         }
-                        task_ssvg_view_voxel_injection->Setup(rtg_builder, p_device, view_info, setup_desc);
+                        task_srvs_view_voxel_injection->Setup(rtg_builder, p_device, view_info, setup_desc);
                     }
-                    // Ssvg Update.
-                    auto* task_ssvg_update = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskSsvgUpdate>();
+                    // Srvs Update.
+                    auto* task_srvs_update = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskSrvsUpdate>();
                     {
-                        ngl::render::app::RenderTaskSsvgUpdate::SetupDesc setup_desc{};
+                        ngl::render::app::RenderTaskSrvsUpdate::SetupDesc setup_desc{};
                         {
 							setup_desc.w = screen_w;
 							setup_desc.h = screen_h;
                             
 							setup_desc.scene_cbv = scene_cb_h;
 
-							setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
+							setup_desc.p_srvs = render_frame_desc.feature_config.gi.p_srvs;
                             
                             // main view.
 							setup_desc.h_depth = task_depth->h_depth_;
                         }
-                        task_ssvg_update->Setup(rtg_builder, p_device, view_info, setup_desc);
+                        task_srvs_update->Setup(rtg_builder, p_device, view_info, setup_desc);
                     }
 
 
@@ -423,12 +423,12 @@ namespace ngl::test
                         setup_desc.d_lit_intensity = render_frame_desc.feature_config.lighting.directional_light_intensity;
                         setup_desc.sky_lit_intensity = render_frame_desc.feature_config.lighting.sky_light_intensity;
 
-                        setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
+                        setup_desc.p_srvs = render_frame_desc.feature_config.gi.p_srvs;
                         setup_desc.is_enable_gi_lighting = render_frame_desc.feature_config.gi.enable_gi_lighting;
                         setup_desc.probe_sample_offset_view = render_frame_desc.feature_config.gi.probe_sample_offset_view;
                         setup_desc.probe_sample_offset_surface_normal = render_frame_desc.feature_config.gi.probe_sample_offset_surface_normal;
                         setup_desc.probe_sample_offset_bent_normal = render_frame_desc.feature_config.gi.probe_sample_offset_bent_normal;
-                        setup_desc.dbg_view_ssvg_sky_visibility = render_frame_desc.debugview_ssvg_sky_visibility;
+                        setup_desc.dbg_view_srvs_sky_visibility = render_frame_desc.debugview_srvs_sky_visibility;
                         
 						setup_desc.enable_feedback_blur_test = render_frame_desc.debugview_enable_feedback_blur_test;
 					}
@@ -455,7 +455,7 @@ namespace ngl::test
 						
 						setup_desc.scene_cbv = scene_cb_h;
 
-                        setup_desc.p_ssvg = render_frame_desc.feature_config.gi.p_ssvg;
+                        setup_desc.p_srvs = render_frame_desc.feature_config.gi.p_srvs;
 					}
 					task_after_light->Setup(rtg_builder, p_device, view_info,
 					task_light->h_light_, task_depth->h_depth_,
@@ -539,8 +539,8 @@ namespace ngl::test
                             case EDebugBufferMode::BentNormalTest:
 								general_debug_tex = task_ss_depth_technique->h_bent_normal_;
                                 break;
-                            case EDebugBufferMode::SsvgDebugTexture:
-                                general_debug_tex = task_ssvg_update->h_work_;
+                            case EDebugBufferMode::SrvsDebugTexture:
+                                general_debug_tex = task_srvs_update->h_work_;
                                 break;
                             default:
                                 break;

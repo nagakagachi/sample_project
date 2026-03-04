@@ -52,7 +52,7 @@ void main_cs(
         const uint skip_tile_size = THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH;// SxS個のタイルグループ毎に1Fに1タイルだけ処理するシンプル軽量化.
         const uint tile_skip_id_x = gid.x%skip_tile_size;
         const uint tile_skip_id_y = gid.y%skip_tile_size;
-        const uint skip_frame_id = cb_ssvg.frame_count % (skip_tile_size*skip_tile_size);
+        const uint skip_frame_id = cb_srvs.frame_count % (skip_tile_size*skip_tile_size);
         const uint skip_frame_id_y = skip_frame_id / (skip_tile_size);
         const uint skip_frame_id_x = skip_frame_id % (skip_tile_size);
         if((tile_skip_id_x != skip_frame_id_x) || (tile_skip_id_y != skip_frame_id_y))
@@ -82,16 +82,16 @@ void main_cs(
         float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4(CalcViewSpacePosition(screen_uv, view_z, cb_injection_src_view_info.cb_proj_mtx), 1.0));
 
         // 実際の表面の奥側にBbvを充填するために, 視線方向にbbvの1セル分オフセット
-        //pixel_pos_ws += normalize(pixel_pos_ws - camera_pos) * cb_ssvg.bbv.cell_size * k_bbv_per_voxel_resolution_inv * 1.0;
+        //pixel_pos_ws += normalize(pixel_pos_ws - camera_pos) * cb_srvs.bbv.cell_size * k_bbv_per_voxel_resolution_inv * 1.0;
 
 
         // PixelWorldPosition->VoxelCoord
-        const float3 voxel_coordf = (pixel_pos_ws - cb_ssvg.bbv.grid_min_pos) * cb_ssvg.bbv.cell_size_inv;
+        const float3 voxel_coordf = (pixel_pos_ws - cb_srvs.bbv.grid_min_pos) * cb_srvs.bbv.cell_size_inv;
         const int3 voxel_coord = floor(voxel_coordf);
-        if(all(voxel_coord >= 0) && all(voxel_coord < cb_ssvg.bbv.grid_resolution))
+        if(all(voxel_coord >= 0) && all(voxel_coord < cb_srvs.bbv.grid_resolution))
         {
-            const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
-            const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution);
+            const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_srvs.bbv.grid_toroidal_offset, cb_srvs.bbv.grid_resolution);
+            const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_srvs.bbv.grid_resolution);
             {
                 // 占有ビットマスク.
                 const float3 voxel_coord_frac = frac(voxel_coordf);
@@ -154,7 +154,7 @@ void main_cs(
         // ここから先はBrick単位で行いたい処理のAtomic操作を最小化するための分岐.
         if(0 != is_unique_brick_flag)
         {
-            const uint visible_check_frame_count = mask_bbv_voxel_unique_data_last_visible_frame(cb_ssvg.frame_count);                
+            const uint visible_check_frame_count = mask_bbv_voxel_unique_data_last_visible_frame(cb_srvs.frame_count);                
             // Brickの固有データ部のフレームインデックスを最新でAtomic交換する. ここで以前の値が最新の値と異なるのであればこのスレッドがこのフレームでこのBrickに対する唯一の処理を実行する権利を得る.
             uint old_last_visible_frame;
             InterlockedExchange(RWBitmaskBrickVoxel[bbv_voxel_brick_work_addr(voxel_index)], visible_check_frame_count, old_last_visible_frame);
@@ -163,7 +163,7 @@ void main_cs(
             {
                 int current_visible_count;
                 InterlockedAdd(RWVisibleVoxelList[0], 1, current_visible_count);
-                if(cb_ssvg.bbv_visible_voxel_buffer_size > current_visible_count)
+                if(cb_srvs.bbv_visible_voxel_buffer_size > current_visible_count)
                 {
                     // 追加可能であれば登録. 登録位置はindex0のカウンタを除いた位置.
                     RWVisibleVoxelList[current_visible_count + 1] = voxel_index;

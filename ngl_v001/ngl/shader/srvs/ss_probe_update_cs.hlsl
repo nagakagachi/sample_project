@@ -57,13 +57,13 @@ void main_cs(
 )
 {
     const int2 frame_skip_probe_offset = 
-    int2(cb_ssvg.frame_count % cb_ssvg.ss_probe_temporal_update_group_size, (cb_ssvg.frame_count / cb_ssvg.ss_probe_temporal_update_group_size) % cb_ssvg.ss_probe_temporal_update_group_size);
+    int2(cb_srvs.frame_count % cb_srvs.ss_probe_temporal_update_group_size, (cb_srvs.frame_count / cb_srvs.ss_probe_temporal_update_group_size) % cb_srvs.ss_probe_temporal_update_group_size);
 
     const int2 probe_atlas_local_pos = gtid.xy;// タイル内でのローカル位置は時間分散でスキップされないのでそのまま.
-    const int2 probe_id = gid.xy * cb_ssvg.ss_probe_temporal_update_group_size + frame_skip_probe_offset;// プローブフレームスキップ考慮.
+    const int2 probe_id = gid.xy * cb_srvs.ss_probe_temporal_update_group_size + frame_skip_probe_offset;// プローブフレームスキップ考慮.
     const int2 global_pos = probe_id * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos;// グローバルテクセル位置計算.
     
-    //const uint frame_rand = hash_uint32_iq(probe_id + cb_ssvg.frame_count);
+    //const uint frame_rand = hash_uint32_iq(probe_id + cb_srvs.frame_count);
 
 
     // Tile内で今回処理するテクセルを決定して最小限のテクスチャ読み取り.
@@ -142,11 +142,11 @@ void main_cs(
     BuildOrthonormalBasis(base_normal_ws, base_tangent_ws, base_bitangent_ws);
 
     // レイ方向オフセット. sqrt(3.0).
-    const float ray_start_offset_scale = cb_ssvg.ss_probe_ray_start_offset_scale;
-    const float ray_origin_start_offset = cb_ssvg.bbv.cell_size * k_bbv_per_voxel_resolution_inv * ray_start_offset_scale;
+    const float ray_start_offset_scale = cb_srvs.ss_probe_ray_start_offset_scale;
+    const float ray_origin_start_offset = cb_srvs.bbv.cell_size * k_bbv_per_voxel_resolution_inv * ray_start_offset_scale;
     // 近似法線方向オフセット.
-    const float ray_origin_normal_offset_scale = cb_ssvg.ss_probe_ray_normal_offset_scale;
-    const float ray_origin_normal_offset = cb_ssvg.bbv.cell_size * k_bbv_per_voxel_resolution_inv * ray_origin_normal_offset_scale;
+    const float ray_origin_normal_offset_scale = cb_srvs.ss_probe_ray_normal_offset_scale;
+    const float ray_origin_normal_offset = cb_srvs.bbv.cell_size * k_bbv_per_voxel_resolution_inv * ray_origin_normal_offset_scale;
     const float3 ray_origin_base = ss_probe_pos_ws + ss_probe_approx_normal_ws * ray_origin_normal_offset;
 
     // レイ生成 + トレース結果をSharedに格納.
@@ -160,21 +160,21 @@ void main_cs(
         #if 1
         {
             // Cos分布半球方向ランダム.
-            const float3 unit_v3 = random_unit_vector3(float2(asfloat(global_pos.x + ray_index^cb_ssvg.frame_count), asfloat(global_pos.y + ray_index^cb_ssvg.frame_count)));
+            const float3 unit_v3 = random_unit_vector3(float2(asfloat(global_pos.x + ray_index^cb_srvs.frame_count), asfloat(global_pos.y + ray_index^cb_srvs.frame_count)));
             const float3 local_dir = normalize(unit_v3 + float3(0.0, 0.0, 1.0));
             sample_ray_dir = local_dir.x * base_tangent_ws + local_dir.y * base_bitangent_ws + local_dir.z * base_normal_ws;
         }
         #elif 1
         {
             // 半球方向一様ランダム.
-            float3 local_dir = random_unit_vector3(float2(asfloat(global_pos.x + ray_index^cb_ssvg.frame_count), asfloat(global_pos.y + ray_index^cb_ssvg.frame_count)));
+            float3 local_dir = random_unit_vector3(float2(asfloat(global_pos.x + ray_index^cb_srvs.frame_count), asfloat(global_pos.y + ray_index^cb_srvs.frame_count)));
             local_dir.z = abs(local_dir.z);
             sample_ray_dir = local_dir.x * base_tangent_ws + local_dir.y * base_bitangent_ws + local_dir.z * base_normal_ws;
         }
         #else
         {
             // OctMapセルに対応する方向にレイ発行. 半球方向と逆の場合は反転マッピング.
-            const float2 noise_float2 = noise_float3_to_float2(float3(global_pos.xy, float(cb_ssvg.frame_count + ray_index)));
+            const float2 noise_float2 = noise_float3_to_float2(float3(global_pos.xy, float(cb_srvs.frame_count + ray_index)));
             const float2 octmap_uv = (float2(probe_atlas_local_pos) + noise_float2) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
             sample_ray_dir = OctDecode(octmap_uv);
             // 常に法線方向に制限する.
@@ -199,8 +199,8 @@ void main_cs(
         trace_bbv(
             hit_voxel_index, debug_ray_info,
             sample_ray_origin, sample_ray_dir, trace_distance, 
-            cb_ssvg.bbv.grid_min_pos, cb_ssvg.bbv.cell_size, cb_ssvg.bbv.grid_resolution,
-            cb_ssvg.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
+            cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
+            cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
 
         const float sky_visibility = (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0;// 負ならヒットなしで空が見えている.
 

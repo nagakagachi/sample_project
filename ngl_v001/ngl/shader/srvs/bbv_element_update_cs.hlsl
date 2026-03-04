@@ -26,7 +26,7 @@ void main_cs(
 {
 	const float3 camera_pos = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
-    const uint elem_count = cb_ssvg.bbv.grid_resolution.x * cb_ssvg.bbv.grid_resolution.y * cb_ssvg.bbv.grid_resolution.z;
+    const uint elem_count = cb_srvs.bbv.grid_resolution.x * cb_srvs.bbv.grid_resolution.y * cb_srvs.bbv.grid_resolution.z;
 
     /*
     // 動作検証のためこのシェーダはスキップなしの全体更新.
@@ -37,14 +37,14 @@ void main_cs(
     // 更新対象インデックスをフレーム毎のブロックに分けて採用する方式. こちらのほうがキャッシュ効率は有利なはず.
     const uint per_frame_loop_cnt = BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT+1;
     const uint per_frame_update_elem_count = (elem_count + (per_frame_loop_cnt - 1)) / per_frame_loop_cnt;
-    const uint update_element_id = (((cb_ssvg.frame_count%per_frame_loop_cnt) * per_frame_update_elem_count)) + dtid.x;
+    const uint update_element_id = (((cb_srvs.frame_count%per_frame_loop_cnt) * per_frame_update_elem_count)) + dtid.x;
     if(elem_count <= update_element_id)
         return;
 
 
-    const int3 voxel_coord = index_to_voxel_coord(update_element_id, cb_ssvg.bbv.grid_resolution);
-    const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
-    const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution);
+    const int3 voxel_coord = index_to_voxel_coord(update_element_id, cb_srvs.bbv.grid_resolution);
+    const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cb_srvs.bbv.grid_toroidal_offset, cb_srvs.bbv.grid_resolution);
+    const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_srvs.bbv.grid_resolution);
 
     const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
     const uint bbv_occupied_flag = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_index)] & k_bbv_per_voxel_bitmask_u32_component_mask;
@@ -59,7 +59,7 @@ void main_cs(
         // Voxel内のProbe位置の更新.
         // Bbvセルを参照して空のセルから選択する. Bitmaskが変化したVoxelだけ更新するようにしたいところ.
         float candidate_probe_pos_dist_sq = 1e20;
-        const float3 camera_pos_in_bit_cell_space = ((camera_pos - cb_ssvg.bbv.grid_min_pos) * cb_ssvg.bbv.cell_size_inv - float3(voxel_coord)) * float(k_bbv_per_voxel_resolution);
+        const float3 camera_pos_in_bit_cell_space = ((camera_pos - cb_srvs.bbv.grid_min_pos) * cb_srvs.bbv.cell_size_inv - float3(voxel_coord)) * float(k_bbv_per_voxel_resolution);
         for(int i = 0; i < bbv_voxel_bitmask_uint_count(); ++i)
         {
             // 0のbitcellを探す.
@@ -111,10 +111,10 @@ void main_cs(
             {
                 const int3 prev_nearest_voxel_coord = voxel_optional_data.to_surface_vector + voxel_coord;
 
-                if(all(prev_nearest_voxel_coord >= 0) && all(prev_nearest_voxel_coord < cb_ssvg.bbv.grid_resolution))
+                if(all(prev_nearest_voxel_coord >= 0) && all(prev_nearest_voxel_coord < cb_srvs.bbv.grid_resolution))
                 {
-                    const int3 surface_voxel_coord_toroidal = voxel_coord_toroidal_mapping(prev_nearest_voxel_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
-                    const uint surface_voxel_bbv_addr = bbv_voxel_bitmask_data_addr(voxel_coord_to_index(surface_voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution));
+                    const int3 surface_voxel_coord_toroidal = voxel_coord_toroidal_mapping(prev_nearest_voxel_coord, cb_srvs.bbv.grid_toroidal_offset, cb_srvs.bbv.grid_resolution);
+                    const uint surface_voxel_bbv_addr = bbv_voxel_bitmask_data_addr(voxel_coord_to_index(surface_voxel_coord_toroidal, cb_srvs.bbv.grid_resolution));
 
                     const uint surface_occupied_flag = BitmaskBrickVoxel[surface_voxel_bbv_addr + 0] & k_bbv_per_voxel_bitmask_u32_component_mask;
                     if(0 != surface_occupied_flag)
@@ -135,10 +135,10 @@ void main_cs(
         for(int i = 0; i < 6; ++i)
         {
             const int3 neighbor_voxel_coord = voxel_coord + neighbor_offset[i];
-            if(all(neighbor_voxel_coord >= 0) && all(neighbor_voxel_coord < cb_ssvg.bbv.grid_resolution))
+            if(all(neighbor_voxel_coord >= 0) && all(neighbor_voxel_coord < cb_srvs.bbv.grid_resolution))
             {
-                const int3 neighbor_voxel_coord_toroidal = voxel_coord_toroidal_mapping(neighbor_voxel_coord, cb_ssvg.bbv.grid_toroidal_offset, cb_ssvg.bbv.grid_resolution);
-                const uint neighbor_voxel_index = voxel_coord_to_index(neighbor_voxel_coord_toroidal, cb_ssvg.bbv.grid_resolution);
+                const int3 neighbor_voxel_coord_toroidal = voxel_coord_toroidal_mapping(neighbor_voxel_coord, cb_srvs.bbv.grid_toroidal_offset, cb_srvs.bbv.grid_resolution);
+                const uint neighbor_voxel_index = voxel_coord_to_index(neighbor_voxel_coord_toroidal, cb_srvs.bbv.grid_resolution);
                 
                 const BbvOptionalData neighbor_voxel_optional_data = RWBitmaskBrickVoxelOptionData[neighbor_voxel_index];
 
@@ -155,7 +155,7 @@ void main_cs(
                     if(!all(0 == neighbor_voxel_optional_data.to_surface_vector))
                     {
                         const int3 neighbor_surface_voxel_coord = neighbor_voxel_optional_data.to_surface_vector + neighbor_voxel_coord;
-                        if(all(neighbor_surface_voxel_coord >= 0) && all(neighbor_surface_voxel_coord < cb_ssvg.bbv.grid_resolution))
+                        if(all(neighbor_surface_voxel_coord >= 0) && all(neighbor_surface_voxel_coord < cb_srvs.bbv.grid_resolution))
                         {
                             if(length_int_vector3(nearest_surface_dist) > length_int_vector3(neighbor_surface_voxel_coord - voxel_coord))
                             {
