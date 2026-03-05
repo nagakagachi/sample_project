@@ -160,7 +160,9 @@ void main_cs(
         #if 1
         {
             // Cos分布半球方向ランダム.
-            const float3 unit_v3 = random_unit_vector3(float2(asfloat(global_pos.x + ray_index^cb_srvs.frame_count), asfloat(global_pos.y + ray_index^cb_srvs.frame_count)));
+            //const float3 unit_v3 = random_unit_vector3(float2(asfloat(global_pos.x + ray_index^cb_srvs.frame_count), asfloat(global_pos.y + ray_index^cb_srvs.frame_count)));
+            const float3 unit_v3 = random_unit_vector3(float3(asfloat(global_pos.x), asfloat(global_pos.y), asfloat(ray_index^cb_srvs.frame_count)));
+
             const float3 local_dir = normalize(unit_v3 + float3(0.0, 0.0, 1.0));
             sample_ray_dir = local_dir.x * base_tangent_ws + local_dir.y * base_bitangent_ws + local_dir.z * base_normal_ws;
         }

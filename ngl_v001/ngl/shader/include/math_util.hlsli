@@ -374,6 +374,16 @@ float3 random_unit_vector3(float2 seed)
     sample_ray_dir.z = cos(angleX) * sin(angleY);
     return sample_ray_dir;
 }
+float3 random_unit_vector3(float3 seed)
+{
+    const float angleY = noise_float_to_float(seed.xyzx) * NGL_2PI;
+    const float angleX = asin(noise_float_to_float(seed.yzxz)*2.0 - 1.0);
+    float3 sample_ray_dir;
+    sample_ray_dir.y = sin(angleX);
+    sample_ray_dir.x = cos(angleX) * cos(angleY);
+    sample_ray_dir.z = cos(angleX) * sin(angleY);
+    return sample_ray_dir;
+}
 
 // Fibonacci球面分布方向を取得.
 // indexのmoduloは呼び出し側の責任とする.
