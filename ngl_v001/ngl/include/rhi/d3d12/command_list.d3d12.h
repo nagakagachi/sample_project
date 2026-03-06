@@ -5,18 +5,74 @@
 
 #include "util/types.h"
 
-
 #include "rhi/rhi.h"
 #include "rhi/rhi_object_garbage_collect.h"
 
 #include "rhi/d3d12/rhi_util.d3d12.h"
 #include "descriptor.d3d12.h"
 
+// 必要であればバージョン制限しておく(DXRのための4等).
+//#		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 4
+
+// CommandList ターゲットバージョン コンパイル時定数.
+// このマクロをインクルード前に定義することで使用するターゲットバージョンを明示的に指定可能.
+// 未定義の場合は現在のSDKで利用可能な最大バージョンを自動選択する.
+#if !defined(NGL_D3D12_COMMAND_LIST_TARGET_VERSION)
+#	if defined(__ID3D12GraphicsCommandList10_INTERFACE_DEFINED__)
+#		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 10
+#	elif defined(__ID3D12GraphicsCommandList9_INTERFACE_DEFINED__)
+#		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 9
+#	elif defined(__ID3D12GraphicsCommandList8_INTERFACE_DEFINED__)
+#		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 8
+#	elif defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+#		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 7
+#	elif defined(__ID3D12GraphicsCommandList6_INTERFACE_DEFINED__)
+#		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 6
+#	elif defined(__ID3D12GraphicsCommandList5_INTERFACE_DEFINED__)
+#		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 5
+#	elif defined(__ID3D12GraphicsCommandList4_INTERFACE_DEFINED__)
+#		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 4
+#	elif defined(__ID3D12GraphicsCommandList3_INTERFACE_DEFINED__)
+#		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 3
+#	elif defined(__ID3D12GraphicsCommandList2_INTERFACE_DEFINED__)
+#		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 2
+#	elif defined(__ID3D12GraphicsCommandList1_INTERFACE_DEFINED__)
+#		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 1
+#	else
+#		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 0
+#	endif
+#endif
 
 namespace ngl
 {
 	namespace rhi
 	{
+		// NGL_D3D12_COMMAND_LIST_TARGET_VERSION に対応するCommandList Interface型エイリアス.
+		// ビルド時にターゲットとして指定されたバージョンのID3D12GraphicsCommandListN 型.
+#if NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 10 && defined(__ID3D12GraphicsCommandList10_INTERFACE_DEFINED__)
+		using D3D12GraphicsCommandListTargetVersion = ID3D12GraphicsCommandList10;
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 9 && defined(__ID3D12GraphicsCommandList9_INTERFACE_DEFINED__)
+		using D3D12GraphicsCommandListTargetVersion = ID3D12GraphicsCommandList9;
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 8 && defined(__ID3D12GraphicsCommandList8_INTERFACE_DEFINED__)
+		using D3D12GraphicsCommandListTargetVersion = ID3D12GraphicsCommandList8;
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 7 && defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+		using D3D12GraphicsCommandListTargetVersion = ID3D12GraphicsCommandList7;
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 6 && defined(__ID3D12GraphicsCommandList6_INTERFACE_DEFINED__)
+		using D3D12GraphicsCommandListTargetVersion = ID3D12GraphicsCommandList6;
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 5 && defined(__ID3D12GraphicsCommandList5_INTERFACE_DEFINED__)
+		using D3D12GraphicsCommandListTargetVersion = ID3D12GraphicsCommandList5;
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 4 && defined(__ID3D12GraphicsCommandList4_INTERFACE_DEFINED__)
+		using D3D12GraphicsCommandListTargetVersion = ID3D12GraphicsCommandList4;
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 3 && defined(__ID3D12GraphicsCommandList3_INTERFACE_DEFINED__)
+		using D3D12GraphicsCommandListTargetVersion = ID3D12GraphicsCommandList3;
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 2 && defined(__ID3D12GraphicsCommandList2_INTERFACE_DEFINED__)
+		using D3D12GraphicsCommandListTargetVersion = ID3D12GraphicsCommandList2;
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 1 && defined(__ID3D12GraphicsCommandList1_INTERFACE_DEFINED__)
+		using D3D12GraphicsCommandListTargetVersion = ID3D12GraphicsCommandList1;
+#else
+		using D3D12GraphicsCommandListTargetVersion = ID3D12GraphicsCommandList;
+#endif
+
 		class Device;
 		class SwapChainDep;
 
@@ -81,10 +137,140 @@ namespace ngl
 			{
 				return p_command_list_.Get();
 			}
-			// CommandListのDxr対応Interfaceを取得.
-			ID3D12GraphicsCommandList4* GetD3D12GraphicsCommandListForDxr()
+
+#if defined(__ID3D12GraphicsCommandList1_INTERFACE_DEFINED__)
+			ID3D12GraphicsCommandList1* GetD3D12GraphicsCommandList1()
+			{
+				return p_command_list1_.Get();
+			}
+#endif
+#if defined(__ID3D12GraphicsCommandList2_INTERFACE_DEFINED__)
+			ID3D12GraphicsCommandList2* GetD3D12GraphicsCommandList2()
+			{
+				return p_command_list2_.Get();
+			}
+#endif
+#if defined(__ID3D12GraphicsCommandList3_INTERFACE_DEFINED__)
+			ID3D12GraphicsCommandList3* GetD3D12GraphicsCommandList3()
+			{
+				return p_command_list3_.Get();
+			}
+#endif
+#if defined(__ID3D12GraphicsCommandList4_INTERFACE_DEFINED__)
+			ID3D12GraphicsCommandList4* GetD3D12GraphicsCommandList4()
 			{
 				return p_command_list4_.Get();
+			}
+#endif
+#if defined(__ID3D12GraphicsCommandList5_INTERFACE_DEFINED__)
+			ID3D12GraphicsCommandList5* GetD3D12GraphicsCommandList5()
+			{
+				return p_command_list5_.Get();
+			}
+#endif
+#if defined(__ID3D12GraphicsCommandList6_INTERFACE_DEFINED__)
+			ID3D12GraphicsCommandList6* GetD3D12GraphicsCommandList6()
+			{
+				return p_command_list6_.Get();
+			}
+#endif
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+			ID3D12GraphicsCommandList7* GetD3D12GraphicsCommandList7()
+			{
+				return p_command_list7_.Get();
+			}
+#endif
+#if defined(__ID3D12GraphicsCommandList8_INTERFACE_DEFINED__)
+			ID3D12GraphicsCommandList8* GetD3D12GraphicsCommandList8()
+			{
+				return p_command_list8_.Get();
+			}
+#endif
+#if defined(__ID3D12GraphicsCommandList9_INTERFACE_DEFINED__)
+			ID3D12GraphicsCommandList9* GetD3D12GraphicsCommandList9()
+			{
+				return p_command_list9_.Get();
+			}
+#endif
+#if defined(__ID3D12GraphicsCommandList10_INTERFACE_DEFINED__)
+			ID3D12GraphicsCommandList10* GetD3D12GraphicsCommandList10()
+			{
+				return p_command_list10_.Get();
+			}
+#endif
+
+			// NGL_D3D12_COMMAND_LIST_TARGET_VERSION で指定したターゲットバージョンのCommandListを取得.
+			// 戻り値の型は D3D12GraphicsCommandListTargetVersion (コンパイル時定数で決まる ID3D12GraphicsCommandListN).
+			D3D12GraphicsCommandListTargetVersion* GetD3D12GraphicsCommandListTargetVersion()
+			{
+#if NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 10 && defined(__ID3D12GraphicsCommandList10_INTERFACE_DEFINED__)
+				return p_command_list10_.Get();
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 9 && defined(__ID3D12GraphicsCommandList9_INTERFACE_DEFINED__)
+				return p_command_list9_.Get();
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 8 && defined(__ID3D12GraphicsCommandList8_INTERFACE_DEFINED__)
+				return p_command_list8_.Get();
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 7 && defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+				return p_command_list7_.Get();
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 6 && defined(__ID3D12GraphicsCommandList6_INTERFACE_DEFINED__)
+				return p_command_list6_.Get();
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 5 && defined(__ID3D12GraphicsCommandList5_INTERFACE_DEFINED__)
+				return p_command_list5_.Get();
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 4 && defined(__ID3D12GraphicsCommandList4_INTERFACE_DEFINED__)
+				return p_command_list4_.Get();
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 3 && defined(__ID3D12GraphicsCommandList3_INTERFACE_DEFINED__)
+				return p_command_list3_.Get();
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 2 && defined(__ID3D12GraphicsCommandList2_INTERFACE_DEFINED__)
+				return p_command_list2_.Get();
+#elif NGL_D3D12_COMMAND_LIST_TARGET_VERSION >= 1 && defined(__ID3D12GraphicsCommandList1_INTERFACE_DEFINED__)
+				return p_command_list1_.Get();
+#else
+				return p_command_list_.Get();
+#endif
+			}
+
+			ID3D12GraphicsCommandList* GetD3D12GraphicsCommandListLatest()
+			{
+#if defined(__ID3D12GraphicsCommandList10_INTERFACE_DEFINED__)
+				if (p_command_list10_)
+					return p_command_list10_.Get();
+#endif
+#if defined(__ID3D12GraphicsCommandList9_INTERFACE_DEFINED__)
+				if (p_command_list9_)
+					return p_command_list9_.Get();
+#endif
+#if defined(__ID3D12GraphicsCommandList8_INTERFACE_DEFINED__)
+				if (p_command_list8_)
+					return p_command_list8_.Get();
+#endif
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+				if (p_command_list7_)
+					return p_command_list7_.Get();
+#endif
+#if defined(__ID3D12GraphicsCommandList6_INTERFACE_DEFINED__)
+				if (p_command_list6_)
+					return p_command_list6_.Get();
+#endif
+#if defined(__ID3D12GraphicsCommandList5_INTERFACE_DEFINED__)
+				if (p_command_list5_)
+					return p_command_list5_.Get();
+#endif
+#if defined(__ID3D12GraphicsCommandList4_INTERFACE_DEFINED__)
+				if (p_command_list4_)
+					return p_command_list4_.Get();
+#endif
+#if defined(__ID3D12GraphicsCommandList3_INTERFACE_DEFINED__)
+				if (p_command_list3_)
+					return p_command_list3_.Get();
+#endif
+#if defined(__ID3D12GraphicsCommandList2_INTERFACE_DEFINED__)
+				if (p_command_list2_)
+					return p_command_list2_.Get();
+#endif
+#if defined(__ID3D12GraphicsCommandList1_INTERFACE_DEFINED__)
+				if (p_command_list1_)
+					return p_command_list1_.Get();
+#endif
+				return p_command_list_.Get();
 			}
 			
 		protected:
@@ -100,9 +286,38 @@ namespace ngl
 			Microsoft::WRL::ComPtr<ID3D12CommandAllocator>		p_command_allocator_;
 
 			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList>	p_command_list_;
-			// For Dxr Interface.
+
+#if defined(__ID3D12GraphicsCommandList1_INTERFACE_DEFINED__)
+			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList1>	p_command_list1_;
+#endif
+#if defined(__ID3D12GraphicsCommandList2_INTERFACE_DEFINED__)
+			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList2>	p_command_list2_;
+#endif
+#if defined(__ID3D12GraphicsCommandList3_INTERFACE_DEFINED__)
+			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList3>	p_command_list3_;
+#endif
+#if defined(__ID3D12GraphicsCommandList4_INTERFACE_DEFINED__)
 			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4>	p_command_list4_;
-			
+#endif
+#if defined(__ID3D12GraphicsCommandList5_INTERFACE_DEFINED__)
+			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList5>	p_command_list5_;
+#endif
+#if defined(__ID3D12GraphicsCommandList6_INTERFACE_DEFINED__)
+			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList6>	p_command_list6_;
+#endif
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList7>	p_command_list7_;
+#endif
+#if defined(__ID3D12GraphicsCommandList8_INTERFACE_DEFINED__)
+			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList8>	p_command_list8_;
+#endif
+#if defined(__ID3D12GraphicsCommandList9_INTERFACE_DEFINED__)
+			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList9>	p_command_list9_;
+#endif
+#if defined(__ID3D12GraphicsCommandList10_INTERFACE_DEFINED__)
+			Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList10>	p_command_list10_;
+#endif
+
 			// CommandSignature for DispatchIndirect
 			Microsoft::WRL::ComPtr<ID3D12CommandSignature> p_dispatch_indirect_command_signature_;
 		};

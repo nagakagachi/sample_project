@@ -167,7 +167,7 @@ namespace ngl
 				build_desc.Inputs = build_setup_info_;
 				build_desc.DestAccelerationStructureData = main_->GetD3D12Resource()->GetGPUVirtualAddress();
 				build_desc.ScratchAccelerationStructureData = scratch_->GetD3D12Resource()->GetGPUVirtualAddress();
-				p_command_list->GetD3D12GraphicsCommandListForDxr()->BuildRaytracingAccelerationStructure(&build_desc, 0, nullptr);
+				p_command_list->GetD3D12GraphicsCommandList4()->BuildRaytracingAccelerationStructure(&build_desc, 0, nullptr);
 
 				// UAV Barrier変更.
 				p_command_list->ResourceUavBarrier(main_.Get());
@@ -414,7 +414,7 @@ namespace ngl
 				build_desc.Inputs = build_setup_info_;
 				build_desc.DestAccelerationStructureData = main_->GetD3D12Resource()->GetGPUVirtualAddress();
 				build_desc.ScratchAccelerationStructureData = scratch_->GetD3D12Resource()->GetGPUVirtualAddress();
-				p_command_list->GetD3D12GraphicsCommandListForDxr()->BuildRaytracingAccelerationStructure(&build_desc, 0, nullptr);
+				p_command_list->GetD3D12GraphicsCommandList4()->BuildRaytracingAccelerationStructure(&build_desc, 0, nullptr);
 
 				// UAV Barrier.
 				p_command_list->ResourceUavBarrier(main_.Get());
@@ -1975,7 +1975,7 @@ namespace ngl
 
 			rhi::DeviceDep* p_device = p_command_list->GetDevice();
 			auto* d3d_device = p_device->GetD3D12Device();
-			auto* d3d_command_list = p_command_list->GetD3D12GraphicsCommandListForDxr();
+			auto* d3d_command_list = p_command_list->GetD3D12GraphicsCommandList4();
 
 
 			auto* p_target_tlas = dynamic_tlas_.get();
