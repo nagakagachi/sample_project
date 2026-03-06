@@ -44,14 +44,59 @@ namespace ngl
 				return false;
 			}
 
-			// DXR対応Interfaceを取得(Deviceが対応しているなら).
+			// バージョン別Interfaceを保持.
+#if defined(__ID3D12GraphicsCommandList1_INTERFACE_DEFINED__)
+			p_command_list1_ = nullptr;
+			p_command_list_->QueryInterface(IID_PPV_ARGS(&p_command_list1_));
+#endif
+#if defined(__ID3D12GraphicsCommandList2_INTERFACE_DEFINED__)
+			p_command_list2_ = nullptr;
+			p_command_list_->QueryInterface(IID_PPV_ARGS(&p_command_list2_));
+#endif
+#if defined(__ID3D12GraphicsCommandList3_INTERFACE_DEFINED__)
+			p_command_list3_ = nullptr;
+			p_command_list_->QueryInterface(IID_PPV_ARGS(&p_command_list3_));
+#endif
+#if defined(__ID3D12GraphicsCommandList4_INTERFACE_DEFINED__)
 			p_command_list4_ = nullptr;
+			p_command_list_->QueryInterface(IID_PPV_ARGS(&p_command_list4_));
+#endif
+#if defined(__ID3D12GraphicsCommandList5_INTERFACE_DEFINED__)
+			p_command_list5_ = nullptr;
+			p_command_list_->QueryInterface(IID_PPV_ARGS(&p_command_list5_));
+#endif
+#if defined(__ID3D12GraphicsCommandList6_INTERFACE_DEFINED__)
+			p_command_list6_ = nullptr;
+			p_command_list_->QueryInterface(IID_PPV_ARGS(&p_command_list6_));
+#endif
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+			p_command_list7_ = nullptr;
+			p_command_list_->QueryInterface(IID_PPV_ARGS(&p_command_list7_));
+#endif
+#if defined(__ID3D12GraphicsCommandList8_INTERFACE_DEFINED__)
+			p_command_list8_ = nullptr;
+			p_command_list_->QueryInterface(IID_PPV_ARGS(&p_command_list8_));
+#endif
+#if defined(__ID3D12GraphicsCommandList9_INTERFACE_DEFINED__)
+			p_command_list9_ = nullptr;
+			p_command_list_->QueryInterface(IID_PPV_ARGS(&p_command_list9_));
+#endif
+#if defined(__ID3D12GraphicsCommandList10_INTERFACE_DEFINED__)
+			p_command_list10_ = nullptr;
+			p_command_list_->QueryInterface(IID_PPV_ARGS(&p_command_list10_));
+#endif
+
+			// DXRで利用するv4 Interfaceをチェック(Deviceが対応しているなら).
 			if (p_device->IsSupportDxr())
 			{
-				if (FAILED(p_command_list_->QueryInterface(IID_PPV_ARGS(&p_command_list4_))))
+#if defined(__ID3D12GraphicsCommandList4_INTERFACE_DEFINED__)
+				if (!p_command_list4_)
 				{
 					std::cout << "[ERROR] QueryInterface for ID3D12GraphicsCommandList4" << std::endl;
 				}
+#else
+				std::cout << "[ERROR] ID3D12GraphicsCommandList4 interface is not defined in this SDK." << std::endl;
+#endif
 			}
 
 			// 初回クローズ. これがないと初回フレームの開始時ResetでComError発生.
