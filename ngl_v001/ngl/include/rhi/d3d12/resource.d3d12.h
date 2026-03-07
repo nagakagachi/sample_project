@@ -11,6 +11,7 @@
 #include "rhi/d3d12/rhi_util.d3d12.h"
 
 
+
 #include "util/types.h"
 #include "text/hash_text.h"
 
@@ -102,6 +103,7 @@ namespace ngl
 			s32		slicePitch = {};
 			u8*		pixels = {};
 		};
+		
 		// TextureSubresourceのレイアウト情報.
 		struct TextureSubresourceLayoutInfo
 		{
@@ -113,7 +115,6 @@ namespace ngl
 			u32 depth = 0;
 			u32 row_pitch = 0;
 		};
-		
 		// Texture
 		class TextureDep : public RhiObjectBase
 		{

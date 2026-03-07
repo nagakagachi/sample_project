@@ -473,35 +473,8 @@ namespace ngl
 		}
 		void TextureDep::CopyTextureRegion(GraphicsCommandListDep* p_command_list, int subresource_index, const BufferDep* p_src_buffer, const TextureSubresourceLayoutInfo& src_layout)
 		{
-			// Copy Command.
-			D3D12_TEXTURE_COPY_LOCATION copy_location_src = {};
-			{
-				copy_location_src.pResource = p_src_buffer->GetD3D12Resource();
-				// Bufferの場合はFootprintで指定.
-				copy_location_src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-				// p_src_bufferに RowPitch を考慮してコピーしておくことで, レイアウト情報をそのまま利用してコピー.
-				{
-					copy_location_src.PlacedFootprint.Offset = src_layout.byte_offset;
-					
-					copy_location_src.PlacedFootprint.Footprint.Format = ConvertResourceFormat(src_layout.format);
-					copy_location_src.PlacedFootprint.Footprint.Width = src_layout.width;
-					copy_location_src.PlacedFootprint.Footprint.Height = src_layout.height;
-					copy_location_src.PlacedFootprint.Footprint.Depth = src_layout.depth;
-					copy_location_src.PlacedFootprint.Footprint.RowPitch = src_layout.row_pitch;
-				}
-			}
-			D3D12_TEXTURE_COPY_LOCATION copy_location_dst = {};
-			{
-				copy_location_dst.pResource = GetD3D12Resource();
-				// Textureの場合はSubresourceIndexで指定.
-				copy_location_dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-				copy_location_dst.SubresourceIndex = subresource_index;
-			}
-			
-			// 生 D3D12 API 呼び出し前にペンディングバリアをフラッシュ.
-			p_command_list->FlushPendingBarriers();
-			auto* p_d3d_commandlist = p_command_list->GetD3D12GraphicsCommandList();
-			p_d3d_commandlist->CopyTextureRegion(&copy_location_dst, 0, 0, 0, &copy_location_src, {});
+			// CommandListBaseDep のラッパーに委譲(バリアフラッシュ含む).
+			p_command_list->CopyTextureRegion(this, subresource_index, p_src_buffer, src_layout);
 		}
 		
 		ID3D12Resource* TextureDep::GetD3D12Resource() const

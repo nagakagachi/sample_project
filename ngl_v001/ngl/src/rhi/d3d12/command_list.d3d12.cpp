@@ -239,6 +239,33 @@ namespace ngl
 			p_command_list_->CopyResource(p_dst->GetD3D12Resource(), p_src->GetD3D12Resource());
 		}
 
+		// Upload Buffer のサブリソースデータを Texture の指定サブリソースへコピー.
+		void CommandListBaseDep::CopyTextureRegion(const TextureDep* p_dst, int dst_subresource, const BufferDep* p_src_buffer, const TextureSubresourceLayoutInfo& src_layout)
+		{
+			if (!p_dst || !p_src_buffer)
+				return;
+			FlushPendingBarriers();
+
+			D3D12_TEXTURE_COPY_LOCATION copy_src = {};
+			{
+				copy_src.pResource                          = p_src_buffer->GetD3D12Resource();
+				copy_src.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+				copy_src.PlacedFootprint.Offset             = src_layout.byte_offset;
+				copy_src.PlacedFootprint.Footprint.Format   = ConvertResourceFormat(src_layout.format);
+				copy_src.PlacedFootprint.Footprint.Width    = src_layout.width;
+				copy_src.PlacedFootprint.Footprint.Height   = src_layout.height;
+				copy_src.PlacedFootprint.Footprint.Depth    = src_layout.depth;
+				copy_src.PlacedFootprint.Footprint.RowPitch = src_layout.row_pitch;
+			}
+			D3D12_TEXTURE_COPY_LOCATION copy_dst = {};
+			{
+				copy_dst.pResource        = p_dst->GetD3D12Resource();
+				copy_dst.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+				copy_dst.SubresourceIndex = dst_subresource;
+			}
+			p_command_list_->CopyTextureRegion(&copy_dst, 0, 0, 0, &copy_src, nullptr);
+		}
+
 		// UAV Barrier.
 		void _UavBarrier(ID3D12GraphicsCommandList* p_command_list, ID3D12Resource* p_resource_uav)
 		{

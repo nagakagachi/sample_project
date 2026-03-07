@@ -10,13 +10,16 @@
 
 #include "rhi/d3d12/rhi_util.d3d12.h"
 #include "descriptor.d3d12.h"
+#include "rhi/d3d12/resource.d3d12.h"
 
 // 必要であればバージョン制限しておく(DXRのための4等).
 //#		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 4
 
 // Enhanced Barrier バッチ発行モード切り替えマクロ.
 // 1: バッチモード(Draw/Dispatch/Clear系の直前にまとめて発行), 0: 即時発行(従来動作).
-#	define NGL_ENHANCED_BARRIER_BATCH 1
+//#	define NGL_ENHANCED_BARRIER_BATCH 0
+
+
 
 // CommandList ターゲットバージョン コンパイル時定数.
 // このマクロをインクルード前に定義することで使用するターゲットバージョンを明示的に指定可能.
@@ -87,8 +90,6 @@ namespace ngl
 		class Device;
 		class SwapChainDep;
 
-		class TextureDep;
-		class BufferDep;
 		class RenderTargetViewDep;
 		class DepthStencilViewDep;
 
@@ -140,6 +141,10 @@ namespace ngl
 			// Buffer 全体を別の Buffer へコピー.
 			// ペンディングバリアを内部で自動フラッシュしてから実行する.
 			void CopyResource(const BufferDep* p_dst, const BufferDep* p_src);
+
+			// Upload Buffer のサブリソースデータを Texture の指定サブリソースへコピー.
+			// ペンディングバリアを内部で自動フラッシュしてから実行する.
+			void CopyTextureRegion(const TextureDep* p_dst, int dst_subresource, const BufferDep* p_src_buffer, const TextureSubresourceLayoutInfo& src_layout);
 
 			// UAV同期Barrier.
 			void ResourceUavBarrier(TextureDep* p_texture);

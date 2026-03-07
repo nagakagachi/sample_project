@@ -50,7 +50,7 @@ namespace ngl
 			// Copy Command. 適切なレイアウトで配置された一時バッファテクスチャデータをAPIでテクスチャへコピー.
 			for(int subresource_index = 0; subresource_index < ref_texture_->NumSubresource(); ++subresource_index)
 			{
-				ref_texture_->CopyTextureRegion(p_commandlist, subresource_index, temporal_upload_buffer.Get(), dst_layout[subresource_index] );
+				p_commandlist->CopyTextureRegion(ref_texture_.Get(), subresource_index, temporal_upload_buffer.Get(), dst_layout[subresource_index]);
 			}
 
 			// State Transition.

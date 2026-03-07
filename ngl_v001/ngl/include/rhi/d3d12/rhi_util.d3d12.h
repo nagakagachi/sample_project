@@ -68,6 +68,7 @@ namespace ngl
 
 
 
+
 		constexpr uint32_t align_to(uint32_t alignment, uint32_t value)
 		{
 			return (((value + alignment - 1) / alignment) * alignment);
