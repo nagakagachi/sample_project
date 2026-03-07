@@ -258,7 +258,7 @@ bool AppGame::Initialize()
     }
     // グラフィックスフレームワーク初期化.
     ngl::fwk::GraphicsFramework::Desc gfxfw_desc{};
-    gfxfw_desc.enable_enhanced_barrier = true;
+    gfxfw_desc.require_enhanced_barrier = true;
     if (!gfxfw_.Initialize(&window_, gfxfw_desc))
     {
         assert(false && u8"Failed Initialize Rendering Framework.");

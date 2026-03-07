@@ -39,8 +39,8 @@ class GraphicsFramework
 public:
 	struct Desc
 	{
-		// Enhanced Barrierサポート時に利用するか.(Experimental)
-		bool enable_enhanced_barrier = false;
+		// Enhanced Barrierサポート時に利用を要求するか.(Experimental: 非サポート時はLegacyにフォールバック)
+		bool require_enhanced_barrier = false;
 	};
 
 	GraphicsFramework();

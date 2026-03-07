@@ -83,8 +83,8 @@ namespace ngl
 				bool	enable_pipeline_state_cache = true;
 				u32		pipeline_state_cache_graphics_capacity = 512;
 				u32		pipeline_state_cache_compute_capacity = 512;
-				// Enhanced Barrierサポート時に有効化するか.
-				bool	enable_enhanced_barrier = true;
+				// Enhanced Barrierサポート時に利用を要求するか.(非サポート時はLegacyにフォールバック)
+				bool	require_enhanced_barrier = true;
 			};
 
 			DeviceDep();

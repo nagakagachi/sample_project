@@ -63,7 +63,7 @@ namespace ngl
 			D3D12_BARRIER_ACCESS access = D3D12_BARRIER_ACCESS_COMMON;
 			D3D12_BARRIER_LAYOUT layout = D3D12_BARRIER_LAYOUT_COMMON; // Texture用のみ利用
 		};
-		EnhancedBarrierStateInfo ConvertResourceStateToEnhancedBarrierInfo(EResourceState v);
+		EnhancedBarrierStateInfo ConvertResourceStateToEnhancedBarrierInfo(EResourceState v, bool is_texture = false);
 #endif
 
 

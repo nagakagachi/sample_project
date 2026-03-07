@@ -210,8 +210,8 @@ namespace ngl
 		// Enhanced Barrier: Texture の State Transition.
 		void _EnhancedTransitionBarrierTexture(ID3D12GraphicsCommandList7* p_command_list7, ID3D12Resource* p_resource, EResourceState prev, EResourceState next)
 		{
-			const auto info_before = ConvertResourceStateToEnhancedBarrierInfo(prev);
-			const auto info_after  = ConvertResourceStateToEnhancedBarrierInfo(next);
+			const auto info_before = ConvertResourceStateToEnhancedBarrierInfo(prev, true);
+			const auto info_after  = ConvertResourceStateToEnhancedBarrierInfo(next, true);
 
 			D3D12_TEXTURE_BARRIER tex_barrier = {};
 			tex_barrier.SyncBefore   = info_before.sync;
@@ -589,6 +589,7 @@ namespace ngl
 			auto* resource = p_swapchain->GetD3D12Resource(buffer_index);
 			// Swapchain は Texture として扱う.
 #if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+			// SwapchainバッファはPresent後にCommon状態が保証されるため常にEnhancedを使用可.
 			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
 			{
 				_EnhancedTransitionBarrierTexture(p_command_list7_.Get(), resource, prev, next);

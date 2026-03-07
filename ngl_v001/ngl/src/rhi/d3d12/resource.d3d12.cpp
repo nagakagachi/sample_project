@@ -156,6 +156,14 @@ namespace ngl
 				resource_desc.Flags = getD3D12ResourceFlags(desc_.bind_flag);
 			}
 
+			// Enhanced Barrier有効かつDefaultHeapは初期状態をCommonに統一する.
+			if (p_device->IsEnhancedBarrierSupported() && D3D12_HEAP_TYPE_DEFAULT == heap_prop.Type
+				&& desc.initial_state != EResourceState::RaytracingAccelerationStructure)
+			{
+				desc_.initial_state = EResourceState::Common;
+				initial_state = D3D12_RESOURCE_STATE_COMMON;
+			}
+
 			// パラメータチェック
 			{
 				if ((D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS & resource_desc.Flags) && (D3D12_HEAP_TYPE_DEFAULT != heap_prop.Type))
@@ -351,6 +359,14 @@ namespace ngl
 			{
 				// Depthフォーマット且つ用途がSrvまたはUavの場合はフォーマット変換.
 				resource_desc.Format = getTypelessFormatFromDepthFormat(desc_.format);
+			}
+
+			// Enhanced Barrier有効かつDefaultHeapは初期状態をCommonに統一する.
+			if (p_device->IsEnhancedBarrierSupported() && D3D12_HEAP_TYPE_DEFAULT == heap_prop.Type
+				&& desc.initial_state != EResourceState::RaytracingAccelerationStructure)
+			{
+				desc_.initial_state = EResourceState::Common;
+				initial_state = D3D12_RESOURCE_STATE_COMMON;
 			}
 
 			// パラメータチェック

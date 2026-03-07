@@ -189,7 +189,11 @@ namespace ngl
 			D3D12_FEATURE_DATA_D3D12_OPTIONS12 features12 = {};
 			if (SUCCEEDED(p_device_->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS12, &features12, sizeof(features12))))
 			{
-				enhanced_barrier_supported_ = desc_.enable_enhanced_barrier && features12.EnhancedBarriersSupported;
+				enhanced_barrier_supported_ = desc_.require_enhanced_barrier && features12.EnhancedBarriersSupported;
+			if (desc_.require_enhanced_barrier && !features12.EnhancedBarriersSupported)
+			{
+				std::cout << "[WARN] Enhanced Barrier was requested (require_enhanced_barrier=true) but is not supported on this device. Falling back to Legacy Barrier." << std::endl;
+			}
 			}
 			std::cout << "[INFO] Enhanced Barrier Supported: " << (enhanced_barrier_supported_ ? "true" : "false") << std::endl;
 		}
@@ -355,6 +359,7 @@ namespace ngl
 		{
 			return D3D12_RAYTRACING_TIER_NOT_SUPPORTED != device_dxr_tier_;
 		}
+
 
 		// -------------------------------------------------------------------------------------------------------------------------------------------------
 

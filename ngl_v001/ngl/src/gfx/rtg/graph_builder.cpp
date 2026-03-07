@@ -1783,8 +1783,8 @@ namespace ngl
 					new_pool_elem.uav_ = new_uav;
 					new_pool_elem.srv_ = new_srv;
 						
-					new_pool_elem.cached_state_ = init_state;// 新規生成したらその初期ステートを保持.
-					new_pool_elem.prev_cached_state_ = init_state;
+					new_pool_elem.cached_state_ = new_tex->GetDesc().initial_state;// Enhanced Barrier有効時はCommonに変更済みの初期状態を取得.
+					new_pool_elem.prev_cached_state_ = new_tex->GetDesc().initial_state;
 				}
 				
 				if(0 <= empty_index)

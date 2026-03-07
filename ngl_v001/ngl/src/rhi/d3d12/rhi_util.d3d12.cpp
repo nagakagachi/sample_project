@@ -524,7 +524,7 @@ namespace ngl
 #if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
 		// EResourceState を Enhanced Barrier の Sync/Access/Layout 情報に変換する.
 		// Legacy Barrierのセマンティクスと等価な安全な値にマッピングする.
-		EnhancedBarrierStateInfo ConvertResourceStateToEnhancedBarrierInfo(EResourceState v)
+		EnhancedBarrierStateInfo ConvertResourceStateToEnhancedBarrierInfo(EResourceState v, bool is_texture)
 		{
 			switch (v)
 			{
@@ -533,6 +533,11 @@ namespace ngl
 
 			case EResourceState::General:
 				// GENERIC_READ の等価. Upload ヒープリソース向け.
+				if (is_texture)
+				{
+					// テクスチャはバッファ専用Accessビット(VB/CB/IB/Indirect)を除外.
+					return { D3D12_BARRIER_SYNC_ALL_SHADING | D3D12_BARRIER_SYNC_COPY, D3D12_BARRIER_ACCESS_SHADER_RESOURCE | D3D12_BARRIER_ACCESS_COPY_SOURCE, D3D12_BARRIER_LAYOUT_GENERIC_READ };
+				}
 				return {
 					D3D12_BARRIER_SYNC_ALL_SHADING | D3D12_BARRIER_SYNC_INDEX_INPUT | D3D12_BARRIER_SYNC_EXECUTE_INDIRECT | D3D12_BARRIER_SYNC_COPY,
 					D3D12_BARRIER_ACCESS_VERTEX_BUFFER | D3D12_BARRIER_ACCESS_CONSTANT_BUFFER | D3D12_BARRIER_ACCESS_INDEX_BUFFER | D3D12_BARRIER_ACCESS_SHADER_RESOURCE | D3D12_BARRIER_ACCESS_INDIRECT_ARGUMENT | D3D12_BARRIER_ACCESS_COPY_SOURCE,
@@ -593,7 +598,8 @@ namespace ngl
 				};
 
 			case EResourceState::Present:
-				return { D3D12_BARRIER_SYNC_NONE, D3D12_BARRIER_ACCESS_COMMON, D3D12_BARRIER_LAYOUT_PRESENT };
+				// Present中はGPUアクセスなし. SYNC_NONEはACCESS_NO_ACCESSとのみ組み合わせ可.
+				return { D3D12_BARRIER_SYNC_NONE, D3D12_BARRIER_ACCESS_NO_ACCESS, D3D12_BARRIER_LAYOUT_PRESENT };
 
 			default:
 				std::cout << "ERROR : Invalid Resource State for Enhanced Barrier" << std::endl;

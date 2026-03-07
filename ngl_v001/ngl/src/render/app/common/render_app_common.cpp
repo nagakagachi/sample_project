@@ -15,10 +15,9 @@ namespace ngl::render::app
 
     bool ComputeBufferSet::InitializeAsStructured(ngl::rhi::DeviceDep* p_device,const rhi::BufferDep::Desc& desc)
     {
-        resource_state = desc.initial_state;
-
         buffer.Reset(new rhi::BufferDep());
         if (!buffer->Initialize(p_device, desc)) return false;
+        resource_state = buffer->GetDesc().initial_state; // Enhanced Barrier有効時はCommonに変更されるためInitialize後に取得.
 
         if (desc.bind_flag & rhi::ResourceBindFlag::UnorderedAccess)
         {
@@ -35,10 +34,9 @@ namespace ngl::render::app
     }
     bool ComputeBufferSet::InitializeAsTyped(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc, rhi::EResourceFormat view_format)
     {
-        resource_state = desc.initial_state;
-
         buffer.Reset(new rhi::BufferDep());
         if (!buffer->Initialize(p_device, desc)) return false;
+        resource_state = buffer->GetDesc().initial_state; // Enhanced Barrier有効時はCommonに変更されるためInitialize後に取得.
 
         if (desc.bind_flag & rhi::ResourceBindFlag::UnorderedAccess)
         {
@@ -65,10 +63,9 @@ namespace ngl::render::app
 
     bool ComputeTextureSet::Initialize(ngl::rhi::DeviceDep* p_device, const rhi::TextureDep::Desc& desc)
     {
-        resource_state = desc.initial_state;
-
         texture.Reset(new rhi::TextureDep());
         if (!texture->Initialize(p_device, desc)) return false;
+        resource_state = texture->GetDesc().initial_state; // Enhanced Barrier有効時はCommonに変更されるためInitialize後に取得.
 
         if (desc.bind_flag & rhi::ResourceBindFlag::UnorderedAccess)
         {
