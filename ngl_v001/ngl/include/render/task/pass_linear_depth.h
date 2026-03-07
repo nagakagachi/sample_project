@@ -33,6 +33,7 @@ namespace ngl::render::task
 		void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
 			rtg::RtgResourceHandle h_depth, rtg::RtgResourceHandle h_tex_compute, const SetupDesc& desc)
 		{
+			SetDebugNodeName("LinearDepth");
 			desc_ = desc;
 			
 			// Rtgリソースセットアップ.

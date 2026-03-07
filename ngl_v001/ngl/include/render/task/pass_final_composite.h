@@ -67,6 +67,7 @@ namespace ngl::render::task
 
 			const SetupDesc& desc)
 		{
+			SetDebugNodeName("FinalComposite");
 			desc_ = desc;
 			
 			// Rtgリソースセットアップ.

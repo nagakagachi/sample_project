@@ -29,6 +29,7 @@ namespace ngl::render::task
 		void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info,
 			rtg::RtgResourceHandle h_depth, const SetupDesc& desc)
 		{
+			SetDebugNodeName("AfterGBufferInjection");
 			desc_ = desc;
 			
 			// Rtgリソースセットアップ.

@@ -37,6 +37,7 @@ namespace ngl::render::task
         // リソースとアクセスを定義するプリプロセス.
         void Setup(rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const RenderPassViewInfo& view_info, const SetupDesc& desc)
         {
+            SetDebugNodeName("PreZ");
             desc_ = desc;
             // Rtgリソースセットアップ.
             {

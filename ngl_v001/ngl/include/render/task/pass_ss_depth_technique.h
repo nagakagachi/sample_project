@@ -38,6 +38,7 @@ namespace ngl::render::task
 		    ,const SetupDesc& desc
 		    ,rtg::RtgResourceHandle h_depth, rtg::RtgResourceHandle h_linear_depth)
 		{
+			SetDebugNodeName("SsDepth");
 			desc_ = desc;
 			
 			// Rtgリソースセットアップ.
@@ -117,6 +118,10 @@ namespace ngl::render::task
 						gfx_commandlist->SetDescriptorSet(pso_gtao_demo_.Get(), &desc_set);
 
 						pso_gtao_demo_->DispatchHelper(gfx_commandlist, res_gtao_bent_normal.tex_->GetWidth(), res_gtao_bent_normal.tex_->GetHeight(), 1);
+
+                        // 確認用に誤ったバリア発行
+                        //gfx_commandlist->ResourceBarrier({ res_gtao_bent_normal.tex_.Get() }, rhi::EResourceState::UnorderedAccess, rhi::EResourceState::General);
+
                     }
                     if(res_bent_normal.srv_.IsValid())
                     {

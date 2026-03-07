@@ -49,6 +49,7 @@ namespace ngl::render::task
             rtg::RtgResourceHandle h_light
         )
         {
+            SetDebugNodeName("Skybox");
             setup_desc_ = setup_desc;
             {
                 if (h_depth.IsInvalid())
