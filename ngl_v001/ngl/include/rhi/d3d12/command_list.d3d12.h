@@ -18,6 +18,7 @@
 // Enhanced Barrier バッチ発行モード切り替えマクロ.
 // 1: バッチモード(Draw/Dispatch/Clear系の直前にまとめて発行), 0: 即時発行(従来動作).
 //#	define NGL_ENHANCED_BARRIER_BATCH 0
+//#	define NGL_ENHANCED_BARRIER_MERGE 0
 
 
 
@@ -55,6 +56,14 @@
 // コンパイル時に 0/1 を切り替えてパフォーマンス比較が可能.
 #if !defined(NGL_ENHANCED_BARRIER_BATCH)
 #	define NGL_ENHANCED_BARRIER_BATCH 1
+#endif
+
+// Enhanced Barrier バッチ最適化 (マージ/重複除去) 切り替えマクロ.
+// 1: 有効 (バッチリストへの追加時に同一リソースのバリアをチェーン結合・UAV重複除去する).
+// 0: 無効 (最適化なしで push_back するだけの従来動作).
+// NGL_ENHANCED_BARRIER_BATCH が 0 の場合は本マクロは効果を持たない.
+#if !defined(NGL_ENHANCED_BARRIER_MERGE)
+#	define NGL_ENHANCED_BARRIER_MERGE 1
 #endif
 
 namespace ngl

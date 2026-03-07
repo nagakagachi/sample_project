@@ -340,6 +340,78 @@ namespace ngl
 			buf_barrier.Size         = UINT64_MAX;
 			return buf_barrier;
 		}
+#if NGL_ENHANCED_BARRIER_BATCH && NGL_ENHANCED_BARRIER_MERGE
+		// Enhanced Barrier Batch 最適化ヘルパー:
+		// テクスチャバリアのマージ / 重複除去.
+		// - 遷移バリア(is_uav=false): 同一リソースの既存遷移バリアがあれば After 側を上書きしてチェーン結合 (A->B + B->C => A->C).
+		// - UAVバリア  (is_uav=true) : 同一リソースの既存UAVバリアがあれば重複をスキップ.
+		// 戻り値: true=バリアを処理済み(push_back不要), false=push_backが必要.
+		bool _TryMergeOrDeduplicateTexBarrier(
+			std::vector<D3D12_TEXTURE_BARRIER>& pending,
+			const D3D12_TEXTURE_BARRIER& new_barrier,
+			bool is_uav)
+		{
+			for (auto& entry : pending)
+			{
+				if (entry.pResource != new_barrier.pResource)
+					continue;
+				// LayoutBefore == LayoutAfter の場合はUAVバリア (同一レイアウト同士のSync).
+				const bool entry_is_uav = (entry.LayoutBefore == entry.LayoutAfter);
+				if (is_uav)
+				{
+					// UAVバリアの重複除去: 既存UAVバリアがある場合はスキップ.
+					return entry_is_uav;
+				}
+				else
+				{
+					// 遷移バリアのチェーン結合: 既存遷移バリアの After 側を更新.
+					if (!entry_is_uav && entry.LayoutAfter == new_barrier.LayoutBefore)
+					{
+						entry.SyncAfter   = new_barrier.SyncAfter;
+						entry.AccessAfter = new_barrier.AccessAfter;
+						entry.LayoutAfter = new_barrier.LayoutAfter;
+						return true;
+					}
+					return false;
+				}
+			}
+			return false;
+		}
+
+		// Enhanced Barrier Batch 最適化ヘルパー:
+		// バッファバリアのマージ / 重複除去. テクスチャ版と同様のロジックだがバッファはLayoutを持たない.
+		bool _TryMergeOrDeduplicateBufBarrier(
+			std::vector<D3D12_BUFFER_BARRIER>& pending,
+			const D3D12_BUFFER_BARRIER& new_barrier,
+			bool is_uav)
+		{
+			for (auto& entry : pending)
+			{
+				if (entry.pResource != new_barrier.pResource)
+					continue;
+				// SyncBefore==SyncAfter かつ AccessBefore==AccessAfter の場合はUAVバリア.
+				const bool entry_is_uav = (entry.SyncBefore == entry.SyncAfter && entry.AccessBefore == entry.AccessAfter);
+				if (is_uav)
+				{
+					// UAVバリアの重複除去.
+					return entry_is_uav;
+				}
+				else
+				{
+					// 遷移バリアのチェーン結合: Access が連続している場合のみ結合.
+					if (!entry_is_uav && entry.AccessAfter == new_barrier.AccessBefore)
+					{
+						entry.SyncAfter   = new_barrier.SyncAfter;
+						entry.AccessAfter = new_barrier.AccessAfter;
+						return true;
+					}
+					return false;
+				}
+			}
+			return false;
+		}
+#endif // NGL_ENHANCED_BARRIER_BATCH
+
 
 		// Enhanced Barrier: Texture State Transition 即時発行 (非バッチモード用).
 		void _EnhancedTransitionBarrierTexture(ID3D12GraphicsCommandList7* p_command_list7, ID3D12Resource* p_resource, EResourceState prev, EResourceState next)
@@ -393,8 +465,16 @@ namespace ngl
 			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
 			{
 #if NGL_ENHANCED_BARRIER_BATCH
-				// バッチモード: ペンディングリストへアペンド.
+				// バッチモード: ペンディングリストへアペンド. 同一リソースのUAVバリア重複除去を行う.
+#if NGL_ENHANCED_BARRIER_MERGE
+				{
+					const auto b = _MakeEnhancedTextureUavBarrier(p_texture->GetD3D12Resource());
+					if (!_TryMergeOrDeduplicateTexBarrier(pending_tex_barriers_, b, true))
+						pending_tex_barriers_.push_back(b);
+				}
+#else
 				pending_tex_barriers_.push_back(_MakeEnhancedTextureUavBarrier(p_texture->GetD3D12Resource()));
+#endif // NGL_ENHANCED_BARRIER_MERGE
 #else
 				_EnhancedUavBarrierTexture(p_command_list7_.Get(), p_texture->GetD3D12Resource());
 #endif // NGL_ENHANCED_BARRIER_BATCH
@@ -410,8 +490,16 @@ namespace ngl
 			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
 			{
 #if NGL_ENHANCED_BARRIER_BATCH
-				// バッチモード: ペンディングリストへアペンド.
+				// バッチモード: ペンディングリストへアペンド. 同一リソースのUAVバリア重複除去を行う.
+#if NGL_ENHANCED_BARRIER_MERGE
+				{
+					const auto b = _MakeEnhancedBufferUavBarrier(p_buffer->GetD3D12Resource());
+					if (!_TryMergeOrDeduplicateBufBarrier(pending_buf_barriers_, b, true))
+						pending_buf_barriers_.push_back(b);
+				}
+#else
 				pending_buf_barriers_.push_back(_MakeEnhancedBufferUavBarrier(p_buffer->GetD3D12Resource()));
+#endif // NGL_ENHANCED_BARRIER_MERGE
 #else
 				_EnhancedUavBarrierBuffer(p_command_list7_.Get(), p_buffer->GetD3D12Resource());
 #endif // NGL_ENHANCED_BARRIER_BATCH
@@ -730,8 +818,16 @@ namespace ngl
 			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
 			{
 #if NGL_ENHANCED_BARRIER_BATCH
-				// バッチモード: ペンディングリストへアペンド.
+				// バッチモード: ペンディングリストへアペンド. チェーン結合・重複除去を試みる.
+#if NGL_ENHANCED_BARRIER_MERGE
+				{
+					const auto b = _MakeEnhancedTextureTransitionBarrier(resource, prev, next);
+					if (!_TryMergeOrDeduplicateTexBarrier(pending_tex_barriers_, b, false))
+						pending_tex_barriers_.push_back(b);
+				}
+#else
 				pending_tex_barriers_.push_back(_MakeEnhancedTextureTransitionBarrier(resource, prev, next));
+#endif // NGL_ENHANCED_BARRIER_MERGE
 #else
 				_EnhancedTransitionBarrierTexture(p_command_list7_.Get(), resource, prev, next);
 #endif // NGL_ENHANCED_BARRIER_BATCH
@@ -750,8 +846,16 @@ namespace ngl
 			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
 			{
 #if NGL_ENHANCED_BARRIER_BATCH
-				// バッチモード: ペンディングリストへアペンド.
+				// バッチモード: ペンディングリストへアペンド. チェーン結合・重複除去を試みる.
+#if NGL_ENHANCED_BARRIER_MERGE
+				{
+					const auto b = _MakeEnhancedTextureTransitionBarrier(resource, prev, next);
+					if (!_TryMergeOrDeduplicateTexBarrier(pending_tex_barriers_, b, false))
+						pending_tex_barriers_.push_back(b);
+				}
+#else
 				pending_tex_barriers_.push_back(_MakeEnhancedTextureTransitionBarrier(resource, prev, next));
+#endif // NGL_ENHANCED_BARRIER_MERGE
 #else
 				_EnhancedTransitionBarrierTexture(p_command_list7_.Get(), resource, prev, next);
 #endif // NGL_ENHANCED_BARRIER_BATCH
@@ -770,8 +874,16 @@ namespace ngl
 			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
 			{
 #if NGL_ENHANCED_BARRIER_BATCH
-				// バッチモード: ペンディングリストへアペンド.
+				// バッチモード: ペンディングリストへアペンド. チェーン結合・重複除去を試みる.
+#if NGL_ENHANCED_BARRIER_MERGE
+				{
+					const auto b = _MakeEnhancedBufferTransitionBarrier(resource, prev, next);
+					if (!_TryMergeOrDeduplicateBufBarrier(pending_buf_barriers_, b, false))
+						pending_buf_barriers_.push_back(b);
+				}
+#else
 				pending_buf_barriers_.push_back(_MakeEnhancedBufferTransitionBarrier(resource, prev, next));
+#endif // NGL_ENHANCED_BARRIER_MERGE
 #else
 				_EnhancedTransitionBarrierBuffer(p_command_list7_.Get(), resource, prev, next);
 #endif // NGL_ENHANCED_BARRIER_BATCH
