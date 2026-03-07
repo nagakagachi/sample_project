@@ -231,7 +231,8 @@ namespace ngl::render::app
                                                .element_count     = voxel_count,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
-                                               .heap_type = rhi::EResourceHeapType::Default});
+                                               .heap_type = rhi::EResourceHeapType::Default}
+                                            ,   "Srvs_BbvOptionalDataBuffer");
         }
         {
             bbv_buffer_.InitializeAsTyped(p_device,
@@ -241,7 +242,8 @@ namespace ngl::render::app
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
-                                           rhi::EResourceFormat::Format_R32_UINT);
+                                           rhi::EResourceFormat::Format_R32_UINT
+                                        ,   "Srvs_BbvBuffer");
         }
         {
             bbv_fine_update_voxel_list_.InitializeAsTyped(p_device,
@@ -251,7 +253,8 @@ namespace ngl::render::app
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
-                                           rhi::EResourceFormat::Format_R32_UINT);
+                                           rhi::EResourceFormat::Format_R32_UINT
+                                        ,   "Srvs_BbvFineUpdateVoxelList");
         }
         {
             bbv_fine_update_voxel_indirect_arg_.InitializeAsTyped(p_device,
@@ -261,7 +264,8 @@ namespace ngl::render::app
 
                                                .bind_flag = rhi::ResourceBindFlag::UnorderedAccess | rhi::ResourceBindFlag::IndirectArg,
                                                .heap_type = rhi::EResourceHeapType::Default},
-                                           rhi::EResourceFormat::Format_R32_UINT);
+                                           rhi::EResourceFormat::Format_R32_UINT
+                                        ,   "Srvs_BbvFineUpdateVoxelIndirectArg");
         }
         {
             // 1F更新可能プローブ数分の k_probe_octmap_width*k_probe_octmap_width テクセル分バッファ.
@@ -272,7 +276,8 @@ namespace ngl::render::app
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
-                                           rhi::EResourceFormat::Format_R32_FLOAT);
+                                           rhi::EResourceFormat::Format_R32_FLOAT
+                                        ,   "Srvs_BbvFineUpdateVoxelProbeBuffer");
         }
         
         {
@@ -283,7 +288,8 @@ namespace ngl::render::app
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
-                                           rhi::EResourceFormat::Format_R32_UINT);
+                                           rhi::EResourceFormat::Format_R32_UINT
+                                        ,   "Srvs_BbvRemovalList");
         }
         
         {
@@ -294,7 +300,8 @@ namespace ngl::render::app
 
                                                .bind_flag = rhi::ResourceBindFlag::UnorderedAccess | rhi::ResourceBindFlag::IndirectArg,
                                                .heap_type = rhi::EResourceHeapType::Default},
-                                           rhi::EResourceFormat::Format_R32_UINT);
+                                           rhi::EResourceFormat::Format_R32_UINT
+                                        ,   "Srvs_BbvRemovalIndirectArg");
         }
 
         {
@@ -305,7 +312,8 @@ namespace ngl::render::app
                                                .element_count     = wcp_probe_cell_count,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
-                                               .heap_type = rhi::EResourceHeapType::Default});
+                                               .heap_type = rhi::EResourceHeapType::Default}
+                                            ,   "Srvs_WcpBuffer");
         }
         {
             wcp_visible_surface_list_.InitializeAsTyped(p_device,
@@ -315,7 +323,8 @@ namespace ngl::render::app
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
-                                           rhi::EResourceFormat::Format_R32_UINT);
+                                           rhi::EResourceFormat::Format_R32_UINT
+                                        ,   "Srvs_WcpVisibleSurfaceList");
         }
         {
             wcp_visible_surface_list_indirect_arg_.InitializeAsTyped(p_device,
@@ -325,7 +334,8 @@ namespace ngl::render::app
 
                                                .bind_flag = rhi::ResourceBindFlag::UnorderedAccess | rhi::ResourceBindFlag::IndirectArg,
                                                .heap_type = rhi::EResourceHeapType::Default},
-                                           rhi::EResourceFormat::Format_R32_UINT);
+                                           rhi::EResourceFormat::Format_R32_UINT
+                                        ,   "Srvs_WcpVisibleSurfaceListIndirectArg");
         }
 
         // WCP プローブアトラス.
@@ -342,9 +352,9 @@ namespace ngl::render::app
             //desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
             desc.sample_count = 1;
             desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;// Enhanced Barrier移行時はCommonのみ許可.
 
-            wcp_probe_atlas_tex_.Initialize(p_device, desc);
+            wcp_probe_atlas_tex_.Initialize(p_device, desc, "Srvs_WcpProbeAtlasTex");
         }
 
         // ScreenSpaceProbeテクスチャ. 解像度固定かつシングルビュー用のテスト.
@@ -361,9 +371,9 @@ namespace ngl::render::app
             desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
             desc.sample_count = 1;
             desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;// Enhanced Barrier移行時はCommonのみ許可.
 
-            ss_probe_tex_.Initialize(p_device, desc);
+            ss_probe_tex_.Initialize(p_device, desc, "Srvs_SsProbeTex");
         }
         // Screen Space Probe Tile Info テクスチャ.
         {
@@ -377,9 +387,9 @@ namespace ngl::render::app
             desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
             desc.sample_count = 1;
             desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;// Enhanced Barrier移行時はCommonのみ許可.
 
-            ss_probe_tile_info_tex_.Initialize(p_device, desc);
+            ss_probe_tile_info_tex_.Initialize(p_device, desc, "Srvs_SsProbeTileInfoTex");
         }
 
         return true;
@@ -519,7 +529,7 @@ namespace ngl::render::app
                 pso_wcp_clear_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
 
                 p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
-                p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
+                p_command_list->ResourceBarrier(wcp_probe_atlas_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
             }
 
             // SsProbeクリア. pso_ss_probe_clear_使用.
@@ -535,8 +545,8 @@ namespace ngl::render::app
                 
                 pso_ss_probe_clear_->DispatchHelper(p_command_list, ss_probe_tex_.texture->GetWidth(), ss_probe_tex_.texture->GetHeight(), 1);
 
-                p_command_list->ResourceUavBarrier(ss_probe_tex_.texture.Get());
-                p_command_list->ResourceUavBarrier(ss_probe_tile_info_tex_.texture.Get());
+                p_command_list->ResourceBarrier(ss_probe_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                p_command_list->ResourceBarrier(ss_probe_tile_info_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
             }
         }
         // Bbv Begin Update Pass.
