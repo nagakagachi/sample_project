@@ -14,6 +14,10 @@
 // 必要であればバージョン制限しておく(DXRのための4等).
 //#		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 4
 
+// Enhanced Barrier バッチ発行モード切り替えマクロ.
+// 1: バッチモード(Draw/Dispatch/Clear系の直前にまとめて発行), 0: 即時発行(従来動作).
+#	define NGL_ENHANCED_BARRIER_BATCH 1
+
 // CommandList ターゲットバージョン コンパイル時定数.
 // このマクロをインクルード前に定義することで使用するターゲットバージョンを明示的に指定可能.
 // 未定義の場合は現在のSDKで利用可能な最大バージョンを自動選択する.
@@ -41,6 +45,13 @@
 #	else
 #		define NGL_D3D12_COMMAND_LIST_TARGET_VERSION 0
 #	endif
+#endif
+
+// Enhanced Barrier バッチ発行モード切り替えマクロ.
+// 1: バッチモード(Draw/Dispatch/Clear系の直前にまとめて発行), 0: 即時発行(従来動作).
+// コンパイル時に 0/1 を切り替えてパフォーマンス比較が可能.
+#if !defined(NGL_ENHANCED_BARRIER_BATCH)
+#	define NGL_ENHANCED_BARRIER_BATCH 1
 #endif
 
 namespace ngl
@@ -112,7 +123,24 @@ namespace ngl
 			
 			void Dispatch(u32 x, u32 y, u32 z);
 			void DispatchIndirect(BufferDep* p_arg_buffer);
-			
+
+#if defined(__ID3D12GraphicsCommandList4_INTERFACE_DEFINED__)
+			// DXR: RaytracingAccelerationStructure のビルドコマンドを発行.
+			// ペンディングバリアを内部で自動フラッシュしてから実行する.
+			void BuildRaytracingAccelerationStructure(
+				const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC* p_desc,
+				UINT num_postbuild_info_descs = 0,
+				const D3D12_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO_DESC* p_postbuild_info_descs = nullptr);
+
+			// DXR: DispatchRays コマンドを発行.
+			// ペンディングバリアを内部で自動フラッシュしてから実行する.
+			void DispatchRays(const D3D12_DISPATCH_RAYS_DESC* p_desc);
+#endif // __ID3D12GraphicsCommandList4_INTERFACE_DEFINED__
+
+			// Buffer 全体を別の Buffer へコピー.
+			// ペンディングバリアを内部で自動フラッシュしてから実行する.
+			void CopyResource(const BufferDep* p_dst, const BufferDep* p_src);
+
 			// UAV同期Barrier.
 			void ResourceUavBarrier(TextureDep* p_texture);
 			// UAV同期Barrier.
@@ -320,6 +348,20 @@ namespace ngl
 
 			// CommandSignature for DispatchIndirect
 			Microsoft::WRL::ComPtr<ID3D12CommandSignature> p_dispatch_indirect_command_signature_;
+
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+#if NGL_ENHANCED_BARRIER_BATCH
+			// Enhanced Barrier バッチ発行用ペンディングリスト.
+			std::vector<D3D12_TEXTURE_BARRIER> pending_tex_barriers_;
+			std::vector<D3D12_BUFFER_BARRIER>  pending_buf_barriers_;
+#endif // NGL_ENHANCED_BARRIER_BATCH
+#endif // __ID3D12GraphicsCommandList7_INTERFACE_DEFINED__
+
+		public:
+			// ペンディングバリアを一括発行. Draw/Dispatch/Clear系の直前に内部で自動呼び出しされる.
+			// 生の D3D12 インターフェース経由で GPU 実行命令を発行する場合は事前に明示的に呼び出すこと.
+			// NGL_ENHANCED_BARRIER_BATCH == 0 の場合は no-op.
+			void FlushPendingBarriers();
 		};
 
 		

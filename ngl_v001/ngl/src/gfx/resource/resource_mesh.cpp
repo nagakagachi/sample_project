@@ -101,15 +101,13 @@ namespace gfx
             if (!upload_buffer.IsValid() || !req_buffer->GetD3D12Resource())
                 return;
 
-            auto* p_d3d_commandlist = p_commandlist->GetD3D12GraphicsCommandList();
-
             // Init Upload Buffer から DefaultHeapのBufferへコピー. StateはGeneral想定.
             // 生成時のロジックで指定したステート. Bufferの初期ステートはDefaultHeapの場合?はCommonでないとValidationErrorとされるようになったので注意.
             const rhi::EResourceState buffer_state = req_init_state;
 
             auto ref_buffer = req_buffer;
             p_commandlist->ResourceBarrier(ref_buffer.Get(), buffer_state, rhi::EResourceState::CopyDst);
-            p_d3d_commandlist->CopyResource(ref_buffer->GetD3D12Resource(), upload_buffer->GetD3D12Resource());
+            p_commandlist->CopyResource(ref_buffer.Get(), upload_buffer.Get());
             p_commandlist->ResourceBarrier(ref_buffer.Get(), rhi::EResourceState::CopyDst, buffer_state);
 
             // upload bufferは一時バッファとして作ってRefとしているので自動的に解放される.

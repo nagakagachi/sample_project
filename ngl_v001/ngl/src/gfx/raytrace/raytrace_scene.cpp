@@ -167,7 +167,7 @@ namespace ngl
 				build_desc.Inputs = build_setup_info_;
 				build_desc.DestAccelerationStructureData = main_->GetD3D12Resource()->GetGPUVirtualAddress();
 				build_desc.ScratchAccelerationStructureData = scratch_->GetD3D12Resource()->GetGPUVirtualAddress();
-				p_command_list->GetD3D12GraphicsCommandList4()->BuildRaytracingAccelerationStructure(&build_desc, 0, nullptr);
+				p_command_list->BuildRaytracingAccelerationStructure(&build_desc);
 
 				// UAV Barrier変更.
 				p_command_list->ResourceUavBarrier(main_.Get());
@@ -414,7 +414,7 @@ namespace ngl
 				build_desc.Inputs = build_setup_info_;
 				build_desc.DestAccelerationStructureData = main_->GetD3D12Resource()->GetGPUVirtualAddress();
 				build_desc.ScratchAccelerationStructureData = scratch_->GetD3D12Resource()->GetGPUVirtualAddress();
-				p_command_list->GetD3D12GraphicsCommandList4()->BuildRaytracingAccelerationStructure(&build_desc, 0, nullptr);
+				p_command_list->BuildRaytracingAccelerationStructure(&build_desc);
 
 				// UAV Barrier.
 				p_command_list->ResourceUavBarrier(main_.Get());
@@ -2105,7 +2105,7 @@ namespace ngl
 			raytraceDesc.HitGroupTable.StrideInBytes = param.p_shader_table->table_entry_byte_size_;
 			raytraceDesc.HitGroupTable.SizeInBytes = param.p_shader_table->table_entry_byte_size_ * param.p_shader_table->table_hitgroup_count_;
 
-			d3d_command_list->DispatchRays(&raytraceDesc);
+			p_command_list->DispatchRays(&raytraceDesc);
 		}
 
 		void  RtSceneManager::SetCameraInfo(const math::Vec3& position, const math::Vec3& dir, const math::Vec3& up, float fov_y_radian, float aspect_ratio)

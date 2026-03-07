@@ -498,6 +498,8 @@ namespace ngl
 				copy_location_dst.SubresourceIndex = subresource_index;
 			}
 			
+			// 生 D3D12 API 呼び出し前にペンディングバリアをフラッシュ.
+			p_command_list->FlushPendingBarriers();
 			auto* p_d3d_commandlist = p_command_list->GetD3D12GraphicsCommandList();
 			p_d3d_commandlist->CopyTextureRegion(&copy_location_dst, 0, 0, 0, &copy_location_src, {});
 		}
