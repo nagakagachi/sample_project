@@ -37,10 +37,16 @@ using RtgFrameRenderSubmitCommandBuffer = std::vector<rtg::RtgSubmitCommandSet>;
 class GraphicsFramework
 {
 public:
+	struct Desc
+	{
+		// Enhanced Barrierサポート時に利用するか.(Experimental)
+		bool enable_enhanced_barrier = false;
+	};
+
 	GraphicsFramework();
 	~GraphicsFramework();
 
-	bool Initialize(platform::CoreWindow* p_window);
+	bool Initialize(platform::CoreWindow* p_window, const Desc& desc = {});
 	// 終了処理前半. ThreadやGPUタスクの完了待ち.
 	void FinalizePrev();
 	// 終了処理後半. リソースの破棄.

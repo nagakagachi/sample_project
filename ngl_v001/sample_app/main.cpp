@@ -257,7 +257,9 @@ bool AppGame::Initialize()
         return false;
     }
     // グラフィックスフレームワーク初期化.
-    if (!gfxfw_.Initialize(&window_))
+    ngl::fwk::GraphicsFramework::Desc gfxfw_desc{};
+    gfxfw_desc.enable_enhanced_barrier = true;
+    if (!gfxfw_.Initialize(&window_, gfxfw_desc))
     {
         assert(false && u8"Failed Initialize Rendering Framework.");
     }

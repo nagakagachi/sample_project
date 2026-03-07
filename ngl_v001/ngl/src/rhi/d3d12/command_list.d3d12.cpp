@@ -205,14 +205,122 @@ namespace ngl
 			desc.Transition.pResource = p_resource_uav;
 			p_command_list->ResourceBarrier(1, &desc);
 		}
+
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+		// Enhanced Barrier: Texture の State Transition.
+		void _EnhancedTransitionBarrierTexture(ID3D12GraphicsCommandList7* p_command_list7, ID3D12Resource* p_resource, EResourceState prev, EResourceState next)
+		{
+			const auto info_before = ConvertResourceStateToEnhancedBarrierInfo(prev);
+			const auto info_after  = ConvertResourceStateToEnhancedBarrierInfo(next);
+
+			D3D12_TEXTURE_BARRIER tex_barrier = {};
+			tex_barrier.SyncBefore   = info_before.sync;
+			tex_barrier.SyncAfter    = info_after.sync;
+			tex_barrier.AccessBefore = info_before.access;
+			tex_barrier.AccessAfter  = info_after.access;
+			tex_barrier.LayoutBefore = info_before.layout;
+			tex_barrier.LayoutAfter  = info_after.layout;
+			tex_barrier.pResource    = p_resource;
+			// 全サブリソースを対象 (IndexOrFirstMipLevel = 0xFFFFFFFF は全サブリソースを示す特殊値).
+			tex_barrier.Subresources = D3D12_BARRIER_SUBRESOURCE_RANGE{ 0xFFFFFFFF, 0, 0, 0, 0, 0 };
+			tex_barrier.Flags        = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+
+			D3D12_BARRIER_GROUP barrier_group = {};
+			barrier_group.Type             = D3D12_BARRIER_TYPE_TEXTURE;
+			barrier_group.NumBarriers      = 1;
+			barrier_group.pTextureBarriers = &tex_barrier;
+
+			p_command_list7->Barrier(1, &barrier_group);
+		}
+
+		// Enhanced Barrier: Buffer の State Transition.
+		void _EnhancedTransitionBarrierBuffer(ID3D12GraphicsCommandList7* p_command_list7, ID3D12Resource* p_resource, EResourceState prev, EResourceState next)
+		{
+			const auto info_before = ConvertResourceStateToEnhancedBarrierInfo(prev);
+			const auto info_after  = ConvertResourceStateToEnhancedBarrierInfo(next);
+
+			D3D12_BUFFER_BARRIER buf_barrier = {};
+			buf_barrier.SyncBefore   = info_before.sync;
+			buf_barrier.SyncAfter    = info_after.sync;
+			buf_barrier.AccessBefore = info_before.access;
+			buf_barrier.AccessAfter  = info_after.access;
+			buf_barrier.pResource    = p_resource;
+			buf_barrier.Offset       = 0;
+			buf_barrier.Size         = UINT64_MAX; // バッファ全体.
+
+			D3D12_BARRIER_GROUP barrier_group = {};
+			barrier_group.Type            = D3D12_BARRIER_TYPE_BUFFER;
+			barrier_group.NumBarriers     = 1;
+			barrier_group.pBufferBarriers = &buf_barrier;
+
+			p_command_list7->Barrier(1, &barrier_group);
+		}
+
+		// Enhanced Barrier: Texture UAV 同期.
+		void _EnhancedUavBarrierTexture(ID3D12GraphicsCommandList7* p_command_list7, ID3D12Resource* p_resource)
+		{
+			D3D12_TEXTURE_BARRIER tex_barrier = {};
+			tex_barrier.SyncBefore   = D3D12_BARRIER_SYNC_ALL_SHADING;
+			tex_barrier.SyncAfter    = D3D12_BARRIER_SYNC_ALL_SHADING;
+			tex_barrier.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+			tex_barrier.AccessAfter  = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+			tex_barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
+			tex_barrier.LayoutAfter  = D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
+			tex_barrier.pResource    = p_resource;
+			tex_barrier.Subresources = D3D12_BARRIER_SUBRESOURCE_RANGE{ 0xFFFFFFFF, 0, 0, 0, 0, 0 };
+			tex_barrier.Flags        = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+
+			D3D12_BARRIER_GROUP barrier_group = {};
+			barrier_group.Type             = D3D12_BARRIER_TYPE_TEXTURE;
+			barrier_group.NumBarriers      = 1;
+			barrier_group.pTextureBarriers = &tex_barrier;
+
+			p_command_list7->Barrier(1, &barrier_group);
+		}
+
+		// Enhanced Barrier: Buffer UAV 同期.
+		void _EnhancedUavBarrierBuffer(ID3D12GraphicsCommandList7* p_command_list7, ID3D12Resource* p_resource)
+		{
+			D3D12_BUFFER_BARRIER buf_barrier = {};
+			buf_barrier.SyncBefore   = D3D12_BARRIER_SYNC_ALL_SHADING;
+			buf_barrier.SyncAfter    = D3D12_BARRIER_SYNC_ALL_SHADING;
+			buf_barrier.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+			buf_barrier.AccessAfter  = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+			buf_barrier.pResource    = p_resource;
+			buf_barrier.Offset       = 0;
+			buf_barrier.Size         = UINT64_MAX;
+
+			D3D12_BARRIER_GROUP barrier_group = {};
+			barrier_group.Type            = D3D12_BARRIER_TYPE_BUFFER;
+			barrier_group.NumBarriers     = 1;
+			barrier_group.pBufferBarriers = &buf_barrier;
+
+			p_command_list7->Barrier(1, &barrier_group);
+		}
+#endif // __ID3D12GraphicsCommandList7_INTERFACE_DEFINED__
+
 		// UAV同期Barrier.
 		void CommandListBaseDep::ResourceUavBarrier(TextureDep* p_texture)
 		{
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
+			{
+				_EnhancedUavBarrierTexture(p_command_list7_.Get(), p_texture->GetD3D12Resource());
+				return;
+			}
+#endif
 			_UavBarrier(p_command_list_.Get(), p_texture->GetD3D12Resource());
 		}
 		// UAV同期Barrier.
 		void CommandListBaseDep::ResourceUavBarrier(BufferDep* p_buffer)
 		{
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
+			{
+				_EnhancedUavBarrierBuffer(p_command_list7_.Get(), p_buffer->GetD3D12Resource());
+				return;
+			}
+#endif
 			_UavBarrier(p_command_list_.Get(), p_buffer->GetD3D12Resource());
 		}
 		
@@ -479,6 +587,14 @@ namespace ngl
 			if (!p_swapchain || prev == next)
 				return;
 			auto* resource = p_swapchain->GetD3D12Resource(buffer_index);
+			// Swapchain は Texture として扱う.
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
+			{
+				_EnhancedTransitionBarrierTexture(p_command_list7_.Get(), resource, prev, next);
+				return;
+			}
+#endif
 			_Barrier(p_command_list_.Get(), resource, prev, next);
 		}
 		// バリア Texture.
@@ -487,6 +603,13 @@ namespace ngl
 			if (!p_texture || prev == next)
 				return;
 			auto* resource = p_texture->GetD3D12Resource();
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
+			{
+				_EnhancedTransitionBarrierTexture(p_command_list7_.Get(), resource, prev, next);
+				return;
+			}
+#endif
 			_Barrier(p_command_list_.Get(), resource, prev, next);
 		}
 		// バリア Buffer.
@@ -495,6 +618,13 @@ namespace ngl
 			if (!p_buffer || prev == next)
 				return;
 			auto* resource = p_buffer->GetD3D12Resource();
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
+			{
+				_EnhancedTransitionBarrierBuffer(p_command_list7_.Get(), resource, prev, next);
+				return;
+			}
+#endif
 			_Barrier(p_command_list_.Get(), resource, prev, next);
 		}
 

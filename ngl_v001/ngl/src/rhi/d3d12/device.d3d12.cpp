@@ -181,6 +181,33 @@ namespace ngl
 				}
 			}
 
+
+		// Enhanced Barrierサポートチェック.
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+		if (p_device_)
+		{
+			D3D12_FEATURE_DATA_D3D12_OPTIONS12 features12 = {};
+			if (SUCCEEDED(p_device_->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS12, &features12, sizeof(features12))))
+			{
+				enhanced_barrier_supported_ = desc_.enable_enhanced_barrier && features12.EnhancedBarriersSupported;
+			}
+			std::cout << "[INFO] Enhanced Barrier Supported: " << (enhanced_barrier_supported_ ? "true" : "false") << std::endl;
+		}
+#endif
+
+		// D3D12 InfoQueue: ERRORでブレーク設定 (enable_debug_layer && Debug build).
+#if defined(_DEBUG)
+		if (desc_.enable_debug_layer && p_device_)
+		{
+			Microsoft::WRL::ComPtr<ID3D12InfoQueue> info_queue;
+			if (SUCCEEDED(p_device_->QueryInterface(IID_PPV_ARGS(&info_queue))))
+			{
+				info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR,      TRUE);
+				info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+			}
+		}
+#endif
+
 			// PersistentDescriptorManager初期化
 			{
 				p_persistent_descriptor_allocator_.reset(new PersistentDescriptorAllocator());

@@ -54,6 +54,19 @@ namespace ngl
 		D3D12_TEXTURE_ADDRESS_MODE ConvertTextureAddressMode(ETextureAddressMode v);
 
 
+		// Enhanced Barrier 状態情報. EResourceState から変換して使用する.
+		// Textureの場合のみ layout フィールドが意味を持つ. BufferバリアのSyncとAccessは同じ構造体を共用.
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+		struct EnhancedBarrierStateInfo
+		{
+			D3D12_BARRIER_SYNC   sync   = D3D12_BARRIER_SYNC_NONE;
+			D3D12_BARRIER_ACCESS access = D3D12_BARRIER_ACCESS_COMMON;
+			D3D12_BARRIER_LAYOUT layout = D3D12_BARRIER_LAYOUT_COMMON; // Texture用のみ利用
+		};
+		EnhancedBarrierStateInfo ConvertResourceStateToEnhancedBarrierInfo(EResourceState v);
+#endif
+
+
 
 		constexpr uint32_t align_to(uint32_t alignment, uint32_t value)
 		{
