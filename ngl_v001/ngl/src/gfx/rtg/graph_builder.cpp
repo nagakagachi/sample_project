@@ -1726,7 +1726,7 @@ namespace ngl
 
 				// Texture.
 				new_tex.Reset(new rhi::TextureDep());
-				if (!new_tex->Initialize(p_device_, desc))
+				if (!new_tex->Initialize(p_device_, desc, "RTG_Texture"))
 				{
 					assert(false);
 					return -1;

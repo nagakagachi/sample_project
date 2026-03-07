@@ -20,6 +20,25 @@ namespace ngl::rhi
 	class GraphicsCommandListDep;
 }
 
+
+// ===========================================================================
+// D3D12 リソースデバッグ名設定ヘルパーマクロ
+// _DEBUG ビルド時のみ ID3D12Object::SetName(LPCWSTR) でオブジェクト名を設定する.
+// mbstowcs_s で ANSI->wchar_t 変換し SetName() を呼ぶ (dxguid.lib 不要).
+// ===========================================================================
+#if defined(_DEBUG)
+#define NGL_RHI_SET_DEBUG_NAME(p_resource, name) \
+	do { \
+		if ((p_resource) && (name) && (name)[0] != '\0') { \
+			wchar_t _ngl_wname_[256]; \
+			mbstowcs_s(nullptr, _ngl_wname_, sizeof(_ngl_wname_)/sizeof(wchar_t), (name), _TRUNCATE); \
+			(p_resource)->SetName(_ngl_wname_); \
+		} \
+	} while (0)
+#else
+#define NGL_RHI_SET_DEBUG_NAME(p_resource, name) do {} while (0)
+#endif
+
 namespace ngl
 {
 	namespace rhi
@@ -58,7 +77,7 @@ namespace ngl
 			BufferDep();
 			~BufferDep();
 
-			bool Initialize(DeviceDep* p_device, const Desc& desc);
+			bool Initialize(DeviceDep* p_device, const Desc& desc, const char* debug_name = nullptr);
 			void Finalize();
 
 			void* Map();
@@ -187,7 +206,7 @@ namespace ngl
 			TextureDep();
 			~TextureDep();
 
-			bool Initialize(DeviceDep* p_device, const Desc& desc);
+			bool Initialize(DeviceDep* p_device, const Desc& desc, const char* debug_name = nullptr);
 			void Finalize();
 
 			void* Map();

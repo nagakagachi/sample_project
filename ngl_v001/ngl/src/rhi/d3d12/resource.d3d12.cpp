@@ -105,7 +105,7 @@ namespace ngl
 			Finalize();
 		}
 
-		bool BufferDep::Initialize(DeviceDep* p_device, const Desc& desc)
+		bool BufferDep::Initialize(DeviceDep* p_device, const Desc& desc, const char* debug_name)
 		{
 			InitializeRhiObject(p_device);
 
@@ -206,6 +206,8 @@ namespace ngl
 				return false;
 			}
 
+			NGL_RHI_SET_DEBUG_NAME(resource_.Get(), debug_name);
+
 			return true;
 		}
 		void BufferDep::Finalize()
@@ -273,7 +275,7 @@ namespace ngl
 			Finalize();
 		}
 
-		bool TextureDep::Initialize(DeviceDep* p_device, const Desc& desc)
+		bool TextureDep::Initialize(DeviceDep* p_device, const Desc& desc, const char* debug_name)
 		{
 			InitializeRhiObject(p_device);
 
@@ -407,6 +409,8 @@ namespace ngl
 				std::cout << "[ERROR] CreateCommittedResource" << std::endl;
 				return false;
 			}
+
+			NGL_RHI_SET_DEBUG_NAME(resource_.Get(), debug_name);
 
 			return true;
 		}

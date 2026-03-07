@@ -437,6 +437,15 @@ namespace ngl
 				{
 					std::cout << "[ERROR] Get SwapChain Buffer " << i << std::endl;
 				}
+#if defined(_DEBUG)
+				// デバッグビルドでスワップチェインバックバッファに名前を設定
+				if (p_resources_[i])
+				{
+					char debug_name_buf[64];
+					snprintf(debug_name_buf, sizeof(debug_name_buf), "swapchain_backbuffer_%u", i);
+					NGL_RHI_SET_DEBUG_NAME(p_resources_[i].Get(), debug_name_buf);
+				}
+#endif
 			}
 
 			desc_ = desc;
