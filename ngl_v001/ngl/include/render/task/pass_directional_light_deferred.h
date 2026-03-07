@@ -68,6 +68,7 @@ namespace ngl::render::task
 		    rtg::RtgResourceHandle h_bent_normal,
 			const SetupDesc& desc)
 		{
+			SetDebugNodeName("DirectionalLight");
 			// Rtgリソースセットアップ.
 			{
 				desc_ = desc;

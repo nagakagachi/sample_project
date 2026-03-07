@@ -105,7 +105,7 @@ namespace ngl
 			Finalize();
 		}
 
-		bool BufferDep::Initialize(DeviceDep* p_device, const Desc& desc)
+		bool BufferDep::Initialize(DeviceDep* p_device, const Desc& desc, const char* debug_name)
 		{
 			InitializeRhiObject(p_device);
 
@@ -156,6 +156,18 @@ namespace ngl
 				resource_desc.Flags = getD3D12ResourceFlags(desc_.bind_flag);
 			}
 
+			// DefaultHeapは初期状態をCommonに統一する（Enhanced/Legacy混在期のトラブル回避）.
+			// RaytracingAccelerationStructureはD3D12仕様でCommon不可のため除外.
+			if (D3D12_HEAP_TYPE_DEFAULT == heap_prop.Type
+				&& desc.initial_state != EResourceState::RaytracingAccelerationStructure)
+			{
+				// Common以外を指定した場合はランタイムエラー.
+				assert(desc.initial_state == EResourceState::Common
+					&& "[ERROR] DefaultHeap resource initial_state must be Common.");
+				desc_.initial_state = EResourceState::Common;
+				initial_state = D3D12_RESOURCE_STATE_COMMON;
+			}
+
 			// パラメータチェック
 			{
 				if ((D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS & resource_desc.Flags) && (D3D12_HEAP_TYPE_DEFAULT != heap_prop.Type))
@@ -197,6 +209,8 @@ namespace ngl
 				std::cout << "[ERROR] CreateCommittedResource" << std::endl;
 				return false;
 			}
+
+			NGL_RHI_SET_DEBUG_NAME(resource_.Get(), debug_name);
 
 			return true;
 		}
@@ -265,7 +279,7 @@ namespace ngl
 			Finalize();
 		}
 
-		bool TextureDep::Initialize(DeviceDep* p_device, const Desc& desc)
+		bool TextureDep::Initialize(DeviceDep* p_device, const Desc& desc, const char* debug_name)
 		{
 			InitializeRhiObject(p_device);
 
@@ -353,6 +367,18 @@ namespace ngl
 				resource_desc.Format = getTypelessFormatFromDepthFormat(desc_.format);
 			}
 
+			// DefaultHeapは初期状態をCommonに統一する（Enhanced/Legacy混在期のトラブル回避）.
+			// RaytracingAccelerationStructureはD3D12仕様でCommon不可のため除外.
+			if (D3D12_HEAP_TYPE_DEFAULT == heap_prop.Type
+				&& desc.initial_state != EResourceState::RaytracingAccelerationStructure)
+			{
+				// Common以外を指定した場合はランタイムエラー.
+				assert(desc.initial_state == EResourceState::Common
+					&& "[ERROR] DefaultHeap resource initial_state must be Common.");
+				desc_.initial_state = EResourceState::Common;
+				initial_state = D3D12_RESOURCE_STATE_COMMON;
+			}
+
 			// パラメータチェック
 			{
 				if ((D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS & resource_desc.Flags) && (D3D12_HEAP_TYPE_DEFAULT != heap_prop.Type))
@@ -391,6 +417,8 @@ namespace ngl
 				std::cout << "[ERROR] CreateCommittedResource" << std::endl;
 				return false;
 			}
+
+			NGL_RHI_SET_DEBUG_NAME(resource_.Get(), debug_name);
 
 			return true;
 		}
@@ -457,33 +485,8 @@ namespace ngl
 		}
 		void TextureDep::CopyTextureRegion(GraphicsCommandListDep* p_command_list, int subresource_index, const BufferDep* p_src_buffer, const TextureSubresourceLayoutInfo& src_layout)
 		{
-			// Copy Command.
-			D3D12_TEXTURE_COPY_LOCATION copy_location_src = {};
-			{
-				copy_location_src.pResource = p_src_buffer->GetD3D12Resource();
-				// Bufferの場合はFootprintで指定.
-				copy_location_src.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
-				// p_src_bufferに RowPitch を考慮してコピーしておくことで, レイアウト情報をそのまま利用してコピー.
-				{
-					copy_location_src.PlacedFootprint.Offset = src_layout.byte_offset;
-					
-					copy_location_src.PlacedFootprint.Footprint.Format = ConvertResourceFormat(src_layout.format);
-					copy_location_src.PlacedFootprint.Footprint.Width = src_layout.width;
-					copy_location_src.PlacedFootprint.Footprint.Height = src_layout.height;
-					copy_location_src.PlacedFootprint.Footprint.Depth = src_layout.depth;
-					copy_location_src.PlacedFootprint.Footprint.RowPitch = src_layout.row_pitch;
-				}
-			}
-			D3D12_TEXTURE_COPY_LOCATION copy_location_dst = {};
-			{
-				copy_location_dst.pResource = GetD3D12Resource();
-				// Textureの場合はSubresourceIndexで指定.
-				copy_location_dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
-				copy_location_dst.SubresourceIndex = subresource_index;
-			}
-			
-			auto* p_d3d_commandlist = p_command_list->GetD3D12GraphicsCommandList();
-			p_d3d_commandlist->CopyTextureRegion(&copy_location_dst, 0, 0, 0, &copy_location_src, {});
+			// CommandListBaseDep のラッパーに委譲(バリアフラッシュ含む).
+			p_command_list->CopyTextureRegion(this, subresource_index, p_src_buffer, src_layout);
 		}
 		
 		ID3D12Resource* TextureDep::GetD3D12Resource() const

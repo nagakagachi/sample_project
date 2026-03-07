@@ -181,6 +181,37 @@ namespace ngl
 				}
 			}
 
+
+		// Enhanced Barrierサポートチェック.
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+		if (p_device_)
+		{
+			D3D12_FEATURE_DATA_D3D12_OPTIONS12 features12 = {};
+			if (SUCCEEDED(p_device_->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS12, &features12, sizeof(features12))))
+			{
+				enhanced_barrier_supported_ = desc_.require_enhanced_barrier && features12.EnhancedBarriersSupported;
+			if (desc_.require_enhanced_barrier && !features12.EnhancedBarriersSupported)
+			{
+				std::cout << "[WARN] Enhanced Barrier was requested (require_enhanced_barrier=true) but is not supported on this device. Falling back to Legacy Barrier." << std::endl;
+			}
+			}
+			std::cout << "[INFO] Enhanced Barrier Supported: " << (enhanced_barrier_supported_ ? "true" : "false") << std::endl;
+		}
+#endif
+
+		// D3D12 InfoQueue: ERRORでブレーク設定 (enable_debug_layer && Debug build).
+#if defined(_DEBUG)
+		if (desc_.enable_debug_layer && p_device_)
+		{
+			Microsoft::WRL::ComPtr<ID3D12InfoQueue> info_queue;
+			if (SUCCEEDED(p_device_->QueryInterface(IID_PPV_ARGS(&info_queue))))
+			{
+				info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR,      TRUE);
+				info_queue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_CORRUPTION, TRUE);
+			}
+		}
+#endif
+
 			// PersistentDescriptorManager初期化
 			{
 				p_persistent_descriptor_allocator_.reset(new PersistentDescriptorAllocator());
@@ -329,6 +360,7 @@ namespace ngl
 			return D3D12_RAYTRACING_TIER_NOT_SUPPORTED != device_dxr_tier_;
 		}
 
+
 		// -------------------------------------------------------------------------------------------------------------------------------------------------
 
 
@@ -405,6 +437,15 @@ namespace ngl
 				{
 					std::cout << "[ERROR] Get SwapChain Buffer " << i << std::endl;
 				}
+#if defined(_DEBUG)
+				// デバッグビルドでスワップチェインバックバッファに名前を設定
+				if (p_resources_[i])
+				{
+					char debug_name_buf[64];
+					snprintf(debug_name_buf, sizeof(debug_name_buf), "swapchain_backbuffer_%u", i);
+					NGL_RHI_SET_DEBUG_NAME(p_resources_[i].Get(), debug_name_buf);
+				}
+#endif
 			}
 
 			desc_ = desc;

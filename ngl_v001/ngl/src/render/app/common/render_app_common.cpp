@@ -13,12 +13,11 @@
 namespace ngl::render::app
 {
 
-    bool ComputeBufferSet::InitializeAsStructured(ngl::rhi::DeviceDep* p_device,const rhi::BufferDep::Desc& desc)
+    bool ComputeBufferSet::InitializeAsStructured(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc, const char* debug_name)
     {
-        resource_state = desc.initial_state;
-
         buffer.Reset(new rhi::BufferDep());
-        if (!buffer->Initialize(p_device, desc)) return false;
+        if (!buffer->Initialize(p_device, desc, debug_name)) return false;
+        resource_state = buffer->GetDesc().initial_state; // Enhanced Barrier有効時はCommonに変更されるためInitialize後に取得.
 
         if (desc.bind_flag & rhi::ResourceBindFlag::UnorderedAccess)
         {
@@ -33,12 +32,11 @@ namespace ngl::render::app
 
         return true;
     }
-    bool ComputeBufferSet::InitializeAsTyped(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc, rhi::EResourceFormat view_format)
+    bool ComputeBufferSet::InitializeAsTyped(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc, rhi::EResourceFormat view_format, const char* debug_name)
     {
-        resource_state = desc.initial_state;
-
         buffer.Reset(new rhi::BufferDep());
-        if (!buffer->Initialize(p_device, desc)) return false;
+        if (!buffer->Initialize(p_device, desc, debug_name)) return false;
+        resource_state = buffer->GetDesc().initial_state; // Enhanced Barrier有効時はCommonに変更されるためInitialize後に取得.
 
         if (desc.bind_flag & rhi::ResourceBindFlag::UnorderedAccess)
         {
@@ -63,12 +61,11 @@ namespace ngl::render::app
 
 
 
-    bool ComputeTextureSet::Initialize(ngl::rhi::DeviceDep* p_device, const rhi::TextureDep::Desc& desc)
+    bool ComputeTextureSet::Initialize(ngl::rhi::DeviceDep* p_device, const rhi::TextureDep::Desc& desc, const char* debug_name)
     {
-        resource_state = desc.initial_state;
-
         texture.Reset(new rhi::TextureDep());
-        if (!texture->Initialize(p_device, desc)) return false;
+        if (!texture->Initialize(p_device, desc, debug_name)) return false;
+        resource_state = texture->GetDesc().initial_state; // Enhanced Barrier有効時はCommonに変更されるためInitialize後に取得.
 
         if (desc.bind_flag & rhi::ResourceBindFlag::UnorderedAccess)
         {

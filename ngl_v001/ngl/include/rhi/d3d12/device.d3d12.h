@@ -83,6 +83,8 @@ namespace ngl
 				bool	enable_pipeline_state_cache = true;
 				u32		pipeline_state_cache_graphics_capacity = 512;
 				u32		pipeline_state_cache_compute_capacity = 512;
+				// Enhanced Barrierサポート時に利用を要求するか.(非サポート時はLegacyにフォールバック)
+				bool	require_enhanced_barrier = true;
 			};
 
 			DeviceDep();
@@ -103,6 +105,8 @@ namespace ngl
 			DXGI_FACTORY_TYPE* GetDxgiFactory();
 			// Dxrサポートの取得.
 			bool IsSupportDxr() const;
+			// Enhanced Barrierサポートの取得.
+			bool IsEnhancedBarrierSupported() const { return enhanced_barrier_supported_; }
 
 			PersistentDescriptorAllocator* GetPersistentDescriptorAllocator()
 			{
@@ -157,6 +161,8 @@ namespace ngl
 			D3D_FEATURE_LEVEL device_feature_level_ = {};
 			// Raytracing DXR Tier.
 			D3D12_RAYTRACING_TIER device_dxr_tier_ = {};
+			// Enhanced Barrierサポートフラグ.
+			bool enhanced_barrier_supported_ = false;
 			
 			// base device.
 			Microsoft::WRL::ComPtr<ID3D12Device> p_device_;

@@ -156,12 +156,23 @@ namespace ngl
 			// インデックスはDeviceから取得するグローバルなフレームインデックス.
 			frame_desc_interface_.ReadyToNewFrame((u32)parent_device_->GetDeviceFrameIndex());
 #endif
+
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+#if NGL_ENHANCED_BARRIER_BATCH
+			// 前回の記録が残存しないようペンディングリストをクリアする.
+			pending_tex_barriers_.clear();
+			pending_buf_barriers_.clear();
+#endif
+#endif
 		}
 		void CommandListBaseDep::End()
 		{
 			// 二重Close禁止.
 			assert(is_open_);
-			
+
+			// Close前に残存ペンディングバリアをフラッシュ (安全策).
+			FlushPendingBarriers();
+
 			p_command_list_->Close();
 
 #if NGL_RHI_COMMANDLIST_DESCRIPTOR_RESET_ON_END
@@ -175,12 +186,14 @@ namespace ngl
 		}
 		void CommandListBaseDep::Dispatch(u32 x, u32 y, u32 z)
 		{
+			FlushPendingBarriers();
 			p_command_list_->Dispatch(x, y, z);
 		}
 		void CommandListBaseDep::DispatchIndirect(BufferDep* p_arg_buffer)
 		{
 			if (!p_arg_buffer)
 				return;
+			FlushPendingBarriers();
 
 			// Get D3D12 resource from BufferDep
 			ID3D12Resource* p_arg_buffer_resource = p_arg_buffer->GetD3D12Resource();
@@ -196,7 +209,63 @@ namespace ngl
 				0                       // CountBufferOffset
 			);
 		}
-		
+
+#if defined(__ID3D12GraphicsCommandList4_INTERFACE_DEFINED__)
+		void CommandListBaseDep::BuildRaytracingAccelerationStructure(
+			const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC* p_desc,
+			UINT num_postbuild_info_descs,
+			const D3D12_RAYTRACING_ACCELERATION_STRUCTURE_POSTBUILD_INFO_DESC* p_postbuild_info_descs)
+		{
+			if (!p_desc)
+				return;
+			FlushPendingBarriers();
+			p_command_list4_->BuildRaytracingAccelerationStructure(p_desc, num_postbuild_info_descs, p_postbuild_info_descs);
+		}
+
+		void CommandListBaseDep::DispatchRays(const D3D12_DISPATCH_RAYS_DESC* p_desc)
+		{
+			if (!p_desc)
+				return;
+			FlushPendingBarriers();
+			p_command_list4_->DispatchRays(p_desc);
+		}
+#endif // __ID3D12GraphicsCommandList4_INTERFACE_DEFINED__
+
+		void CommandListBaseDep::CopyResource(const BufferDep* p_dst, const BufferDep* p_src)
+		{
+			if (!p_dst || !p_src)
+				return;
+			FlushPendingBarriers();
+			p_command_list_->CopyResource(p_dst->GetD3D12Resource(), p_src->GetD3D12Resource());
+		}
+
+		// Upload Buffer のサブリソースデータを Texture の指定サブリソースへコピー.
+		void CommandListBaseDep::CopyTextureRegion(const TextureDep* p_dst, int dst_subresource, const BufferDep* p_src_buffer, const TextureSubresourceLayoutInfo& src_layout)
+		{
+			if (!p_dst || !p_src_buffer)
+				return;
+			FlushPendingBarriers();
+
+			D3D12_TEXTURE_COPY_LOCATION copy_src = {};
+			{
+				copy_src.pResource                          = p_src_buffer->GetD3D12Resource();
+				copy_src.Type                               = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+				copy_src.PlacedFootprint.Offset             = src_layout.byte_offset;
+				copy_src.PlacedFootprint.Footprint.Format   = ConvertResourceFormat(src_layout.format);
+				copy_src.PlacedFootprint.Footprint.Width    = src_layout.width;
+				copy_src.PlacedFootprint.Footprint.Height   = src_layout.height;
+				copy_src.PlacedFootprint.Footprint.Depth    = src_layout.depth;
+				copy_src.PlacedFootprint.Footprint.RowPitch = src_layout.row_pitch;
+			}
+			D3D12_TEXTURE_COPY_LOCATION copy_dst = {};
+			{
+				copy_dst.pResource        = p_dst->GetD3D12Resource();
+				copy_dst.Type             = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+				copy_dst.SubresourceIndex = dst_subresource;
+			}
+			p_command_list_->CopyTextureRegion(&copy_dst, 0, 0, 0, &copy_src, nullptr);
+		}
+
 		// UAV Barrier.
 		void _UavBarrier(ID3D12GraphicsCommandList* p_command_list, ID3D12Resource* p_resource_uav)
 		{
@@ -205,15 +274,276 @@ namespace ngl
 			desc.Transition.pResource = p_resource_uav;
 			p_command_list->ResourceBarrier(1, &desc);
 		}
+
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+		// Enhanced Barrier: Texture 遷移バリア設定値を構築して返す.
+		D3D12_TEXTURE_BARRIER _MakeEnhancedTextureTransitionBarrier(ID3D12Resource* p_resource, EResourceState prev, EResourceState next)
+		{
+			const auto info_before = ConvertResourceStateToEnhancedBarrierInfo(prev, true);
+			const auto info_after  = ConvertResourceStateToEnhancedBarrierInfo(next, true);
+			D3D12_TEXTURE_BARRIER tex_barrier = {};
+			tex_barrier.SyncBefore   = info_before.sync;
+			tex_barrier.SyncAfter    = info_after.sync;
+			tex_barrier.AccessBefore = info_before.access;
+			tex_barrier.AccessAfter  = info_after.access;
+			tex_barrier.LayoutBefore = info_before.layout;
+			tex_barrier.LayoutAfter  = info_after.layout;
+			tex_barrier.pResource    = p_resource;
+			// 全サブリソースを対象 (IndexOrFirstMipLevel = 0xFFFFFFFF は全サブリソースを示す特殊値).
+			tex_barrier.Subresources = D3D12_BARRIER_SUBRESOURCE_RANGE{ 0xFFFFFFFF, 0, 0, 0, 0, 0 };
+			tex_barrier.Flags        = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+			return tex_barrier;
+		}
+
+		// Enhanced Barrier: Buffer 遷移バリア設定値を構築して返す.
+		D3D12_BUFFER_BARRIER _MakeEnhancedBufferTransitionBarrier(ID3D12Resource* p_resource, EResourceState prev, EResourceState next)
+		{
+			const auto info_before = ConvertResourceStateToEnhancedBarrierInfo(prev);
+			const auto info_after  = ConvertResourceStateToEnhancedBarrierInfo(next);
+			D3D12_BUFFER_BARRIER buf_barrier = {};
+			buf_barrier.SyncBefore   = info_before.sync;
+			buf_barrier.SyncAfter    = info_after.sync;
+			buf_barrier.AccessBefore = info_before.access;
+			buf_barrier.AccessAfter  = info_after.access;
+			buf_barrier.pResource    = p_resource;
+			buf_barrier.Offset       = 0;
+			buf_barrier.Size         = UINT64_MAX; // バッファ全体.
+			return buf_barrier;
+		}
+
+		// Enhanced Barrier: Texture UAV 同期バリア設定値を構築して返す.
+		D3D12_TEXTURE_BARRIER _MakeEnhancedTextureUavBarrier(ID3D12Resource* p_resource)
+		{
+			D3D12_TEXTURE_BARRIER tex_barrier = {};
+			tex_barrier.SyncBefore   = D3D12_BARRIER_SYNC_ALL_SHADING;
+			tex_barrier.SyncAfter    = D3D12_BARRIER_SYNC_ALL_SHADING;
+			tex_barrier.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+			tex_barrier.AccessAfter  = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+			tex_barrier.LayoutBefore = D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
+			tex_barrier.LayoutAfter  = D3D12_BARRIER_LAYOUT_UNORDERED_ACCESS;
+			tex_barrier.pResource    = p_resource;
+			tex_barrier.Subresources = D3D12_BARRIER_SUBRESOURCE_RANGE{ 0xFFFFFFFF, 0, 0, 0, 0, 0 };
+			tex_barrier.Flags        = D3D12_TEXTURE_BARRIER_FLAG_NONE;
+			return tex_barrier;
+		}
+
+		// Enhanced Barrier: Buffer UAV 同期バリア設定値を構築して返す.
+		D3D12_BUFFER_BARRIER _MakeEnhancedBufferUavBarrier(ID3D12Resource* p_resource)
+		{
+			D3D12_BUFFER_BARRIER buf_barrier = {};
+			buf_barrier.SyncBefore   = D3D12_BARRIER_SYNC_ALL_SHADING;
+			buf_barrier.SyncAfter    = D3D12_BARRIER_SYNC_ALL_SHADING;
+			buf_barrier.AccessBefore = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+			buf_barrier.AccessAfter  = D3D12_BARRIER_ACCESS_UNORDERED_ACCESS;
+			buf_barrier.pResource    = p_resource;
+			buf_barrier.Offset       = 0;
+			buf_barrier.Size         = UINT64_MAX;
+			return buf_barrier;
+		}
+#if NGL_ENHANCED_BARRIER_BATCH && NGL_ENHANCED_BARRIER_MERGE
+		// Enhanced Barrier Batch 最適化ヘルパー:
+		// テクスチャバリアのマージ / 重複除去.
+		// - 遷移バリア(is_uav=false): 同一リソースの既存遷移バリアがあれば After 側を上書きしてチェーン結合 (A->B + B->C => A->C).
+		// - UAVバリア  (is_uav=true) : 同一リソースの既存UAVバリアがあれば重複をスキップ.
+		// 戻り値: true=バリアを処理済み(push_back不要), false=push_backが必要.
+		bool _TryMergeOrDeduplicateTexBarrier(
+			std::vector<D3D12_TEXTURE_BARRIER>& pending,
+			const D3D12_TEXTURE_BARRIER& new_barrier,
+			bool is_uav)
+		{
+			for (auto& entry : pending)
+			{
+				if (entry.pResource != new_barrier.pResource)
+					continue;
+				// LayoutBefore == LayoutAfter の場合はUAVバリア (同一レイアウト同士のSync).
+				const bool entry_is_uav = (entry.LayoutBefore == entry.LayoutAfter);
+				if (is_uav)
+				{
+					// UAVバリアの重複除去: 既存UAVバリアがある場合はスキップ.
+					return entry_is_uav;
+				}
+				else
+				{
+					// 遷移バリアのチェーン結合: 既存遷移バリアの After 側を更新.
+					if (!entry_is_uav && entry.LayoutAfter == new_barrier.LayoutBefore)
+					{
+						entry.SyncAfter   = new_barrier.SyncAfter;
+						entry.AccessAfter = new_barrier.AccessAfter;
+						entry.LayoutAfter = new_barrier.LayoutAfter;
+						return true;
+					}
+					return false;
+				}
+			}
+			return false;
+		}
+
+		// Enhanced Barrier Batch 最適化ヘルパー:
+		// バッファバリアのマージ / 重複除去. テクスチャ版と同様のロジックだがバッファはLayoutを持たない.
+		bool _TryMergeOrDeduplicateBufBarrier(
+			std::vector<D3D12_BUFFER_BARRIER>& pending,
+			const D3D12_BUFFER_BARRIER& new_barrier,
+			bool is_uav)
+		{
+			for (auto& entry : pending)
+			{
+				if (entry.pResource != new_barrier.pResource)
+					continue;
+				// SyncBefore==SyncAfter かつ AccessBefore==AccessAfter の場合はUAVバリア.
+				const bool entry_is_uav = (entry.SyncBefore == entry.SyncAfter && entry.AccessBefore == entry.AccessAfter);
+				if (is_uav)
+				{
+					// UAVバリアの重複除去.
+					return entry_is_uav;
+				}
+				else
+				{
+					// 遷移バリアのチェーン結合: Access が連続している場合のみ結合.
+					if (!entry_is_uav && entry.AccessAfter == new_barrier.AccessBefore)
+					{
+						entry.SyncAfter   = new_barrier.SyncAfter;
+						entry.AccessAfter = new_barrier.AccessAfter;
+						return true;
+					}
+					return false;
+				}
+			}
+			return false;
+		}
+#endif // NGL_ENHANCED_BARRIER_BATCH
+
+
+		// Enhanced Barrier: Texture State Transition 即時発行 (非バッチモード用).
+		void _EnhancedTransitionBarrierTexture(ID3D12GraphicsCommandList7* p_command_list7, ID3D12Resource* p_resource, EResourceState prev, EResourceState next)
+		{
+			const auto tex_barrier = _MakeEnhancedTextureTransitionBarrier(p_resource, prev, next);
+			D3D12_BARRIER_GROUP barrier_group = {};
+			barrier_group.Type             = D3D12_BARRIER_TYPE_TEXTURE;
+			barrier_group.NumBarriers      = 1;
+			barrier_group.pTextureBarriers = &tex_barrier;
+			p_command_list7->Barrier(1, &barrier_group);
+		}
+
+		// Enhanced Barrier: Buffer State Transition 即時発行 (非バッチモード用).
+		void _EnhancedTransitionBarrierBuffer(ID3D12GraphicsCommandList7* p_command_list7, ID3D12Resource* p_resource, EResourceState prev, EResourceState next)
+		{
+			const auto buf_barrier = _MakeEnhancedBufferTransitionBarrier(p_resource, prev, next);
+			D3D12_BARRIER_GROUP barrier_group = {};
+			barrier_group.Type            = D3D12_BARRIER_TYPE_BUFFER;
+			barrier_group.NumBarriers     = 1;
+			barrier_group.pBufferBarriers = &buf_barrier;
+			p_command_list7->Barrier(1, &barrier_group);
+		}
+
+		// Enhanced Barrier: Texture UAV 同期 即時発行 (非バッチモード用).
+		void _EnhancedUavBarrierTexture(ID3D12GraphicsCommandList7* p_command_list7, ID3D12Resource* p_resource)
+		{
+			const auto tex_barrier = _MakeEnhancedTextureUavBarrier(p_resource);
+			D3D12_BARRIER_GROUP barrier_group = {};
+			barrier_group.Type             = D3D12_BARRIER_TYPE_TEXTURE;
+			barrier_group.NumBarriers      = 1;
+			barrier_group.pTextureBarriers = &tex_barrier;
+			p_command_list7->Barrier(1, &barrier_group);
+		}
+
+		// Enhanced Barrier: Buffer UAV 同期 即時発行 (非バッチモード用).
+		void _EnhancedUavBarrierBuffer(ID3D12GraphicsCommandList7* p_command_list7, ID3D12Resource* p_resource)
+		{
+			const auto buf_barrier = _MakeEnhancedBufferUavBarrier(p_resource);
+			D3D12_BARRIER_GROUP barrier_group = {};
+			barrier_group.Type            = D3D12_BARRIER_TYPE_BUFFER;
+			barrier_group.NumBarriers     = 1;
+			barrier_group.pBufferBarriers = &buf_barrier;
+			p_command_list7->Barrier(1, &barrier_group);
+		}
+#endif // __ID3D12GraphicsCommandList7_INTERFACE_DEFINED__
+
 		// UAV同期Barrier.
 		void CommandListBaseDep::ResourceUavBarrier(TextureDep* p_texture)
 		{
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
+			{
+#if NGL_ENHANCED_BARRIER_BATCH
+				// バッチモード: ペンディングリストへアペンド. 同一リソースのUAVバリア重複除去を行う.
+#if NGL_ENHANCED_BARRIER_MERGE
+				{
+					const auto b = _MakeEnhancedTextureUavBarrier(p_texture->GetD3D12Resource());
+					if (!_TryMergeOrDeduplicateTexBarrier(pending_tex_barriers_, b, true))
+						pending_tex_barriers_.push_back(b);
+				}
+#else
+				pending_tex_barriers_.push_back(_MakeEnhancedTextureUavBarrier(p_texture->GetD3D12Resource()));
+#endif // NGL_ENHANCED_BARRIER_MERGE
+#else
+				_EnhancedUavBarrierTexture(p_command_list7_.Get(), p_texture->GetD3D12Resource());
+#endif // NGL_ENHANCED_BARRIER_BATCH
+				return;
+			}
+#endif
 			_UavBarrier(p_command_list_.Get(), p_texture->GetD3D12Resource());
 		}
 		// UAV同期Barrier.
 		void CommandListBaseDep::ResourceUavBarrier(BufferDep* p_buffer)
 		{
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
+			{
+#if NGL_ENHANCED_BARRIER_BATCH
+				// バッチモード: ペンディングリストへアペンド. 同一リソースのUAVバリア重複除去を行う.
+#if NGL_ENHANCED_BARRIER_MERGE
+				{
+					const auto b = _MakeEnhancedBufferUavBarrier(p_buffer->GetD3D12Resource());
+					if (!_TryMergeOrDeduplicateBufBarrier(pending_buf_barriers_, b, true))
+						pending_buf_barriers_.push_back(b);
+				}
+#else
+				pending_buf_barriers_.push_back(_MakeEnhancedBufferUavBarrier(p_buffer->GetD3D12Resource()));
+#endif // NGL_ENHANCED_BARRIER_MERGE
+#else
+				_EnhancedUavBarrierBuffer(p_command_list7_.Get(), p_buffer->GetD3D12Resource());
+#endif // NGL_ENHANCED_BARRIER_BATCH
+				return;
+			}
+#endif
 			_UavBarrier(p_command_list_.Get(), p_buffer->GetD3D12Resource());
+		}
+
+		// ペンディングバリアを一括発行する.
+		// Draw/Dispatch/Clear/SetRenderTargets/End の直前に自動呼び出しされる.
+		void CommandListBaseDep::FlushPendingBarriers()
+		{
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+#if NGL_ENHANCED_BARRIER_BATCH
+			if (!p_command_list7_)
+				return;
+			const bool has_tex = !pending_tex_barriers_.empty();
+			const bool has_buf = !pending_buf_barriers_.empty();
+			if (!has_tex && !has_buf)
+				return;
+
+			D3D12_BARRIER_GROUP barrier_groups[2] = {};
+			UINT32 num_groups = 0;
+			if (has_tex)
+			{
+				barrier_groups[num_groups].Type             = D3D12_BARRIER_TYPE_TEXTURE;
+				barrier_groups[num_groups].NumBarriers      = static_cast<UINT32>(pending_tex_barriers_.size());
+				barrier_groups[num_groups].pTextureBarriers = pending_tex_barriers_.data();
+				++num_groups;
+			}
+			if (has_buf)
+			{
+				barrier_groups[num_groups].Type            = D3D12_BARRIER_TYPE_BUFFER;
+				barrier_groups[num_groups].NumBarriers     = static_cast<UINT32>(pending_buf_barriers_.size());
+				barrier_groups[num_groups].pBufferBarriers = pending_buf_barriers_.data();
+				++num_groups;
+			}
+			p_command_list7_->Barrier(num_groups, barrier_groups);
+
+			pending_tex_barriers_.clear();
+			pending_buf_barriers_.clear();
+#endif // NGL_ENHANCED_BARRIER_BATCH
+#endif // __ID3D12GraphicsCommandList7_INTERFACE_DEFINED__
 		}
 		
 		void CommandListBaseDep::SetPipelineState(ComputePipelineStateDep* pso)
@@ -431,6 +761,7 @@ namespace ngl
 		}
 		void GraphicsCommandListDep::SetRenderTargets(const RenderTargetViewDep** pp_rtv, int num_rtv, const DepthStencilViewDep* p_dsv)
 		{
+			FlushPendingBarriers();
 			D3D12_CPU_DESCRIPTOR_HANDLE rtvs[16];
 			assert(std::size(rtvs) >= num_rtv);
 			for (auto i = 0; i < num_rtv; ++i)
@@ -444,11 +775,13 @@ namespace ngl
 		};
 		void GraphicsCommandListDep::ClearRenderTarget(const RenderTargetViewDep* p_rtv, const float(color)[4])
 		{
+			FlushPendingBarriers();
 			auto rtv = p_rtv->GetD3D12DescriptorHandle();
 			p_command_list_->ClearRenderTargetView(rtv, color, 0u, nullptr);
 		}
 		void GraphicsCommandListDep::ClearDepthTarget(const DepthStencilViewDep* p_dsv, float depth, uint8_t stencil, bool clearDepth, bool clearStencil)
 		{
+			FlushPendingBarriers();
 			uint32_t flags = clearDepth ? D3D12_CLEAR_FLAG_DEPTH : 0;
 			flags |= clearStencil ? D3D12_CLEAR_FLAG_STENCIL : 0;
 
@@ -479,6 +812,28 @@ namespace ngl
 			if (!p_swapchain || prev == next)
 				return;
 			auto* resource = p_swapchain->GetD3D12Resource(buffer_index);
+			// Swapchain は Texture として扱う.
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+			// SwapchainバッファはPresent後にCommon状態が保証されるため常にEnhancedを使用可.
+			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
+			{
+#if NGL_ENHANCED_BARRIER_BATCH
+				// バッチモード: ペンディングリストへアペンド. チェーン結合・重複除去を試みる.
+#if NGL_ENHANCED_BARRIER_MERGE
+				{
+					const auto b = _MakeEnhancedTextureTransitionBarrier(resource, prev, next);
+					if (!_TryMergeOrDeduplicateTexBarrier(pending_tex_barriers_, b, false))
+						pending_tex_barriers_.push_back(b);
+				}
+#else
+				pending_tex_barriers_.push_back(_MakeEnhancedTextureTransitionBarrier(resource, prev, next));
+#endif // NGL_ENHANCED_BARRIER_MERGE
+#else
+				_EnhancedTransitionBarrierTexture(p_command_list7_.Get(), resource, prev, next);
+#endif // NGL_ENHANCED_BARRIER_BATCH
+				return;
+			}
+#endif
 			_Barrier(p_command_list_.Get(), resource, prev, next);
 		}
 		// バリア Texture.
@@ -487,6 +842,26 @@ namespace ngl
 			if (!p_texture || prev == next)
 				return;
 			auto* resource = p_texture->GetD3D12Resource();
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
+			{
+#if NGL_ENHANCED_BARRIER_BATCH
+				// バッチモード: ペンディングリストへアペンド. チェーン結合・重複除去を試みる.
+#if NGL_ENHANCED_BARRIER_MERGE
+				{
+					const auto b = _MakeEnhancedTextureTransitionBarrier(resource, prev, next);
+					if (!_TryMergeOrDeduplicateTexBarrier(pending_tex_barriers_, b, false))
+						pending_tex_barriers_.push_back(b);
+				}
+#else
+				pending_tex_barriers_.push_back(_MakeEnhancedTextureTransitionBarrier(resource, prev, next));
+#endif // NGL_ENHANCED_BARRIER_MERGE
+#else
+				_EnhancedTransitionBarrierTexture(p_command_list7_.Get(), resource, prev, next);
+#endif // NGL_ENHANCED_BARRIER_BATCH
+				return;
+			}
+#endif
 			_Barrier(p_command_list_.Get(), resource, prev, next);
 		}
 		// バリア Buffer.
@@ -495,6 +870,26 @@ namespace ngl
 			if (!p_buffer || prev == next)
 				return;
 			auto* resource = p_buffer->GetD3D12Resource();
+#if defined(__ID3D12GraphicsCommandList7_INTERFACE_DEFINED__)
+			if (p_command_list7_ && parent_device_->IsEnhancedBarrierSupported())
+			{
+#if NGL_ENHANCED_BARRIER_BATCH
+				// バッチモード: ペンディングリストへアペンド. チェーン結合・重複除去を試みる.
+#if NGL_ENHANCED_BARRIER_MERGE
+				{
+					const auto b = _MakeEnhancedBufferTransitionBarrier(resource, prev, next);
+					if (!_TryMergeOrDeduplicateBufBarrier(pending_buf_barriers_, b, false))
+						pending_buf_barriers_.push_back(b);
+				}
+#else
+				pending_buf_barriers_.push_back(_MakeEnhancedBufferTransitionBarrier(resource, prev, next));
+#endif // NGL_ENHANCED_BARRIER_MERGE
+#else
+				_EnhancedTransitionBarrierBuffer(p_command_list7_.Get(), resource, prev, next);
+#endif // NGL_ENHANCED_BARRIER_BATCH
+				return;
+			}
+#endif
 			_Barrier(p_command_list_.Get(), resource, prev, next);
 		}
 
@@ -525,16 +920,19 @@ namespace ngl
 		
 		void GraphicsCommandListDep::DrawInstanced(u32 num_vtx, u32 num_instance, u32 offset_vtx, u32 offset_instance)
 		{
+			FlushPendingBarriers();
 			p_command_list_->DrawInstanced(num_vtx, num_instance, offset_vtx, offset_instance);
 		}
 		void GraphicsCommandListDep::DrawIndexedInstanced(u32 index_count_per_instance, u32 instance_count, u32 start_index_location, s32  base_vertex_location, u32 start_instance_location)
 		{
+			FlushPendingBarriers();
 			p_command_list_->DrawIndexedInstanced(index_count_per_instance, instance_count, start_index_location, base_vertex_location, start_instance_location);
 		}
 		void GraphicsCommandListDep::DrawIndirect(BufferDep* p_arg_buffer)
 		{
 			if (!p_arg_buffer)
 				return;
+			FlushPendingBarriers();
 
 			// Get D3D12 resource from BufferDep
 			ID3D12Resource* p_arg_buffer_resource = p_arg_buffer->GetD3D12Resource();

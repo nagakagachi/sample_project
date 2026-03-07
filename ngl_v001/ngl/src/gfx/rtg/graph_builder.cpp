@@ -3,6 +3,7 @@
 #include "gfx/rtg/graph_builder.h"
 
 #include "rhi/d3d12/command_list.d3d12.h"
+#include <unordered_set>
 
 
 namespace ngl
@@ -269,6 +270,25 @@ namespace ngl
                 }
 			}
 
+#if defined(_DEBUG)
+			// 最初のRecordResourceAccess時にデバッグ名を自動生成（最初の利用パス名を採用）.
+			if (handle_2_debug_name_.find(res_handle.data) == handle_2_debug_name_.end())
+			{
+				const char* node_name = node.GetDebugNodeName().Get();
+				const int res_idx = node_res_count_[&node]++;
+				char debug_name_buf[128];
+				if (node_name && node_name[0] != '\0')
+				{
+					snprintf(debug_name_buf, sizeof(debug_name_buf), "%s_res%d", node_name, res_idx);
+				}
+				else
+				{
+					const int node_idx = (int)(std::find(node_sequence_.begin(), node_sequence_.end(), &node) - node_sequence_.begin());
+					snprintf(debug_name_buf, sizeof(debug_name_buf), "node%d_res%d", node_idx, res_idx);
+				}
+				handle_2_debug_name_[res_handle.data] = debug_name_buf;
+			}
+#endif
 			// Passメンバに保持するコードを短縮するためHandleをそのままリターン.
 			return res_handle;
 		}
@@ -903,6 +923,26 @@ namespace ngl
 				}
 #endif
 			}
+#if defined(_DEBUG)
+			// Compile確定後: 内部リソースにデバッグ名を設定（プール再利用があるため初出resource_idのみ）.
+			{
+				std::unordered_set<int> named_resource_ids;
+				for (const auto& handle : compiled_.linear_handle_array_)
+				{
+					const auto it_info = compiled_.handle_2_linear_index_.find(handle.data);
+					if (it_info == compiled_.handle_2_linear_index_.end()) continue;
+					const auto& res_info = compiled_.linear_handle_resource_id_[it_info->second];
+					if (res_info.detail.is_external) continue;// 外部リソースはスキップ.
+					const int res_id = res_info.detail.resource_id;
+					if (named_resource_ids.count(res_id)) continue;// 既に命名済みはスキップ.
+					named_resource_ids.insert(res_id);
+					const auto it_name = handle_2_debug_name_.find(handle.data);
+					if (it_name == handle_2_debug_name_.end()) continue;
+					const auto& tex = p_compiled_manager_->internal_resource_pool_[res_id];
+					NGL_RHI_SET_DEBUG_NAME(tex.tex_.IsValid() ? tex.tex_.Get()->GetD3D12Resource() : nullptr, it_name->second.c_str());
+				}
+			}
+#endif
 			
 			return true;
 		}
@@ -1691,7 +1731,7 @@ namespace ngl
 			if(0 > res_id)
 			{
 				rhi::TextureDep::Desc desc = {};
-				rhi::EResourceState init_state = rhi::EResourceState::General;
+				rhi::EResourceState init_state = rhi::EResourceState::Common;
 				{
 					desc.type = rhi::ETextureType::Texture2D;// 現状2D固定.
 					desc.initial_state = init_state;
@@ -1726,7 +1766,16 @@ namespace ngl
 
 				// Texture.
 				new_tex.Reset(new rhi::TextureDep());
-				if (!new_tex->Initialize(p_device_, desc))
+#if defined(_DEBUG)
+				// プールインデックスを事前計算してデバッグ名を生成する.
+				const int dbg_new_res_id_ = (0 <= empty_index) ? empty_index : static_cast<int>(internal_resource_pool_.size());
+				char dbg_tex_name_[64];
+				snprintf(dbg_tex_name_, sizeof(dbg_tex_name_), "rtg_tex_%d_%dx%d", dbg_new_res_id_, key.require_width_, key.require_height_);
+				const char* dbg_tex_name_ptr_ = dbg_tex_name_;
+#else
+				const char* dbg_tex_name_ptr_ = nullptr;
+#endif
+				if (!new_tex->Initialize(p_device_, desc, dbg_tex_name_ptr_))
 				{
 					assert(false);
 					return -1;
@@ -1783,8 +1832,8 @@ namespace ngl
 					new_pool_elem.uav_ = new_uav;
 					new_pool_elem.srv_ = new_srv;
 						
-					new_pool_elem.cached_state_ = init_state;// 新規生成したらその初期ステートを保持.
-					new_pool_elem.prev_cached_state_ = init_state;
+					new_pool_elem.cached_state_ = new_tex->GetDesc().initial_state;// Enhanced Barrier有効時はCommonに変更済みの初期状態を取得.
+					new_pool_elem.prev_cached_state_ = new_tex->GetDesc().initial_state;
 				}
 				
 				if(0 <= empty_index)

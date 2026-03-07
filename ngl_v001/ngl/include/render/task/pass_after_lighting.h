@@ -36,6 +36,7 @@ namespace ngl::render::task
 			rtg::RtgResourceHandle h_depth,
 			const SetupDesc& desc)
 		{
+            SetDebugNodeName("AfterLighting");
             if(desc.p_srvs == nullptr)
             {
                 return;

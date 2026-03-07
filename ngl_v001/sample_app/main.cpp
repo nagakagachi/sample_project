@@ -257,7 +257,9 @@ bool AppGame::Initialize()
         return false;
     }
     // グラフィックスフレームワーク初期化.
-    if (!gfxfw_.Initialize(&window_))
+    ngl::fwk::GraphicsFramework::Desc gfxfw_desc{};
+    gfxfw_desc.require_enhanced_barrier = true;
+    if (!gfxfw_.Initialize(&window_, gfxfw_desc))
     {
         assert(false && u8"Failed Initialize Rendering Framework.");
     }
@@ -311,7 +313,6 @@ bool AppGame::Initialize()
         desc.type          = ngl::rhi::ETextureType::Texture2D;
         desc.width         = scree_w;
         desc.height        = scree_h;
-        desc.initial_state = ngl::rhi::EResourceState::ShaderRead;
 
         tex_rw_.Reset(new ngl::rhi::TextureDep());
         if (!tex_rw_->Initialize(&device, desc))

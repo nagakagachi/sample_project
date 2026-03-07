@@ -42,6 +42,7 @@ namespace ngl::render::task
 			rtg::RtgResourceHandle h_depth, rtg::RtgResourceHandle h_async_write_tex,
 			const SetupDesc& desc)
 		{
+			SetDebugNodeName("GBuffer");
 			desc_ = desc;
 			
 			// Rtgリソースセットアップ.

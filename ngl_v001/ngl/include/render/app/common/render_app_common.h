@@ -21,8 +21,8 @@ namespace ngl::render::app
         ComputeBufferSet() = default;
         ~ComputeBufferSet() = default;
 
-        bool InitializeAsStructured(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc);
-        bool InitializeAsTyped(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc, rhi::EResourceFormat format);
+        bool InitializeAsStructured(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc, const char* debug_name = nullptr);
+        bool InitializeAsTyped(ngl::rhi::DeviceDep* p_device, const rhi::BufferDep::Desc& desc, rhi::EResourceFormat format, const char* debug_name = nullptr);
 
         void ResourceBarrier(ngl::rhi::GraphicsCommandListDep* p_command_list, rhi::EResourceState next_state);
 
@@ -40,7 +40,7 @@ namespace ngl::render::app
         ComputeTextureSet() = default;
         ~ComputeTextureSet() = default;
 
-        bool Initialize(ngl::rhi::DeviceDep* p_device, const rhi::TextureDep::Desc& desc);
+        bool Initialize(ngl::rhi::DeviceDep* p_device, const rhi::TextureDep::Desc& desc, const char* debug_name = nullptr);
 
         void ResourceBarrier(ngl::rhi::GraphicsCommandListDep* p_command_list, rhi::EResourceState next_state);
 

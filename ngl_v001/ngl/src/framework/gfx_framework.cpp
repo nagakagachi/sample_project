@@ -35,7 +35,7 @@ namespace ngl::fwk
 		device_.Finalize();
 	}
 
-	bool GraphicsFramework::Initialize(platform::CoreWindow* p_window)
+	bool GraphicsFramework::Initialize(platform::CoreWindow* p_window, const Desc& desc)
 	{
 		assert(p_window && "無効Window");
 		
@@ -54,6 +54,7 @@ namespace ngl::fwk
                 device_desc.enable_pipeline_state_cache = true;
                 device_desc.pipeline_state_cache_graphics_capacity = 512;
                 device_desc.pipeline_state_cache_compute_capacity = 512;
+                device_desc.require_enhanced_barrier = desc.require_enhanced_barrier;
             }
             if (!device_.Initialize(p_window_, device_desc))
 			{

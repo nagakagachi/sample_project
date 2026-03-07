@@ -267,6 +267,12 @@ namespace ngl
 			std::unordered_map<const ITaskNode*, TaskNodeRenderFunctionType_Compute> node_function_compute_{};// Node毎のRender処理Lambda登録用(Compute Queue).
 
 			std::unordered_map<RtgResourceHandleKeyType, RtgResourceDesc2D> handle_2_desc_{};// Handleからその定義のMap.
+#if defined(_DEBUG)
+			// デバッグビルドのみ. RecordResourceAccess でハンドルに自動命名した名前を管理するmap.
+			std::unordered_map<RtgResourceHandleKeyType, std::string> handle_2_debug_name_{};
+			// ノードごとのRecordResourceAccessカウンター（命名連番のため）.
+			std::unordered_map<const ITaskNode*, int> node_res_count_{};
+#endif
 			
 			struct NodeHandleUsageInfo
 			{
