@@ -1731,7 +1731,7 @@ namespace ngl
 			if(0 > res_id)
 			{
 				rhi::TextureDep::Desc desc = {};
-				rhi::EResourceState init_state = rhi::EResourceState::General;
+				rhi::EResourceState init_state = rhi::EResourceState::Common;
 				{
 					desc.type = rhi::ETextureType::Texture2D;// 現状2D固定.
 					desc.initial_state = init_state;

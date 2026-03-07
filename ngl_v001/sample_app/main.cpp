@@ -313,7 +313,6 @@ bool AppGame::Initialize()
         desc.type          = ngl::rhi::ETextureType::Texture2D;
         desc.width         = scree_w;
         desc.height        = scree_h;
-        desc.initial_state = ngl::rhi::EResourceState::ShaderRead;
 
         tex_rw_.Reset(new ngl::rhi::TextureDep());
         if (!tex_rw_->Initialize(&device, desc))
