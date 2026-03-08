@@ -148,6 +148,8 @@ private:
         ngl::math::Vec3 camera_pos   = {0.0f, 0.0f, 0.0f};
         ngl::math::Mat33 camera_pose = ngl::math::Mat33::Identity();
         float camera_fov_y           = ngl::math::Deg2Rad(60.0f);  // not half fov.
+        ngl::math::Vec3 prev_camera_pos   = {0.0f, 0.0f, 0.0f};
+        ngl::math::Mat33 prev_camera_pose = ngl::math::Mat33::Identity();
 
         ngl::gfx::SceneRepresentation frame_scene{};
         ngl::math::Vec3 dlight_dir{};
@@ -176,6 +178,8 @@ private:
     ngl::math::Vec3 camera_pos_   = {1.871f, 1.347f, 1.399f};                                //{0.0f, 2.0f, -5.0f};
     ngl::math::Mat33 camera_pose_ = ngl::math::Mat33::RotAxisY(ngl::math::Deg2Rad(-90.0f));  // ngl::math::Mat33::Identity();
     float camera_fov_y            = ngl::math::Deg2Rad(60.0f);                               // not half fov.
+    ngl::math::Vec3 prev_camera_pos_ = {0.0f, 0.0f, 0.0f};
+    ngl::math::Mat33 prev_camera_pose_ = ngl::math::Mat33::Identity();
     PlayerController player_controller{};
 
     // GfxSceneMesh版
@@ -217,6 +221,8 @@ static void TestEntry()
 
 AppGame::AppGame()
 {
+    prev_camera_pos_ = camera_pos_;
+    prev_camera_pose_ = camera_pose_;
     TestEntry();
 }
 AppGame::~AppGame()
@@ -707,6 +713,9 @@ bool AppGame::ExecuteApp()
 
     // 操作系.
     {
+        prev_camera_pose_ = camera_pose_;
+        prev_camera_pos_ = camera_pos_;
+
         player_controller.UpdateFrame(window_, delta_sec, camera_pose_, camera_pos_);
 
         camera_pose_ = player_controller.camera_pose_;
@@ -1012,6 +1021,8 @@ bool AppGame::ExecuteApp()
         new_render_param->camera_pos   = camera_pos_;
         new_render_param->camera_pose  = camera_pose_;
         new_render_param->camera_fov_y = camera_fov_y;
+        new_render_param->prev_camera_pos = prev_camera_pos_;
+        new_render_param->prev_camera_pose = prev_camera_pose_;
 
         new_render_param->frame_scene = std::move(frame_scene);
         new_render_param->dlight_dir  = dlit_dir;
@@ -1036,10 +1047,26 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
     ngl::u32 screen_width      = gfxfw_.swapchain_->GetWidth();
     ngl::u32 screen_height     = gfxfw_.swapchain_->GetHeight();
 
+    auto calc_view_proj = [](const ngl::math::Vec3& camera_pos, const ngl::math::Mat33& camera_pose, float camera_fov_y, float screen_aspect_ratio)
+    {
+        struct ViewProjPair
+        {
+            ngl::math::Mat34 view;
+            ngl::math::Mat44 proj;
+        };
+
+        ViewProjPair out{};
+        out.view = ngl::math::CalcViewMatrix(camera_pos, camera_pose.GetColumn2(), camera_pose.GetColumn1());
+        out.proj = ngl::math::CalcReverseInfiniteFarPerspectiveMatrix(camera_fov_y, screen_aspect_ratio, 0.1f);
+        return out;
+    };
+
+    const float screen_aspect_ratio = (float)screen_width / (float)screen_height;
+    const auto prev_view_proj = calc_view_proj(render_param_->prev_camera_pos, render_param_->prev_camera_pose, render_param_->camera_fov_y, screen_aspect_ratio);
+
     // Raytracing Scene更新.
     if (rt_scene_.IsValid())
     {
-        const float screen_aspect_ratio = (float)screen_width / (float)screen_height;
         // RaytraceSceneにカメラ設定.
         rt_scene_.SetCameraInfo(
             render_param_->camera_pos,
@@ -1067,9 +1094,11 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
             render_frame_desc.screen_w = screen_width;
             render_frame_desc.screen_h = screen_height;
 
-            render_frame_desc.camera_pos   = render_param_->camera_pos + ngl::math::Vec3(0.0f, 5.0f, 0.0f);
-            render_frame_desc.camera_pose  = render_param_->camera_pose * ngl::math::Mat33::RotAxisX(ngl::math::Deg2Rad(75.0f));
+            render_frame_desc.camera_pos   = render_param_->camera_pos;
+            render_frame_desc.camera_pose  = render_param_->camera_pose;
             render_frame_desc.camera_fov_y = render_param_->camera_fov_y;
+            render_frame_desc.prev_view_mat = prev_view_proj.view;
+            render_frame_desc.prev_proj_mat = prev_view_proj.proj;
 
             render_frame_desc.p_scene = &render_param_->frame_scene;
 
@@ -1112,6 +1141,8 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
             render_frame_desc.camera_pos   = render_param_->camera_pos;
             render_frame_desc.camera_pose  = render_param_->camera_pose;
             render_frame_desc.camera_fov_y = render_param_->camera_fov_y;
+            render_frame_desc.prev_view_mat = prev_view_proj.view;
+            render_frame_desc.prev_proj_mat = prev_view_proj.proj;
 
             render_frame_desc.p_scene = &render_param_->frame_scene;
 

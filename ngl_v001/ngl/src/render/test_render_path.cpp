@@ -65,17 +65,6 @@ namespace ngl::test
 		
 				
 		// Update View Constant Buffer.
-		static bool s_scene_prev_view_proj_initialized = false;
-		static ngl::math::Mat34 s_scene_prev_view_mat = ngl::math::Mat34::Identity();
-		static ngl::math::Mat34 s_scene_prev_view_inv_mat = ngl::math::Mat34::Identity();
-		static ngl::math::Mat44 s_scene_prev_proj_mat = ngl::math::Mat44::Identity();
-		if(!s_scene_prev_view_proj_initialized)
-		{
-			s_scene_prev_view_mat = view_info.view_mat;
-			s_scene_prev_view_inv_mat = ngl::math::Mat34::Inverse(view_info.view_mat);
-			s_scene_prev_proj_mat = view_info.proj_mat;
-			s_scene_prev_view_proj_initialized = true;
-		}
 
 		auto scene_cb_h = p_cb_pool->Alloc(sizeof(ngl::gfx::CbSceneView));
 		// SceneView ConstantBuffer内容更新.
@@ -86,9 +75,9 @@ namespace ngl::test
 				mapped->cb_proj_mtx = view_info.proj_mat;
 				mapped->cb_view_inv_mtx = ngl::math::Mat34::Inverse(view_info.view_mat);
 				mapped->cb_proj_inv_mtx = ngl::math::Mat44::Inverse(view_info.proj_mat);
-				mapped->cb_prev_view_mtx = s_scene_prev_view_mat;
-				mapped->cb_prev_view_inv_mtx = s_scene_prev_view_inv_mat;
-				mapped->cb_prev_proj_mtx = s_scene_prev_proj_mat;
+				mapped->cb_prev_view_mtx = render_frame_desc.prev_view_mat;
+				mapped->cb_prev_view_inv_mtx = ngl::math::Mat34::Inverse(render_frame_desc.prev_view_mat);
+				mapped->cb_prev_proj_mtx = render_frame_desc.prev_proj_mat;
 
 				mapped->cb_ndc_z_to_view_z_coef = view_info.ndc_z_to_view_z_coef;
 
@@ -100,9 +89,6 @@ namespace ngl::test
 				scene_cb_h->buffer.Unmap();
 			}
 		}
-		s_scene_prev_view_mat = view_info.view_mat;
-		s_scene_prev_view_inv_mat = ngl::math::Mat34::Inverse(view_info.view_mat);
-		s_scene_prev_proj_mat = view_info.proj_mat;
 				
 		// RtgによるRenderPathの構築.
 		{

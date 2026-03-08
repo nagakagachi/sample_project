@@ -81,6 +81,8 @@ namespace ngl::test
         ngl::math::Vec3 camera_pos   = {};
         ngl::math::Mat33 camera_pose = ngl::math::Mat33::Identity();
         float camera_fov_y           = ngl::math::Deg2Rad(60.0f);
+        ngl::math::Mat34 prev_view_mat = ngl::math::Mat34::Identity();
+        ngl::math::Mat44 prev_proj_mat = ngl::math::Mat44::Identity();
 
         ngl::rhi::DeviceDep* p_device = {};
 
