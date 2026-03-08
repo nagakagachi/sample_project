@@ -61,11 +61,13 @@ RWBuffer<uint>		RWSurfaceProbeCellList;
 
 // Screen Space Probe.
 Texture2D<float4>      ScreenSpaceProbeTex;
+Texture2D<float4>      ScreenSpaceProbeHistoryTex;
 RWTexture2D<float4>    RWScreenSpaceProbeTex;
 
 // 1/8 resolution Per ScreenSpaceProbe Tile Info Texture. (SCREEN_SPACE_PROBE_TILE_SIZE = 8)
 // r.x : Depth, r.y : Probe位置オフセットのフラットインデックス, r.zw : OctEncodeしたWS法線.
 Texture2D<float4>      ScreenSpaceProbeTileInfoTex;
+Texture2D<float4>      ScreenSpaceProbeHistoryTileInfoTex;
 RWTexture2D<float4>    RWScreenSpaceProbeTileInfoTex;
 
 

@@ -1,0 +1,416 @@
+GI-1.0: A Fast Scalable Two-Level Radiance Caching Scheme for
+Real-Time Global Illumination
+https://gpuopen.com/download/GPUOpen2022_GI1_0.pdf
+
+
+2 GI-1.0
+For real-time purposes, only a few samples can be used for each
+pixel, even with today’s high-end GPUs, to remain practical. It is,
+therefore, essential to try and ensure that most, if not all, samples
+contribute to the lighting estimate in a meaningful way to keep
+the variance to a minimum. Indeed, any ray or path not hitting a
+light source can potentially severely impact the quality of the rendered animation by introducing noise that would require excessive
+amounts of filtering.
+We design our global illumination pipeline to make the most of
+every sample by reusing the lighting information across space and
+time for both sampling and filtering. We do so by persisting the
+scene illumination inside two distinct levels of radiance caching, as
+illustrated in Figure 2:
+• The screen cache caches the incoming radiance for primary
+path vertices inside probes placed directly onto primary
+visible surfaces, and offers a detailed lighting representation
+thanks to a large number of probes.
+• The world cache caches the outgoing radiance for secondary
+path vertices and, despite being less detailed than the screen
+cache, has the advantage of being stable and persistent.
+We will demonstrate how this setup allows to compute highfidelity and temporally responsive direct and indirect lighting using
+sampling rates as low as ¼ sample per pixel.
+
+
+
+
+2.1 Screen Cache
+This section describes how screen probes are spawned sparsely directly onto pixels, how we manage the integrity of the caching data
+structure across frames, and how we adapt the filtering heuristics
+based on depth to ensure temporally stable lighting at any distance.
+Similarly to [Wright 2021], we encode the incoming radiance
+across the oriented hemisphere into an 8x8 atlas using an octahedral
+projection mapping [Cigolle et al. 2014].
+2.1.1 Temporal Upscale. In our method, the probe grid is upscaled
+to full resolution over multiple frames. The amount of upscaling
+is directly related to the overall per-pixel sample count and can be
+tweaked as a trade-off between performance and quality. In our
+implementation, we store up to one 8x8 screen probe, encoding the
+hemispherical radiance of a random pixel inside each 8x8 tile on
+the screen. A consequence of this setup is that the resulting probe
+grid can be stored inside a 2D texture of the size of a render target,
+with dimensions aligned to the next multiple of 8. This choice is
+arbitrary, and other configurations could be explored.
+In this context, we define the spawn tile as a 2D region with
+dimensions of 8 · (𝑢𝑝𝑠𝑐𝑎𝑙𝑒_𝑥, 𝑢𝑝𝑠𝑐𝑎𝑙𝑒_𝑦), where 𝑢𝑝𝑠𝑐𝑎𝑙𝑒_𝑥 and
+𝑢𝑝𝑠𝑐𝑎𝑙𝑒_𝑦 represent the amount of temporal upscaling performed
+along the X and Y axis respectively. We then generate a 2D jitter value inside the spawn tile using Halton’s low-discrepancy
+sequence [Halton 1964] and use this value to select the pixel on
+which to place our new probes for every spawn tile on the screen.
+This leads to sparsely populated probe grids on first frames, which
+get resolved into fully populated grids after multiple frames. Figure
+3 illustrates this process: on the very first frame, ¼ of all the probes
+are filled. The red regions in the figure represent the tiles that do
+not have probe data. We fill another ¼ in the next frame resulting
+in all probes being filled after four frames.
+For each probe, we reconstruct the world-space position from
+the depth buffer and retrieve the surface orientation by decoding
+the normal vector from the rasterized depth and normal textures,
+usually called G-buffers [Saito and Takahashi 1990]. Additionally,
+our technique requires a set of motion vectors to be calculated for
+every pixel to reproject the probe grid from the previous frame into
+the current frame.
+
+Probe reprojection is an essential step of the pipeline, as temporally reused probes are likely to persist over multiple frames, making accurate placement of previous probes onto the new frame’s
+pixels a requirement to prevent degrading the overall image quality. Algorithm 1 outlines how every lane in an 8x8 dispatch group
+collaborates to find the best pixel for probe reuse. An interesting
+input to the algorithm is the 𝑐𝑒𝑙𝑙_𝑠𝑖𝑧𝑒 heuristic, which controls how
+much spatial error is allowed when reusing the probes information
+temporally. As we will see in the later sections, this same heuristic
+is also used to guide the sampling and filtering of the screen probes,
+making it a key factor to get right.
+
+-----------------------------------------------
+__kernel reproject_screen_probes(𝑝𝑖𝑥𝑒𝑙 𝑝)
+__𝑙𝑜𝑐𝑎𝑙 𝑢𝑖𝑛𝑡 𝑟𝑒𝑝𝑟𝑜 𝑗𝑒𝑐𝑡𝑖𝑜𝑛_𝑠𝑐𝑜𝑟𝑒 ←
+(𝑝𝑎𝑐𝑘_ℎ𝑎𝑙 𝑓 (65504.0) << 16) |0𝑥𝐹 𝐹 𝐹 𝐹𝑢
+𝑏𝑎𝑟𝑟𝑖𝑒𝑟 ( ) // sync the threads
+if 𝑝 isn’t a sky pixel
+𝑞 ← 𝑝 𝑖𝑛 𝑝𝑟𝑒𝑣𝑖𝑜𝑢𝑠 𝑓 𝑟𝑎𝑚𝑒
+if 𝑝𝑟𝑜𝑏𝑒q is valid
+𝑝𝑙𝑎𝑛𝑒_𝑑𝑖𝑠𝑡 ←
+𝑎𝑏𝑠 (𝑑𝑜𝑡 (𝑤𝑜𝑟𝑙𝑑probe − 𝑤𝑜𝑟𝑙𝑑p, 𝑛𝑜𝑟𝑚𝑎𝑙p ) )
+𝑛𝑜𝑟𝑚𝑎𝑙_𝑐ℎ𝑒𝑐𝑘 ← 𝑑𝑜𝑡 (𝑛𝑜𝑟𝑚𝑎𝑙probe, 𝑛𝑜𝑟𝑚𝑎𝑙p )
+if 𝑝𝑙𝑎𝑛𝑒_𝑑𝑖𝑠𝑡 < 𝑐𝑒𝑙𝑙_𝑠𝑖𝑧𝑒 and
+𝑛𝑜𝑟𝑚𝑎𝑙_𝑐ℎ𝑒𝑐𝑘 > 0.95
+𝑑𝑖𝑠𝑡 ← 𝑑𝑖𝑠𝑡𝑎𝑛𝑐𝑒 (𝑤𝑜𝑟𝑙𝑑probe, 𝑤𝑜𝑟𝑙𝑑p )
+𝑢𝑖𝑛𝑡 𝑝𝑟𝑜𝑏𝑒_𝑠𝑐𝑜𝑟𝑒 ←
+(𝑝𝑎𝑐𝑘_ℎ𝑎𝑙 𝑓 (𝑑𝑖𝑠𝑡) << 16) |𝑙𝑜𝑐𝑎𝑙_𝑙𝑎𝑛𝑒
+𝑎𝑡𝑜𝑚_𝑚𝑖𝑛(𝑟𝑒𝑝𝑟𝑜 𝑗𝑒𝑐𝑡𝑖𝑜𝑛_𝑠𝑐𝑜𝑟𝑒, 𝑝𝑟𝑜𝑏𝑒_𝑠𝑐𝑜𝑟𝑒 )
+𝑏𝑎𝑟𝑟𝑖𝑒𝑟 ( ) // sync the threads
+// decode and use 𝑙𝑜𝑐𝑎𝑙_𝑙𝑎𝑛𝑒 as destination pixel
+-----------------------------------------------
+Algorithm 1: Screen probes reprojection.
+
+
+
+2.1.2 Adaptive Sampling. As a result of the sparse spawning of the
+screen probes, moving animations can exhibit grid regions where
+information is missing, as illustrated in Figure 4. These regions,
+usually called disocclusions or holes, are detrimental to the image
+quality as they introduce additional noise in newly appearing parts
+of the scene.
+
+One possible solution to this problem is to allocate a fixed number of additional rays to the empty tiles to "fill the holes" [Swoboda
+2012]. However, such an approach requires increasing the per-pixel
+ray budget, which we aim to keep low and constant throughout
+an animated sequence. Instead, we propose de-allocating rays randomly away from screen tiles that have succeeded the temporal
+reprojection and assigning them to the frame’s empty tiles.
+For this purpose, we generate two separate queues:
+• The 𝑒𝑚𝑝𝑡𝑦_𝑡𝑖𝑙𝑒𝑠 buffer stores the list of tiles that have failed
+reprojection and are not filled with any newly spawned
+probe.
+• The 𝑜𝑣𝑒𝑟𝑟𝑖𝑑𝑒_𝑡𝑖𝑙𝑒𝑠 buffer stores the list of newly spawned
+tiles that have succeeded the temporal reprojection.
+We can patch our list of spawned tiles, referred to as𝑠𝑝𝑎𝑤𝑛_𝑡𝑖𝑙𝑒𝑠
+in Algorithm 2, by iterating over the empty tiles, and picking a random override tile to fill an empty tile with. This approach enables
+significant improvements in the visual quality of disoccluded regions, as shown in Figure 4, while maintaining a constant ray count
+over time. In effect, we simply redistribute a fixed ray budget to
+help fill our temporal holes.)
+
+-------------------------------------------------------
+__kernel patch_screen_probes(𝑢𝑖𝑛𝑡 𝑔𝑙𝑜𝑏𝑎𝑙_𝑖𝑑)
+𝑡𝑖𝑙𝑒 ← 𝑒𝑚𝑝𝑡 𝑦_𝑡𝑖𝑙𝑒𝑠 [𝑔𝑙𝑜𝑏𝑎𝑙_𝑖𝑑 ]
+𝑖𝑛𝑑𝑒𝑥 ← 𝑟𝑎𝑛𝑑𝑜𝑚(0, 𝑜𝑣𝑒𝑟𝑟𝑖𝑑𝑒_𝑡𝑖𝑙𝑒_𝑐𝑜𝑢𝑛𝑡 − 1)
+𝑎𝑡𝑜𝑚_𝑥𝑐ℎ𝑔(𝑠𝑝𝑎𝑤𝑛_𝑡𝑖𝑙𝑒𝑠 [𝑜𝑣𝑒𝑟𝑟𝑖𝑑𝑒_𝑡𝑖𝑙𝑒𝑠 [𝑖𝑛𝑑𝑒𝑥 ] ], 𝑡𝑖𝑙𝑒 )
+-------------------------------------------------------
+Algorithm 2: Temporal adaptive sampling
+
+
+
+
+2.1.3 Ray Guiding. At this point in the pipeline, we know what
+probes we will be calculating. We will be using raytracing for this
+but have yet to decide how to distribute our rays against the octahedral cells of each probe. Multiple options are possible here, such
+as assigning one ray for every cell and randomly jittering within
+the cell, otherwise known as uniform sampling.
+However, we can do better than this by leveraging the information of our reprojected probe grid, when available, and guiding the
+sampling of the new rays or importance sampling [Wright 2021].
+We implement this efficiently by writing the luminance of the reprojected radiance to local memory, or Local Data Share (LDS); the values are then scanned in parallel [Harris et al. 2007] and normalized into a Cumulative Distribution Function (CDF). We use the
+CDF to pick a random cell proportional to its estimated intensity
+and recover the ray direction by generating a random 2D sample on
+the selected cell. We obtain a cleaner and more temporally stable
+image without increasing the ray count as illustrated in Figure 5.
+To make the guiding precise, we want the hemisphere reconstruction to be as faithful as possible. Reconstruction here is iterating
+over the reprojected probes in a 3x3 tile neighborhood and accumulating the radiance values into the best corresponding cells of the
+newly spawned yet uncalculated probes. Reusing the cell indexing
+across probes leads to issues with nearby light sources having a different parallax in relation to the shading site, degrading the quality
+of the sampling. Therefore, we perform a parallax correction before
+scattering the reprojected radiance estimate into the storage of the
+new probe as shown in Figure 6. This is made possible by storing
+the traveled ray distance in the alpha channel of the probe grid texture, allowing recovery of the hit point position while iterating the
+reprojected cells. The scattering of radiance values is implemented
+efficiently by allocating the 8x8 octahedral map in LDS to perform
+the reconstruction and sampling. Finally, we use the same 𝑐𝑒𝑙𝑙_𝑠𝑖𝑧𝑒
+heuristic mentioned in section 2.1.1 for rejecting far away probes.
+Now that all the sampled directions are generated, rays can be
+intersected against the scene using a closest hit query. If a ray
+misses all geometry, we consider it has reached the sky and add the corresponding incoming environment contribution to the ray
+payload. If the ray hits, however, we must calculate the lighting at
+the hit point. This is the role of our hash cells data structure, and
+we, therefore, defer the details of the implementation to section 2.2.
+For now, we assume that, similarly to the environment lighting, we
+somehow get a radiance contribution back that we add to the ray
+payload.
+
+
+2.1.4 Radiance Blending. Now that we have a radiance estimate
+for each of our rays, we can resolve the payload into the new probes.
+As multiple rays can be assigned to the same cell, we need a way
+to accumulate into the destination storage efficiently. We again
+leverage the LDS and allocate the 8x8 probe in local memory for
+accumulating the contributions prior to normalizing.
+In this pass, we blend the newly calculated radiance with the
+estimate reconstructed in 2.1.3. We found that using a regular exponential moving average [Karis 2014] led to a significant loss in
+visual fidelity. Indeed, the low-resolution nature of the probes leads
+to cells covering a relatively large area of the oriented hemisphere,
+making averaging uniformly across the whole region undesirable.
+Instead, inspired by [Lottes 2015], we adapt the temporal blending
+amount as a factor of the normalized difference between the newly
+estimated radiance and the reconstructed one. We propose a biased temporal hysteresis detailed in Algorithm 3, which we design
+to better preserve occlusion and shadows at the expense of some
+image darkening.
+Further to preserving shadow details, our biased temporal hysteresis also acts as a firefly removal technique by effectively filtering
+out bright signals that are significantly smaller than the cone described by the cell’s solid angle, making the responsible surface
+unlikely to be hit often. We found this property particularly important for ensuring the temporal stability of scenes featuring many
+emissive surfaces or mesh lights.
+
+-----------------------------------------------------------------
+function temporal_blend(𝑐𝑢𝑟𝑟_𝑟𝑎𝑑𝑖𝑎𝑛𝑐𝑒, 𝑝𝑟𝑒𝑣_𝑟𝑎𝑑𝑖𝑎𝑛𝑐𝑒)
+𝑙1 ← 𝑑𝑜𝑡 (𝑐𝑢𝑟𝑟_𝑟𝑎𝑑𝑖𝑎𝑛𝑐𝑒, 1.0
+3.0
+)
+𝑙2 ← 𝑑𝑜𝑡 (𝑝𝑟𝑒𝑣_𝑟𝑎𝑑𝑖𝑎𝑛𝑐𝑒, 1.0
+3.0
+)
+𝛼 ← 𝑚𝑎𝑥 (𝑙1−𝑙2−𝑚𝑖𝑛(𝑙1,𝑙2), 0.0)/𝑚𝑎𝑥 (𝑚𝑎𝑥 (𝑙1,𝑙2), 1𝑒 −4)
+𝛼 ← 𝑐𝑙𝑎𝑚𝑝 (𝑎𝑙𝑝ℎ𝑎, 0.0, 0.95)
+2 // clamp and remap
+return 𝑙𝑒𝑟𝑝 (𝑐𝑢𝑟𝑟_𝑟𝑎𝑑𝑖𝑎𝑛𝑐𝑒, 𝑝𝑟𝑒𝑣_𝑟𝑎𝑑𝑖𝑎𝑛𝑐𝑒, 𝛼)
+-----------------------------------------------------------------
+Algorithm 3: Biased shadow-preserving temporal hysteresis.
+
+
+
+2.1.5 Probe Masking. As probes can be placed on any random
+pixel within each of the 8x8 screen tiles, a mechanism is needed
+to retrieve that sub-tile position. We therefore encode the precise pixel coordinates of each probe inside a 32-bit integer that we store
+in a 2D texture, referred to as 𝑝𝑟𝑜𝑏𝑒_𝑚𝑎𝑠𝑘. Empty or invalid tiles,
+that is, tiles containing no probe, are flagged using a sentinel value,
+shown as red in Figure 8.
+As we can see in this figure, areas for which probe information
+is missing, can be relatively large under motion. This is an issue as
+we often need to find the closest neighbor probe to a given pixel
+in a specific direction. Our solution is to generate a MIP chain of
+the probe mask, keeping the first valid probe found within the 2x2
+upper values for each successive level. Leveraging this structure,
+we can efficiently perform large searches in screen space to retrieve
+neighbor probes in any direction, as shown in Algorithm 4.
+
+---------------------------------------------------------------
+function find_closest_probe(𝑖𝑛𝑡2 𝑝𝑖𝑥𝑒𝑙, 𝑖𝑛𝑡2 𝑜 𝑓 𝑓 𝑠𝑒𝑡)
+𝑝𝑖𝑥𝑒𝑙 /= 8 // transform to probe space
+foreach 𝑚𝑖𝑝 ∈ 0..𝑚𝑖𝑝_𝑐𝑜𝑢𝑛𝑡 − 1 do
+𝑖𝑛𝑡2 𝑝𝑜𝑠 ← 𝑝𝑖𝑥𝑒𝑙 + 𝑜 𝑓 𝑓 𝑠𝑒𝑡
+if 𝑝𝑜𝑠 𝑖𝑠 𝑜𝑢𝑡 𝑜 𝑓 𝑏𝑜𝑢𝑛𝑑𝑠
+break
+𝑢𝑖𝑛𝑡 𝑝𝑟𝑜𝑏𝑒 ← 𝑝𝑟𝑜𝑏𝑒_𝑚𝑎𝑠𝑘.𝐿𝑜𝑎𝑑 (𝑝𝑜𝑠,𝑚𝑖𝑝)
+if 𝑝𝑟𝑜𝑏𝑒 𝑖𝑠𝑛′
+𝑡 𝑠𝑒𝑛𝑡𝑖𝑛𝑒𝑙
+return 𝑝𝑟𝑜𝑏𝑒 // found a probe :)
+𝑝𝑖𝑥𝑒𝑙 /= 2
+return 𝑠𝑒𝑛𝑡𝑖𝑛𝑒𝑙 // couldn’t find any probe :(
+---------------------------------------------------------------
+Algorithm 4: Sparse directional search in probe space.
+
+
+
+2.1.6 Probe Filtering. As we jitter the rays inside the cells every
+frame, the resulting probes can be fairly noisy. Furthermore, the
+radiance returned by our hash cells may also be noisy, especially
+when discovering a new scene area.
+We leverage our large-scale probe search function to implement
+an efficient separable 7x7 sparse blur of the probes’ radiance, as
+shown in Algorithm 5. The 𝑐𝑒𝑙𝑙_𝑠𝑖𝑧𝑒 heuristic is again used to
+avoid filtering across far away probes and prevent light leaking.
+Finally, we use a similar angle error detection to [Wright 2021] for
+preserving small-scale occlusion details as illustrated in Figure 9.
+
+--------------------------------------------------------
+__kernel filter_screen_probes(𝑔𝑙𝑜𝑏𝑎𝑙_𝑖𝑑, 𝑙𝑜𝑐𝑎𝑙_𝑖𝑑, 𝑔𝑟𝑜𝑢𝑝_𝑖𝑑)
+𝑝 ← 𝑑𝑒𝑐𝑜𝑑𝑒_𝑝𝑟𝑜𝑏𝑒_𝑚𝑎𝑠𝑘 (𝑠𝑝𝑎𝑤𝑛_𝑡𝑖𝑙𝑒𝑠 [𝑔𝑟𝑜𝑢𝑝_𝑖𝑑 ] )
+𝑑𝑖𝑟 ← 𝑐𝑎𝑙𝑐𝑢𝑙𝑎𝑡𝑒_𝑐𝑒𝑙𝑙_𝑑𝑖𝑟𝑒𝑐𝑡𝑖𝑜𝑛(𝑙𝑜𝑐𝑎𝑙_𝑖𝑑, 𝑛𝑜𝑟𝑚𝑎𝑙p )
+𝑟𝑎𝑑𝑖𝑎𝑛𝑐𝑒 ← 𝑝𝑟𝑜𝑏𝑒_𝑏𝑢 𝑓 𝑓 𝑒𝑟[𝑔𝑙𝑜𝑏𝑎𝑙_𝑖𝑑 ]
+ℎ𝑖𝑡_𝑑𝑖𝑠𝑡 ← 𝑟𝑎𝑑𝑖𝑎𝑛𝑐𝑒.𝑎
+𝑤𝑒𝑖𝑔ℎ𝑡 ← 1.0
+foreach 𝑖 ∈ 0..5 do
+𝑠𝑡𝑒𝑝 ← ( ( (𝑖 & 1) << 1) − 1) · ( (𝑖 >> 1) + 1)
+𝑝𝑟𝑜𝑏𝑒 ← 𝑓 𝑖𝑛𝑑_𝑐𝑙𝑜𝑠𝑒𝑠𝑡_𝑝𝑟𝑜𝑏𝑒 (𝑝, 𝑠𝑡𝑒𝑝 ·𝑏𝑙𝑢𝑟_𝑑𝑖𝑟𝑒𝑐𝑡𝑖𝑜𝑛)
+if 𝑝𝑟𝑜𝑏𝑒 𝑖𝑠 𝑠𝑒𝑛𝑡𝑖𝑛𝑒𝑙
+continue
+𝑞 ← 𝑑𝑒𝑐𝑜𝑑𝑒_𝑝𝑟𝑜𝑏𝑒_𝑚𝑎𝑠𝑘 (𝑝𝑟𝑜𝑏𝑒 )
+𝑝𝑙𝑎𝑛𝑒_𝑑𝑖𝑠𝑡 ← 𝑎𝑏𝑠 (𝑑𝑜𝑡 (𝑤𝑜𝑟𝑙𝑑q − 𝑤𝑜𝑟𝑙𝑑p, 𝑛𝑜𝑟𝑚𝑎𝑙p ) )
+𝑛𝑜𝑟𝑚𝑎𝑙_𝑐ℎ𝑒𝑐𝑘 ← 𝑑𝑜𝑡 (𝑑𝑖𝑟𝑒𝑐𝑡𝑖𝑜𝑛, 𝑛𝑜𝑟𝑚𝑎𝑙q )
+if 𝑝𝑙𝑎𝑛𝑒_𝑑𝑖𝑠𝑡 > 𝑐𝑒𝑙𝑙_𝑠𝑖𝑧𝑒 or 𝑛𝑜𝑟𝑚𝑎𝑙_𝑐ℎ𝑒𝑐𝑘 < 0.0
+continue
+ℎ𝑖𝑡_𝑑𝑖𝑠𝑡_𝑐𝑙𝑎𝑚𝑝𝑒𝑑 ← 𝑚𝑖𝑛(ℎ𝑖𝑡_𝑑𝑖𝑠𝑡q, ℎ𝑖𝑡_𝑑𝑖𝑠𝑡)
+ℎ𝑖𝑡_𝑝𝑜𝑖𝑛𝑡 ← 𝑤𝑜𝑟𝑙𝑑q + 𝑑𝑖𝑟 · ℎ𝑖𝑡_𝑑𝑖𝑠𝑡_𝑐𝑙𝑎𝑚𝑝𝑒𝑑
+𝑎𝑛𝑔𝑙𝑒_𝑒𝑟𝑟𝑜𝑟 ←
+𝑑𝑜𝑡 (𝑑𝑖𝑟, 𝑛𝑜𝑟𝑚𝑎𝑙𝑖𝑧𝑒 (ℎ𝑖𝑡_𝑝𝑜𝑖𝑛𝑡 − 𝑤𝑜𝑟𝑙𝑑p ) )
+if 𝑎𝑛𝑔𝑙𝑒_𝑒𝑟𝑟𝑜𝑟 < 𝑐𝑜𝑠 (
+𝜋
+50.0
+)
+continue
+𝑑𝑒𝑝𝑡ℎ_𝑤𝑒𝑖𝑔ℎ𝑡 ←
+𝑐𝑎𝑙𝑐𝑢𝑙𝑎𝑡𝑒_𝑑𝑒𝑝𝑡ℎ_𝑤𝑒𝑖𝑔ℎ𝑡 (𝑑𝑒𝑝𝑡ℎp, 𝑑𝑒𝑝𝑡ℎq )
+𝑟𝑎𝑑𝑖𝑎𝑛𝑐𝑒 + =
+𝑑𝑒𝑝𝑡ℎ_𝑤𝑒𝑖𝑔ℎ𝑡 · 𝑓 𝑙𝑜𝑎𝑡4(𝑟𝑎𝑑𝑖𝑎𝑛𝑐𝑒q, ℎ𝑖𝑡_𝑑𝑖𝑠𝑡_𝑐𝑙𝑎𝑚𝑝𝑒𝑑)
+𝑤𝑒𝑖𝑔ℎ𝑡 + = 𝑑𝑒𝑝𝑡ℎ_𝑤𝑒𝑖𝑔ℎ𝑡
+ℎ𝑖𝑡_𝑑𝑖𝑠𝑡 ← 𝑟𝑎𝑑𝑖𝑎𝑛𝑐𝑒.𝑎
+𝑤𝑒𝑖𝑔ℎ𝑡
+// store 𝑟𝑎𝑑𝑖𝑎𝑛𝑐𝑒
+𝑤𝑒𝑖𝑔ℎ𝑡
+--------------------------------------------------------
+Algorithm 5: Radiance filtering in probe space.
+
+
+
+
+2.1.7 Adaptive Cell Size. Throughout the previous sections, we
+have used the same heuristic referred to as 𝑐𝑒𝑙𝑙_𝑠𝑖𝑧𝑒 for guiding
+the reprojection, sampling, and filtering of our screen probes. This
+quantity directly relates to how permissive the radiance reuse is between neighboring probes; a low value leads to better detail
+preservation at the cost of degraded temporal stability, while a
+high value helps maintain temporal stability but at the cost of
+decreased lighting quality. Therefore, we choose to use an adaptive
+value relaxed for objects located further away from the camera, as
+illustrated in Figure 10.
+Algorithm 6 describes the calculations for the adaptive cell size,
+where 𝑓 𝑜𝑣_𝑦 corresponds to the vertical field of view in radians,
+and 𝑝𝑟𝑜 𝑗_𝑠𝑖𝑧𝑒 is the targeted cell size in pixels after projection.
+We choose 𝑝𝑟𝑜 𝑗_𝑠𝑖𝑧𝑒 to be set to a value of 8.0, which is roughly
+the amount of pixel spacing between neighbor probes. Note that
+𝑑𝑖𝑠𝑡𝑎𝑛𝑐𝑒_𝑠𝑐𝑎𝑙𝑒 may be precalculated on the CPU as it is constant
+across the screen.
+--------------------------------------------------------
+function calculate_cell_size(𝑑𝑖𝑠𝑡𝑎𝑛𝑐𝑒_𝑡𝑜_𝑐𝑎𝑚𝑒𝑟𝑎)
+𝑑𝑖𝑠𝑡𝑎𝑛𝑐𝑒_𝑠𝑐𝑎𝑙𝑒 ←
+𝑡𝑎𝑛(𝑓 𝑜𝑣_𝑦 · 𝑝𝑟𝑜 𝑗_𝑠𝑖𝑧𝑒 · 𝑚𝑎𝑥 (
+1.0
+𝑣𝑖𝑒𝑤_ℎ𝑒𝑖𝑔ℎ𝑡 ,
+𝑣𝑖𝑒𝑤_ℎ𝑒𝑖𝑔ℎ𝑡
+𝑣𝑖𝑒𝑤_𝑤𝑖𝑑𝑡ℎ2
+) )
+return 𝑑𝑖𝑠𝑡𝑎𝑛𝑐𝑒_𝑠𝑐𝑎𝑙𝑒 · 𝑑𝑖𝑠𝑡𝑎𝑛𝑐𝑒_𝑡𝑜_𝑐𝑎𝑚𝑒𝑟𝑎
+--------------------------------------------------------
+Algorithm 6: Calculating an adaptive cell size.
+
+
+
+
+2.1.8 Persistent Least-Recently Used (LRU) Side Cache. Thanks to
+the temporal upscale, our screen cache is relatively dense across the
+screen over throughout multiple frames. However, despite many
+probes, we are still heavily undersampled with only one screen
+probe available for each 8x8 pixel tile. This is not an issue in itself
+as probes are meant to be interpolated from in a process where each
+pixel locates its four closest neighbors and performs some form of
+the average of the irradiance signal. We will cover the details of
+our probe interpolation and irradiance estimation in section 2.4.
+This section focuses on the temporal instability issues introduced
+by thin geometrical features. We have mentioned that the 𝑐𝑒𝑙𝑙_𝑠𝑖𝑧𝑒
+heuristic is used to choose whether to keep or reject temporal probe
+history and how we adapt this value at a distance to account for far
+away regions having a lower ratio of sample count to geometrical
+detail. However, there exist situations where the spatiotemporal
+radiance reuse between probes keeps failing, causing temporal
+wobbling in the illumination.
+Figure 11 describes such a scenario:
+
+• Probe 1 is initially spawned on the thin geometrical feature
+and calculated.
+• Probe 2 is then spawned but fails to reuse the temporal
+information from 1 as the 𝑐𝑒𝑙𝑙_𝑠𝑖𝑧𝑒 test fails. It is therefore
+recalculated from scratch or, in other words, no ray guiding nor radiance blending can be performed. It is worth
+noting that, as mentioned in section 2.1.3, we perform the
+reconstruction against a 3x3 tile neighborhood in probe
+space rather than a single tile. However, we will ignore this
+property here to simplify the explanations.
+• Finally, probe 3 is spawned but cannot reuse information
+from 2 as it is back on the geometrical feature.
+
+The net result of this highlighted scenario is that our temporal
+reprojection, ray guiding, and radiance blending keep failing each
+frame, leading to an unstable lighting response. However, we can
+note that we had valid temporal information for reconstructing
+probe 3 just two frames ago. We, therefore, propose to push the
+"evicted probes" onto a persistent queue so that such probes may
+be reused an arbitrary number of frames later.
+In this context, evicted probes are detected when newly spawned
+probes fail to reuse data from the reprojected probe within the same
+tile during reconstruction. The queue itself is implemented as a
+simple array of probe indices, while the radiance data is stored in
+another 2D texture with identical dimensions to our regular probe
+grid. This choice is arbitrary, and other configurations could be
+explored.
+In order to use what we will call the "cached probes" as part of the
+reconstruction, we need a mechanism for efficiently looking up the
+nearby probes for a given pixel. We implement a lookup structure
+similar to that used in tile-based deferred rendering pipelines [Andersson 2011] by iterating over the list of cached probes prior to the
+reconstruction, projecting them onto the screen, and scattering the
+probe indices into the dedicated list of the corresponding 8x8 tile.
+Since cached probes can persist over many frames, we cannot rely
+on the depth buffer to recover the world-space position. Instead,
+we store the single-precision floating-point position and packed
+world-space normal into a 128-bit integer for each cache entry.
+We update our hemisphere reconstruction routine to search for
+cached probes in a 3x3 tile neighborhood after completing the 3x3
+tile search on the reprojected grid. All radiance contributions are
+still parallax-corrected and accumulated into LDS as before. Once the search is completed, we end up with three possible scenarios
+with regard to updating our side cache:
+
+• The previous probe is evicted by the new one, and no matching cache entry was found; we create a new cached probe
+and schedule the reprojected radiance to be written out to
+the cache during the blending pass.
+• The previous probe is evicted by the new one but a matching cache entry could be found; we schedule that the reprojected radiance be written out to the cache during the
+blending pass and push the entry onto a most recently used
+(MRU) queue.
+• Regardless of whether the previous probe was evicted, we
+identify the best-matching cache entry that participated in
+the reconstruction, if any, and schedule the new radiance
+estimate to be written out to the cache during the blending
+pass. This step is essential, so the cached radiance does not
+lag under changing lighting conditions.
+
+We mentioned an MRU queue in the case of finding a match for
+an evicted probe. We indeed perform a reordering pass of the indices
+of the cached probes every frame, keeping the MRU elements ahead
+while the LRU entries naturally fall behind. This setup allows to
+avoid evicting cache entries that would be actively participating in
+illuminating the current viewpoint.
+Finally, it is worth mentioning that we perform an atomic compare and swap operation before scheduling of the cache updates
+mentioned in the above scenarios. This is to avoid a race condition
+where multiple work groups may try and update the same cached
+content during the radiance blending. Additionally, care must be
+taken as entries scheduled for update may have been overwritten by
+newly created cache entries. This can be verified trivially by checking the entry’s index inside the LRU queue against the allocation
+cursor for the newly created cache entries.
+
+
+

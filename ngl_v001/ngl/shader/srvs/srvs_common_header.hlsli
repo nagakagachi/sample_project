@@ -162,10 +162,22 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int3 bbv_indirect_cs_thread_group_size;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
         int bbv_visible_voxel_buffer_size;// 更新プローブ用のワークサイズ.
         int bbv_hollow_voxel_buffer_size;// 削除用中空Voxel情報のワークサイズ.
+        int dummy0;
+        int dummy1;
+        int dummy2;
 
+        float3 ss_probe_camera_delta_ws;// 前フレームからのカメラ移動量.
+        float ss_probe_temporal_normal_threshold_cos;// Temporal再利用の法線内積閾値.
+        float ss_probe_temporal_camera_motion_scale;// カメラ移動量から履歴重みを減衰させるスケール.
+        float ss_probe_temporal_min_hysteresis;// Temporal再利用重みの最小値.
+        float ss_probe_temporal_max_hysteresis;// Temporal再利用重みの最大値.
+        int ss_probe_temporal_reprojection_enable;// Temporal再投影有効化フラグ.
+        
         int ss_probe_temporal_update_group_size;// 1Fに一つだけ更新するProbeグループのサイズ. 1で毎フレーム更新, 2で2x2のProbeグループのうち1Fで一つだけ更新.
         float ss_probe_ray_start_offset_scale;// SSプローブ更新時のレイ開始オフセットスケール. 単位はBbvセル幅.
         float ss_probe_ray_normal_offset_scale;// SSプローブ更新時のレイ始点法線オフセットスケール. 単位はBbvセル幅.
+        float ss_probe_temporal_depth_threshold;// Temporal再利用の深度差閾値.
+
 
         SrvsToroidalGridParam wcp;
         int3 wcp_indirect_cs_thread_group_size;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
@@ -173,7 +185,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
         int2 tex_main_view_depth_size;// MainViewのDepthBuffer解像度.
         uint frame_count;
-        int dummy0;
+        int dummy4;
 
         float3 main_light_dir_ws;
 

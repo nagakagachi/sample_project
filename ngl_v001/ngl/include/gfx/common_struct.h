@@ -23,6 +23,8 @@ namespace gfx
 		ngl::math::Mat34 cb_view_inv_mtx;
 		ngl::math::Mat44 cb_proj_mtx;
 		ngl::math::Mat44 cb_proj_inv_mtx;
+		ngl::math::Mat34 cb_prev_view_mtx;
+		ngl::math::Mat44 cb_prev_proj_mtx;
 
 		// 正規化デバイス座標(NDC)のZ値からView空間Z値を計算するための係数. PerspectiveProjectionMatrixの方式によってCPU側で計算される値を変えることでシェーダ側は同一コード化. xは平行投影もサポートするために利用.
 		//	view_z = (ndc_z * cb_ndc_z_to_view_z_coef.x + cb_ndc_z_to_view_z_coef.y) / ( ndc_z * cb_ndc_z_to_view_z_coef.z + cb_ndc_z_to_view_z_coef.w )

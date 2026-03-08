@@ -32,6 +32,11 @@ namespace ngl::render::app
     static const int k_ss_probe_update_skip_tile_group_width = 1;
     static const float k_ss_probe_ray_start_offset_scale = sqrt(3.0f);
     static const float k_ss_probe_ray_normal_offset_scale = 0.2f;
+    static const float k_ss_probe_temporal_depth_threshold = 0.02f;
+    static const float k_ss_probe_temporal_normal_threshold_cos = 0.85f;
+    static const float k_ss_probe_temporal_camera_motion_scale = 0.4f;
+    static const float k_ss_probe_temporal_min_hysteresis = 0.2f;
+    static const float k_ss_probe_temporal_max_hysteresis = 0.95f;
 
 
     // デバッグ.
@@ -40,13 +45,16 @@ namespace ngl::render::app
     int ScreenReconstructedVoxelStructure::dbg_wcp_probe_debug_mode_ = -1;
     float ScreenReconstructedVoxelStructure::dbg_probe_scale_ = 1.0f;
     float ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_ = 0.2f;
+    int ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_ = 0;
     
     using SrvsShaderBindName = ngl::text::HashText<128>;
     constexpr SrvsShaderBindName k_shader_bind_name_wcp_atlas_srv = "WcpProbeAtlasTex";
     constexpr SrvsShaderBindName k_shader_bind_name_wcp_atlas_uav = "RWWcpProbeAtlasTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_srv = "ScreenSpaceProbeTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_history_srv = "ScreenSpaceProbeHistoryTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_uav = "RWScreenSpaceProbeTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_tile_info_srv = "ScreenSpaceProbeTileInfoTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_history_tile_info_srv = "ScreenSpaceProbeHistoryTileInfoTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_tile_info_uav = "RWScreenSpaceProbeTileInfoTex";
 
     void ToroidalGridUpdater::Initialize(const math::Vec3u& grid_resolution, float bbv_cell_size)
@@ -360,6 +368,7 @@ namespace ngl::render::app
         // ScreenSpaceProbeテクスチャ. 解像度固定かつシングルビュー用のテスト.
         const int ss_probe_base_resolution_x = 1920;
         const int ss_probe_base_resolution_y = 1080;
+        for(int i = 0; i < 2; ++i)
         {
             rhi::TextureDep::Desc desc = {};
             desc.type = rhi::ETextureType::Texture2D;
@@ -373,9 +382,10 @@ namespace ngl::render::app
             desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
             desc.initial_state = rhi::EResourceState::Common;// Enhanced Barrier移行時はCommonのみ許可.
 
-            ss_probe_tex_.Initialize(p_device, desc, "Srvs_SsProbeTex");
+            ss_probe_tex_[i].Initialize(p_device, desc, (0 == i)? "Srvs_SsProbeTexA" : "Srvs_SsProbeTexB");
         }
         // Screen Space Probe Tile Info テクスチャ.
+        for(int i = 0; i < 2; ++i)
         {
             rhi::TextureDep::Desc desc = {};
             desc.type = rhi::ETextureType::Texture2D;
@@ -389,7 +399,7 @@ namespace ngl::render::app
             desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
             desc.initial_state = rhi::EResourceState::Common;// Enhanced Barrier移行時はCommonのみ許可.
 
-            ss_probe_tile_info_tex_.Initialize(p_device, desc, "Srvs_SsProbeTileInfoTex");
+            ss_probe_tile_info_tex_[i].Initialize(p_device, desc, (0 == i)? "Srvs_SsProbeTileInfoTexA" : "Srvs_SsProbeTileInfoTexB");
         }
 
         return true;
@@ -414,6 +424,15 @@ namespace ngl::render::app
         const bool is_first_dispatch = is_first_dispatch_;
         is_first_dispatch_           = false;
         ++frame_count_;
+
+        if(!ss_probe_temporal_initialized_)
+        {
+            ss_probe_prev_camera_pos_ = main_view_info.camera_pos;
+            ss_probe_temporal_initialized_ = true;
+        }
+
+        ss_probe_prev_frame_tex_index_ = ss_probe_curr_frame_tex_index_;
+        ss_probe_curr_frame_tex_index_ = 1 - ss_probe_prev_frame_tex_index_;
 
 
         // 重視位置を若干補正.
@@ -485,6 +504,13 @@ namespace ngl::render::app
             p->ss_probe_temporal_update_group_size = k_ss_probe_update_skip_tile_group_width;
             p->ss_probe_ray_start_offset_scale = k_ss_probe_ray_start_offset_scale;
             p->ss_probe_ray_normal_offset_scale = k_ss_probe_ray_normal_offset_scale;
+            p->ss_probe_temporal_depth_threshold = k_ss_probe_temporal_depth_threshold;
+            p->ss_probe_camera_delta_ws = main_view_info.camera_pos - ss_probe_prev_camera_pos_;
+            p->ss_probe_temporal_normal_threshold_cos = k_ss_probe_temporal_normal_threshold_cos;
+            p->ss_probe_temporal_camera_motion_scale = k_ss_probe_temporal_camera_motion_scale;
+            p->ss_probe_temporal_min_hysteresis = k_ss_probe_temporal_min_hysteresis;
+            p->ss_probe_temporal_max_hysteresis = k_ss_probe_temporal_max_hysteresis;
+            p->ss_probe_temporal_reprojection_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_;
 
             p->main_light_dir_ws = main_view_info.main_light_dir_ws;
 
@@ -497,6 +523,8 @@ namespace ngl::render::app
 
             cbh_dispatch_->buffer.Unmap();
         }
+
+        ss_probe_prev_camera_pos_ = main_view_info.camera_pos;
         
         // 初回クリア.
         if (is_first_dispatch)
@@ -535,18 +563,18 @@ namespace ngl::render::app
             // SsProbeクリア. pso_ss_probe_clear_使用.
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "SsProbeInitClear");
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_ss_probe_clear_->SetView(&desc_set, k_shader_bind_name_ssprobe_uav.Get(), ss_probe_tex_.uav.Get());
-                pso_ss_probe_clear_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_.uav.Get());
-
                 p_command_list->SetPipelineState(pso_ss_probe_clear_.Get());
-                p_command_list->SetDescriptorSet(pso_ss_probe_clear_.Get(), &desc_set);
-                
-                pso_ss_probe_clear_->DispatchHelper(p_command_list, ss_probe_tex_.texture->GetWidth(), ss_probe_tex_.texture->GetHeight(), 1);
+                for(int i = 0; i < 2; ++i)
+                {
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    pso_ss_probe_clear_->SetView(&desc_set, k_shader_bind_name_ssprobe_uav.Get(), ss_probe_tex_[i].uav.Get());
+                    pso_ss_probe_clear_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_[i].uav.Get());
+                    p_command_list->SetDescriptorSet(pso_ss_probe_clear_.Get(), &desc_set);
+                    pso_ss_probe_clear_->DispatchHelper(p_command_list, ss_probe_tex_[i].texture->GetWidth(), ss_probe_tex_[i].texture->GetHeight(), 1);
 
-                p_command_list->ResourceBarrier(ss_probe_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                p_command_list->ResourceBarrier(ss_probe_tile_info_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                    p_command_list->ResourceBarrier(ss_probe_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                    p_command_list->ResourceBarrier(ss_probe_tile_info_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                }
             }
         }
         // Bbv Begin Update Pass.
@@ -826,14 +854,14 @@ namespace ngl::render::app
                 pso_ss_probe_preupdate_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_ss_probe_preupdate_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_ss_probe_preupdate_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                pso_ss_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_.uav.Get());
+                pso_ss_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_[ss_probe_curr_frame_tex_index_].uav.Get());
 
                 p_command_list->SetPipelineState(pso_ss_probe_preupdate_.Get());
                 p_command_list->SetDescriptorSet(pso_ss_probe_preupdate_.Get(), &desc_set);
                 // 1/8 解像度のProbe単位Texel更新.
-                pso_ss_probe_preupdate_->DispatchHelper(p_command_list, ss_probe_tile_info_tex_.texture->GetWidth(), ss_probe_tile_info_tex_.texture->GetHeight(), 1);
+                pso_ss_probe_preupdate_->DispatchHelper(p_command_list, ss_probe_tile_info_tex_[ss_probe_curr_frame_tex_index_].texture->GetWidth(), ss_probe_tile_info_tex_[ss_probe_curr_frame_tex_index_].texture->GetHeight(), 1);
 
-                p_command_list->ResourceUavBarrier(ss_probe_tile_info_tex_.texture.Get());
+                p_command_list->ResourceUavBarrier(ss_probe_tile_info_tex_[ss_probe_curr_frame_tex_index_].texture.Get());
             }
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ScreenSpaceProbeUpdate");
@@ -843,15 +871,18 @@ namespace ngl::render::app
                 pso_ss_probe_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_ss_probe_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_ss_probe_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ss_probe_tile_info_tex_.srv.Get());
-                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_uav.Get(), ss_probe_tex_.uav.Get());
+                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_srv.Get(), ss_probe_tex_[ss_probe_prev_frame_tex_index_].srv.Get());
+                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_curr_frame_tex_index_].srv.Get());
+                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_history_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_prev_frame_tex_index_].srv.Get());
+                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_history_srv.Get(), ss_probe_tex_[ss_probe_prev_frame_tex_index_].srv.Get());
+                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_uav.Get(), ss_probe_tex_[ss_probe_curr_frame_tex_index_].uav.Get());
 
                 p_command_list->SetPipelineState(pso_ss_probe_update_.Get());
                 p_command_list->SetDescriptorSet(pso_ss_probe_update_.Get(), &desc_set);
 
-                pso_ss_probe_update_->DispatchHelper(p_command_list, ss_probe_tex_.texture->GetWidth()/k_ss_probe_update_skip_tile_group_width, ss_probe_tex_.texture->GetHeight()/k_ss_probe_update_skip_tile_group_width, 1);
+                pso_ss_probe_update_->DispatchHelper(p_command_list, ss_probe_tex_[ss_probe_curr_frame_tex_index_].texture->GetWidth()/k_ss_probe_update_skip_tile_group_width, ss_probe_tex_[ss_probe_curr_frame_tex_index_].texture->GetHeight()/k_ss_probe_update_skip_tile_group_width, 1);
 
-                p_command_list->ResourceUavBarrier(ss_probe_tex_.texture.Get());
+                p_command_list->ResourceUavBarrier(ss_probe_tex_[ss_probe_curr_frame_tex_index_].texture.Get());
             }
         }
 
@@ -995,8 +1026,8 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_srv.Get(), wcp_probe_atlas_tex_.srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_srv.Get(), ss_probe_tex_.srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ss_probe_tile_info_tex_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_srv.Get(), ss_probe_tex_[ss_probe_curr_frame_tex_index_].srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_curr_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
             
             pso_bbv_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());

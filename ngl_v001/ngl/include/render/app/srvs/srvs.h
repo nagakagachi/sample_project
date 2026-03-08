@@ -127,8 +127,8 @@ namespace ngl::render::app
 
         ngl::rhi::ConstantBufferPooledHandle GetDispatchCbh() const { return cbh_dispatch_; }
         rhi::RefSrvDep GetWcpProbeAtlasTex() const { return wcp_probe_atlas_tex_.srv; }
-        rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_.srv; }
-        rhi::RefSrvDep GetSsProbeTileInfoTex() const { return ss_probe_tile_info_tex_.srv; }
+        rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_[ss_probe_curr_frame_tex_index_].srv; }
+        rhi::RefSrvDep GetSsProbeTileInfoTex() const { return ss_probe_tile_info_tex_[ss_probe_curr_frame_tex_index_].srv; }
 
     private:
         bool is_first_dispatch_ = true;
@@ -137,6 +137,12 @@ namespace ngl::render::app
 
         math::Vec3 important_point_ = {0,0,0};
         math::Vec3 important_dir_ = {0,0,1};
+
+        bool ss_probe_temporal_initialized_ = false;
+        math::Vec3 ss_probe_prev_camera_pos_ = math::Vec3::Zero();
+
+        ngl::u32 ss_probe_prev_frame_tex_index_ = 0;
+        ngl::u32 ss_probe_curr_frame_tex_index_ = 0;
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_clear_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_begin_update_ = {};
@@ -202,8 +208,8 @@ namespace ngl::render::app
 
         
         // ScreenSpaceProbe.
-        ComputeTextureSet ss_probe_tile_info_tex_ = {}; // 1/8解像度のProbeタイル用情報. x: depth, y: probe local pos(flat), zw: OctEncode WS normal.
-        ComputeTextureSet ss_probe_tex_ = {};// 8x8 texel per probe.
+        ComputeTextureSet ss_probe_tile_info_tex_[2] = {}; // 1/8解像度のProbeタイル用情報. x: depth, y: probe local pos(flat), zw: OctEncode WS normal.
+        ComputeTextureSet ss_probe_tex_[2] = {};// 8x8 texel per probe.
 
     };
 
@@ -218,6 +224,7 @@ namespace ngl::render::app
         static int dbg_wcp_probe_debug_mode_;
         static float dbg_probe_scale_;
         static float dbg_probe_near_geom_scale_;
+        static int dbg_ss_probe_temporal_reprojection_enable_;
 
     public:
         ScreenReconstructedVoxelStructure() = default;

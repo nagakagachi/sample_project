@@ -815,8 +815,14 @@ bool AppGame::ExecuteApp()
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
                 
-                ImGui::Checkbox("Enable Injection", &dbgw_enable_srvs_injection_pass);
-                ImGui::Checkbox("Enable Rejection", &dbgw_enable_srvs_rejection_pass);
+                ImGui::Checkbox("Bbv Injection", &dbgw_enable_srvs_injection_pass);
+                ImGui::Checkbox("Bbv Rejection", &dbgw_enable_srvs_rejection_pass);
+
+                bool ss_probe_temporal_reprojection_enable = (0 != ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_);
+                if(ImGui::Checkbox("SsProbe TemporalReprojection", &ss_probe_temporal_reprojection_enable))
+                {
+                    ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_ = ss_probe_temporal_reprojection_enable ? 1 : 0;
+                }
 
                 ImGui::SetNextItemOpen(true, ImGuiCond_Once);
                 if (ImGui::CollapsingHeader("Voxel Debug"))

@@ -48,6 +48,22 @@ float biased_shadow_preserving_temporal_filter_weight(float curr_value, float pr
     return alpha;
 }
 
+float2 CalcPrevFrameUvFromWorldPos(float3 pos_ws, out bool is_valid)
+{
+    const float3 prev_pos_vs = mul(cb_ngl_sceneview.cb_prev_view_mtx, float4(pos_ws, 1.0));
+    const float4 prev_pos_cs = mul(cb_ngl_sceneview.cb_prev_proj_mtx, float4(prev_pos_vs, 1.0));
+    if(abs(prev_pos_cs.w) <= 1e-6)
+    {
+        is_valid = false;
+        return float2(0.0, 0.0);
+    }
+
+    const float2 prev_ndc_xy = prev_pos_cs.xy / prev_pos_cs.w;
+    const float2 prev_uv = float2(prev_ndc_xy.x * 0.5 + 0.5, -prev_ndc_xy.y * 0.5 + 0.5);
+    is_valid = all(prev_uv >= 0.0) && all(prev_uv <= 1.0);
+    return prev_uv;
+}
+
 
 [numthreads(SCREEN_SPACE_PROBE_TILE_SIZE, SCREEN_SPACE_PROBE_TILE_SIZE, 1)]
 void main_cs(
@@ -188,11 +204,6 @@ void main_cs(
         }
         #endif
 
-            // デバッグ用にサンプル方向をデバッグ出力.
-            //RWScreenSpaceProbeTex[global_pos] = float4(sample_ray_dir, 1.0);
-            //return;
-
-
         const float3 sample_ray_origin = ray_origin_base + sample_ray_dir * ray_origin_start_offset;
         // タイルのスクリーンスペースプローブ位置からレイトレース.
         const float trace_distance = 30.0;
@@ -220,14 +231,46 @@ void main_cs(
     uint hit_count = ss_ray_sample_accum[gindex * 4 + 0];// accum_count
     float sum_sky_visibility = ss_ray_sample_accum[gindex * 4 + 1];// sky_visibility_boolの合計.
     
-    const float4 prev_probe = RWScreenSpaceProbeTex[global_pos];
+    const float prev_same_probe_value = ScreenSpaceProbeHistoryTex.Load(int3(global_pos, 0)).r;
     const float inv_hit_count = (hit_count > 0)? (1.0 / float(hit_count)) : 1.0;
-    const float sky_visibility = (hit_count > 0)? (sum_sky_visibility * inv_hit_count) : prev_probe.r;
+    const float sky_visibility = (hit_count > 0)? (sum_sky_visibility * inv_hit_count) : prev_same_probe_value;
 
-    const float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_probe.r, 0.66);
-    
-    float4 hit_debug = float4(sky_visibility, float(hit_count) * 0.025, 0.0 , 0.0);
-    hit_debug = lerp(hit_debug, prev_probe, temporal_rate);// 補間.
 
-    RWScreenSpaceProbeTex[global_pos] = hit_debug;
+    float new_sky_visibility = sky_visibility;
+    //float new_sky_visibility = lerp(prev_same_probe_value, sky_visibility, 0.33);// テストで単純時間補間.
+
+
+    // Temporal Reprojection.
+    if(0 != cb_srvs.ss_probe_temporal_reprojection_enable)
+    {
+        bool is_valid_prev_uv;
+        const float2 prev_uv = CalcPrevFrameUvFromWorldPos(ss_probe_pos_ws, is_valid_prev_uv);
+        if(is_valid_prev_uv)
+        {
+            const int2 prev_global_pos = clamp(int2(prev_uv * float2(depth_size)), int2(0, 0), int2(depth_size) - 1);
+            const float4 prev_probe = ScreenSpaceProbeHistoryTex.Load(int3(prev_global_pos, 0));
+
+            const int2 prev_probe_id = prev_global_pos / SCREEN_SPACE_PROBE_TILE_SIZE;
+            const float4 prev_probe_tile_info = ScreenSpaceProbeHistoryTileInfoTex.Load(int3(prev_probe_id, 0));
+
+            const bool is_prev_probe_depth_valid = isValidDepth(prev_probe_tile_info.x);
+            const bool is_depth_matched = abs(prev_probe_tile_info.x - ss_probe_depth) <= cb_srvs.ss_probe_temporal_depth_threshold;
+            const float3 prev_probe_approx_normal_ws = OctDecode(prev_probe_tile_info.zw);
+            const bool is_normal_matched = dot(prev_probe_approx_normal_ws, ss_probe_approx_normal_ws) >= cb_srvs.ss_probe_temporal_normal_threshold_cos;
+
+            if(is_prev_probe_depth_valid && is_depth_matched && is_normal_matched)
+            {
+                float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_probe.r, cb_srvs.ss_probe_temporal_min_hysteresis);
+                temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
+
+                const float camera_motion = length(cb_srvs.ss_probe_camera_delta_ws);
+                const float camera_motion_scale = saturate(1.0 - camera_motion * cb_srvs.ss_probe_temporal_camera_motion_scale);
+                temporal_rate *= camera_motion_scale;
+
+                new_sky_visibility = lerp(new_sky_visibility, prev_probe.r, temporal_rate);// 補間.
+            }
+        }
+    }
+
+    RWScreenSpaceProbeTex[global_pos] = float4(new_sky_visibility, float(hit_count)*0.025, 0.0, 0.0);
 }
