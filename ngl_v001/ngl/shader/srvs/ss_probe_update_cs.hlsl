@@ -3,6 +3,7 @@
 
 ss_probe_update_cs.hlsl
 
+screen-reconstructed voxel structure
 ScreenSpaceProbe更新.
 
 #endif
@@ -160,7 +161,6 @@ void main_cs(
         #if 1
         {
             // Cos分布半球方向ランダム.
-            //const float3 unit_v3 = random_unit_vector3(float2(asfloat(global_pos.x + ray_index^cb_srvs.frame_count), asfloat(global_pos.y + ray_index^cb_srvs.frame_count)));
             const float3 unit_v3 = random_unit_vector3(float3(asfloat(global_pos.x), asfloat(global_pos.y), asfloat(ray_index^cb_srvs.frame_count)));
 
             const float3 local_dir = normalize(unit_v3 + float3(0.0, 0.0, 1.0));
@@ -168,15 +168,16 @@ void main_cs(
         }
         #elif 1
         {
+            // MEMO. このフローの場合サンプル数増加でGPUハングが起きる? なにかの未定義動作を引いている? Normalizeで解消?.
             // 半球方向一様ランダム.
-            float3 local_dir = random_unit_vector3(float2(asfloat(global_pos.x + ray_index^cb_srvs.frame_count), asfloat(global_pos.y + ray_index^cb_srvs.frame_count)));
+            float3 local_dir = random_unit_vector3(float3(asfloat(global_pos.x), asfloat(global_pos.y), asfloat(ray_index^cb_srvs.frame_count)));
             local_dir.z = abs(local_dir.z);
-            sample_ray_dir = local_dir.x * base_tangent_ws + local_dir.y * base_bitangent_ws + local_dir.z * base_normal_ws;
+            sample_ray_dir = normalize(local_dir.x * base_tangent_ws + local_dir.y * base_bitangent_ws + local_dir.z * base_normal_ws);
         }
         #else
         {
             // OctMapセルに対応する方向にレイ発行. 半球方向と逆の場合は反転マッピング.
-            const float2 noise_float2 = noise_float3_to_float2(float3(global_pos.xy, float(cb_srvs.frame_count + ray_index)));
+            const float2 noise_float2 = noise_float3_to_float2(float3(global_pos.xy, float(ray_index^cb_srvs.frame_count)));
             const float2 octmap_uv = (float2(probe_atlas_local_pos) + noise_float2) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
             sample_ray_dir = OctDecode(octmap_uv);
             // 常に法線方向に制限する.
@@ -225,7 +226,7 @@ void main_cs(
 
     const float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_probe.r, 0.66);
     
-    float4 hit_debug = float4(sky_visibility, 0.0, 0.0, float(hit_count) * 0.025);
+    float4 hit_debug = float4(sky_visibility, float(hit_count) * 0.025, 0.0 , 0.0);
     hit_debug = lerp(hit_debug, prev_probe, temporal_rate);// 補間.
 
     RWScreenSpaceProbeTex[global_pos] = hit_debug;
