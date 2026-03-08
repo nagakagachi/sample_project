@@ -35,8 +35,8 @@ namespace ngl::render::app
     static const float k_ss_probe_temporal_depth_threshold = 0.02f;
     static const float k_ss_probe_temporal_normal_threshold_cos = 0.85f;
     static const float k_ss_probe_temporal_camera_motion_scale = 0.4f;
-    static const float k_ss_probe_temporal_min_hysteresis = 0.2f;
-    static const float k_ss_probe_temporal_max_hysteresis = 0.95f;
+    static const float k_ss_probe_temporal_min_hysteresis = 0.4f;
+    static const float k_ss_probe_temporal_max_hysteresis = 0.98f;
 
 
     // デバッグ.
@@ -45,7 +45,7 @@ namespace ngl::render::app
     int ScreenReconstructedVoxelStructure::dbg_wcp_probe_debug_mode_ = -1;
     float ScreenReconstructedVoxelStructure::dbg_probe_scale_ = 1.0f;
     float ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_ = 0.2f;
-    int ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_ = 0;
+    int ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_ = 1;
     
     using SrvsShaderBindName = ngl::text::HashText<128>;
     constexpr SrvsShaderBindName k_shader_bind_name_wcp_atlas_srv = "WcpProbeAtlasTex";

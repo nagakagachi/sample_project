@@ -33,6 +33,9 @@ groupshared float3 ss_probe_pos_ws;
 groupshared float3 ss_probe_approx_normal_ws;
 
 groupshared uint ss_ray_sample_accum[NGL_SSP_RAY_COUNT * 4];// accum_count, sky_visibility_bool,,
+groupshared uint ss_temporal_best_score;
+groupshared uint ss_temporal_best_prev_tile_packed;
+groupshared uint ss_temporal_candidate_prev_tile_packed[NGL_SSP_RAY_COUNT];
 
 // -------------------------------------
 
@@ -231,46 +234,95 @@ void main_cs(
     uint hit_count = ss_ray_sample_accum[gindex * 4 + 0];// accum_count
     float sum_sky_visibility = ss_ray_sample_accum[gindex * 4 + 1];// sky_visibility_boolの合計.
     
-    const float prev_same_probe_value = ScreenSpaceProbeHistoryTex.Load(int3(global_pos, 0)).r;
+    const float prev_same_probe_value = 0.0;//ScreenSpaceProbeHistoryTex.Load(int3(global_pos, 0)).r;
     const float inv_hit_count = (hit_count > 0)? (1.0 / float(hit_count)) : 1.0;
     const float sky_visibility = (hit_count > 0)? (sum_sky_visibility * inv_hit_count) : prev_same_probe_value;
 
 
     float new_sky_visibility = sky_visibility;
-    //float new_sky_visibility = lerp(prev_same_probe_value, sky_visibility, 0.33);// テストで単純時間補間.
-
 
     // Temporal Reprojection.
+    float reprojection_succeed = 0.0;
     if(0 != cb_srvs.ss_probe_temporal_reprojection_enable)
     {
+        if(0 == gindex)
+        {
+            ss_temporal_best_score = 0xffffffff;
+            ss_temporal_best_prev_tile_packed = 0xffffffff;
+        }
+        ss_temporal_candidate_prev_tile_packed[gindex] = 0xffffffff;
+        GroupMemoryBarrierWithGroupSync();
+
+        uint local_best_score = 0xffffffff;
+        uint local_best_prev_tile_packed = 0xffffffff;
         bool is_valid_prev_uv;
         const float2 prev_uv = CalcPrevFrameUvFromWorldPos(ss_probe_pos_ws, is_valid_prev_uv);
         if(is_valid_prev_uv)
         {
-            const int2 prev_global_pos = clamp(int2(prev_uv * float2(depth_size)), int2(0, 0), int2(depth_size) - 1);
+            const int2 full_res = int2(depth_size);
+            const int tile_size = SCREEN_SPACE_PROBE_TILE_SIZE;
+            const int2 probe_tile_count = max((full_res + tile_size - 1) / tile_size, int2(1, 1));
+            const float2 prev_pos_texel = prev_uv * float2(full_res);
+            const int2 prev_center_tile = clamp(int2(prev_pos_texel) / tile_size, int2(0, 0), probe_tile_count - 1);
+
+            const int candidate_index = int(gindex);
+            if(candidate_index < 9)
+            {
+                const int2 candidate_offset = int2(candidate_index % 3, candidate_index / 3) - int2(1, 1);
+                const int2 candidate_tile_id = clamp(prev_center_tile + candidate_offset, int2(0, 0), probe_tile_count - 1);
+                const float4 candidate_tile_info = ScreenSpaceProbeHistoryTileInfoTex.Load(int3(candidate_tile_id, 0));
+
+                const bool is_candidate_depth_valid = isValidDepth(candidate_tile_info.x);
+                const bool is_depth_matched = abs(candidate_tile_info.x - ss_probe_depth) <= cb_srvs.ss_probe_temporal_depth_threshold;
+                const float3 candidate_normal_ws = OctDecode(candidate_tile_info.zw);
+                const bool is_normal_matched = dot(candidate_normal_ws, ss_probe_approx_normal_ws) >= cb_srvs.ss_probe_temporal_normal_threshold_cos;
+
+                if(is_candidate_depth_valid && is_depth_matched && is_normal_matched)
+                {
+                    const float2 candidate_center_texel = (float2(candidate_tile_id * tile_size) + float(tile_size) * 0.5);
+                    const float2 candidate_delta = candidate_center_texel - prev_pos_texel;
+                    const float candidate_dist2 = dot(candidate_delta, candidate_delta);
+                    const uint quantized_dist = min((uint)(candidate_dist2 * 1024.0), 0x03ffffffu);
+                    local_best_score = (quantized_dist << 6) | (gindex & 0x3fu);
+                    local_best_prev_tile_packed = (uint(candidate_tile_id.y) << 16) | uint(candidate_tile_id.x & 0xffff);
+                }
+            }
+        }
+
+        ss_temporal_candidate_prev_tile_packed[gindex] = local_best_prev_tile_packed;
+        if(0xffffffff != local_best_score)
+        {
+            InterlockedMin(ss_temporal_best_score, local_best_score);
+        }
+        GroupMemoryBarrierWithGroupSync();
+
+        if(0 == gindex)
+        {
+            if(0xffffffff != ss_temporal_best_score)
+            {
+                const uint winner_lane = ss_temporal_best_score & 0x3fu;
+                ss_temporal_best_prev_tile_packed = ss_temporal_candidate_prev_tile_packed[winner_lane];
+            }
+        }
+        GroupMemoryBarrierWithGroupSync();
+
+        if(0xffffffff != ss_temporal_best_prev_tile_packed)
+        {
+            const int2 best_prev_tile = int2(int(ss_temporal_best_prev_tile_packed & 0xffffu), int((ss_temporal_best_prev_tile_packed >> 16) & 0xffffu));
+            const int2 prev_global_pos = clamp(best_prev_tile * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
             const float4 prev_probe = ScreenSpaceProbeHistoryTex.Load(int3(prev_global_pos, 0));
 
-            const int2 prev_probe_id = prev_global_pos / SCREEN_SPACE_PROBE_TILE_SIZE;
-            const float4 prev_probe_tile_info = ScreenSpaceProbeHistoryTileInfoTex.Load(int3(prev_probe_id, 0));
+            float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_probe.r, cb_srvs.ss_probe_temporal_min_hysteresis);
+            temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
 
-            const bool is_prev_probe_depth_valid = isValidDepth(prev_probe_tile_info.x);
-            const bool is_depth_matched = abs(prev_probe_tile_info.x - ss_probe_depth) <= cb_srvs.ss_probe_temporal_depth_threshold;
-            const float3 prev_probe_approx_normal_ws = OctDecode(prev_probe_tile_info.zw);
-            const bool is_normal_matched = dot(prev_probe_approx_normal_ws, ss_probe_approx_normal_ws) >= cb_srvs.ss_probe_temporal_normal_threshold_cos;
+            const float camera_motion = length(cb_srvs.ss_probe_camera_delta_ws);
+            const float camera_motion_scale = saturate(1.0 - camera_motion * cb_srvs.ss_probe_temporal_camera_motion_scale);
+            temporal_rate *= camera_motion_scale;
 
-            if(is_prev_probe_depth_valid && is_depth_matched && is_normal_matched)
-            {
-                float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_probe.r, cb_srvs.ss_probe_temporal_min_hysteresis);
-                temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
-
-                const float camera_motion = length(cb_srvs.ss_probe_camera_delta_ws);
-                const float camera_motion_scale = saturate(1.0 - camera_motion * cb_srvs.ss_probe_temporal_camera_motion_scale);
-                temporal_rate *= camera_motion_scale;
-
-                new_sky_visibility = lerp(new_sky_visibility, prev_probe.r, temporal_rate);// 補間.
-            }
+            new_sky_visibility = lerp(new_sky_visibility, prev_probe.r, temporal_rate);// 補間.
+            reprojection_succeed = 1.0;
         }
     }
 
-    RWScreenSpaceProbeTex[global_pos] = float4(new_sky_visibility, float(hit_count)*0.025, 0.0, 0.0);
+    RWScreenSpaceProbeTex[global_pos] = float4(new_sky_visibility, float(hit_count)*0.025, reprojection_succeed, 0.0);
 }
