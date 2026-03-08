@@ -41,13 +41,12 @@ groupshared uint ss_temporal_candidate_prev_tile_packed[NGL_SSP_RAY_COUNT];
 
 // https://gpuopen.com/download/GPUOpen2022_GI1_0.pdf
 // Algorithm 3: Biased shadow-preserving temporal hysteresis 
-float biased_shadow_preserving_temporal_filter_weight(float curr_value, float prev_value, float min_clamp)
+float biased_shadow_preserving_temporal_filter_weight(float curr_value, float prev_value)
 {
     const float l1 = curr_value;
     const float l2 = prev_value;
     float alpha = max(l1 - l2 - min(l1, l2), 0.0) / max(max(l1, l2), 1e-4);
-    //alpha = CalcSquare(clamp(alpha, 0.0, 0.95));// オリジナル.
-    alpha = clamp(alpha, min_clamp, 0.98);// 最低限前回の値を保持するために下限を追加.
+    alpha = CalcSquare(clamp(alpha, 0.0, 0.95));// オリジナル.
     return alpha;
 }
 
@@ -312,7 +311,7 @@ void main_cs(
             const int2 prev_global_pos = clamp(best_prev_tile * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
             const float4 prev_probe = ScreenSpaceProbeHistoryTex.Load(int3(prev_global_pos, 0));
 
-            float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_probe.r, cb_srvs.ss_probe_temporal_min_hysteresis);
+            float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_probe.r);
             temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
 
             const float3 curr_camera_pos_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
