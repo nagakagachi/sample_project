@@ -315,7 +315,9 @@ void main_cs(
             float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_probe.r, cb_srvs.ss_probe_temporal_min_hysteresis);
             temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
 
-            const float camera_motion = length(cb_srvs.ss_probe_camera_delta_ws);
+            const float3 curr_camera_pos_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+            const float3 prev_camera_pos_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_prev_view_inv_mtx);
+            const float camera_motion = length(curr_camera_pos_ws - prev_camera_pos_ws);
             const float camera_motion_scale = saturate(1.0 - camera_motion * cb_srvs.ss_probe_temporal_camera_motion_scale);
             temporal_rate *= camera_motion_scale;
 

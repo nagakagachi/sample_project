@@ -138,9 +138,6 @@ namespace ngl::render::app
         math::Vec3 important_point_ = {0,0,0};
         math::Vec3 important_dir_ = {0,0,1};
 
-        bool ss_probe_temporal_initialized_ = false;
-        math::Vec3 ss_probe_prev_camera_pos_ = math::Vec3::Zero();
-
         ngl::u32 ss_probe_prev_frame_tex_index_ = 0;
         ngl::u32 ss_probe_curr_frame_tex_index_ = 0;
 

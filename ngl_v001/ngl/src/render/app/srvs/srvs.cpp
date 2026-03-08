@@ -425,12 +425,6 @@ namespace ngl::render::app
         is_first_dispatch_           = false;
         ++frame_count_;
 
-        if(!ss_probe_temporal_initialized_)
-        {
-            ss_probe_prev_camera_pos_ = main_view_info.camera_pos;
-            ss_probe_temporal_initialized_ = true;
-        }
-
         ss_probe_prev_frame_tex_index_ = ss_probe_curr_frame_tex_index_;
         ss_probe_curr_frame_tex_index_ = 1 - ss_probe_prev_frame_tex_index_;
 
@@ -505,7 +499,6 @@ namespace ngl::render::app
             p->ss_probe_ray_start_offset_scale = k_ss_probe_ray_start_offset_scale;
             p->ss_probe_ray_normal_offset_scale = k_ss_probe_ray_normal_offset_scale;
             p->ss_probe_temporal_depth_threshold = k_ss_probe_temporal_depth_threshold;
-            p->ss_probe_camera_delta_ws = main_view_info.camera_pos - ss_probe_prev_camera_pos_;
             p->ss_probe_temporal_normal_threshold_cos = k_ss_probe_temporal_normal_threshold_cos;
             p->ss_probe_temporal_camera_motion_scale = k_ss_probe_temporal_camera_motion_scale;
             p->ss_probe_temporal_min_hysteresis = k_ss_probe_temporal_min_hysteresis;
@@ -523,9 +516,6 @@ namespace ngl::render::app
 
             cbh_dispatch_->buffer.Unmap();
         }
-
-        ss_probe_prev_camera_pos_ = main_view_info.camera_pos;
-        
         // 初回クリア.
         if (is_first_dispatch)
         {

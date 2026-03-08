@@ -1914,6 +1914,18 @@ namespace ngl
 #endif
 			math::Vec4 ndc_z_to_view_z_coef = math::CalcViewDepthReconstructCoefFromProjectionMatrix(proj_mat);
 
+			static bool s_scene_prev_view_proj_initialized = false;
+			static math::Mat34 s_scene_prev_view_mat = math::Mat34::Identity();
+			static math::Mat34 s_scene_prev_view_inv_mat = math::Mat34::Identity();
+			static math::Mat44 s_scene_prev_proj_mat = math::Mat44::Identity();
+			if(!s_scene_prev_view_proj_initialized)
+			{
+				s_scene_prev_view_mat = view_mat;
+				s_scene_prev_view_inv_mat = math::Mat34::Inverse(view_mat);
+				s_scene_prev_proj_mat = proj_mat;
+				s_scene_prev_view_proj_initialized = true;
+			}
+
 			// 定数バッファ更新.
 			{
 				const auto cb_index = frame_count_ % std::size(cbh_scene_view);
@@ -1923,12 +1935,19 @@ namespace ngl
 					mapped->cb_proj_mtx = proj_mat;
 					mapped->cb_view_inv_mtx = math::Mat34::Inverse(view_mat);
 					mapped->cb_proj_inv_mtx = math::Mat44::Inverse(proj_mat);
+					mapped->cb_prev_view_mtx = s_scene_prev_view_mat;
+					mapped->cb_prev_view_inv_mtx = s_scene_prev_view_inv_mat;
+					mapped->cb_prev_proj_mtx = s_scene_prev_proj_mat;
 
 					mapped->cb_ndc_z_to_view_z_coef = ndc_z_to_view_z_coef;
 
 					cbh_scene_view[cb_index]->buffer.Unmap();
 				}
 			}
+
+			s_scene_prev_view_mat = view_mat;
+			s_scene_prev_view_inv_mat = math::Mat34::Inverse(view_mat);
+			s_scene_prev_proj_mat = proj_mat;
 		}
 
 		RtTlas* RtSceneManager::GetSceneTlas()

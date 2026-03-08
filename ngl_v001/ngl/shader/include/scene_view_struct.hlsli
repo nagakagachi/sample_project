@@ -15,6 +15,7 @@ struct SceneViewInfo
 	float4x4 cb_proj_mtx;
 	float4x4 cb_proj_inv_mtx;
 	float3x4 cb_prev_view_mtx;
+	float3x4 cb_prev_view_inv_mtx;
 	float4x4 cb_prev_proj_mtx;
 
     // 正規化デバイス座標(NDC)のZ値からView空間Z値を計算するための係数. PerspectiveProjectionMatrixの方式によってCPU側で計算される値を変えることでシェーダ側は同一コード化. xは平行投影もサポートするために利用.
