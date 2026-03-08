@@ -12,6 +12,16 @@ ScreenSpaceProbe更新.
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
 
+// RayGUiding.
+#if !defined( NGL_SSP_RAY_GUIDING_ENABLE )
+#define NGL_SSP_RAY_GUIDING_ENABLE 1
+#endif
+
+#if !defined( NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS )
+#define NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS 0.09
+#endif
+
+
 #ifndef NGL_SSP_RAY_COUNT
 // Adjust this for ray budget per tile.
 #define NGL_SSP_RAY_COUNT (SCREEN_SPACE_PROBE_TILE_SIZE * SCREEN_SPACE_PROBE_TILE_SIZE)
@@ -36,6 +46,10 @@ groupshared uint ss_ray_sample_accum[NGL_SSP_RAY_COUNT * 4];// accum_count, sky_
 groupshared uint ss_temporal_best_score;
 groupshared uint ss_temporal_best_prev_tile_packed;
 groupshared uint ss_temporal_candidate_prev_tile_packed[NGL_SSP_RAY_COUNT];
+groupshared float ss_temporal_reprojected_value[NGL_SSP_RAY_COUNT];
+groupshared float ss_temporal_reprojected_weight[NGL_SSP_RAY_COUNT];
+groupshared float ss_guiding_cdf[NGL_SSP_RAY_COUNT];
+groupshared float ss_guiding_total_weight;
 
 // -------------------------------------
 
@@ -150,137 +164,54 @@ void main_cs(
         ss_ray_sample_accum[gindex * 4 + 1] = 0;// sky_visibility_bool
         ss_ray_sample_accum[gindex * 4 + 2] = 0;// unused
         ss_ray_sample_accum[gindex * 4 + 3] = 0;// unused
+
+        ss_temporal_reprojected_value[gindex] = 0.0;
+        ss_temporal_reprojected_weight[gindex] = 0.0;
+        ss_guiding_cdf[gindex] = 0.0;
     }
-    GroupMemoryBarrierWithGroupSync();
-    
-    // カメラ座標.
-    const float3 view_origin = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
-    const float3 base_normal_ws = ss_probe_approx_normal_ws;
-    float3 base_tangent_ws;
-    float3 base_bitangent_ws;
-    BuildOrthonormalBasis(base_normal_ws, base_tangent_ws, base_bitangent_ws);
-
-    // レイ方向オフセット. sqrt(3.0).
-    const float ray_start_offset_scale = cb_srvs.ss_probe_ray_start_offset_scale;
-    const float ray_origin_start_offset = cb_srvs.bbv.cell_size * k_bbv_per_voxel_resolution_inv * ray_start_offset_scale;
-    // 近似法線方向オフセット.
-    const float ray_origin_normal_offset_scale = cb_srvs.ss_probe_ray_normal_offset_scale;
-    const float ray_origin_normal_offset = cb_srvs.bbv.cell_size * k_bbv_per_voxel_resolution_inv * ray_origin_normal_offset_scale;
-    const float3 ray_origin_base = ss_probe_pos_ws + ss_probe_approx_normal_ws * ray_origin_normal_offset;
-
-    // レイ生成 + トレース結果をSharedに格納.
-    const uint ray_count = NGL_SSP_RAY_COUNT;
-
-    for(int sample_index = 0; sample_index < 1; ++sample_index)
+    ss_temporal_candidate_prev_tile_packed[gindex] = 0xffffffff;
+    if(0 == gindex)
     {
-        const uint ray_index = gindex + ray_count * sample_index;
-
-        float3 sample_ray_dir;
-        #if 1
-        {
-            // Cos分布半球方向ランダム.
-            const float3 unit_v3 = random_unit_vector3(float3(asfloat(global_pos.x), asfloat(global_pos.y), asfloat(ray_index^cb_srvs.frame_count)));
-
-            const float3 local_dir = normalize(unit_v3 + float3(0.0, 0.0, 1.0));
-            sample_ray_dir = local_dir.x * base_tangent_ws + local_dir.y * base_bitangent_ws + local_dir.z * base_normal_ws;
-        }
-        #elif 1
-        {
-            // MEMO. このフローの場合サンプル数増加でGPUハングが起きる? なにかの未定義動作を引いている? Normalizeで解消?.
-            // 半球方向一様ランダム.
-            float3 local_dir = random_unit_vector3(float3(asfloat(global_pos.x), asfloat(global_pos.y), asfloat(ray_index^cb_srvs.frame_count)));
-            local_dir.z = abs(local_dir.z);
-            sample_ray_dir = normalize(local_dir.x * base_tangent_ws + local_dir.y * base_bitangent_ws + local_dir.z * base_normal_ws);
-        }
-        #else
-        {
-            // OctMapセルに対応する方向にレイ発行. 半球方向と逆の場合は反転マッピング.
-            const float2 noise_float2 = noise_float3_to_float2(float3(global_pos.xy, float(ray_index^cb_srvs.frame_count)));
-            const float2 octmap_uv = (float2(probe_atlas_local_pos) + noise_float2) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
-            sample_ray_dir = OctDecode(octmap_uv);
-            // 常に法線方向に制限する.
-            if(dot(sample_ray_dir, base_normal_ws) < 0.0)
-            {
-                sample_ray_dir = sample_ray_dir - 2.0 * dot(sample_ray_dir, base_normal_ws) * base_normal_ws;
-            }
-        }
-        #endif
-
-        const float3 sample_ray_origin = ray_origin_base + sample_ray_dir * ray_origin_start_offset;
-        // タイルのスクリーンスペースプローブ位置からレイトレース.
-        const float trace_distance = 30.0;
-        int hit_voxel_index = -1;
-        float4 debug_ray_info;
-        float4 curr_ray_t_ws = 
-        trace_bbv(
-            hit_voxel_index, debug_ray_info,
-            sample_ray_origin, sample_ray_dir, trace_distance, 
-            cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
-            cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
-
-        const float sky_visibility = (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0;// 負ならヒットなしで空が見えている.
-
-        const float2 oct_uv = SspEncodeDirByNormal(sample_ray_dir, base_normal_ws);// レイ方向を法線基準のOctahedralマップUVにエンコードして格納.
-        const int2 oct_cell_id = int2(oct_uv * SCREEN_SPACE_PROBE_TILE_SIZE);
-        const int oct_cell_index = oct_cell_id.y * SCREEN_SPACE_PROBE_TILE_SIZE + oct_cell_id.x;
-        
-        // Result Accumulation.
-        InterlockedAdd(ss_ray_sample_accum[oct_cell_index * 4 + 0], 1);// accum_count
-        InterlockedAdd(ss_ray_sample_accum[oct_cell_index * 4 + 1], uint(sky_visibility));// sky_visibility_bool
+        ss_temporal_best_score = 0xffffffff;
+        ss_temporal_best_prev_tile_packed = 0xffffffff;
+        ss_guiding_total_weight = 0.0;
     }
     GroupMemoryBarrierWithGroupSync();
 
-    uint hit_count = ss_ray_sample_accum[gindex * 4 + 0];// accum_count
-    float sum_sky_visibility = ss_ray_sample_accum[gindex * 4 + 1];// sky_visibility_boolの合計.
-    
-    const float prev_same_probe_value = 0.0;//ScreenSpaceProbeHistoryTex.Load(int3(global_pos, 0)).r;
-    const float inv_hit_count = (hit_count > 0)? (1.0 / float(hit_count)) : 1.0;
-    const float sky_visibility = (hit_count > 0)? (sum_sky_visibility * inv_hit_count) : prev_same_probe_value;
-
-
-    float new_sky_visibility = sky_visibility;
-
-    // Temporal Reprojection.
-    float reprojection_succeed = 0.0;
+    // Temporal Reprojectionを先行して8x8値を再構成し, CDFを作る.
     if(0 != cb_srvs.ss_probe_temporal_reprojection_enable)
     {
-        if(0 == gindex)
-        {
-            ss_temporal_best_score = 0xffffffff;
-            ss_temporal_best_prev_tile_packed = 0xffffffff;
-        }
-        ss_temporal_candidate_prev_tile_packed[gindex] = 0xffffffff;
-        GroupMemoryBarrierWithGroupSync();
-
         uint local_best_score = 0xffffffff;
         uint local_best_prev_tile_packed = 0xffffffff;
-        bool is_valid_prev_uv;
-        const float2 prev_uv = CalcPrevFrameUvFromWorldPos(ss_probe_pos_ws, is_valid_prev_uv);
-        if(is_valid_prev_uv)
-        {
-            const int2 full_res = int2(depth_size);
-            const int tile_size = SCREEN_SPACE_PROBE_TILE_SIZE;
-            const int2 probe_tile_count = max((full_res + tile_size - 1) / tile_size, int2(1, 1));
-            const float2 prev_pos_texel = prev_uv * float2(full_res);
-            const int2 prev_center_tile = clamp(int2(prev_pos_texel) / tile_size, int2(0, 0), probe_tile_count - 1);
 
-            const int candidate_index = int(gindex);
-            if(candidate_index < 9)
+        if(gindex < 9)
+        {
+            bool is_valid_prev_uv;
+            const float2 prev_uv = CalcPrevFrameUvFromWorldPos(ss_probe_pos_ws, is_valid_prev_uv);
+            if(is_valid_prev_uv)
             {
-                const int2 candidate_offset = int2(candidate_index % 3, candidate_index / 3) - int2(1, 1);
+                const int2 full_res = int2(depth_size);
+                const int tile_size = SCREEN_SPACE_PROBE_TILE_SIZE;
+                const int2 probe_tile_count = max((full_res + tile_size - 1) / tile_size, int2(1, 1));
+                const float2 prev_pos_texel = prev_uv * float2(full_res);
+                const int2 prev_center_tile = clamp(int2(prev_pos_texel) / tile_size, int2(0, 0), probe_tile_count - 1);
+                const int2 candidate_offset = int2(int(gindex) % 3, int(gindex) / 3) - int2(1, 1);
                 const int2 candidate_tile_id = clamp(prev_center_tile + candidate_offset, int2(0, 0), probe_tile_count - 1);
                 const float4 candidate_tile_info = ScreenSpaceProbeHistoryTileInfoTex.Load(int3(candidate_tile_id, 0));
 
                 const bool is_candidate_depth_valid = isValidDepth(candidate_tile_info.x);
-                const bool is_depth_matched = abs(candidate_tile_info.x - ss_probe_depth) <= cb_srvs.ss_probe_temporal_depth_threshold;
+                const float depth_diff = abs(candidate_tile_info.x - ss_probe_depth);
+                const bool is_depth_matched = depth_diff <= cb_srvs.ss_probe_temporal_depth_threshold;
                 const float3 candidate_normal_ws = OctDecode(candidate_tile_info.zw);
-                const bool is_normal_matched = dot(candidate_normal_ws, ss_probe_approx_normal_ws) >= cb_srvs.ss_probe_temporal_normal_threshold_cos;
+                const float normal_dot = dot(candidate_normal_ws, ss_probe_approx_normal_ws);
+                const bool is_normal_matched = normal_dot >= cb_srvs.ss_probe_temporal_normal_threshold_cos;
 
                 if(is_candidate_depth_valid && is_depth_matched && is_normal_matched)
                 {
                     const float2 candidate_center_texel = (float2(candidate_tile_id * tile_size) + float(tile_size) * 0.5);
                     const float2 candidate_delta = candidate_center_texel - prev_pos_texel;
                     const float candidate_dist2 = dot(candidate_delta, candidate_delta);
+
                     const uint quantized_dist = min((uint)(candidate_dist2 * 1024.0), 0x03ffffffu);
                     local_best_score = (quantized_dist << 6) | (gindex & 0x3fu);
                     local_best_prev_tile_packed = (uint(candidate_tile_id.y) << 16) | uint(candidate_tile_id.x & 0xffff);
@@ -305,25 +236,153 @@ void main_cs(
         }
         GroupMemoryBarrierWithGroupSync();
 
+        // 再構成: グループで選択した最良タイルを全セル共通で参照.
         if(0xffffffff != ss_temporal_best_prev_tile_packed)
         {
             const int2 best_prev_tile = int2(int(ss_temporal_best_prev_tile_packed & 0xffffu), int((ss_temporal_best_prev_tile_packed >> 16) & 0xffffu));
             const int2 prev_global_pos = clamp(best_prev_tile * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
-            const float4 prev_probe = ScreenSpaceProbeHistoryTex.Load(int3(prev_global_pos, 0));
-
-            float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_probe.r);
-            temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
-
-            const float3 curr_camera_pos_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
-            const float3 prev_camera_pos_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_prev_view_inv_mtx);
-            const float camera_motion = length(curr_camera_pos_ws - prev_camera_pos_ws);
-            const float camera_motion_scale = saturate(1.0 - camera_motion * cb_srvs.ss_probe_temporal_camera_motion_scale);
-            temporal_rate *= camera_motion_scale;
-
-            new_sky_visibility = lerp(new_sky_visibility, prev_probe.r, temporal_rate);// 補間.
-            reprojection_succeed = 1.0;
+            const float prev_value = ScreenSpaceProbeHistoryTex.Load(int3(prev_global_pos, 0)).r;
+            ss_temporal_reprojected_value[gindex] = prev_value;
+            ss_temporal_reprojected_weight[gindex] = 1.0;
         }
     }
+    GroupMemoryBarrierWithGroupSync();
 
-    RWScreenSpaceProbeTex[global_pos] = float4(new_sky_visibility, float(hit_count)*0.025, reprojection_succeed, 0.0);
+    // 8x8再構成値からCDF作成.
+    if(0 == gindex)
+    {
+        float cdf_sum = 0.0;
+        [unroll]
+        for(uint i = 0; i < NGL_SSP_RAY_COUNT; ++i)
+        {
+            const float cell_value = max(ss_temporal_reprojected_value[i], 0.0) + NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS;// 過去のサンプリング結果がゼロでも選択確率がゼロにならないように微小バイアス.
+            //const float cell_value = 1.0;// ガイディングなしのとき
+
+            cdf_sum += cell_value;
+            ss_guiding_cdf[i] = cdf_sum;
+        }
+
+        if(cdf_sum > 1e-5)
+        {
+            const float cdf_sum_inv = 1.0 / cdf_sum;
+            [unroll]
+            for(uint i = 0; i < NGL_SSP_RAY_COUNT; ++i)
+            {
+                ss_guiding_cdf[i] *= cdf_sum_inv;
+            }
+        }
+        else
+        {
+            [unroll]
+            for(uint i = 0; i < NGL_SSP_RAY_COUNT; ++i)
+            {
+                ss_guiding_cdf[i] = float(i + 1) * (1.0 / float(NGL_SSP_RAY_COUNT));
+            }
+        }
+        ss_guiding_total_weight = cdf_sum;
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    const float3 base_normal_ws = ss_probe_approx_normal_ws;
+    float3 base_tangent_ws;
+    float3 base_bitangent_ws;
+    BuildOrthonormalBasis(base_normal_ws, base_tangent_ws, base_bitangent_ws);
+
+    // レイ方向オフセット. sqrt(3.0).
+    const float ray_start_offset_scale = cb_srvs.ss_probe_ray_start_offset_scale;
+    const float ray_origin_start_offset = cb_srvs.bbv.cell_size * k_bbv_per_voxel_resolution_inv * ray_start_offset_scale;
+    // 近似法線方向オフセット.
+    const float ray_origin_normal_offset_scale = cb_srvs.ss_probe_ray_normal_offset_scale;
+    const float ray_origin_normal_offset = cb_srvs.bbv.cell_size * k_bbv_per_voxel_resolution_inv * ray_origin_normal_offset_scale;
+    const float3 ray_origin_base = ss_probe_pos_ws + ss_probe_approx_normal_ws * ray_origin_normal_offset;
+
+    // レイ生成 + トレース結果をSharedに格納.
+    const uint ray_count = NGL_SSP_RAY_COUNT;
+    for(int sample_index = 0; sample_index < 1; ++sample_index)
+    {
+        const uint ray_index = gindex + ray_count * sample_index;
+
+#if NGL_SSP_RAY_GUIDING_ENABLE
+        // CDF逆変換で重要セル選択.
+        const float2 guiding_rand = noise_float3_to_float2(float3(global_pos.xy + int2(17, 43), float(ray_index ^ cb_srvs.frame_count)));
+        const float cdf_rand = saturate(guiding_rand.x);
+
+        uint selected_oct_cell_index = ray_index & (NGL_SSP_RAY_COUNT - 1);
+        [unroll]
+        for(uint i = 0; i < NGL_SSP_RAY_COUNT; ++i)
+        {
+            if(cdf_rand <= ss_guiding_cdf[i])
+            {
+                selected_oct_cell_index = i;
+                break;
+            }
+        }
+
+        const uint selected_cell_x = selected_oct_cell_index % SCREEN_SPACE_PROBE_TILE_SIZE;
+        const uint selected_cell_y = selected_oct_cell_index / SCREEN_SPACE_PROBE_TILE_SIZE;
+        const float2 local_cell_jitter = noise_float3_to_float2(float3(global_pos.xy + int2(91, 29), float((ray_index * 1664525u) ^ cb_srvs.frame_count)));
+        const float2 selected_oct_uv = (float2(float(selected_cell_x), float(selected_cell_y)) + local_cell_jitter) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+
+        float3 sample_ray_dir = OctDecode(selected_oct_uv);
+        if(dot(sample_ray_dir, base_normal_ws) < 0.0)
+        {
+            sample_ray_dir = sample_ray_dir - 2.0 * dot(sample_ray_dir, base_normal_ws) * base_normal_ws;
+        }
+#else
+        // Cos分布半球方向ランダム.
+        const float3 unit_v3 = random_unit_vector3(float3(asfloat(global_pos.x), asfloat(global_pos.y), asfloat(ray_index^cb_srvs.frame_count)));
+        const float3 local_dir = normalize(unit_v3 + float3(0.0, 0.0, 1.0));
+        float3 sample_ray_dir = local_dir.x * base_tangent_ws + local_dir.y * base_bitangent_ws + local_dir.z * base_normal_ws;
+#endif
+
+
+        const float3 sample_ray_origin = ray_origin_base + sample_ray_dir * ray_origin_start_offset;
+        // タイルのスクリーンスペースプローブ位置からレイトレース.
+        const float trace_distance = 30.0;
+        int hit_voxel_index = -1;
+        float4 debug_ray_info;
+        float4 curr_ray_t_ws = 
+        trace_bbv(
+            hit_voxel_index, debug_ray_info,
+            sample_ray_origin, sample_ray_dir, trace_distance, 
+            cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
+            cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
+
+        const float sky_visibility = (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0;// 負ならヒットなしで空が見えている.
+
+        const float2 oct_uv = SspEncodeDirByNormal(sample_ray_dir, base_normal_ws);// レイ方向を法線基準のOctahedralマップUVにエンコードして格納.
+        const int2 oct_cell_id = clamp(int2(oct_uv * SCREEN_SPACE_PROBE_TILE_SIZE), int2(0, 0), int2(SCREEN_SPACE_PROBE_TILE_SIZE - 1, SCREEN_SPACE_PROBE_TILE_SIZE - 1));
+        const int oct_cell_index = oct_cell_id.y * SCREEN_SPACE_PROBE_TILE_SIZE + oct_cell_id.x;
+        
+        // Result Accumulation.
+        InterlockedAdd(ss_ray_sample_accum[oct_cell_index * 4 + 0], 1);// accum_count
+        InterlockedAdd(ss_ray_sample_accum[oct_cell_index * 4 + 1], uint(sky_visibility));// sky_visibility_bool
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    uint hit_count = ss_ray_sample_accum[gindex * 4 + 0];// accum_count
+    float sum_sky_visibility = ss_ray_sample_accum[gindex * 4 + 1];// sky_visibility_boolの合計.
+    
+    const float prev_reprojected_value = ss_temporal_reprojected_value[gindex];
+    const float prev_reprojected_weight = ss_temporal_reprojected_weight[gindex];
+    const float inv_hit_count = (hit_count > 0)? (1.0 / float(hit_count)) : 1.0;
+    const float sky_visibility = (hit_count > 0)? (sum_sky_visibility * inv_hit_count) : prev_reprojected_value;
+
+    float new_sky_visibility = sky_visibility;
+    float reprojection_succeed = (prev_reprojected_weight > 1e-5)? 1.0 : 0.0;
+    if((0 != cb_srvs.ss_probe_temporal_reprojection_enable) && (0.0 < reprojection_succeed))
+    {
+        float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_reprojected_value);
+        temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
+
+        const float3 curr_camera_pos_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+        const float3 prev_camera_pos_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_prev_view_inv_mtx);
+        const float camera_motion = length(curr_camera_pos_ws - prev_camera_pos_ws);
+        const float camera_motion_scale = saturate(1.0 - camera_motion * cb_srvs.ss_probe_temporal_camera_motion_scale);
+        temporal_rate *= camera_motion_scale;
+
+        new_sky_visibility = lerp(new_sky_visibility, prev_reprojected_value, temporal_rate);// 補間.
+    }
+
+    RWScreenSpaceProbeTex[global_pos] = float4(new_sky_visibility, float(hit_count)*0.025, reprojection_succeed, ss_guiding_total_weight);
 }
