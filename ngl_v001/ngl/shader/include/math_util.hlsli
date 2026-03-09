@@ -1,3 +1,9 @@
+/*
+    math_util.hlsli
+
+    数学ユーティリティ関数.
+*/
+
 #ifndef NGL_SHADER_MATH_UTIL_H
 #define NGL_SHADER_MATH_UTIL_H
 #include "ngl_shader_config.hlsli"
