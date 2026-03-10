@@ -188,6 +188,7 @@ void main_cs(
         uint local_best_score = 0xffffffff;
         uint local_best_prev_tile_packed = 0xffffffff;
 
+        // 3x3の9近傍を探索.
         if(gindex < 9)
         {
             bool is_valid_prev_uv;
@@ -249,8 +250,12 @@ void main_cs(
             ss_temporal_reprojected_value[gindex] = prev_value;
         }
     }
-    // Cos分布サンプリングのため輝度評価する.
-    ss_prev_radiance[gindex] = ss_temporal_reprojected_value[gindex] * dot(ss_probe_approx_normal_ws, OctDecode((float2(probe_atlas_local_pos) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV));
+    // 担当セルのOctMapベクトルとProbe面法線の内積.
+    const float cell_octmap_normal_dot_probe_normal = max(0.0, dot(ss_probe_approx_normal_ws, OctDecode((float2(probe_atlas_local_pos) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV)));
+    // Probe面法線での輝度評価. 面の輝度への寄与が大きいほどGuidingで誘導されるようになる.
+    // バイアスを加算してから乗ずることで法線の逆向きは完全にゼロにしつつ, 順方向全体にバイアスを足す.
+    ss_prev_radiance[gindex] = (ss_temporal_reprojected_value[gindex] + NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS) * cell_octmap_normal_dot_probe_normal;
+    
     GroupMemoryBarrierWithGroupSync();
 
     // 8x8再構成値からCDF作成. TODO Parallel-Scanで高速化.
@@ -260,15 +265,7 @@ void main_cs(
         [unroll]
         for(uint i = 0; i < NGL_SSP_RAY_COUNT; ++i)
         {
-            #if 1
-                // Cos分布のため輝度評価した値を利用.
-                float cell_value = ss_prev_radiance[i] + NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS;// 過去のサンプリング結果がゼロでも選択確率がゼロにならないように微小バイアス.
-            #else
-                // 前回の輝度をそのまま重みに利用.
-                float cell_value = ss_temporal_reprojected_value[i] + NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS;// 過去のサンプリング結果がゼロでも選択確率がゼロにならないように微小バイアス.
-            #endif
-            
-            cdf_sum += cell_value;
+            cdf_sum += ss_prev_radiance[i];// 面法線側のサンプルを輝度に応じてウェイト付け.
             ss_guiding_cdf[i] = cdf_sum;
         }
 
@@ -322,19 +319,13 @@ void main_cs(
         const float2 selected_oct_uv = (float2(float(selected_cell.x), float(selected_cell.y)) + local_cell_jitter) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
 
         float3 sample_ray_dir = OctDecode(selected_oct_uv);
-        if(dot(sample_ray_dir, base_normal_ws) < 0.0)
-        {
-            // 法線方向に制限.
-            sample_ray_dir = sample_ray_dir - 2.0 * dot(sample_ray_dir, base_normal_ws) * base_normal_ws;
-        }
+        // Guidingの重みの時点で面法線の逆向きはゼロになっているため, sample_ray_dirは順方向しか選択されない.
 #else
         // Cos分布半球方向ランダム.
         const float3 unit_v3 = random_unit_vector3(float3(asfloat(global_pos.x), asfloat(global_pos.y), asfloat(ray_index^cb_srvs.frame_count)));
         const float3 local_dir = normalize(unit_v3 + float3(0.0, 0.0, 1.0));
         float3 sample_ray_dir = local_dir.x * base_tangent_ws + local_dir.y * base_bitangent_ws + local_dir.z * base_normal_ws;
 #endif
-
-
         const float3 sample_ray_origin = ray_origin_base + sample_ray_dir * ray_origin_start_offset;
         // タイルのスクリーンスペースプローブ位置からレイトレース.
         const float trace_distance = 30.0;

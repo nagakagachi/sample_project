@@ -9,6 +9,7 @@ srvs_util.hlsli
 
 
 #include "../include/math_util.hlsli"
+#include "../include/rand_util.hlsli"
 #include "../include/bit_util.hlsli"
 
 // cpp/hlsl共通定義用ヘッダ.

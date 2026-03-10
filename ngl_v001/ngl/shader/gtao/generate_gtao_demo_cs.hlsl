@@ -13,6 +13,7 @@ https://www.activision.com/cdn/research/Practical_Real_Time_Strategies_for_Accur
 #endif
 
 #include "../include/math_util.hlsli"
+#include "../include/rand_util.hlsli"
 // SceneView定数バッファ構造定義.
 #include "../include/scene_view_struct.hlsli"
 
@@ -78,7 +79,7 @@ void main_cs(
     const float3x3 rotMatrixToViewV = RotFromToMatrix(float3(0.0, 0.0, -1.0), viewV);
 
     // サンプル方向Jitter.
-    //const float phi_jitter = GoldNoise(float2(dtid.xy)) * NGL_2PI;// なぜか不正ピクセルが発生する? Divergentな値で特定の値(994, 581)などを与えるとNaNになる謎の不具合があるため注意.
+    //const float phi_jitter = gold_noise(float2(dtid.xy)) * NGL_2PI;// なぜか不正ピクセルが発生する? Divergentな値で特定の値(994, 581)などを与えるとNaNになる謎の不具合があるため注意.
     const float phi_jitter = noise_float_to_float(float2(dtid.xy)) * NGL_2PI;// こちらは安定.
 
     for(int slice = 0; slice < slice_count; slice++)
