@@ -833,6 +833,12 @@ bool AppGame::ExecuteApp()
                     ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_ = ss_probe_temporal_reprojection_enable ? 1 : 0;
                 }
 
+                bool ss_probe_ray_guiding_enable = (0 != ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_);
+                if(ImGui::Checkbox("SsProbe RayGuiding", &ss_probe_ray_guiding_enable))
+                {
+                    ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_ = ss_probe_ray_guiding_enable ? 1 : 0;
+                }
+
                 ImGui::SetNextItemOpen(true, ImGuiCond_Once);
                 if (ImGui::CollapsingHeader("Voxel Debug"))
                 {

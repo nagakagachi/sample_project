@@ -171,7 +171,8 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         float ss_probe_temporal_min_hysteresis;// Temporal再利用重みの最小値.
         float ss_probe_temporal_max_hysteresis;// Temporal再利用重みの最大値.
         int ss_probe_temporal_reprojection_enable;// Temporal再投影有効化フラグ.
-        int3 ss_probe_temporal_dummy_padding;// 16byteアライメント維持用.
+        int ss_probe_ray_guiding_enable;// RayGuiding有効化フラグ.
+        int2 ss_probe_temporal_dummy_padding;// 16byteアライメント維持用.
         
         int ss_probe_temporal_update_group_size;// 1Fに一つだけ更新するProbeグループのサイズ. 1で毎フレーム更新, 2で2x2のProbeグループのうち1Fで一つだけ更新.
         float ss_probe_ray_start_offset_scale;// SSプローブ更新時のレイ開始オフセットスケール. 単位はBbvセル幅.

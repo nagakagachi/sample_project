@@ -21,7 +21,7 @@ ScreenSpaceProbe更新.
 #endif
 
 #if !defined( NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS )
-#define NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS 0.05
+#define NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS 0.01
 #endif
 
 
@@ -183,7 +183,6 @@ void main_cs(
     GroupMemoryBarrierWithGroupSync();
 
     // Temporal Reprojectionを先行して8x8値を再構成し, CDFを作る.
-    if(0 != cb_srvs.ss_probe_temporal_reprojection_enable)
     {
         uint local_best_score = 0xffffffff;
         uint local_best_prev_tile_packed = 0xffffffff;
@@ -254,8 +253,11 @@ void main_cs(
     const float cell_octmap_normal_dot_probe_normal = max(0.0, dot(ss_probe_approx_normal_ws, OctDecode((float2(probe_atlas_local_pos) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV)));
     // Probe面法線での輝度評価. 面の輝度への寄与が大きいほどGuidingで誘導されるようになる.
     // バイアスを加算してから乗ずることで法線の逆向きは完全にゼロにしつつ, 順方向全体にバイアスを足す.
-    ss_prev_radiance[gindex] = (ss_temporal_reprojected_value[gindex] + NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS) * cell_octmap_normal_dot_probe_normal;
+    const float temporal_reprojected_value_for_guiding = (0 == cb_srvs.ss_probe_ray_guiding_enable) ? 0.0 : ss_temporal_reprojected_value[gindex];
+    ss_prev_radiance[gindex] = (temporal_reprojected_value_for_guiding + NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS) * cell_octmap_normal_dot_probe_normal;
+    //ss_prev_radiance[gindex] = (ss_temporal_reprojected_value[gindex] + NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS) * cell_octmap_normal_dot_probe_normal;
     
+
     GroupMemoryBarrierWithGroupSync();
 
     // 8x8再構成値からCDF作成. TODO Parallel-Scanで高速化.
@@ -359,7 +361,7 @@ void main_cs(
 
     float new_sky_visibility = sky_visibility;
     float reprojection_succeed = 0.0;
-    if((0xffffffff != ss_temporal_best_prev_tile_packed))
+    if((0xffffffff != ss_temporal_best_prev_tile_packed) && (0 != cb_srvs.ss_probe_temporal_reprojection_enable))
     {
         float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_reprojected_value);
         temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);

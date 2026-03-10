@@ -46,6 +46,7 @@ namespace ngl::render::app
     float ScreenReconstructedVoxelStructure::dbg_probe_scale_ = 1.0f;
     float ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_ = 0.2f;
     int ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_ = 1;
+    int ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_ = 1;
     
     using SrvsShaderBindName = ngl::text::HashText<128>;
     constexpr SrvsShaderBindName k_shader_bind_name_wcp_atlas_srv = "WcpProbeAtlasTex";
@@ -504,6 +505,7 @@ namespace ngl::render::app
             p->ss_probe_temporal_min_hysteresis = k_ss_probe_temporal_min_hysteresis;
             p->ss_probe_temporal_max_hysteresis = k_ss_probe_temporal_max_hysteresis;
             p->ss_probe_temporal_reprojection_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_;
+            p->ss_probe_ray_guiding_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_;
 
             p->main_light_dir_ws = main_view_info.main_light_dir_ws;
 

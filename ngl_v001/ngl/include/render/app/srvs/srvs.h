@@ -222,6 +222,7 @@ namespace ngl::render::app
         static float dbg_probe_scale_;
         static float dbg_probe_near_geom_scale_;
         static int dbg_ss_probe_temporal_reprojection_enable_;
+        static int dbg_ss_probe_ray_guiding_enable_;
 
     public:
         ScreenReconstructedVoxelStructure() = default;
