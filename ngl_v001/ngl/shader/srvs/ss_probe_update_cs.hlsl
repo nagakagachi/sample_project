@@ -116,11 +116,9 @@ void main_cs(
     const int2 current_probe_texel_pos = ss_probe_tile_pixel_start + ss_probe_pos_rand_in_tile;
     const float2 current_probe_texel_uv = (float2(current_probe_texel_pos) + float2(0.5, 0.5)) * depth_size_inv;// ピクセル中心への半ピクセルオフセット考慮.
     
-    
     // RandomInstance.
     RandomInstance rng;
     rng.rngState = asuint(noise_float_to_float(float3(global_pos.x, global_pos.y, cb_srvs.frame_count)));
-
 
     // タイルのプローブ配置情報を代表して取得.
     if(all(probe_atlas_local_pos == 0))
@@ -255,8 +253,6 @@ void main_cs(
     // バイアスを加算してから乗ずることで法線の逆向きは完全にゼロにしつつ, 順方向全体にバイアスを足す.
     const float temporal_reprojected_value_for_guiding = (0 == cb_srvs.ss_probe_ray_guiding_enable) ? 0.0 : ss_temporal_reprojected_value[gindex];
     ss_prev_radiance[gindex] = (temporal_reprojected_value_for_guiding + NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS) * cell_octmap_normal_dot_probe_normal;
-    //ss_prev_radiance[gindex] = (ss_temporal_reprojected_value[gindex] + NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS) * cell_octmap_normal_dot_probe_normal;
-    
 
     GroupMemoryBarrierWithGroupSync();
 

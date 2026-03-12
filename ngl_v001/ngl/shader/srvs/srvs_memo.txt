@@ -414,3 +414,50 @@ cursor for the newly created cache entries.
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+# データ
+## ProbeInfo(Curr, Prev)
+    スクリーン8x8テクセル毎に1Probe
+    8x8内Probe配置位置
+    Probe深度
+    Probe法線 (半球面OctMap)
+## ProbeOctMap(Curr, Prev)
+    Probeあたり8x8テクセルの半球OctMap atlas
+## ProbeSH(Curr, Prev)
+    ProbeあたりL1SH(線形SH)の係数
+
+
+
+# フロー
+## TemporalReprojection
+    ThreadGroupSize=8x8, DispatchSize=ProbeCount
+    Probe毎に3x3スレッド程度でPrevProbeからもっともよい再投影Probeを探索
+    Probeの深度や法線を比較して最もスコアが良い一つを再投影Probeとして採用する
+    8x8スレッドがそれぞれ再投影ProbeOctMapセルを読み取り、法線とOctMapセル方向を考慮してCurrProbeOctMapの対応するセルにAtomicAdd
+    このとき再投影ProbeOctMapセル方向がCurrProbeOctMapセル方向と大きく違う場合は再投影しない
+    CurrProbeOctMapセルは複数回AtomicAddされている可能性があるため書き込みカウントで平均化して確定
+    さらにここでProbeSHも再投影している. こちらはMipを利用した最近傍有効Probe探索マスクテクスチャを利用してで必ず有効なものを投影するようにしていそう
+    このパスでCurrProbeに再投影して暫定のProbeOctMapとProbeSHが揃う
+    
+## SampleProbe
+    SpatialFilterで近傍フィルタをする場合がある
+    Probe毎に(暫定)ProbeOctMapを利用してRayGuidingでレイクエリを登録する
+    この場でレイトレをしてもよいが, バッファに詰めて纏めて実行, 解決した方が効率的かもしれない(GI-1.0はそのようになっている)
+    
+
+
+
+
+
+
+
