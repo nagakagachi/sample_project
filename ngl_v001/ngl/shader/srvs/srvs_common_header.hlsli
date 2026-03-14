@@ -22,10 +22,10 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
 
 // ScreenSpaceProbe OctMap mode switch.
-// SsProbeのキャプチャを球面か半球面のどちらで実行するか切り替え. 半球面は向きが低解像度法線によるノイズの影響が大きいため, 現状は球面で検証中.
+// SsProbeのキャプチャを球面か半球面のどちらで実行するか切り替え.
 // 0: spherical octahedral map, 1: hemispherical octahedral map.
 #ifndef NGL_SSP_HEMI_OCTMAP
-#define NGL_SSP_HEMI_OCTMAP 0
+#define NGL_SSP_HEMI_OCTMAP 1
 #endif
 
 

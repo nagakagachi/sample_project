@@ -50,6 +50,8 @@ groupshared uint ss_temporal_best_score;
 groupshared uint ss_temporal_best_prev_tile_packed;
 groupshared uint ss_temporal_candidate_prev_tile_packed[NGL_SSP_RAY_COUNT];
 groupshared float ss_temporal_reprojected_value[NGL_SSP_RAY_COUNT];
+groupshared float ss_temporal_best_prev_depth;
+groupshared float2 ss_temporal_best_prev_normal_oct;
 groupshared float ss_prev_radiance[NGL_SSP_RAY_COUNT];
 groupshared float ss_guiding_cdf[NGL_SSP_RAY_COUNT];
 groupshared float ss_guiding_total_weight;
@@ -176,11 +178,14 @@ void main_cs(
     {
         ss_temporal_best_score = 0xffffffff;
         ss_temporal_best_prev_tile_packed = 0xffffffff;
+        ss_temporal_best_prev_depth = 1.0;
+        ss_temporal_best_prev_normal_oct = float2(0.0, 0.0);
         ss_guiding_total_weight = 0.0;
     }
     GroupMemoryBarrierWithGroupSync();
 
     // Temporal Reprojectionを先行して8x8値を再構成し, CDFを作る.
+    bool is_cell_reprojected = false;
     {
         uint local_best_score = 0xffffffff;
         uint local_best_prev_tile_packed = 0xffffffff;
@@ -234,6 +239,11 @@ void main_cs(
             {
                 const uint winner_lane = ss_temporal_best_score & 0x3fu;
                 ss_temporal_best_prev_tile_packed = ss_temporal_candidate_prev_tile_packed[winner_lane];
+
+                const int2 best_prev_tile = int2(int(ss_temporal_best_prev_tile_packed & 0xffffu), int((ss_temporal_best_prev_tile_packed >> 16) & 0xffffu));
+                const float4 best_prev_tile_info = ScreenSpaceProbeHistoryTileInfoTex.Load(int3(best_prev_tile, 0));
+                ss_temporal_best_prev_depth = best_prev_tile_info.x;
+                ss_temporal_best_prev_normal_oct = best_prev_tile_info.zw;
             }
         }
         GroupMemoryBarrierWithGroupSync();
@@ -242,13 +252,43 @@ void main_cs(
         if(0xffffffff != ss_temporal_best_prev_tile_packed)
         {
             const int2 best_prev_tile = int2(int(ss_temporal_best_prev_tile_packed & 0xffffu), int((ss_temporal_best_prev_tile_packed >> 16) & 0xffffu));
-            const int2 prev_global_pos = clamp(best_prev_tile * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
-            const float prev_value = ScreenSpaceProbeHistoryTex.Load(int3(prev_global_pos, 0)).r;
-            ss_temporal_reprojected_value[gindex] = prev_value;
+
+            const float3 curr_probe_normal_ws = ss_probe_approx_normal_ws;//NormalizeOrFallback(ss_probe_approx_normal_ws, float3(0.0, 1.0, 0.0));
+            const float3 prev_probe_normal_ws = OctDecode(ss_temporal_best_prev_normal_oct);//NormalizeOrFallback(OctDecode(ss_temporal_best_prev_normal_oct), curr_probe_normal_ws);
+
+            const float2 curr_cell_oct_uv = (float2(probe_atlas_local_pos) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+            const float3 curr_cell_local_dir = SspDecodeRayDirLocal(curr_cell_oct_uv);
+            const float3 curr_cell_dir_ws = SspBuildSampleRayDirFromLocal(curr_cell_local_dir, curr_probe_normal_ws);//normalize(SspBuildSampleRayDirFromLocal(curr_cell_local_dir, curr_probe_normal_ws));
+
+            // 半球セル方向差による棄却.
+            const float2 prev_cell_oct_uv = SspEncodeDirByNormal(curr_cell_dir_ws, prev_probe_normal_ws);
+            const float3 prev_cell_local_dir = SspDecodeRayDirLocal(prev_cell_oct_uv);
+            const float3 prev_cell_dir_ws = SspBuildSampleRayDirFromLocal(prev_cell_local_dir, prev_probe_normal_ws);//normalize(SspBuildSampleRayDirFromLocal(prev_cell_local_dir, prev_probe_normal_ws));
+            const float cell_dir_dot = dot(curr_cell_dir_ws, prev_cell_dir_ws);
+
+            // プローブ深度差による棄却. 法線に対して斜め方向ほど閾値を厳しくする.
+            const float depth_diff = abs(ss_temporal_best_prev_depth - ss_probe_depth);
+            const float view_alignment = saturate(dot(curr_cell_dir_ws, curr_probe_normal_ws));
+            const float depth_threshold_scale = lerp(0.35, 1.0, view_alignment);
+            const float per_cell_depth_threshold = cb_srvs.ss_probe_temporal_depth_threshold * depth_threshold_scale;
+
+            const bool is_cell_dir_matched = (cell_dir_dot >= 0.92);
+            const bool is_cell_depth_matched = (depth_diff <= per_cell_depth_threshold);
+            if(is_cell_dir_matched && is_cell_depth_matched)
+            {
+                const int2 prev_cell_id = clamp(int2(prev_cell_oct_uv * SCREEN_SPACE_PROBE_TILE_SIZE), int2(0, 0), int2(SCREEN_SPACE_PROBE_TILE_SIZE - 1, SCREEN_SPACE_PROBE_TILE_SIZE - 1));
+                const int2 prev_global_pos = clamp(best_prev_tile * SCREEN_SPACE_PROBE_TILE_SIZE + prev_cell_id, int2(0, 0), int2(depth_size) - 1);
+                const float prev_value = ScreenSpaceProbeHistoryTex.Load(int3(prev_global_pos, 0)).r;
+                ss_temporal_reprojected_value[gindex] = prev_value;
+                is_cell_reprojected = true;
+            }
         }
     }
     // 担当セルのOctMapベクトルとProbe面法線の内積.
-    const float cell_octmap_normal_dot_probe_normal = max(0.0, dot(ss_probe_approx_normal_ws, OctDecode((float2(probe_atlas_local_pos) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV)));
+    const float2 curr_cell_oct_uv = (float2(probe_atlas_local_pos) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+    const float3 curr_cell_local_dir = SspDecodeRayDirLocal(curr_cell_oct_uv);
+    const float3 curr_cell_dir_ws = normalize(SspBuildSampleRayDirFromLocal(curr_cell_local_dir, ss_probe_approx_normal_ws));
+    const float cell_octmap_normal_dot_probe_normal = max(0.0, dot(ss_probe_approx_normal_ws, curr_cell_dir_ws));
     // Probe面法線での輝度評価. 面の輝度への寄与が大きいほどGuidingで誘導されるようになる.
     // バイアスを加算してから乗ずることで法線の逆向きは完全にゼロにしつつ, 順方向全体にバイアスを足す.
     const float temporal_reprojected_value_for_guiding = (0 == cb_srvs.ss_probe_ray_guiding_enable) ? 0.0 : ss_temporal_reprojected_value[gindex];
@@ -316,7 +356,8 @@ void main_cs(
         const float2 local_cell_jitter = rng.rand2();
         const float2 selected_oct_uv = (float2(float(selected_cell.x), float(selected_cell.y)) + local_cell_jitter) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
 
-        float3 sample_ray_dir = OctDecode(selected_oct_uv);
+        const float3 selected_local_dir = SspDecodeRayDirLocal(selected_oct_uv);
+        float3 sample_ray_dir = normalize(SspBuildSampleRayDirFromLocal(selected_local_dir, base_tangent_ws, base_bitangent_ws, base_normal_ws));
         // Guidingの重みの時点で面法線の逆向きはゼロになっているため, sample_ray_dirは順方向しか選択されない.
 #else
         // Cos分布半球方向ランダム.
@@ -373,5 +414,5 @@ void main_cs(
     }
 
     //RWScreenSpaceProbeTex[global_pos] = float4(new_sky_visibility, float(hit_count)*0.025, reprojection_succeed, ss_prev_radiance[gindex]);
-    RWScreenSpaceProbeTex[global_pos] = float4(new_sky_visibility, prev_reprojected_value, ss_prev_radiance[gindex], float(hit_count)*0.025);
+    RWScreenSpaceProbeTex[global_pos] = float4(new_sky_visibility, prev_reprojected_value, ss_prev_radiance[gindex], (is_cell_reprojected)? 1.0 : 0.0);
 }

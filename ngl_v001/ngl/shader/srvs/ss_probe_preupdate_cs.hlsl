@@ -93,11 +93,18 @@ void main_cs(
             approx_normal_vs = normalize(approx_normal_vs);
             approx_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, approx_normal_vs);
         }
+
+        const float3 view_origin_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+        const float3 to_view_ws = NormalizeOrFallback(view_origin_ws - pixel_pos_ws, float3(0.0, 0.0, 1.0));
+        if(dot(approx_normal_ws, to_view_ws) < 0.0)
+        {
+            approx_normal_ws = reflect(approx_normal_ws, to_view_ws);
+        }
         
         // タイル内のプローブ位置をフラットインデックス化.
         const int probe_pos_flat_index_in_tile = probe_pos_in_tile.y * SCREEN_SPACE_PROBE_TILE_SIZE + probe_pos_in_tile.x;
         // 配置できたらその情報を格納.
-        const float2 approx_normal_oct = OctEncode(normalize(approx_normal_ws));
+        const float2 approx_normal_oct = OctEncode(approx_normal_ws);
         RWScreenSpaceProbeTileInfoTex[probe_id] = float4(probe_depth, probe_pos_flat_index_in_tile, approx_normal_oct.x, approx_normal_oct.y);
     }
     else
