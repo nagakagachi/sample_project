@@ -53,6 +53,7 @@ groupshared float ss_temporal_reprojected_value[NGL_SSP_RAY_COUNT];
 groupshared float ss_prev_radiance[NGL_SSP_RAY_COUNT];
 groupshared float ss_guiding_cdf[NGL_SSP_RAY_COUNT];
 groupshared float ss_guiding_total_weight;
+groupshared float4 ss_lane_debug[NGL_SSP_RAY_COUNT];
 
 // -------------------------------------
 
@@ -170,6 +171,8 @@ void main_cs(
 
         ss_temporal_reprojected_value[gindex] = 0.0;
         ss_guiding_cdf[gindex] = 0.0;
+
+        ss_lane_debug[gindex] = float4(0.0, 0.0, 0.0, 0.0);
     }
     ss_temporal_candidate_prev_tile_packed[gindex] = 0xffffffff;
     if(0 == gindex)
@@ -201,22 +204,29 @@ void main_cs(
                 const int2 candidate_tile_id = clamp(prev_center_tile + candidate_offset, int2(0, 0), probe_tile_count - 1);
                 const float4 candidate_tile_info = ScreenSpaceProbeHistoryTileInfoTex.Load(int3(candidate_tile_id, 0));
 
-                const bool is_candidate_depth_valid = isValidDepth(candidate_tile_info.x);
-                const float depth_diff = abs(candidate_tile_info.x - ss_probe_depth);
-                const bool is_depth_matched = depth_diff <= cb_srvs.ss_probe_temporal_depth_threshold;
-                const float3 candidate_normal_ws = OctDecode(candidate_tile_info.zw);
-                const float normal_dot = dot(candidate_normal_ws, ss_probe_approx_normal_ws);
-                const bool is_normal_matched = normal_dot >= cb_srvs.ss_probe_temporal_normal_threshold_cos;
-
-                if(is_candidate_depth_valid && is_depth_matched && is_normal_matched)
+                if(isValidDepth(candidate_tile_info.x))
                 {
-                    const float2 candidate_center_texel = (float2(candidate_tile_id * tile_size) + float(tile_size) * 0.5);
-                    const float2 candidate_delta = candidate_center_texel - prev_pos_texel;
-                    const float candidate_dist2 = dot(candidate_delta, candidate_delta);
+                    // 前回プローブのワールド位置が今回プローブの位置と法線の平面から一定距離にあるかどうかで評価.
+                    const int2 candidate_probe_placement_texel = candidate_tile_id * tile_size + int2(candidate_tile_info.y%tile_size, candidate_tile_info.y/tile_size);
+                    const float candidate_view_z = calc_view_z_from_ndc_z(candidate_tile_info.x, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
+                    const float3 candidate_pos_vs = CalcViewSpacePosition((float2(candidate_probe_placement_texel) + float2(0.5, 0.5)) * depth_size_inv, candidate_view_z, cb_ngl_sceneview.cb_prev_proj_mtx);
+                    const float3 candidate_pos_ws = mul(cb_ngl_sceneview.cb_prev_view_inv_mtx, float4(candidate_pos_vs, 1.0));
+                    const float3 probe_pos_diff_ws = candidate_pos_ws - ss_probe_pos_ws;
+                    const float plane_dist = abs(dot(probe_pos_diff_ws, ss_probe_approx_normal_ws));
+                    const float probe_normal_dot = dot(ss_probe_approx_normal_ws, OctDecode(candidate_tile_info.zw));
 
-                    const uint quantized_dist = min((uint)(candidate_dist2 * 1024.0), 0x03ffffffu);
-                    local_best_score = (quantized_dist << 6) | (gindex & 0x3fu);
-                    local_best_prev_tile_packed = (uint(candidate_tile_id.y) << 16) | uint(candidate_tile_id.x & 0xffff);
+                    // 法線での棄却を加えると完全に失敗してしまうケースが多い. AddaptiveSamplingでレイの割り当てを増やせるならありかもしれない.
+                    if((plane_dist < 5.0))// 閾値は要調整.
+                    {
+                        //float probe_dist = length(float2(candidate_offset));// 初期実装. 安定はするが移動物体表面で適切なリプロジェクションにならずノイズになりやすい.
+                        // GI-1.0はプローブ配置位置の差分を採用している. 法線の向きも評価に加えてみる.
+                        float probe_dist = length(probe_pos_diff_ws) * 100.0;// ワールド長さ単位の量子化で問題ない程度にスケール.
+                        probe_dist += (1.0 - probe_normal_dot) * 1.0;// 法線の向きの違いもスコアに加算.
+                        
+                        const uint quantized_dist = min((uint)(probe_dist * 1024.0), 0x03ffffffu);
+                        local_best_score = (quantized_dist << 6) | (gindex & 0x3fu);
+                        local_best_prev_tile_packed = (uint(candidate_tile_id.y) << 16) | uint(candidate_tile_id.x & 0xffff);
+                    }
                 }
             }
         }

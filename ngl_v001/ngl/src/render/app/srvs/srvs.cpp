@@ -35,7 +35,7 @@ namespace ngl::render::app
     static const float k_ss_probe_temporal_depth_threshold = 0.02f;
     static const float k_ss_probe_temporal_normal_threshold_cos = 0.85f;
     static const float k_ss_probe_temporal_camera_motion_scale = 0.4f;
-    static const float k_ss_probe_temporal_min_hysteresis = 0.66f;
+    static const float k_ss_probe_temporal_min_hysteresis = 0.85f;
     static const float k_ss_probe_temporal_max_hysteresis = 0.98f;
 
 
