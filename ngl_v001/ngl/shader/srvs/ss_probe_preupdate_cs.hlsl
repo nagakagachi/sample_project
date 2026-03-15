@@ -44,18 +44,45 @@ void main_cs(
     int2 current_probe_texel_pos = ss_probe_tile_pixel_start;
     float probe_depth = 1.0;
     
-    // 何回かリトライする.
-    for(int i = 0; i < SCREEN_SPACE_PROBE_TILE_SIZE; ++i)
-    {
-        probe_pos_in_tile = rng.rand2() * (SCREEN_SPACE_PROBE_TILE_SIZE - 1);
-        
-        // このフレームでのプローブ配置テクセル位置をタイル内ランダム選択.
-        current_probe_texel_pos = ss_probe_tile_pixel_start + probe_pos_in_tile;
-        // プローブの配置テクセルの深度取得.
-        probe_depth = TexHardwareDepth.Load(int3(current_probe_texel_pos, 0)).r;
-        if(isValidDepth(probe_depth))
-            break;// 有効な深度であれば発見終了.
-    }
+    #if 1
+        // 再配置を確率的に実行する. 画面の安定性は向上する.
+        const float4 prev_info = RWScreenSpaceProbeTileInfoTex[probe_id];
+        probe_pos_in_tile = int2(prev_info.g % SCREEN_SPACE_PROBE_TILE_SIZE, prev_info.g / SCREEN_SPACE_PROBE_TILE_SIZE);// 前回のプローブ位置をタイル内で復元.
+        current_probe_texel_pos = ss_probe_tile_pixel_start + probe_pos_in_tile;// 前回のプローブ位置をフル解像度テクセル位置に変換.
+        probe_depth = TexHardwareDepth.Load(int3(current_probe_texel_pos, 0)).r;// 前回のプローブ位置の深度を取得.
+
+        const bool force_relocation = false;//(ss_probe_tile_pixel_start.x < (1920/2));
+        if(force_relocation || (!isValidDepth(probe_depth) || 0.02 >= rng.rand()))
+        {
+            // 何回かリトライする.
+            for(int i = 0; i < SCREEN_SPACE_PROBE_TILE_SIZE; ++i)
+            {
+                probe_pos_in_tile = rng.rand2() * (SCREEN_SPACE_PROBE_TILE_SIZE - 1);
+                // このフレームでのプローブ配置テクセル位置をタイル内ランダム選択.
+                current_probe_texel_pos = ss_probe_tile_pixel_start + probe_pos_in_tile;
+                // プローブの配置テクセルの深度取得.
+                probe_depth = TexHardwareDepth.Load(int3(current_probe_texel_pos, 0)).r;
+                if(isValidDepth(probe_depth))
+                    break;// 有効な深度であれば発見終了.
+            }
+        }
+    #else
+        if(!isValidDepth(probe_depth))
+        {
+            // 何回かリトライする.
+            for(int i = 0; i < SCREEN_SPACE_PROBE_TILE_SIZE; ++i)
+            {
+                probe_pos_in_tile = rng.rand2() * (SCREEN_SPACE_PROBE_TILE_SIZE - 1);
+                
+                // このフレームでのプローブ配置テクセル位置をタイル内ランダム選択.
+                current_probe_texel_pos = ss_probe_tile_pixel_start + probe_pos_in_tile;
+                // プローブの配置テクセルの深度取得.
+                probe_depth = TexHardwareDepth.Load(int3(current_probe_texel_pos, 0)).r;
+                if(isValidDepth(probe_depth))
+                    break;// 有効な深度であれば発見終了.
+            }
+        }
+    #endif
 
     // 有効なプローブ位置が決定できた.
     if(isValidDepth(probe_depth))

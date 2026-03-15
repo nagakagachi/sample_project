@@ -21,7 +21,7 @@ ScreenSpaceProbe更新.
 #endif
 
 #if !defined( NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS )
-#define NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS 0.01
+#define NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS 0.03
 #endif
 
 
@@ -53,7 +53,6 @@ groupshared float ss_temporal_reprojected_value[NGL_SSP_RAY_COUNT];
 groupshared float ss_prev_radiance[NGL_SSP_RAY_COUNT];
 groupshared float ss_guiding_cdf[NGL_SSP_RAY_COUNT];
 groupshared float ss_guiding_total_weight;
-groupshared float4 ss_lane_debug[NGL_SSP_RAY_COUNT];
 
 // -------------------------------------
 
@@ -171,8 +170,6 @@ void main_cs(
 
         ss_temporal_reprojected_value[gindex] = 0.0;
         ss_guiding_cdf[gindex] = 0.0;
-
-        ss_lane_debug[gindex] = float4(0.0, 0.0, 0.0, 0.0);
     }
     ss_temporal_candidate_prev_tile_packed[gindex] = 0xffffffff;
     if(0 == gindex)
