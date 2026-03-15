@@ -514,7 +514,7 @@ bool AppGame::Initialize()
             }
 #endif
 
-#if 1
+#if 0
             // 適当にたくさんモデル生成.
             for (int i = 0; i < 50; ++i)
             {
@@ -543,7 +543,25 @@ bool AppGame::Initialize()
                 // 移動テスト用.
                 test_move_mesh_entity_array_.push_back(mc.get());
             }
+#else
+            // テスト用に固定位置で一つだけ生成
+            {
+                auto mc = std::make_shared<ngl::gfx::scene::SceneMesh>();
+                mesh_entity_array_.push_back(mc);
+                ngl::gfx::ResMeshData::LoadDesc loaddesc{};
+                mc->Initialize(&device, &gfx_scene_, ResourceMan.LoadResource<ngl::gfx::ResMeshData>(&device, mesh_file_spider, &loaddesc));
+
+                ngl::math::Mat44 tr = ngl::math::Mat44::Identity();
+                tr.SetDiagonal(ngl::math::Vec4(spider_base_scale * 4.0f));
+                tr.SetColumn3(ngl::math::Vec4(-10.0f, 10.0f, -2.0f, 1.0f));
+
+                mc->SetTransform(ngl::math::Mat34(tr));
+
+                // 移動テスト用.
+                test_move_mesh_entity_array_.push_back(mc.get());
+            }
 #endif
+
 
             // 単純形状のプログラム生成メッシュを登録するテスト.
             if (0)
@@ -941,7 +959,7 @@ bool AppGame::ExecuteApp()
 
             auto tr    = e->GetTransform();
             auto trans = tr.GetColumn3();
-            trans.z += sin_curve * delta_sec * 5.0f;
+            trans.z += sin_curve * delta_sec * 3.0f;
             tr.SetColumn3(trans);
             e->SetTransform(tr);
         }
