@@ -521,7 +521,7 @@ bool AppGame::Initialize()
             }
 #endif
 
-#if 0
+#if 1
             // 適当にたくさんモデル生成.
             for (int i = 0; i < 50; ++i)
             {
@@ -861,6 +861,8 @@ bool AppGame::ExecuteApp()
                 {
                     NGL_IMGUI_SCOPED_INDENT(10.0f);
                     ImGui::SliderInt("Debug Texture Mode", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_view_mode_, -1, 16);
+                    ImGui::Text("14: SsProbe SH (RGBA = L1 SH coeff)");
+                    ImGui::Text("15: SsProbe SH Sample(main_light_dir_ws)");
                 }
 
                 if (ImGui::CollapsingHeader("Probe Debug"))

@@ -416,6 +416,68 @@ cursor for the newly created cache entries.
 
 
 
+2.4 Irradiance Estimation
+We have seen that our screen cache encodes the incoming radiance
+in every direction over the primary visible surfaces. However, we
+are still left to estimate the irradiance. This section describes how
+to leverage our probe grid and evaluate the irradiance for every
+pixel on the screen.
+2.4.1 Per-Pixel Interpolation. As probes are placed sparsely across
+the screen, we compute a weighted average of the radiance from
+the neighbor probes to reconstruct the lighting signal. This process,
+usually called interpolation, is performed for every pixel at the
+target resolution. If we reflect on the rest of the pipeline presented
+so far, this is the only pass running at full rate, with regards to
+target resolution, along with the probe reprojection pass described
+in 2.1.1.
+We start out by finding the neighboring probes in all 4 directions
+using the 𝑓 𝑖𝑛𝑑_𝑐𝑙𝑜𝑠𝑒𝑠𝑡_𝑝𝑟𝑜𝑏𝑒 () function defined in 2.1.5. The contribution for each probe is weighted using an edge-aware function
+based on the surface depth and normal. In this process, we also
+ensure that nearby probes, lying further away than 𝑐𝑒𝑙𝑙_𝑠𝑖𝑧𝑒 units
+from the pixel’s plane, are discarded by assigning a weight of 0. If
+all probes get assigned a null weight, then interpolation fails, which can lead to light-leaking artifacts as highlighted in Figure 18. In
+such cases, we fall back to setting equal weights for all neighbor
+probes, which we refer to as "relaxed interpolation". We flag pixels
+calculated using relaxed interpolation in the alpha channel of the
+resolved texture; this information will be used later as a hint for
+the denoiser to try and discard the evaluated sample.
+Finally, we jitter the pixel’s position before performing the search
+for neighbor probes to break up the structured artifacts resulting
+from all neighboring pixels interpolating from the exact same set of
+probes. It is worth noting, however, that we cancel the jitter if the
+resulting position lands outside the original pixel’s plane [Wright
+2021]. This cancellation is necessary to prevent an increase in the
+number of pixels relying on relaxed interpolation.
+2.4.2 Spherical Harmonics. To accurately evaluate the irradiance
+encoded by a given probe, we need to fetch nearly all the stored
+radiance samples, that is, all the mapped directions across the oriented hemisphere. We instead project the screen probes to spherical
+harmonics (SH) prior to the interpolation pass.
+Spherical harmonics indeed provide several key benefits to estimating the irradiance:
+• High-frequency noise can be filtered at no additional cost
+by limiting the projection to the first three bands.
+• Irradiance can be precisely estimated while reducing the
+requirements on the amount of memory to be fetched.
+• Finally, we update our reprojection pass also to reproject the
+SH representation of each probe. We, therefore, only need
+to perform the projection for the newly spawned probes,
+which drastically reduces the cost of the operation.
+The irradiance is then computed using the dot product of the
+projected cosine lobe with the projected radiance. The projected
+radiance is fetched from the cache while the cosine lobe is projected
+analytically [Ramamoorthi and Hanrahan 2001].
+2.4.3 Denoising. The interpolated irradiance typically exhibits lowfrequency noise from the probes and high-frequency noise caused
+by the pixel jittering mentioned in 2.4.1. The low-frequency noise
+manifests itself as boiling in areas where the incoming radiance is
+the most noisy, while the high-frequency noise is similar to that
+of a dithering pattern. These issues can be solved using a simple
+denoiser based on temporal accumulation and an adaptive spatial
+filter, where we compute the spatial filter radius depending on
+the number of samples accumulated in history. As not all pixels
+have a history, such as disoccluded pixels, we adapt the filtering
+radius to the number of accumulated samples to reduce the noise as illustrated in Figure 19. The spatial filter uses an edge-aware
+weight based on depth and normal. When interpolation fails and
+no history is available, we use the relaxed irradiance interpolation
+instead of outputting no irradiance.
 
 
 
@@ -435,25 +497,6 @@ cursor for the newly created cache entries.
     Probeあたり8x8テクセルの半球OctMap atlas
 ## ProbeSH(Curr, Prev)
     ProbeあたりL1SH(線形SH)の係数
-
-
-
-# フロー
-## TemporalReprojection
-    ThreadGroupSize=8x8, DispatchSize=ProbeCount
-    Probe毎に3x3スレッド程度でPrevProbeからもっともよい再投影Probeを探索
-    Probeの深度や法線を比較して最もスコアが良い一つを再投影Probeとして採用する
-    8x8スレッドがそれぞれ再投影ProbeOctMapセルを読み取り、法線とOctMapセル方向を考慮してCurrProbeOctMapの対応するセルにAtomicAdd
-    このとき再投影ProbeOctMapセル方向がCurrProbeOctMapセル方向と大きく違う場合は再投影しない
-    CurrProbeOctMapセルは複数回AtomicAddされている可能性があるため書き込みカウントで平均化して確定
-    さらにここでProbeSHも再投影している. こちらはMipを利用した最近傍有効Probe探索マスクテクスチャを利用してで必ず有効なものを投影するようにしていそう
-    このパスでCurrProbeに再投影して暫定のProbeOctMapとProbeSHが揃う
-    
-## SampleProbe
-    SpatialFilterで近傍フィルタをする場合がある
-    Probe毎に(暫定)ProbeOctMapを利用してRayGuidingでレイクエリを登録する
-    この場でレイトレをしてもよいが, バッファに詰めて纏めて実行, 解決した方が効率的かもしれない(GI-1.0はそのようになっている)
-    
 
 
 

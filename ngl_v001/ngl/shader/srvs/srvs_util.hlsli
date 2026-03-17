@@ -71,6 +71,9 @@ Texture2D<float4>      ScreenSpaceProbeTileInfoTex;
 Texture2D<float4>      ScreenSpaceProbeHistoryTileInfoTex;
 RWTexture2D<float4>    RWScreenSpaceProbeTileInfoTex;
 
+Texture2D<float4>      ScreenSpaceProbeSHTex;
+RWTexture2D<float4>    RWScreenSpaceProbeSHTex;
+
 
 // srvsのメインパラメータ.
 ConstantBuffer<SrvsParam> cb_srvs;

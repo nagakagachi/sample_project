@@ -17,6 +17,19 @@
 
 #define NGL_EPSILON 0.00001
 
+// Spherical harmonics (L1) basis constants.
+static const float k_sh_l0 = 0.2820947918;
+static const float k_sh_l1 = 0.4886025119;
+
+float4 EvaluateL1ShBasis(float3 dir_ws)
+{
+    return float4(
+        k_sh_l0,
+        k_sh_l1 * dir_ws.x,
+        k_sh_l1 * dir_ws.y,
+        k_sh_l1 * dir_ws.z);
+}
+
 
 
 float Max3(float3 v) { return max(v.x, max(v.y, v.z)); }

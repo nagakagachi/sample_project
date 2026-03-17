@@ -129,6 +129,7 @@ namespace ngl::render::app
         rhi::RefSrvDep GetWcpProbeAtlasTex() const { return wcp_probe_atlas_tex_.srv; }
         rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_[ss_probe_curr_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbeTileInfoTex() const { return ss_probe_tile_info_tex_[ss_probe_curr_frame_tex_index_].srv; }
+        rhi::RefSrvDep GetSsProbeShTex() const { return ss_probe_sh_tex_.srv; }
 
     private:
         bool is_first_dispatch_ = true;
@@ -170,6 +171,7 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_clear_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_preupdate_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_sh_update_ = {};
 
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
@@ -207,6 +209,7 @@ namespace ngl::render::app
         // ScreenSpaceProbe.
         ComputeTextureSet ss_probe_tile_info_tex_[2] = {}; // 1/8解像度のProbeタイル用情報. x: depth, y: probe local pos(flat), zw: OctEncode WS normal.
         ComputeTextureSet ss_probe_tex_[2] = {};// 8x8 texel per probe.
+        ComputeTextureSet ss_probe_sh_tex_ = {};// 1/8解像度のL1 SH係数. rgba = l00, l1x, l1y, l1z.
 
     };
 
