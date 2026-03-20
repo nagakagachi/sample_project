@@ -235,17 +235,14 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	const float3 to_pixel_vec_ws = pixel_pos_ws - view_origin;
 	const float3 to_pixel_ray_ws = normalize(to_pixel_vec_ws);
 
-	
 	const float3 lit_intensity = float3(1.0, 1.0, 1.0) * cb_ngl_lighting_pass.d_lit_intensity;
 	const float3 lit_dir = normalize(cb_ngl_shadowview.cb_shadow_view_inv_mtx[0]._m02_m12_m22);// InvShadowViewMtxから向きベクトルを取得.
-
 
 	const float3 V = -to_pixel_ray_ws;
 	const float3 L = -lit_dir;
 	
 	// Directional Shadow.
 	float light_visibility = EvalDirectionalShadow(tex_shadowmap, samp_shadow, L, pixel_pos_ws, gb_normal_ws, view_origin, camera_dir);
-
 	float3 lit_color = (float3)0;
 
 	// Directional Lit.
@@ -256,87 +253,64 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		lit_color += (dlit_diffuse + dlit_specular) * light_visibility;
 	}
 
-    // GIのテスト(Dynamic Sky Visibility).
-    float sky_visibility = 1.0;
-    if(cb_ngl_lighting_pass.is_enable_gi)
-    {
+	// GIのテスト(Dynamic Sky Visibility).
+	float sky_visibility = 1.0;
+	if(cb_ngl_lighting_pass.is_enable_gi)
+	{
+        // ScreenSpaceProbe SHでSkyVisibility評価.
+        uint2 ss_probe_sh_tex_size;
+        ScreenSpaceProbeSHTex.GetDimensions(ss_probe_sh_tex_size.x, ss_probe_sh_tex_size.y);
+        const float2 ss_probe_sh_tex_size_f = float2(ss_probe_sh_tex_size);
+        
+        const float2 ss_probe_sh_texel_pos_f = screen_uv * ss_probe_sh_tex_size_f;
+        const int2 ss_probe_sh_base_texel = clamp(int2(floor(ss_probe_sh_texel_pos_f - 0.5)), int2(0, 0), int2(ss_probe_sh_tex_size) - int2(2, 2));
+
         #if 1
-            // ScreenSpaceProbeテスト.
-            uint2 ss_probe_tex_size;
-            ScreenSpaceProbeTex.GetDimensions(ss_probe_tex_size.x, ss_probe_tex_size.y);
-            const float2 ss_probe_texel_uv_size = 1.0 / float2(ss_probe_tex_size);
+            // 深度ベースアップサンプリング.
+            const float2 frac_texel = frac(ss_probe_sh_texel_pos_f - 0.5);
+            // 補間対象近傍のうちの座標の所属象限.
+            const int2 owner_offset = int2((0.5 <= frac_texel.x) ? 1 : 0, (0.5 <= frac_texel.y) ? 1 : 0);
+            // 所属象限を最初にチェックするようにコンポーネントインデックスオフセット.
+            const int component_index_offset = GatherTexelOffsetToComponentIndexOffset(owner_offset);
 
-            // ScreenSpaceProbe Octahedral Map.
-			const float2 ss_probe_tex_size_f = float2(ss_probe_tex_size);
-			const int2 ss_probe_tile_id = int2(floor(screen_uv * ss_probe_tex_size_f / SCREEN_SPACE_PROBE_TILE_SIZE));
-			const int2 ss_probe_tile_base_pos = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
-			const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
-			const float3 ss_probe_tile_normal_ws = OctDecode(ss_probe_tile_info.zw);
-            // Octmapのテクセルが外側をBilinearSamplingしないようにクランプ.
-			float2 octmap_texel_pos = clamp(SspEncodeDirByNormal(gb_normal_ws, ss_probe_tile_normal_ws) * SCREEN_SPACE_PROBE_TILE_SIZE, 0.5, SCREEN_SPACE_PROBE_TILE_SIZE-0.5);
-            float2 ss_probe_sample_texel_pos = ss_probe_tile_base_pos + octmap_texel_pos;
-            float2 ss_probe_sample_uv = ss_probe_sample_texel_pos * ss_probe_texel_uv_size;
-
-            float4 ss_probe_value = ScreenSpaceProbeTex.SampleLevel(samp, ss_probe_sample_uv, 0);
-
-            sky_visibility = saturate(ss_probe_value.r);
+			const float4 low_hw_depth4 = ScreenSpaceProbeTileInfoTex.GatherRed(samp, screen_uv);
+            float best_diff = 1e20;
+            int best_component_index = component_index_offset;
+            for(int ci = 0; ci < 4; ++ci)
+            {
+                const int component_index = (component_index_offset + ci) & 0x3;// Gather順のテクセルを所属テクセルから巡回.
+                if(isValidDepth(low_hw_depth4[component_index]))
+                {
+                    const float low_view_z = calc_view_z_from_ndc_z(low_hw_depth4[component_index], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
+                    const float diff = abs(low_view_z - ld);
+                    // 最も類似したものを選択.
+                    if(diff < best_diff)
+                    {
+                        best_diff = diff;
+						best_component_index = component_index;
+                    }
+                }
+            }
+            
+            float4 ss_probe_sh = float4(0.0, 0.0, 0.0, 0.0);
+            {
+                const int2 best_texel = ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(best_component_index);
+                const float current_low_ld = calc_view_z_from_ndc_z(low_hw_depth4[component_index_offset], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
+                // テクセル位置での深度差に応じて類似テクセルへサンプル位置を移動オフセットする.
+                const float approach_rate = saturate(abs(current_low_ld - ld) * 100.0);
+                const float2 sample_texel_pos_f = lerp(ss_probe_sh_texel_pos_f, float2(best_texel) + 0.5, approach_rate);
+                const float2 sample_uv = saturate(sample_texel_pos_f / ss_probe_sh_tex_size_f);
+                ss_probe_sh = ScreenSpaceProbeSHTex.SampleLevel(samp, sample_uv, 0);
+            }
         #else
-            uint tex_width, tex_height;
-            WcpProbeAtlasTex.GetDimensions(tex_width, tex_height);
-            const float2 texel_size = 1.0 / float2(tex_width, tex_height);
-
-            const float2 octmap_local_texel_pos = OctEncode(gb_normal_ws)*k_probe_octmap_width;
-            float3 probe_sample_pos_ws = pixel_pos_ws;
-            #if 1
-                // BentNormalでサンプル位置をオフセットすることでライトリーク緩和の検証.
-                {
-                    // View Offset.
-                    probe_sample_pos_ws += V * cb_ngl_lighting_pass.probe_sample_offset_view;
-
-                    // Surface Normal Offset.
-                    probe_sample_pos_ws += gb_normal_ws * cb_ngl_lighting_pass.probe_sample_offset_surface_normal;
-
-                    // BentNormal Offset.
-                    probe_sample_pos_ws += bent_normal_sample.xyz * cb_ngl_lighting_pass.probe_sample_offset_bent_normal;
-                }
-            #endif
-
-            const float3 voxel_coordf = (probe_sample_pos_ws - cb_srvs.wcp.grid_min_pos) * cb_srvs.wcp.cell_size_inv;
-            const int3 voxel_base_coord = floor(voxel_coordf - 0.5);
-            const float3 coord_frac = frac(voxel_coordf - 0.5);
-
-                const int3 vtx_pos[8] = {
-                    int3(0, 0, 0),int3(1, 0, 0),
-                    int3(0, 1, 0),int3(1, 1, 0),
-                    int3(0, 0, 1),int3(1, 0, 1),
-                    int3(0, 1, 1),int3(1, 1, 1)
-                };
-
-                uint voxel_indexs[8];
-                float2 octmap_uvs[8];
-                for (int i = 0; i < 8; ++i)
-                {
-                    voxel_indexs[i] = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_base_coord + vtx_pos[i], cb_srvs.wcp.grid_toroidal_offset, cb_srvs.wcp.grid_resolution), cb_srvs.wcp.grid_resolution);
-                    octmap_uvs[i] = (float2(calc_probe_octahedral_map_atlas_texel_base_pos(voxel_indexs[i], cb_srvs.wcp.flatten_2d_width)) + octmap_local_texel_pos) * texel_size;
-                }
-
-                // k_wcp_probe_distance_max で正規化された [0,1] のDistanceProbe.
-                float4 dir_d[2];
-                for (int i = 0; i < 2; ++i)
-                {
-                    dir_d[i].x = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 0], 0).r;
-                    dir_d[i].y = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 2], 0).r;
-                    dir_d[i].z = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 4], 0).r;
-                    dir_d[i].w = WcpProbeAtlasTex.SampleLevel(samp, octmap_uvs[i + 6], 0).r;
-                }
-                
-                const float4 lerp_d_x = lerp(dir_d[0], dir_d[1], coord_frac.x);// x補間
-                const float2 lerp_d_y = lerp(lerp_d_x.xz, lerp_d_x.yw, coord_frac.y);// y補間
-                const float lerp_d_z = lerp(lerp_d_y.x, lerp_d_y.y, coord_frac.z);// z補間
-                
-            sky_visibility = lerp_d_z;
+            // 単純バイリニアSampling
+            float4 ss_probe_sh = ScreenSpaceProbeSHTex.SampleLevel(samp, screen_uv, 0);
         #endif
-    }
+
+        const float4 sh_basis = EvaluateL1ShBasis(gb_normal_ws);
+        const float sh_sample = max(0.0, dot(ss_probe_sh, sh_basis));
+        sky_visibility = saturate(sh_sample);
+	}
 	
 	// IBL.
 	{

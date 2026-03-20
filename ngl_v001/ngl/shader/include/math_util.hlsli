@@ -329,6 +329,28 @@ int3 GetVec3ComponentReorderIndexByMagnitude(float3 v)
     return index_vec;
 }
 
+// Gather4成分と2x2テクセルオフセットの対応:
+// component index: 0,1,2,3 <-> texel offset: (0,1),(1,1),(1,0),(0,0)
+int GatherTexelOffsetToComponentIndexOffset(int2 gather_texel_offset)
+{
+    //return ((gather_texel_offset.y ^ 0x1) << 1) | gather_texel_offset.x;// 誤り.
+    
+    if (gather_texel_offset.y == 0)
+    {
+        return (gather_texel_offset.x == 0) ? 3 : 2;
+    }
+    else
+    {
+        return (gather_texel_offset.x == 0) ? 0 : 1;
+    }
+}
+int2 GatherComponentIndexToTexelOffset(int gather_component_index)
+{
+    return int2(
+        (gather_component_index ^ (gather_component_index >> 1)) & 0x1,
+        1 - ((gather_component_index >> 1) & 0x1));
+}
+
 
 
 // Fibonacci球面分布方向を取得.
