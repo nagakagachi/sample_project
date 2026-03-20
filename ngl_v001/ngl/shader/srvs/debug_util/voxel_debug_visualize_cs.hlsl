@@ -208,82 +208,27 @@ void main_cs(
     }
     else if(13 == cb_srvs.debug_view_mode)
     {
-        // 再近傍Probeからの情報取得.
-        
-        // ４近傍TileでValidなProbeを持つ者のうち, このTexelと最もprobe_pos_in_tileが近いものを選択して可視化.
-        // 最近接Probeを探索し、最後にこのProbeTileの法線で可視化.
-        const int2 gather_base_probe_id = max(int2(0,0), (int2((float2(texel_pos) - 0.5) / SCREEN_SPACE_PROBE_TILE_SIZE)));
-        float min_dist = 1e+6;
-        int2 selected_probe_tile_id = int2(-1, -1);
-        float4 selected_probe_tile_info = float4(0, 0, 0, 0);
-        for(int yi = 0; yi <= 1; ++yi)
-        {
-            for(int xi = 0; xi <= 1; ++xi)
-            {
-                int2 probe_tile_id = gather_base_probe_id + int2(xi, yi);
-                // 近傍ScreenSpaceProbeTileInfoTexの情報参照して有効かつテクセル距離が最小のものを選択.
-                
-                const float4 neighbor_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(probe_tile_id, 0));
-                const float ss_probe_depth = neighbor_probe_tile_info.x;
-                const float3 ss_probe_tile_normal_ws = OctDecode(neighbor_probe_tile_info.zw);
-                const int2 ss_probe_pos_in_tile = int2(int(neighbor_probe_tile_info.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(neighbor_probe_tile_info.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
-                if(isValidDepth(ss_probe_depth))
-                {
-                    float2 probe_texel_pos = probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE + ss_probe_pos_in_tile;
-                    float dist = distance(probe_texel_pos, float2(texel_pos));
-                    if(dist < min_dist)
-                    {
-                        min_dist = dist;
-                        selected_probe_tile_id = probe_tile_id;
-                        selected_probe_tile_info = neighbor_probe_tile_info;
-                    }
-                }
-            }
-        }
-        if(all(int2(-1, -1) != selected_probe_tile_id))
-        {
-            const float min_dist_in_tile = saturate(min_dist / (SCREEN_SPACE_PROBE_TILE_SIZE * 0.5));
-
-            const int2 neighbor_probe_tile_base_pos = selected_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
-            const float4 neighbor_probe_tile_info = selected_probe_tile_info;
-            const float3 neighbor_probe_tile_normal_ws = OctDecode(neighbor_probe_tile_info.zw);
-            const float neighbor_probe_depth = neighbor_probe_tile_info.x;
-            const float debug_d = 0.01 / (neighbor_probe_depth + 1e-6);
-
-            #if 0        
-                RWTexWork[dtid.xy] = float4(cos(debug_d) * 0.5 + 0.5, cos(debug_d * 0.5)*0.5+0.5, cos(debug_d * 0.25)*0.5+0.5, 1.0);// * pow(1.0-min_dist_in_tile, 1.0);
-            #else
-                // Screen Space ProbeのSkyVisibility投影デバッグ.
-                const float3 sample_dir = -cb_srvs.main_light_dir_ws;
-            
-                // Octmapのテクセルが外側をBilinearSamplingしないようにクランプ.
-                float2 octmap_texel_pos = clamp(SspEncodeDirByNormal(sample_dir, neighbor_probe_tile_normal_ws) * SCREEN_SPACE_PROBE_TILE_SIZE, 0.5, SCREEN_SPACE_PROBE_TILE_SIZE-0.5);
-                float2 neighbor_probe_sample_texel_pos = neighbor_probe_tile_base_pos + octmap_texel_pos;
-
-                // BilinearSampling. 半球ではないOctahedralMapであるためボーダー部の処理スキップによるカクツキが目立つ..
-                float4 ss_probe_value = ScreenSpaceProbeTex.SampleLevel(SmpLinearClamp, neighbor_probe_sample_texel_pos / screen_size_f, 0);
-                RWTexWork[dtid.xy] = ss_probe_value.xxxx;
-            #endif
-        }
-        else
-        {
-            RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
-        }
-    }
-    else if(14 == cb_srvs.debug_view_mode)
-    {
-        // Screen Space Probe SH の可視化.
+        // Screen Space Probe SH の係数可視化.
         // 既存のRGBAチャンネル切り替えを使いやすくするため、軽くバイアスして表示レンジへ寄せる。
         const float4 ss_probe_sh = ScreenSpaceProbeSHTex.Load(int3(ss_probe_tile_id, 0));
         RWTexWork[dtid.xy] = abs(ss_probe_sh);//ss_probe_sh * 0.10 + 0.5;
     }
-    else if(15 == cb_srvs.debug_view_mode)
+    else if(14 == cb_srvs.debug_view_mode)
     {
         // main_light_dir_ws方向のSH再評価結果を表示.
         const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);
         const float4 sh_basis = EvaluateL1ShBasis(sample_dir);
         const float4 ss_probe_sh = ScreenSpaceProbeSHTex.Load(int3(ss_probe_tile_id, 0));
-        const float sh_sample = dot(ss_probe_sh, sh_basis);
+        const float sh_sample = max(0.0, dot(ss_probe_sh, sh_basis));
+        RWTexWork[dtid.xy] = sh_sample.xxxx;
+    }
+    else if(15 == cb_srvs.debug_view_mode)
+    {
+        // main_light_dir_ws方向のSH再評価結果を表示 (Bilinear).
+        const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);
+        const float4 sh_basis = EvaluateL1ShBasis(sample_dir);
+        const float4 ss_probe_sh = ScreenSpaceProbeSHTex.SampleLevel(SmpLinearClamp, screen_uv, 0);
+        const float sh_sample = max(0.0, dot(ss_probe_sh, sh_basis));
         RWTexWork[dtid.xy] = sh_sample.xxxx;
     }
 }
