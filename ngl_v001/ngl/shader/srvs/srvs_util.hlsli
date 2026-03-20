@@ -128,6 +128,18 @@ float2 SspEncodeDirByNormal(float3 dir_ws, float3 base_normal_ws)
     #endif
 }
 
+float3 SspDecodeDirByNormal(float2 oct_uv, float3 base_normal_ws)
+{
+    const float3 local_dir = SspDecodeRayDirLocal(oct_uv);
+    return SspBuildSampleRayDirFromLocal(local_dir, base_normal_ws);
+}
+
+float3 SspDecodeDirByNormal(float2 oct_uv, float3 basis_t_ws, float3 basis_b_ws, float3 base_normal_ws)
+{
+    const float3 local_dir = SspDecodeRayDirLocal(oct_uv);
+    return SspBuildSampleRayDirFromLocal(local_dir, basis_t_ws, basis_b_ws, base_normal_ws);
+}
+
 
 #if 0
     // シンプルなインデックスフラット化.
