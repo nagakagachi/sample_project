@@ -41,6 +41,13 @@ float calc_view_z_from_ndc_z(float ndc_z, float4 ndc_z_to_view_z_coef)
 {
     return (ndc_z * ndc_z_to_view_z_coef.x + ndc_z_to_view_z_coef.y) / ( ndc_z * ndc_z_to_view_z_coef.z + ndc_z_to_view_z_coef.w );
 }
+// calc_view_z_from_ndc_zの逆変換でViewZからNDC_Z(ハードウェアデプス)を復元する. (Projection変換と同じ).
+float calc_ndc_z_from_view_z(float view_z, float4 ndc_z_to_view_z_coef)
+{
+    // cb_ndc_z_to_view_z_coefの値によってはview_zが無限遠になる可能性があるため、無限遠に近い値を上限とする.
+    const float view_z_clamped = min(view_z, 1e20);
+    return (view_z_clamped * ndc_z_to_view_z_coef.z + ndc_z_to_view_z_coef.w) / (view_z_clamped * ndc_z_to_view_z_coef.x + ndc_z_to_view_z_coef.y);
+}
 
 
 // 十分なサイズ指定.

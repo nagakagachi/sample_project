@@ -207,6 +207,8 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		discard;
 	}
 	
+    // 他のhw_depthと単位を合わせて計算する場合用.
+    const float hw_depth = calc_ndc_z_from_view_z(ld, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
 	// LightingBufferとGBufferが同じ解像度前提でLoad.
 	const float4 gb0 = tex_gbuffer0.SampleLevel(samp, screen_uv, 0);
 	const float4 gb1 = tex_gbuffer1.SampleLevel(samp, screen_uv, 0);
@@ -267,40 +269,42 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 
         #if 1
             // 深度ベースアップサンプリング.
-            const float2 frac_texel = frac(ss_probe_sh_texel_pos_f - 0.5);
-            // 補間対象近傍のうちの座標の所属象限.
-            const int2 owner_offset = int2((0.5 <= frac_texel.x) ? 1 : 0, (0.5 <= frac_texel.y) ? 1 : 0);
-            // 所属象限を最初にチェックするようにコンポーネントインデックスオフセット.
-            const int component_index_offset = GatherTexelOffsetToComponentIndexOffset(owner_offset);
-
 			const float4 low_hw_depth4 = ScreenSpaceProbeTileInfoTex.GatherRed(samp, screen_uv);
-            float best_diff = 1e20;
-            int best_component_index = component_index_offset;
+            float4 upscale_gathered_weight = float4(0, 0, 0, 0);
+            const float upscale_limit_view_z = 0.01 + 0.25 * ld;// アップサンプリングの対象とする深度差の上限. ターゲットピクセルのViewZに比例. 係数は仮.
             for(int ci = 0; ci < 4; ++ci)
             {
-                const int component_index = (component_index_offset + ci) & 0x3;// Gather順のテクセルを所属テクセルから巡回.
-                if(isValidDepth(low_hw_depth4[component_index]))
-                {
-                    const float low_view_z = calc_view_z_from_ndc_z(low_hw_depth4[component_index], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
-                    const float diff = abs(low_view_z - ld);
-                    // 最も類似したものを選択.
-                    if(diff < best_diff)
-                    {
-                        best_diff = diff;
-						best_component_index = component_index;
-                    }
-                }
+                // 空などの無効Depthはそのそもlimitを超えるとみなして重み0にする.
+                const float low_view_z = calc_view_z_from_ndc_z(low_hw_depth4[ci], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
+                const float diff = abs(low_view_z - ld);
+                upscale_gathered_weight[ci] = (diff < upscale_limit_view_z)? 1.0 - diff / upscale_limit_view_z : 0.0;
             }
             
             float4 ss_probe_sh = float4(0.0, 0.0, 0.0, 0.0);
             {
-                const int2 best_texel = ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(best_component_index);
-                const float current_low_ld = calc_view_z_from_ndc_z(low_hw_depth4[component_index_offset], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
-                // テクセル位置での深度差に応じて類似テクセルへサンプル位置を移動オフセットする.
-                const float approach_rate = saturate(abs(current_low_ld - ld) * 100.0);
-                const float2 sample_texel_pos_f = lerp(ss_probe_sh_texel_pos_f, float2(best_texel) + 0.5, approach_rate);
-                const float2 sample_uv = saturate(sample_texel_pos_f / ss_probe_sh_tex_size_f);
-                ss_probe_sh = ScreenSpaceProbeSHTex.SampleLevel(samp, sample_uv, 0);
+                const float upscale_weight_sum = dot(upscale_gathered_weight, float4(1.0, 1.0, 1.0, 1.0));
+                const bool valid_upscale_sample = (upscale_weight_sum > 0.0);
+                
+                float4 upscale_gathered_sh[4];
+                upscale_gathered_sh[0] = ScreenSpaceProbeSHTex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(0), 0));
+                upscale_gathered_sh[1] = ScreenSpaceProbeSHTex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(1), 0));
+                upscale_gathered_sh[2] = ScreenSpaceProbeSHTex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(2), 0));
+                upscale_gathered_sh[3] = ScreenSpaceProbeSHTex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(3), 0));
+
+                if(valid_upscale_sample)
+                {
+                    ss_probe_sh = 
+                    (upscale_gathered_sh[0] * upscale_gathered_weight[0]
+                     + upscale_gathered_sh[1] * upscale_gathered_weight[1]
+                      + upscale_gathered_sh[2] * upscale_gathered_weight[2]
+                       + upscale_gathered_sh[3] * upscale_gathered_weight[3]) / upscale_weight_sum;
+                }
+                else
+                {
+                    // 有効なサンプルが見つからなかった. これはGI-1.0のMip探索を利用して回避できそう.
+                    // 現状はとりあえず単純にバイリニアサンプリングにフォールバック.
+                    ss_probe_sh = ScreenSpaceProbeSHTex.SampleLevel(samp, screen_uv, 0);
+                }
             }
         #else
             // 単純バイリニアSampling

@@ -329,12 +329,21 @@ int3 GetVec3ComponentReorderIndexByMagnitude(float3 v)
     return index_vec;
 }
 
-// Gather4成分と2x2テクセルオフセットの対応:
-// component index: 0,1,2,3 <-> texel offset: (0,1),(1,1),(1,0),(0,0)
+/*
+    Gather4成分と2x2テクセルオフセットの対応.
+        Gather4で取得される近傍要素のコンポーネント格納位置.
+            +----+----+
+            |  w |  z |
+            +----+----+
+            |  x |  y |
+            +----+----+
+    const float2 frac_texel = frac(texel_pos - 0.5);
+    const int2 gather_offset = int2((0.5 <= frac_texel.x) ? 1 : 0, (0.5 <= frac_texel.y) ? 1 : 0);
+    GatherTexelOffsetToComponentIndexOffset( gather_offset ) -> 0,1,2,3
+*/
 int GatherTexelOffsetToComponentIndexOffset(int2 gather_texel_offset)
 {
-    //return ((gather_texel_offset.y ^ 0x1) << 1) | gather_texel_offset.x;// 誤り.
-    
+    // TODO. 分岐を消してビット演算にまとめたい.
     if (gather_texel_offset.y == 0)
     {
         return (gather_texel_offset.x == 0) ? 3 : 2;
