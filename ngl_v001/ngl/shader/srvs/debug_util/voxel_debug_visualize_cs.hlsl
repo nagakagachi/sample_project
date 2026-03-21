@@ -208,13 +208,6 @@ void main_cs(
     }
     else if(13 == cb_srvs.debug_view_mode)
     {
-        // Screen Space Probe SH の係数可視化.
-        // 既存のRGBAチャンネル切り替えを使いやすくするため、軽くバイアスして表示レンジへ寄せる。
-        const float4 ss_probe_sh = ScreenSpaceProbeSHTex.Load(int3(ss_probe_tile_id, 0));
-        RWTexWork[dtid.xy] = abs(ss_probe_sh);//ss_probe_sh * 0.10 + 0.5;
-    }
-    else if(14 == cb_srvs.debug_view_mode)
-    {
         // main_light_dir_ws方向のSH再評価結果を表示.
         const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);
         const float4 sh_basis = EvaluateL1ShBasis(sample_dir);
@@ -222,7 +215,7 @@ void main_cs(
         const float sh_sample = max(0.0, dot(ss_probe_sh, sh_basis));
         RWTexWork[dtid.xy] = sh_sample.xxxx;
     }
-    else if(15 == cb_srvs.debug_view_mode)
+    else if(14 == cb_srvs.debug_view_mode)
     {
         // main_light_dir_ws方向のSH再評価結果を表示 (Bilinear).
         const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);

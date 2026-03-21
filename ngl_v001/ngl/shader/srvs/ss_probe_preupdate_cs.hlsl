@@ -45,14 +45,15 @@ void main_cs(
     float probe_depth = 1.0;
     
     #if 1
-        // 再配置を確率的に実行する. 画面の安定性は向上する.
+        // 再配置を確率的に実行する.
         const float4 prev_info = RWScreenSpaceProbeTileInfoTex[probe_id];
         probe_pos_in_tile = int2(prev_info.g % SCREEN_SPACE_PROBE_TILE_SIZE, prev_info.g / SCREEN_SPACE_PROBE_TILE_SIZE);// 前回のプローブ位置をタイル内で復元.
         current_probe_texel_pos = ss_probe_tile_pixel_start + probe_pos_in_tile;// 前回のプローブ位置をフル解像度テクセル位置に変換.
         probe_depth = TexHardwareDepth.Load(int3(current_probe_texel_pos, 0)).r;// 前回のプローブ位置の深度を取得.
 
         const bool force_relocation = false;//(ss_probe_tile_pixel_start.x < (1920/2));
-        if(force_relocation || (!isValidDepth(probe_depth) || 0.02 >= rng.rand()))
+        const float relocation_probability = 0.05;// 有効なプローブ位置が見つかっても一定確率で再配置する.
+        if(force_relocation || (!isValidDepth(probe_depth) || relocation_probability >= rng.rand()))
         {
             // 何回かリトライする.
             for(int i = 0; i < SCREEN_SPACE_PROBE_TILE_SIZE; ++i)
@@ -91,40 +92,143 @@ void main_cs(
         const float3 pixel_pos_vs = CalcViewSpacePosition(probe_uv, calc_view_z_from_ndc_z(probe_depth, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
         const float3 pixel_pos_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(pixel_pos_vs, 1.0));
 
-        // 近傍深度から簡易法線推定.
-        const int2 depth_size_i = int2(depth_size) - 1;
-        const int2 xn_pos = clamp(current_probe_texel_pos + int2(-1, 0), int2(0, 0), depth_size_i);
-        const int2 xp_pos = clamp(current_probe_texel_pos + int2( 1, 0), int2(0, 0), depth_size_i);
-        const int2 yn_pos = clamp(current_probe_texel_pos + int2(0, -1), int2(0, 0), depth_size_i);
-        const int2 yp_pos = clamp(current_probe_texel_pos + int2(0,  1), int2(0, 0), depth_size_i);
+        #if 0
+            // 近傍深度から簡易法線推定.
+            const int2 depth_size_i = int2(depth_size) - 1;
+            const int2 xn_pos = clamp(current_probe_texel_pos + int2(-1, 0), int2(0, 0), depth_size_i);
+            const int2 xp_pos = clamp(current_probe_texel_pos + int2( 1, 0), int2(0, 0), depth_size_i);
+            const int2 yn_pos = clamp(current_probe_texel_pos + int2(0, -1), int2(0, 0), depth_size_i);
+            const int2 yp_pos = clamp(current_probe_texel_pos + int2(0,  1), int2(0, 0), depth_size_i);
 
-        float xn_depth = TexHardwareDepth.Load(int3(xn_pos, 0)).r;
-        float xp_depth = TexHardwareDepth.Load(int3(xp_pos, 0)).r;
-        float yn_depth = TexHardwareDepth.Load(int3(yn_pos, 0)).r;
-        float yp_depth = TexHardwareDepth.Load(int3(yp_pos, 0)).r;
+            float xn_depth = TexHardwareDepth.Load(int3(xn_pos, 0)).r;
+            float xp_depth = TexHardwareDepth.Load(int3(xp_pos, 0)).r;
+            float yn_depth = TexHardwareDepth.Load(int3(yn_pos, 0)).r;
+            float yp_depth = TexHardwareDepth.Load(int3(yp_pos, 0)).r;
 
-        if(!isValidDepth(xn_depth)) { xn_depth = probe_depth; }
-        if(!isValidDepth(xp_depth)) { xp_depth = probe_depth; }
-        if(!isValidDepth(yn_depth)) { yn_depth = probe_depth; }
-        if(!isValidDepth(yp_depth)) { yp_depth = probe_depth; }
+            if(!isValidDepth(xn_depth)) { xn_depth = probe_depth; }
+            if(!isValidDepth(xp_depth)) { xp_depth = probe_depth; }
+            if(!isValidDepth(yn_depth)) { yn_depth = probe_depth; }
+            if(!isValidDepth(yp_depth)) { yp_depth = probe_depth; }
 
-        const float3 xn_pos_vs = CalcViewSpacePosition((float2(xn_pos) + 0.5) * depth_size_inv, calc_view_z_from_ndc_z(xn_depth, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
-        const float3 xp_pos_vs = CalcViewSpacePosition((float2(xp_pos) + 0.5) * depth_size_inv, calc_view_z_from_ndc_z(xp_depth, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
-        const float3 yn_pos_vs = CalcViewSpacePosition((float2(yn_pos) + 0.5) * depth_size_inv, calc_view_z_from_ndc_z(yn_depth, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
-        const float3 yp_pos_vs = CalcViewSpacePosition((float2(yp_pos) + 0.5) * depth_size_inv, calc_view_z_from_ndc_z(yp_depth, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+            const float3 xn_pos_vs = CalcViewSpacePosition((float2(xn_pos) + 0.5) * depth_size_inv, calc_view_z_from_ndc_z(xn_depth, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+            const float3 xp_pos_vs = CalcViewSpacePosition((float2(xp_pos) + 0.5) * depth_size_inv, calc_view_z_from_ndc_z(xp_depth, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+            const float3 yn_pos_vs = CalcViewSpacePosition((float2(yn_pos) + 0.5) * depth_size_inv, calc_view_z_from_ndc_z(yn_depth, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
+            const float3 yp_pos_vs = CalcViewSpacePosition((float2(yp_pos) + 0.5) * depth_size_inv, calc_view_z_from_ndc_z(yp_depth, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
 
-        float3 approx_normal_vs = cross(xp_pos_vs - xn_pos_vs, yp_pos_vs - yn_pos_vs);
-        float3 approx_normal_ws = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
-        if(dot(abs(approx_normal_vs), float3(1.0, 1.0, 1.0)) > 1e-6)
-        {
-            approx_normal_vs = normalize(approx_normal_vs);
-            approx_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, approx_normal_vs);
-        }
+            float3 approx_normal_vs = cross(xp_pos_vs - xn_pos_vs, yp_pos_vs - yn_pos_vs);
+            float3 approx_normal_ws = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+            if(dot(abs(approx_normal_vs), float3(1.0, 1.0, 1.0)) > 1e-6)
+            {
+                approx_normal_vs = normalize(approx_normal_vs);
+                approx_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, approx_normal_vs);
+            }
+        #else
+            // 単一フェーズで5x5近傍を集計し, 相対深度差重みで同一平面を優先して法線を推定する.
+            // 可能な限り精度の高い平面推定と法線復元をしているのは後段のプローブ更新への影響が非常に大きいため.
+            const int2 depth_size_i = int2(depth_size) - 1;
+            const float k_normal_epsilon = 1e-6;
+            const float k_depth_weight_threshold_rel = 0.03;
+            const float k_depth_weight_threshold_rel_inv = 1.0 / k_depth_weight_threshold_rel;
+            const float k_center_view_z_abs_epsilon = 1e-3;
+            // 遠方では同一平面でも相対深度差が増えやすいため, 棄却の強さを距離でフェードさせる.
+            const float k_depth_rejection_fade_start_vs = 40.0;
+            const float k_depth_rejection_fade_end_vs = 140.0;
+            const float k_depth_rejection_min_scale = 0.05;// 遠方での棄却強度の下限(小さいほど棄却しにくい).
+
+            float3 accum_xn_pos_vs = float3(0.0, 0.0, 0.0);
+            float3 accum_xp_pos_vs = float3(0.0, 0.0, 0.0);
+            float3 accum_yn_pos_vs = float3(0.0, 0.0, 0.0);
+            float3 accum_yp_pos_vs = float3(0.0, 0.0, 0.0);
+            float accum_xn_w = 0.0;
+            float accum_xp_w = 0.0;
+            float accum_yn_w = 0.0;
+            float accum_yp_w = 0.0;
+
+            const float center_view_z = pixel_pos_vs.z;
+            const float center_view_z_abs = abs(center_view_z);
+            const float center_view_z_abs_inv = rcp(max(center_view_z_abs, k_center_view_z_abs_epsilon));
+            // 近景(0.0) -> 遠景(1.0) へ補間するフェード係数.
+            const float depth_rejection_fade = saturate((center_view_z_abs - k_depth_rejection_fade_start_vs) / max(k_depth_rejection_fade_end_vs - k_depth_rejection_fade_start_vs, 1e-3));
+            // 近景は従来どおり棄却, 遠景は棄却を緩和して法線復元のサンプル不足を防ぐ.
+            const float depth_rejection_scale = lerp(1.0, k_depth_rejection_min_scale, depth_rejection_fade);
+
+            [unroll]
+            for(int oy = -2; oy <= 2; ++oy)
+            {
+                [unroll]
+                for(int ox = -2; ox <= 2; ++ox)
+                {
+                    if(ox == 0 && oy == 0)
+                    {
+                        continue;
+                    }
+
+                    const int2 sample_pos = clamp(current_probe_texel_pos + int2(ox, oy), int2(0, 0), depth_size_i);
+                    const float sample_depth = TexHardwareDepth.Load(int3(sample_pos, 0)).r;
+                    if(!isValidDepth(sample_depth))
+                    {
+                        continue;
+                    }
+
+                    const float sample_view_z = calc_view_z_from_ndc_z(sample_depth, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
+                    const float3 sample_pos_vs = CalcViewSpacePosition((float2(sample_pos) + 0.5) * depth_size_inv, sample_view_z, cb_ngl_sceneview.cb_proj_mtx);
+
+                    const float depth_rel_diff = abs(sample_view_z - center_view_z) * center_view_z_abs_inv;
+                    // 相対深度差重みへ距離依存スケールを乗算し, 遠方では同一平面サンプルを残しやすくする.
+                    const float depth_weight = saturate(1.0 - depth_rel_diff * k_depth_weight_threshold_rel_inv * depth_rejection_scale);
+                    if(depth_weight <= 0.0)
+                    {
+                        continue;
+                    }
+
+                    const float dist2 = float(ox * ox + oy * oy);
+                    const float spatial_weight = rcp(1.0 + dist2);
+                    const float sample_weight = depth_weight * spatial_weight;
+
+                    if(ox < 0)
+                    {
+                        accum_xn_pos_vs += sample_pos_vs * sample_weight;
+                        accum_xn_w += sample_weight;
+                    }
+                    else if(ox > 0)
+                    {
+                        accum_xp_pos_vs += sample_pos_vs * sample_weight;
+                        accum_xp_w += sample_weight;
+                    }
+
+                    if(oy < 0)
+                    {
+                        accum_yn_pos_vs += sample_pos_vs * sample_weight;
+                        accum_yn_w += sample_weight;
+                    }
+                    else if(oy > 0)
+                    {
+                        accum_yp_pos_vs += sample_pos_vs * sample_weight;
+                        accum_yp_w += sample_weight;
+                    }
+                }
+            }
+
+            const float3 xn_pos_vs = (accum_xn_w > 0.0) ? (accum_xn_pos_vs / accum_xn_w) : pixel_pos_vs;
+            const float3 xp_pos_vs = (accum_xp_w > 0.0) ? (accum_xp_pos_vs / accum_xp_w) : pixel_pos_vs;
+            const float3 yn_pos_vs = (accum_yn_w > 0.0) ? (accum_yn_pos_vs / accum_yn_w) : pixel_pos_vs;
+            const float3 yp_pos_vs = (accum_yp_w > 0.0) ? (accum_yp_pos_vs / accum_yp_w) : pixel_pos_vs;
+
+            float3 approx_normal_vs = cross(xp_pos_vs - xn_pos_vs, yp_pos_vs - yn_pos_vs);
+            float3 approx_normal_ws = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+            if(dot(abs(approx_normal_vs), float3(1.0, 1.0, 1.0)) > k_normal_epsilon)
+            {
+                approx_normal_vs = normalize(approx_normal_vs);
+                approx_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, approx_normal_vs);
+            }
+        #endif
         
         // タイル内のプローブ位置をフラットインデックス化.
         const int probe_pos_flat_index_in_tile = probe_pos_in_tile.y * SCREEN_SPACE_PROBE_TILE_SIZE + probe_pos_in_tile.x;
         // 配置できたらその情報を格納.
         const float2 approx_normal_oct = OctEncode(normalize(approx_normal_ws));
+
+
         RWScreenSpaceProbeTileInfoTex[probe_id] = float4(probe_depth, probe_pos_flat_index_in_tile, approx_normal_oct.x, approx_normal_oct.y);
     }
     else
