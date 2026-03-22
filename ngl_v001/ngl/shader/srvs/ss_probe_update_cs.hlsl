@@ -216,7 +216,9 @@ void main_cs(
                     const float probe_normal_dot = dot(ss_probe_approx_normal_ws, OctDecode(candidate_tile_info.zw));
 
                     // 法線での棄却を加えると完全に失敗してしまうケースが多い. AddaptiveSamplingでレイの割り当てを増やせるならありかもしれない.
-                    if((plane_dist < 5.0))// 閾値は要調整.
+                    //if((plane_dist < 5.0))// 閾値は要調整.
+                    // むしろここできちんと棄却して失敗させ, Persistent Least-Recently Used (LRU) Side Cache で解決するなどした方が良いかもしれない.
+                    if((plane_dist < 2.0) && (probe_normal_dot > 0.7))// 閾値は要調整.
                     {
                         //float probe_dist = length(float2(candidate_offset));// 初期実装. 安定はするが移動物体表面で適切なリプロジェクションにならずノイズになりやすい.
                         // GI-1.0はプローブ配置位置の差分を採用している. 法線の向きも評価に加えてみる.
