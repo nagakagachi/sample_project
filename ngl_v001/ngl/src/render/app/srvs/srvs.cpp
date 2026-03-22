@@ -34,7 +34,6 @@ namespace ngl::render::app
     static const float k_ss_probe_ray_normal_offset_scale = 0.2f;
     static const float k_ss_probe_temporal_depth_threshold = 0.02f;
     static const float k_ss_probe_temporal_normal_threshold_cos = 0.85f;
-    static const float k_ss_probe_temporal_camera_motion_scale = 0.4f;
     static const float k_ss_probe_temporal_min_hysteresis = 0.85f;
     static const float k_ss_probe_temporal_max_hysteresis = 0.98f;
 
@@ -520,7 +519,6 @@ namespace ngl::render::app
             p->ss_probe_ray_normal_offset_scale = k_ss_probe_ray_normal_offset_scale;
             p->ss_probe_temporal_depth_threshold = k_ss_probe_temporal_depth_threshold;
             p->ss_probe_temporal_normal_threshold_cos = k_ss_probe_temporal_normal_threshold_cos;
-            p->ss_probe_temporal_camera_motion_scale = k_ss_probe_temporal_camera_motion_scale;
             p->ss_probe_temporal_min_hysteresis = k_ss_probe_temporal_min_hysteresis;
             p->ss_probe_temporal_max_hysteresis = k_ss_probe_temporal_max_hysteresis;
             p->ss_probe_temporal_reprojection_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_;

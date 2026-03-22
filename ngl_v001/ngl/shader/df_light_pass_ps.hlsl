@@ -282,7 +282,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
             
             float4 ss_probe_sh = float4(0.0, 0.0, 0.0, 0.0);
             {
-                const float upscale_weight_sum = dot(upscale_gathered_weight, float4(1.0, 1.0, 1.0, 1.0));
+                const float upscale_weight_sum = upscale_gathered_weight.x + upscale_gathered_weight.y + upscale_gathered_weight.z + upscale_gathered_weight.w;
                 const bool valid_upscale_sample = (upscale_weight_sum > 0.0);
                 
                 float4 upscale_gathered_sh[4];

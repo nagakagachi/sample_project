@@ -374,14 +374,10 @@ void main_cs(
 
         const float3 curr_camera_pos_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
         const float3 prev_camera_pos_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_prev_view_inv_mtx);
-        const float camera_motion = length(curr_camera_pos_ws - prev_camera_pos_ws);
-        const float camera_motion_scale = saturate(1.0 - camera_motion * cb_srvs.ss_probe_temporal_camera_motion_scale);
-        temporal_rate *= camera_motion_scale;
 
         new_sky_visibility = lerp(new_sky_visibility, prev_reprojected_value, temporal_rate);// 補間.
         reprojection_succeed = 1.0;
     }
 
-    //RWScreenSpaceProbeTex[global_pos] = float4(new_sky_visibility, float(hit_count)*0.025, reprojection_succeed, ss_prev_radiance[gindex]);
     RWScreenSpaceProbeTex[global_pos] = float4(new_sky_visibility, prev_reprojected_value, ss_prev_radiance[gindex], float(hit_count)*0.025);
 }

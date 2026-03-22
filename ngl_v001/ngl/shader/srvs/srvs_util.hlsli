@@ -67,10 +67,12 @@ RWTexture2D<float4>    RWScreenSpaceProbeTex;
 
 // 1/8 resolution Per ScreenSpaceProbe Tile Info Texture. (SCREEN_SPACE_PROBE_TILE_SIZE = 8)
 // r.x : Depth, r.y : Probe位置オフセットのフラットインデックス, r.zw : OctEncodeしたWS法線.
+// x が1 の場合は無効深度で, Probeも存在しない.
 Texture2D<float4>      ScreenSpaceProbeTileInfoTex;
 Texture2D<float4>      ScreenSpaceProbeHistoryTileInfoTex;
 RWTexture2D<float4>    RWScreenSpaceProbeTileInfoTex;
 
+// L1 SH (SkyVisibility).
 Texture2D<float4>      ScreenSpaceProbeSHTex;
 RWTexture2D<float4>    RWScreenSpaceProbeSHTex;
 

@@ -167,9 +167,9 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int dummy2;
 
         float ss_probe_temporal_normal_threshold_cos;// Temporal再利用の法線内積閾値.
-        float ss_probe_temporal_camera_motion_scale;// カメラ移動量から履歴重みを減衰させるスケール.
         float ss_probe_temporal_min_hysteresis;// Temporal再利用重みの最小値.
         float ss_probe_temporal_max_hysteresis;// Temporal再利用重みの最大値.
+        int dummy3;
         int ss_probe_temporal_reprojection_enable;// Temporal再投影有効化フラグ.
         int ss_probe_ray_guiding_enable;// RayGuiding有効化フラグ.
         int2 ss_probe_temporal_dummy_padding;// 16byteアライメント維持用.
