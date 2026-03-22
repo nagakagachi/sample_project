@@ -229,6 +229,7 @@ namespace ngl::render::app
         static int dbg_wcp_probe_debug_mode_;
         static float dbg_probe_scale_;
         static float dbg_probe_near_geom_scale_;
+        static int dbg_ss_probe_spatial_filter_enable_;
         static int dbg_ss_probe_temporal_reprojection_enable_;
         static int dbg_ss_probe_ray_guiding_enable_;
 

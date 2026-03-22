@@ -850,6 +850,12 @@ bool AppGame::ExecuteApp()
                     ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_ = ss_probe_temporal_reprojection_enable ? 1 : 0;
                 }
 
+                bool ss_probe_spatial_filter_enable = (0 != ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_enable_);
+                if(ImGui::Checkbox("SsProbe SpatialFilter", &ss_probe_spatial_filter_enable))
+                {
+                    ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_enable_ = ss_probe_spatial_filter_enable ? 1 : 0;
+                }
+
                 bool ss_probe_ray_guiding_enable = (0 != ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_);
                 if(ImGui::Checkbox("SsProbe RayGuiding", &ss_probe_ray_guiding_enable))
                 {
@@ -861,8 +867,6 @@ bool AppGame::ExecuteApp()
                 {
                     NGL_IMGUI_SCOPED_INDENT(10.0f);
                     ImGui::SliderInt("Debug Texture Mode", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_view_mode_, -1, 16);
-                    ImGui::Text("14: SsProbe SH (RGBA = L1 SH coeff)");
-                    ImGui::Text("15: SsProbe SH Sample(main_light_dir_ws)");
                 }
 
                 if (ImGui::CollapsingHeader("Probe Debug"))

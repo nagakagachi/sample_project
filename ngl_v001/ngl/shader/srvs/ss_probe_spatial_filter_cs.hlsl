@@ -53,12 +53,14 @@ void main_cs(
     float4 accum_value = center_value;
     float accum_weight = 1.0;
 
+    #if 0
         // デバッグ用.
         if((1920*0.5) < center_texel_pos.x)
         {
             RWScreenSpaceProbeFilteredTex[center_texel_pos] = accum_value;
             return;
         }
+    #endif
 
     const int2 neighbor_offsets[4] =
     {

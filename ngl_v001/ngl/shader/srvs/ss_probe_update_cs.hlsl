@@ -6,6 +6,9 @@ ss_probe_update_cs.hlsl
 screen-reconstructed voxel structure
 ScreenSpaceProbe更新.
 
+Temporal Reprojection + Ray Guiding.
+Temporal Filter.
+
 #endif
 
 #include "srvs_util.hlsli"

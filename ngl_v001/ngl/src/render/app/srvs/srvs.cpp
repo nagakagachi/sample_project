@@ -44,6 +44,7 @@ namespace ngl::render::app
     int ScreenReconstructedVoxelStructure::dbg_wcp_probe_debug_mode_ = -1;
     float ScreenReconstructedVoxelStructure::dbg_probe_scale_ = 1.0f;
     float ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_ = 0.2f;
+    int ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_enable_ = 1;
     int ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_ = 1;
     int ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_ = 1;
     
@@ -863,6 +864,9 @@ namespace ngl::render::app
         const ngl::u32 ss_probe_update_write_index = ss_probe_curr_frame_tex_index_;
         const ngl::u32 ss_probe_tile_info_history_index = ss_probe_tile_info_prev_frame_tex_index_;
         const ngl::u32 ss_probe_tile_info_curr_index = ss_probe_tile_info_curr_frame_tex_index_;
+        const bool is_ss_probe_spatial_filter_enable = (0 != ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_enable_);
+
+        ngl::u32 ss_probe_sh_input_index = ss_probe_update_write_index;
 
         // ScreenSpaceProbe.
         {
@@ -903,6 +907,7 @@ namespace ngl::render::app
 
                 p_command_list->ResourceUavBarrier(ss_probe_tex_[ss_probe_update_write_index].texture.Get());
             }
+            if(is_ss_probe_spatial_filter_enable)
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ScreenSpaceProbeSpatialFilter");
 
@@ -928,13 +933,21 @@ namespace ngl::render::app
                 ss_probe_latest_filtered_frame_tex_index_ = ss_probe_filter_output_index;
                 ss_probe_curr_frame_tex_index_ = ss_probe_latest_filtered_frame_tex_index_;
                 ss_probe_prev_frame_tex_index_ = 1 - ss_probe_curr_frame_tex_index_;
+
+                ss_probe_sh_input_index = ss_probe_latest_filtered_frame_tex_index_;
+            }
+            else
+            {
+                // SpatialFilter無効時はDispatchとフリップを行わず、Update出力をそのまま利用する.
+                ss_probe_latest_filtered_frame_tex_index_ = ss_probe_update_write_index;
+                ss_probe_sh_input_index = ss_probe_update_write_index;
             }
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ScreenSpaceProbeShUpdate");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_ss_probe_sh_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-                pso_ss_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_srv.Get(), ss_probe_tex_[ss_probe_latest_filtered_frame_tex_index_].srv.Get());
+                pso_ss_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_srv.Get(), ss_probe_tex_[ss_probe_sh_input_index].srv.Get());
                 pso_ss_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].srv.Get());
                 pso_ss_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_sh_uav.Get(), ss_probe_sh_tex_.uav.Get());
 
