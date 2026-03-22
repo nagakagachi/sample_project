@@ -447,6 +447,7 @@ float2 OctEncode(float3 n)
     return n.xy;
 }
 // Spherical Octahedron UV[0,1] -> Unit Vector.
+// Normalizeをしている.
 float3 OctDecode(float2 f)
 {
     f = f * 2.0 - 1.0;

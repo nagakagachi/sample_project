@@ -92,6 +92,13 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     #define SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT (SCREEN_SPACE_PROBE_TILE_SIZE * SCREEN_SPACE_PROBE_TILE_SIZE)
 
 
+    // GI-1.0
+    //#define SCREEN_SPACE_PROBE_REUSE_ANGLE_THRESHOLD cos(2e-2 * 3.141592)
+    // より緩和. .
+    #define SCREEN_SPACE_PROBE_REUSE_ANGLE_THRESHOLD 0.8
+    #define SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE 8.0
+
+
     // シェーダとCppで一致させる.
     // Voxel追加データバッファ. Bbv一つ毎の外部データ.
     // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.

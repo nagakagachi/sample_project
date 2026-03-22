@@ -127,8 +127,8 @@ namespace ngl::render::app
 
         ngl::rhi::ConstantBufferPooledHandle GetDispatchCbh() const { return cbh_dispatch_; }
         rhi::RefSrvDep GetWcpProbeAtlasTex() const { return wcp_probe_atlas_tex_.srv; }
-        rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_[ss_probe_curr_frame_tex_index_].srv; }
-        rhi::RefSrvDep GetSsProbeTileInfoTex() const { return ss_probe_tile_info_tex_[ss_probe_curr_frame_tex_index_].srv; }
+        rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_[ss_probe_latest_filtered_frame_tex_index_].srv; }
+        rhi::RefSrvDep GetSsProbeTileInfoTex() const { return ss_probe_tile_info_tex_[ss_probe_tile_info_curr_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbeShTex() const { return ss_probe_sh_tex_.srv; }
 
     private:
@@ -141,6 +141,10 @@ namespace ngl::render::app
 
         ngl::u32 ss_probe_prev_frame_tex_index_ = 0;
         ngl::u32 ss_probe_curr_frame_tex_index_ = 0;
+        ngl::u32 ss_probe_latest_filtered_frame_tex_index_ = 0;
+
+        ngl::u32 ss_probe_tile_info_prev_frame_tex_index_ = 0;
+        ngl::u32 ss_probe_tile_info_curr_frame_tex_index_ = 0;
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_clear_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_begin_update_ = {};
@@ -171,6 +175,7 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_clear_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_preupdate_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_spatial_filter_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_sh_update_ = {};
 
 
