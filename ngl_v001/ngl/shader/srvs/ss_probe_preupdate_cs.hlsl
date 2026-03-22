@@ -77,13 +77,14 @@ void main_cs(
         const float3 pixel_pos_vs = CalcViewSpacePosition(probe_uv, calc_view_z_from_ndc_z(probe_depth, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef), cb_ngl_sceneview.cb_proj_mtx);
         const float3 pixel_pos_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(pixel_pos_vs, 1.0));
 
+        // 法線を復元.
         const float3 approx_normal_vs = reconstruct_normal_vs_fine(TexHardwareDepth, current_probe_texel_pos, probe_depth, depth_size_inv, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef, cb_ngl_sceneview.cb_proj_mtx);
         const float3 approx_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, approx_normal_vs);
         
         // タイル内のプローブ位置をフラットインデックス化.
         const int probe_pos_flat_index_in_tile = probe_pos_in_tile.y * SCREEN_SPACE_PROBE_TILE_SIZE + probe_pos_in_tile.x;
         // 配置できたらその情報を格納.
-        const float2 approx_normal_oct = OctEncode(normalize(approx_normal_ws));
+        const float2 approx_normal_oct = OctEncode(approx_normal_ws);
 
 
         RWScreenSpaceProbeTileInfoTex[probe_id] = float4(probe_depth, probe_pos_flat_index_in_tile, approx_normal_oct.x, approx_normal_oct.y);

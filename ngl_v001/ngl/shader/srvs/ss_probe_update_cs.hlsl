@@ -256,7 +256,7 @@ void main_cs(
     }
     // 担当セルのOctMapベクトルとProbe面法線の内積.
     const float2 cell_oct_uv = (float2(probe_atlas_local_pos) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
-    const float3 cell_dir_ws = normalize(SspDecodeDirByNormal(cell_oct_uv, ss_probe_approx_normal_ws));
+    const float3 cell_dir_ws = SspDecodeDirByNormal(cell_oct_uv, ss_probe_approx_normal_ws);
     const float cell_octmap_normal_dot_probe_normal = max(0.0, dot(ss_probe_approx_normal_ws, cell_dir_ws));
     
     // Probe面法線での輝度評価. 面の輝度への寄与が大きいほどGuidingで誘導されるようになる.
@@ -310,6 +310,7 @@ void main_cs(
 
 #if NGL_SSP_RAY_GUIDING_ENABLE
         // CDF逆変換で重要セル選択.
+        // Guidingの重みの時点で面法線の逆向きはゼロになっているため, sample_ray_dirは順方向しか選択されない.
         const float guiding_rand = rng.rand();
         uint selected_oct_cell_index = ray_index & (NGL_SSP_RAY_COUNT - 1);
         [unroll]
@@ -326,8 +327,7 @@ void main_cs(
         const float2 local_cell_jitter = rng.rand2();
         const float2 selected_oct_uv = (float2(float(selected_cell.x), float(selected_cell.y)) + local_cell_jitter) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
 
-        float3 sample_ray_dir = normalize(SspDecodeDirByNormal(selected_oct_uv, base_tangent_ws, base_bitangent_ws, base_normal_ws));
-        // Guidingの重みの時点で面法線の逆向きはゼロになっているため, sample_ray_dirは順方向しか選択されない.
+        float3 sample_ray_dir = SspDecodeDirByNormal(selected_oct_uv, base_tangent_ws, base_bitangent_ws, base_normal_ws);
 #else
         // Cos分布半球方向ランダム.
         const float3 unit_v3 = random_unit_vector3(float3(asfloat(global_pos.x), asfloat(global_pos.y), asfloat(ray_index^cb_srvs.frame_count)));
