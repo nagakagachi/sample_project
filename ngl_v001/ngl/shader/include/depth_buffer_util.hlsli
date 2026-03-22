@@ -26,11 +26,12 @@ float3 reconstruct_normal_vs_fine(Texture2D tex_hw_depth, int2 current_probe_tex
     float up_depth = tex_hw_depth.Load(int3(up_pos, 0)).r;
     
     const float center_view_z = calc_view_z_from_ndc_z(center_depth, ndc_z_to_view_z_coef);
-    const float right_view_z = calc_view_z_from_ndc_z(right_depth, ndc_z_to_view_z_coef);
-    const float left_view_z = calc_view_z_from_ndc_z(left_depth, ndc_z_to_view_z_coef);
-    const float down_view_z = calc_view_z_from_ndc_z(down_depth, ndc_z_to_view_z_coef);
-    const float up_view_z = calc_view_z_from_ndc_z(up_depth, ndc_z_to_view_z_coef);
-
+    const float k_view_z_safe_limit = 100000.0;// 近傍サンプルは念のためクランプ. 極細のジオメトリと空の間の法線破綻を回避.
+    const float right_view_z = clamp(calc_view_z_from_ndc_z(right_depth, ndc_z_to_view_z_coef), -k_view_z_safe_limit, k_view_z_safe_limit);
+    const float left_view_z = clamp(calc_view_z_from_ndc_z(left_depth, ndc_z_to_view_z_coef), -k_view_z_safe_limit, k_view_z_safe_limit);
+    const float down_view_z = clamp(calc_view_z_from_ndc_z(down_depth, ndc_z_to_view_z_coef), -k_view_z_safe_limit, k_view_z_safe_limit);
+    const float up_view_z = clamp(calc_view_z_from_ndc_z(up_depth, ndc_z_to_view_z_coef), -k_view_z_safe_limit, k_view_z_safe_limit);
+    
     const float3 center_pos_vs = CalcViewSpacePosition((float2(center_pos) + 0.5) * depth_size_inv, center_view_z, proj_mtx);
     const float3 right_pos_vs = CalcViewSpacePosition((float2(right_pos) + 0.5) * depth_size_inv, right_view_z, proj_mtx);
     const float3 left_pos_vs = CalcViewSpacePosition((float2(left_pos) + 0.5) * depth_size_inv, left_view_z, proj_mtx);

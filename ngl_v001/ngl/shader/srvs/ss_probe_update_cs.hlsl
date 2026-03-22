@@ -382,5 +382,5 @@ void main_cs(
         reprojection_succeed = 1.0;
     }
 
-    RWScreenSpaceProbeTex[global_pos] = float4(new_sky_visibility, prev_reprojected_value, ss_prev_radiance[gindex], float(hit_count)*0.025);
+    RWScreenSpaceProbeTex[global_pos] = float4(new_sky_visibility, prev_reprojected_value, ss_prev_radiance[gindex], reprojection_succeed);
 }
