@@ -48,7 +48,7 @@ void main_cs(
     {
         // 再配置を確率的に実行する.
         const float4 prev_info = RWScreenSpaceProbeTileInfoTex[probe_id];
-        probe_pos_in_tile = int2(prev_info.g % SCREEN_SPACE_PROBE_TILE_SIZE, prev_info.g / SCREEN_SPACE_PROBE_TILE_SIZE);// 前回のプローブ位置をタイル内で復元.
+        probe_pos_in_tile = SspTileInfoDecodeProbePosInTile(prev_info.y);// 前回のプローブ位置をタイル内で復元.
         current_probe_texel_pos = ss_probe_tile_pixel_start + probe_pos_in_tile;// 前回のプローブ位置をフル解像度テクセル位置に変換.
         probe_depth = TexHardwareDepth.Load(int3(current_probe_texel_pos, 0)).r;// 前回のプローブ位置の深度を取得.
 
@@ -81,17 +81,14 @@ void main_cs(
         const float3 approx_normal_vs = reconstruct_normal_vs_fine(TexHardwareDepth, current_probe_texel_pos, probe_depth, depth_size_inv, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef, cb_ngl_sceneview.cb_proj_mtx);
         const float3 approx_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, approx_normal_vs);
         
-        // タイル内のプローブ位置をフラットインデックス化.
-        const int probe_pos_flat_index_in_tile = probe_pos_in_tile.y * SCREEN_SPACE_PROBE_TILE_SIZE + probe_pos_in_tile.x;
         // 配置できたらその情報を格納.
         const float2 approx_normal_oct = OctEncode(approx_normal_ws);
 
-
-        RWScreenSpaceProbeTileInfoTex[probe_id] = float4(probe_depth, probe_pos_flat_index_in_tile, approx_normal_oct.x, approx_normal_oct.y);
+        RWScreenSpaceProbeTileInfoTex[probe_id] = SspTileInfoBuild(probe_depth, probe_pos_in_tile, approx_normal_oct, false);
     }
     else
     {
-        RWScreenSpaceProbeTileInfoTex[probe_id] = float4(1.0, 0, 0, 0);// 配置できなかった場合はDepthに負の値を入れておくなどして無効化.
+        RWScreenSpaceProbeTileInfoTex[probe_id] = SspTileInfoBuild(1.0, uint2(0, 0), float2(0.0, 0.0), false);// 配置できなかった場合はDepthに負の値を入れておくなどして無効化.
     }
 
 }

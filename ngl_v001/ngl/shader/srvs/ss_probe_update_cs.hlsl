@@ -107,9 +107,9 @@ void main_cs(
     const int2 ss_probe_tile_pixel_start = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
 
     // ScreenSpaceProbeTexelTile情報テクスチャから取得.
-    const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
+    const float4 ss_probe_tile_info = RWScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
     const float ss_probe_depth = ss_probe_tile_info.x;
-    const int2 ss_probe_pos_rand_in_tile = int2(int(ss_probe_tile_info.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(ss_probe_tile_info.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
+    const int2 ss_probe_pos_rand_in_tile = SspTileInfoDecodeProbePosInTile(ss_probe_tile_info.y);
     const float2 ss_probe_approx_normal_oct = ss_probe_tile_info.zw;
 
     uint2 depth_size = cb_ngl_sceneview.cb_render_resolution;
@@ -202,12 +202,13 @@ void main_cs(
                 const int2 prev_center_tile = clamp(int2(prev_pos_texel) / tile_size, int2(0, 0), probe_tile_count - 1);
                 const int2 candidate_offset = int2(int(gindex) % 3, int(gindex) / 3) - int2(1, 1);
                 const int2 candidate_tile_id = clamp(prev_center_tile + candidate_offset, int2(0, 0), probe_tile_count - 1);
+                // 前回フレームのProbeTexと対応するTileInfoテクスチャから候補タイルの情報を取得.
                 const float4 candidate_tile_info = ScreenSpaceProbeHistoryTileInfoTex.Load(int3(candidate_tile_id, 0));
 
                 if(isValidDepth(candidate_tile_info.x))
                 {
                     // 前回プローブのワールド位置が今回プローブの位置と法線の平面から一定距離にあるかどうかで評価.
-                    const int2 candidate_probe_placement_texel = candidate_tile_id * tile_size + int2(candidate_tile_info.y%tile_size, candidate_tile_info.y/tile_size);
+                    const int2 candidate_probe_placement_texel = candidate_tile_id * tile_size + SspTileInfoDecodeProbePosInTile(candidate_tile_info.y);
                     const float candidate_view_z = calc_view_z_from_ndc_z(candidate_tile_info.x, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
                     const float3 candidate_pos_vs = CalcViewSpacePosition((float2(candidate_probe_placement_texel) + float2(0.5, 0.5)) * depth_size_inv, candidate_view_z, cb_ngl_sceneview.cb_prev_proj_mtx);
                     const float3 candidate_pos_ws = mul(cb_ngl_sceneview.cb_prev_view_inv_mtx, float4(candidate_pos_vs, 1.0));
@@ -382,6 +383,13 @@ void main_cs(
 
         new_sky_visibility = lerp(new_sky_visibility, prev_reprojected_value, temporal_rate);// 補間.
         reprojection_succeed = 1.0;
+    }
+
+    if(all(probe_atlas_local_pos == 0))
+    {
+        // タイル代表テクセルはリプロジェクションの成功/失敗フラグをTileInfoテクスチャに書き戻す.
+        const bool is_reprojection_succeeded = (reprojection_succeed > 0.5);
+        RWScreenSpaceProbeTileInfoTex[ss_probe_tile_id] = SspTileInfoSetReprojectionSucceeded(ss_probe_tile_info, is_reprojection_succeeded);
     }
 
     RWScreenSpaceProbeTex[global_pos] = float4(new_sky_visibility, prev_reprojected_value, ss_prev_radiance[gindex], reprojection_succeed);

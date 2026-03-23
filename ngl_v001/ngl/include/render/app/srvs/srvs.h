@@ -212,9 +212,9 @@ namespace ngl::render::app
 
         
         // ScreenSpaceProbe.
-        ComputeTextureSet ss_probe_tile_info_tex_[2] = {}; // 1/8解像度のProbeタイル用情報. x: depth, y: probe local pos(flat), zw: OctEncode WS normal.
+        ComputeTextureSet ss_probe_tile_info_tex_[2] = {}; //f16_rgba, 1/8解像度のProbeタイル用情報. x: depth, y: probe local pos(flat), zw: OctEncode WS normal.
         ComputeTextureSet ss_probe_tex_[2] = {};// 8x8 texel per probe.
-        ComputeTextureSet ss_probe_sh_tex_ = {};// 1/8解像度のL1 SH係数. rgba = l00, l1x, l1y, l1z.
+        ComputeTextureSet ss_probe_sh_tex_ = {}; //f16_rgba, 1/8解像度のL1 SH係数. rgba = l00, l1x, l1y, l1z.
 
     };
 

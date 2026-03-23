@@ -895,7 +895,7 @@ namespace ngl::render::app
                 pso_ss_probe_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_ss_probe_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_ss_probe_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].srv.Get());
+                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].uav.Get());
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_history_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_history_index].srv.Get());
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_history_srv.Get(), ss_probe_tex_[ss_probe_history_index].srv.Get());
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_uav.Get(), ss_probe_tex_[ss_probe_update_write_index].uav.Get());
@@ -906,6 +906,7 @@ namespace ngl::render::app
                 pso_ss_probe_update_->DispatchHelper(p_command_list, ss_probe_tex_[ss_probe_update_write_index].texture->GetWidth()/k_ss_probe_update_skip_tile_group_width, ss_probe_tex_[ss_probe_update_write_index].texture->GetHeight()/k_ss_probe_update_skip_tile_group_width, 1);
 
                 p_command_list->ResourceUavBarrier(ss_probe_tex_[ss_probe_update_write_index].texture.Get());
+                p_command_list->ResourceUavBarrier(ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].texture.Get());
             }
             if(is_ss_probe_spatial_filter_enable)
             {

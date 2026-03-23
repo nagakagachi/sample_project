@@ -89,6 +89,69 @@ bool isValidDepth(float d)
     return (0.0 < d && d < 1.0);
 }
 
+// ScreenSpaceProbeTileInfo.y のビット割り当て.
+// bit0-5: タイル内プローブ位置フラットインデックス(0-63)
+// bit6  : Reprojection成功フラグ(1=成功, 0=失敗)
+// bit7+ : 予約
+static const uint k_ss_probe_tile_info_probe_pos_mask = 0x3fu;
+static const uint k_ss_probe_tile_info_reprojection_succeeded_shift = 6u;
+static const uint k_ss_probe_tile_info_reprojection_succeeded_mask = (1u << k_ss_probe_tile_info_reprojection_succeeded_shift);
+
+uint SspTileInfoYToPackedBits(float tile_info_y)
+{
+    // R16Fテクスチャとして値を格納しているため、数値として最も近い整数へ戻す。
+    // asuint はIEEE754ビット列の再解釈になり、意図した packed 値にはならない。
+    return (uint)(tile_info_y + 0.5);
+}
+
+uint SspTileInfoEncodeProbePosFlatIndex(uint2 probe_pos_in_tile)
+{
+    return probe_pos_in_tile.x + probe_pos_in_tile.y * SCREEN_SPACE_PROBE_TILE_SIZE;
+}
+
+uint SspTileInfoDecodeProbePosFlatIndex(float tile_info_y)
+{
+    return SspTileInfoYToPackedBits(tile_info_y) & k_ss_probe_tile_info_probe_pos_mask;
+}
+
+int2 SspTileInfoDecodeProbePosInTile(float tile_info_y)
+{
+    const uint flat_index = SspTileInfoDecodeProbePosFlatIndex(tile_info_y);
+    return int2(flat_index % SCREEN_SPACE_PROBE_TILE_SIZE, flat_index / SCREEN_SPACE_PROBE_TILE_SIZE);
+}
+
+bool SspTileInfoIsReprojectionSucceeded(float tile_info_y)
+{
+    return 0u != (SspTileInfoYToPackedBits(tile_info_y) & k_ss_probe_tile_info_reprojection_succeeded_mask);
+}
+
+float SspTileInfoBuildY(uint probe_pos_flat_index, bool is_reprojection_succeeded)
+{
+    uint packed = probe_pos_flat_index & k_ss_probe_tile_info_probe_pos_mask;
+    if(is_reprojection_succeeded)
+    {
+        packed |= k_ss_probe_tile_info_reprojection_succeeded_mask;
+    }
+    return (float)packed;
+}
+
+float SspTileInfoBuildY(uint2 probe_pos_in_tile, bool is_reprojection_succeeded)
+{
+    return SspTileInfoBuildY(SspTileInfoEncodeProbePosFlatIndex(probe_pos_in_tile), is_reprojection_succeeded);
+}
+
+float4 SspTileInfoSetReprojectionSucceeded(float4 tile_info, bool is_reprojection_succeeded)
+{
+    const uint probe_pos_flat_index = SspTileInfoDecodeProbePosFlatIndex(tile_info.y);
+    tile_info.y = SspTileInfoBuildY(probe_pos_flat_index, is_reprojection_succeeded);
+    return tile_info;
+}
+
+float4 SspTileInfoBuild(float depth, uint2 probe_pos_in_tile, float2 approx_normal_oct, bool is_reprojection_succeeded)
+{
+    return float4(depth, SspTileInfoBuildY(probe_pos_in_tile, is_reprojection_succeeded), approx_normal_oct.x, approx_normal_oct.y);
+}
+
 // ------------------------------------------------------------------------------------------------------------------------
 
 float3 SspDecodeRayDirLocal(float2 oct_uv)

@@ -46,7 +46,8 @@ void main_cs(
     const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
     const float ss_probe_depth = ss_probe_tile_info.x;
     const float3 ss_probe_tile_normal_ws = OctDecode(ss_probe_tile_info.zw);
-    const int2 ss_probe_pos_in_tile = int2(int(ss_probe_tile_info.y) % SCREEN_SPACE_PROBE_TILE_SIZE, int(ss_probe_tile_info.y) / SCREEN_SPACE_PROBE_TILE_SIZE);
+    const int2 ss_probe_pos_in_tile = SspTileInfoDecodeProbePosInTile(ss_probe_tile_info.y);
+    const bool ss_probe_reprojection_succeeded = SspTileInfoIsReprojectionSucceeded(ss_probe_tile_info.y);
 
 
     if(6 >= cb_srvs.debug_view_mode)
@@ -223,5 +224,18 @@ void main_cs(
         const float4 ss_probe_sh = ScreenSpaceProbeSHTex.SampleLevel(SmpLinearClamp, screen_uv, 0);
         const float sh_sample = max(0.0, dot(ss_probe_sh, sh_basis));
         RWTexWork[dtid.xy] = sh_sample.xxxx;
+    }
+    else if(15 == cb_srvs.debug_view_mode)
+    {
+        // Screen Space Probe の Reprojection成功可視化.
+        if(!isValidDepth(ss_probe_depth))
+        {
+            RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
+        }
+        else
+        {
+            const float3 debug_color = ss_probe_reprojection_succeeded ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
+            RWTexWork[dtid.xy] = float4(debug_color, 1.0);
+        }
     }
 }

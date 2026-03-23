@@ -138,67 +138,6 @@ namespace ngl
         // Reverse平行投影.
         Mat44 CalcReverseOrthographicSymmetricMatrix(float width, float height, float near_z, float far_z, bool is_right_hand = k_defalut_right_hand_mode);
 
-        /* CalcViewDepthReconstructCoefFromProjectionMatrix で汎用処理化したので除去予定.
-
-                // for calc_view_z_from_ndc_z()
-                inline constexpr Vec4 CalcViewDepthReconstructCoefForReverseInfiniteFarPerspective(float near_z, bool is_right_hand = k_defalut_right_hand_mode)
-                {
-                        const float sign = (!is_right_hand) ? 1.0f : -1.0f;
-                        Vec4 coef(0.0, sign * near_z, 1.0f, 0.0);
-                        return coef;
-                }
-                // for calc_view_z_from_ndc_z()
-                inline constexpr Vec4 CalcViewDepthReconstructCoefForStandardPerspective(float near_z, float far_z, bool is_right_hand = k_defalut_right_hand_mode)
-                {
-                        const float sign = (!is_right_hand) ? 1.0f : -1.0f;
-                        Vec4 coef(0.0, sign * far_z * near_z, near_z - far_z, far_z);
-                        return coef;
-                }
-                // for calc_view_z_from_ndc_z()
-                inline constexpr Vec4 CalcViewDepthReconstructCoefForReversePerspective(float near_z, float far_z, bool is_right_hand = k_defalut_right_hand_mode)
-                {
-                        const float sign = (!is_right_hand) ? 1.0f : -1.0f;
-                        Vec4 coef(0.0, sign * far_z * near_z, far_z - near_z, near_z);
-                        return coef;
-                }
-        // for calc_view_z_from_ndc_z()
-        inline constexpr Vec4 CalcViewDepthReconstructCoefForStandardOrthographic(float near_z, float far_z, bool is_right_hand = k_defalut_right_hand_mode)
-        {
-            // view_z * z_sign * (far_z - near_z) + -near_z * (far_z - near_z) = ndc_z
-            // 上の式から view_z を求めると以下になる:
-            // view_z = (ndc_z + near_z * (far_z - near_z)) / (z_sign * (far_z - near_z))
-            //
-            // 4係数形式 view_z = (ndc_z * a + b) / (ndc_z * c + d) に変換すると:
-            // a = 1.0, b = near_z * (far_z - near_z), c = 0.0, d = z_sign * (far_z - near_z)
-
-            const float z_sign = (!is_right_hand) ? 1.0f : -1.0f;
-            const float far_near_diff = far_z - near_z;
-            Vec4 coef(1.0f, near_z * far_near_diff, 0.0f, z_sign * far_near_diff);
-            return coef;
-        }
-        // for calc_view_z_from_ndc_z()
-        inline constexpr Vec4 CalcViewDepthReconstructCoefForReverseOrthographic(float near_z, float far_z, bool is_right_hand = k_defalut_right_hand_mode)
-        {
-            // Reverse平行投影では range_term = 1.0f / (near_z - far_z) で符号が反転
-            // view_z * z_sign * (near_z - far_z) + -far_z * (near_z - far_z) = ndc_z
-            // 上の式から view_z を求めると以下になる:
-            // view_z = (ndc_z + far_z * (near_z - far_z)) / (z_sign * (near_z - far_z))
-            //
-            // 4係数形式 view_z = (ndc_z * a + b) / (ndc_z * c + d) に変換すると:
-            // a = 1.0, b = far_z * (near_z - far_z), c = 0.0, d = z_sign * (near_z - far_z)
-
-            const float z_sign = (!is_right_hand) ? 1.0f : -1.0f;
-            const float near_far_diff = near_z - far_z; // Reverseでは near_z - far_z
-            Vec4 coef(1.0f, far_z * near_far_diff, 0.0f, z_sign * near_far_diff);
-            return coef;
-        }
-        // for calc_view_z_from_ndc_z()
-        inline constexpr Vec4 CalcViewDepthReconstructCoefForCalcReverseOrthographicSymmetric(float near_z, float far_z, bool is_right_hand = k_defalut_right_hand_mode)
-        {
-            return CalcViewDepthReconstructCoefForReverseOrthographic(near_z, far_z, is_right_hand);
-        }
-        */
-
         // ベクトルの各成分を昇順で何番目の絶対値の大きさかを格納したVec3iを返す.
         // 例) 入力Vec3( -5.0f, 2.0f, 3.0f )ならば、絶対値の大きさ順は (2, 0, 1) なので、戻り値は Vec3i(2,0,1) となる.
         static constexpr Vec3i GetVec3ComponentOrderByMagnitude(const Vec3& v)
