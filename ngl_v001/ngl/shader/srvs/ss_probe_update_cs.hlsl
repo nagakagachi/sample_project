@@ -52,6 +52,10 @@ groupshared uint ss_ray_sample_accum[NGL_SSP_RAY_COUNT * 4];// accum_count, sky_
 groupshared uint ss_temporal_best_score;
 groupshared uint ss_temporal_best_prev_tile_packed;
 groupshared uint ss_temporal_candidate_prev_tile_packed[NGL_SSP_RAY_COUNT];
+groupshared uint ss_side_cache_best_score;
+groupshared uint ss_side_cache_best_tile_packed;
+groupshared uint ss_side_cache_candidate_tile_packed[NGL_SSP_RAY_COUNT];
+groupshared uint ss_side_cache_store_prev_same_tile;
 groupshared float ss_temporal_reprojected_value[NGL_SSP_RAY_COUNT];
 groupshared float ss_prev_radiance[NGL_SSP_RAY_COUNT];
 groupshared float ss_guiding_cdf[NGL_SSP_RAY_COUNT];
@@ -175,10 +179,14 @@ void main_cs(
         ss_guiding_cdf[gindex] = 0.0;
     }
     ss_temporal_candidate_prev_tile_packed[gindex] = 0xffffffff;
+    ss_side_cache_candidate_tile_packed[gindex] = 0xffffffff;
     if(0 == gindex)
     {
         ss_temporal_best_score = 0xffffffff;
         ss_temporal_best_prev_tile_packed = 0xffffffff;
+        ss_side_cache_best_score = 0xffffffff;
+        ss_side_cache_best_tile_packed = 0xffffffff;
+        ss_side_cache_store_prev_same_tile = 0;
         ss_guiding_total_weight = 0.0;
     }
     GroupMemoryBarrierWithGroupSync();
@@ -260,6 +268,75 @@ void main_cs(
             ss_temporal_reprojected_value[gindex] = prev_value;
         }
     }
+
+    // Side cache fallback candidate search.
+    if(0 != cb_srvs.ss_probe_side_cache_enable)
+    {
+        uint local_best_score = 0xffffffff;
+        uint local_best_tile_packed = 0xffffffff;
+
+        if(gindex < 9)
+        {
+            bool is_valid_prev_uv;
+            const float2 prev_uv = CalcPrevFrameUvFromWorldPos(ss_probe_pos_ws, is_valid_prev_uv);
+            if(is_valid_prev_uv)
+            {
+                const int2 full_res = int2(depth_size);
+                const int tile_size = SCREEN_SPACE_PROBE_TILE_SIZE;
+                const int2 probe_tile_count = max((full_res + tile_size - 1) / tile_size, int2(1, 1));
+                const float2 prev_pos_texel = prev_uv * float2(full_res);
+                const int2 prev_center_tile = clamp(int2(prev_pos_texel) / tile_size, int2(0, 0), probe_tile_count - 1);
+                const int2 candidate_offset = int2(int(gindex) % 3, int(gindex) / 3) - int2(1, 1);
+                const int2 candidate_tile_id = clamp(prev_center_tile + candidate_offset, int2(0, 0), probe_tile_count - 1);
+
+                const float4 side_cache_meta = ScreenSpaceProbeSideCacheMetaTex.Load(int3(candidate_tile_id, 0));
+                const float cached_frame_index = side_cache_meta.w;
+                const float cache_age = float(cb_srvs.frame_count) - cached_frame_index;
+                const bool is_cache_alive = (cached_frame_index >= 0.5)
+                                            && (cache_age >= 0.0)
+                                            && (cache_age <= float(cb_srvs.ss_probe_side_cache_max_life_frame));
+                if(is_cache_alive)
+                {
+                    const float3 cache_probe_pos_ws = side_cache_meta.xyz;
+                    const float3 probe_pos_diff_ws = cache_probe_pos_ws - ss_probe_pos_ws;
+                    const float plane_dist = abs(dot(probe_pos_diff_ws, ss_probe_approx_normal_ws));
+                    if(plane_dist < cb_srvs.ss_probe_side_cache_plane_threshold)
+                    {
+                        float probe_dist = length(probe_pos_diff_ws) * 100.0;
+                        const uint quantized_dist = min((uint)(probe_dist * 1024.0), 0x03ffffffu);
+                        local_best_score = (quantized_dist << 6) | (gindex & 0x3fu);
+                        local_best_tile_packed = (uint(candidate_tile_id.y) << 16) | uint(candidate_tile_id.x & 0xffff);
+                    }
+                }
+            }
+        }
+
+        ss_side_cache_candidate_tile_packed[gindex] = local_best_tile_packed;
+        if(0xffffffff != local_best_score)
+        {
+            InterlockedMin(ss_side_cache_best_score, local_best_score);
+        }
+        GroupMemoryBarrierWithGroupSync();
+
+        if(0 == gindex)
+        {
+            if(0xffffffff != ss_side_cache_best_score)
+            {
+                const uint winner_lane = ss_side_cache_best_score & 0x3fu;
+                ss_side_cache_best_tile_packed = ss_side_cache_candidate_tile_packed[winner_lane];
+            }
+        }
+        GroupMemoryBarrierWithGroupSync();
+
+        if((0xffffffff == ss_temporal_best_prev_tile_packed) && (0xffffffff != ss_side_cache_best_tile_packed))
+        {
+            const int2 best_cache_tile = int2(int(ss_side_cache_best_tile_packed & 0xffffu), int((ss_side_cache_best_tile_packed >> 16) & 0xffffu));
+            const int2 cache_global_pos = clamp(best_cache_tile * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
+            const float cache_value = ScreenSpaceProbeSideCacheTex.Load(int3(cache_global_pos, 0)).r;
+            ss_temporal_reprojected_value[gindex] = lerp(ss_temporal_reprojected_value[gindex], cache_value, cb_srvs.ss_probe_side_cache_blend_weight);
+        }
+    }
+
     // 担当セルのOctMapベクトルとProbe面法線の内積.
     const float2 cell_oct_uv = (float2(probe_atlas_local_pos) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
     const float3 cell_dir_ws = SspDecodeDirByNormal(cell_oct_uv, ss_probe_approx_normal_ws);
@@ -373,7 +450,9 @@ void main_cs(
 
     float new_sky_visibility = sky_visibility;
     float reprojection_succeed = 0.0;
-    if((0xffffffff != ss_temporal_best_prev_tile_packed) && (0 != cb_srvs.ss_probe_temporal_reprojection_enable))
+    const bool has_temporal_history = (0xffffffff != ss_temporal_best_prev_tile_packed);
+    const bool has_side_cache_history = (0 != cb_srvs.ss_probe_side_cache_enable) && (0xffffffff != ss_side_cache_best_tile_packed);
+    if((has_temporal_history || has_side_cache_history) && (0 != cb_srvs.ss_probe_temporal_reprojection_enable))
     {
         float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_reprojected_value);
         temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
@@ -385,12 +464,51 @@ void main_cs(
         reprojection_succeed = 1.0;
     }
 
+    if(0 == gindex)
+    {
+        const bool should_store_side_cache = (0 != cb_srvs.ss_probe_side_cache_enable)
+                                            && (0xffffffff == ss_temporal_best_prev_tile_packed)
+                                            && isValidDepth(ScreenSpaceProbeHistoryTileInfoTex.Load(int3(ss_probe_tile_id, 0)).x);
+        ss_side_cache_store_prev_same_tile = should_store_side_cache ? 1u : 0u;
+        if(should_store_side_cache)
+        {
+            const float4 prev_same_tile_info = ScreenSpaceProbeHistoryTileInfoTex.Load(int3(ss_probe_tile_id, 0));
+            const int2 prev_probe_seed = ss_probe_tile_pixel_start + SspTileInfoDecodeProbePosInTile(prev_same_tile_info.y);
+            const float2 prev_probe_uv = (float2(prev_probe_seed) + float2(0.5, 0.5)) * depth_size_inv;
+            const float prev_view_z = calc_view_z_from_ndc_z(prev_same_tile_info.x, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
+            const float3 prev_pos_vs = CalcViewSpacePosition(prev_probe_uv, prev_view_z, cb_ngl_sceneview.cb_prev_proj_mtx);
+            const float3 prev_pos_ws = mul(cb_ngl_sceneview.cb_prev_view_inv_mtx, float4(prev_pos_vs, 1.0));
+            RWScreenSpaceProbeSideCacheMetaTex[ss_probe_tile_id] = float4(prev_pos_ws, float(cb_srvs.frame_count));
+        }
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    if(0 != ss_side_cache_store_prev_same_tile)
+    {
+        const int2 side_cache_global_pos = clamp(ss_probe_tile_pixel_start + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
+        RWScreenSpaceProbeSideCacheTex[side_cache_global_pos] = ScreenSpaceProbeHistoryTex.Load(int3(side_cache_global_pos, 0));
+    }
+
     if(all(probe_atlas_local_pos == 0))
     {
         // タイル代表テクセルはリプロジェクションの成功/失敗フラグをTileInfoテクスチャに書き戻す.
         const bool is_reprojection_succeeded = (reprojection_succeed > 0.5);
         RWScreenSpaceProbeTileInfoTex[ss_probe_tile_id] = SspTileInfoSetReprojectionSucceeded(ss_probe_tile_info, is_reprojection_succeeded);
+
+        if((0 != cb_srvs.ss_probe_side_cache_enable) && (0xffffffff != ss_side_cache_best_tile_packed))
+        {
+            const int2 side_cache_hit_tile = int2(int(ss_side_cache_best_tile_packed & 0xffffu), int((ss_side_cache_best_tile_packed >> 16) & 0xffffu));
+            RWScreenSpaceProbeSideCacheMetaTex[side_cache_hit_tile] = float4(ss_probe_pos_ws, float(cb_srvs.frame_count));
+        }
     }
 
-    RWScreenSpaceProbeTex[global_pos] = float4(new_sky_visibility, prev_reprojected_value, ss_prev_radiance[gindex], reprojection_succeed);
+    const float4 out_probe_value = float4(new_sky_visibility, prev_reprojected_value, ss_prev_radiance[gindex], reprojection_succeed);
+    RWScreenSpaceProbeTex[global_pos] = out_probe_value;
+
+    if((0 != cb_srvs.ss_probe_side_cache_enable) && (0xffffffff != ss_side_cache_best_tile_packed))
+    {
+        const int2 side_cache_hit_tile = int2(int(ss_side_cache_best_tile_packed & 0xffffu), int((ss_side_cache_best_tile_packed >> 16) & 0xffffu));
+        const int2 side_cache_hit_pos = clamp(side_cache_hit_tile * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
+        RWScreenSpaceProbeSideCacheTex[side_cache_hit_pos] = out_probe_value;
+    }
 }

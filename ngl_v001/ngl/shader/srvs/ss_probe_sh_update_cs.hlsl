@@ -50,11 +50,17 @@ void main_cs(
 
             const float2 oct_uv = (float2(float(ox), float(oy)) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
             const float3 dir_ws = SspDecodeDirByNormal(oct_uv, basis_t_ws, basis_b_ws, probe_normal_ws);
-            // 裏面の未更新の値がSHに影響を与えないようにprobe_normal_wsと逆向きの方向を向いているサンプルは可視とみなさない.
-            if(dot(dir_ws, probe_normal_ws) < 0.0)
-                continue;
-
-            sh_coeff += visibility * EvaluateL1ShBasis(dir_ws);
+            
+            #if 1
+                // SideCacheありの場合は逆向きを棄却しないこちらの方が品質向上する.
+                sh_coeff += visibility * EvaluateL1ShBasis(dir_ws);
+            #else
+                // 法線が振動するthin geometry周辺ではこの棄却によって点滅が助長されてしまう.
+                // 裏面の未更新の値がSHに影響を与えないようにprobe_normal_wsと逆向きの方向を向いているサンプルは可視とみなさない.
+                if(dot(dir_ws, probe_normal_ws) < 0.0)
+                    continue;
+                sh_coeff += visibility * EvaluateL1ShBasis(dir_ws);
+            #endif
         }
     }
 

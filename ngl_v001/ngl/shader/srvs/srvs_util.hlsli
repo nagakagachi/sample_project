@@ -76,6 +76,13 @@ RWTexture2D<float4>    RWScreenSpaceProbeTileInfoTex;
 Texture2D<float4>      ScreenSpaceProbeSHTex;
 RWTexture2D<float4>    RWScreenSpaceProbeSHTex;
 
+// Persistent side cache for ScreenSpaceProbe.
+Texture2D<float4>      ScreenSpaceProbeSideCacheTex;
+RWTexture2D<float4>    RWScreenSpaceProbeSideCacheTex;
+// xyz: cached probe world position, w: last update frame index.
+Texture2D<float4>      ScreenSpaceProbeSideCacheMetaTex;
+RWTexture2D<float4>    RWScreenSpaceProbeSideCacheMetaTex;
+
 
 // srvsのメインパラメータ.
 ConstantBuffer<SrvsParam> cb_srvs;

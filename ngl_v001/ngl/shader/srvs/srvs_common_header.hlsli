@@ -179,7 +179,13 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int dummy3;
         int ss_probe_temporal_reprojection_enable;// Temporal再投影有効化フラグ.
         int ss_probe_ray_guiding_enable;// RayGuiding有効化フラグ.
-        int2 ss_probe_temporal_dummy_padding;// 16byteアライメント維持用.
+        int ss_probe_side_cache_enable;// SideCache有効化フラグ.
+        int ss_probe_side_cache_max_life_frame;// SideCache参照を許可する最大経過フレーム.
+
+        float ss_probe_side_cache_plane_threshold;// SideCache一致判定の平面距離閾値.
+        float ss_probe_side_cache_normal_threshold_cos;// SideCache一致判定の法線内積閾値.
+        float ss_probe_side_cache_blend_weight;// SideCache値の再構成寄与率.
+        float ss_probe_side_cache_dummy0;
         
         int ss_probe_temporal_update_group_size;// 1Fに一つだけ更新するProbeグループのサイズ. 1で毎フレーム更新, 2で2x2のProbeグループのうち1Fで一つだけ更新.
         float ss_probe_ray_start_offset_scale;// SSプローブ更新時のレイ開始オフセットスケール. 単位はBbvセル幅.
