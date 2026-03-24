@@ -69,6 +69,7 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_uav = "RWScreenSpaceProbeSideCacheTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_meta_srv = "ScreenSpaceProbeSideCacheMetaTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_meta_uav = "RWScreenSpaceProbeSideCacheMetaTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_lock_uav = "RWScreenSpaceProbeSideCacheLockTex";
 
     void ToroidalGridUpdater::Initialize(const math::Vec3u& grid_resolution, float bbv_cell_size)
     {
@@ -464,6 +465,22 @@ namespace ngl::render::app
 
             ss_probe_side_cache_meta_tex_.Initialize(p_device, desc, "Srvs_SsProbeSideCacheMetaTex");
         }
+        // Screen Space Probe Side Cache Tile Lock テクスチャ.
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R32_UINT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            ss_probe_side_cache_lock_tex_.Initialize(p_device, desc, "Srvs_SsProbeSideCacheLockTex");
+        }
 
         return true;
     }
@@ -647,6 +664,7 @@ namespace ngl::render::app
 
                     p_command_list->ResourceBarrier(ss_probe_side_cache_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                     p_command_list->ResourceBarrier(ss_probe_side_cache_meta_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                    p_command_list->ResourceBarrier(ss_probe_side_cache_lock_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 }
                 p_command_list->ResourceBarrier(ss_probe_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
             }
@@ -960,6 +978,7 @@ namespace ngl::render::app
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_uav.Get(), ss_probe_side_cache_tex_.uav.Get());
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_meta_srv.Get(), ss_probe_side_cache_meta_tex_.srv.Get());
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_meta_uav.Get(), ss_probe_side_cache_meta_tex_.uav.Get());
+                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_lock_uav.Get(), ss_probe_side_cache_lock_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_ss_probe_update_.Get());
                 p_command_list->SetDescriptorSet(pso_ss_probe_update_.Get(), &desc_set);
@@ -970,6 +989,7 @@ namespace ngl::render::app
                 p_command_list->ResourceUavBarrier(ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].texture.Get());
                 p_command_list->ResourceUavBarrier(ss_probe_side_cache_tex_.texture.Get());
                 p_command_list->ResourceUavBarrier(ss_probe_side_cache_meta_tex_.texture.Get());
+                p_command_list->ResourceUavBarrier(ss_probe_side_cache_lock_tex_.texture.Get());
             }
             if(is_ss_probe_spatial_filter_enable)
             {

@@ -218,6 +218,7 @@ namespace ngl::render::app
         // Persistent Side Cache (minimal): evicted probe octmap + world-space meta per probe tile.
         ComputeTextureSet ss_probe_side_cache_tex_ = {}; // 8x8 texel per cached probe.
         ComputeTextureSet ss_probe_side_cache_meta_tex_ = {}; // 1/8 resolution, xyz: world pos, w: last update frame.
+        ComputeTextureSet ss_probe_side_cache_lock_tex_ = {}; // 1/8 resolution, uint lock tag per tile for frame-local CAS.
 
     };
 

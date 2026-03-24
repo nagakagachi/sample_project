@@ -82,6 +82,7 @@ RWTexture2D<float4>    RWScreenSpaceProbeSideCacheTex;
 // xyz: cached probe world position, w: last update frame index.
 Texture2D<float4>      ScreenSpaceProbeSideCacheMetaTex;
 RWTexture2D<float4>    RWScreenSpaceProbeSideCacheMetaTex;
+RWTexture2D<uint>      RWScreenSpaceProbeSideCacheLockTex;
 
 
 // srvsのメインパラメータ.
