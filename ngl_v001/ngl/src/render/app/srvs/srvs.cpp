@@ -1186,6 +1186,8 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_srv.Get(), ss_probe_tex_[ss_probe_latest_filtered_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_curr_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_sh_srv.Get(), ss_probe_sh_tex_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_srv.Get(), ss_probe_side_cache_tex_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_meta_srv.Get(), ss_probe_side_cache_meta_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
             
             pso_bbv_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());

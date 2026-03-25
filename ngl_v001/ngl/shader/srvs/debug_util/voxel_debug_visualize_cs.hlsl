@@ -238,4 +238,41 @@ void main_cs(
             RWTexWork[dtid.xy] = float4(debug_color, 1.0);
         }
     }
+    else if(16 == cb_srvs.debug_view_mode)
+    {
+        // Screen Space Probe SideCache の生存状態可視化.
+        if(0 == cb_srvs.ss_probe_side_cache_enable)
+        {
+            // SideCache無効.
+            RWTexWork[dtid.xy] = float4(0.15, 0.15, 0.15, 1.0);
+        }
+        else
+        {
+            const float4 side_cache_meta = ScreenSpaceProbeSideCacheMetaTex.Load(int3(ss_probe_tile_id, 0));
+            const float cached_frame_index = side_cache_meta.w;
+
+            if(cached_frame_index < 0.5)
+            {
+                // 未初期化キャッシュ.
+                RWTexWork[dtid.xy] = float4(0.0, 0.25, 1.0, 1.0);
+            }
+            else
+            {
+                const float cache_age = max(0.0, float(cb_srvs.frame_count) - cached_frame_index);
+                const float max_life = max(1.0, float(cb_srvs.ss_probe_side_cache_max_life_frame));
+                if(cache_age > max_life)
+                {
+                    // 期限切れキャッシュ.
+                    RWTexWork[dtid.xy] = float4(0.8, 0.1, 0.9, 1.0);
+                }
+                else
+                {
+                    // 生存キャッシュ: 新鮮=緑, 寿命末期=赤.
+                    const float life_rate = saturate(cache_age / max_life);
+                    const float3 debug_color = lerp(float3(0.0, 1.0, 0.0), float3(1.0, 0.0, 0.0), life_rate);
+                    RWTexWork[dtid.xy] = float4(debug_color, 1.0);
+                }
+            }
+        }
+    }
 }

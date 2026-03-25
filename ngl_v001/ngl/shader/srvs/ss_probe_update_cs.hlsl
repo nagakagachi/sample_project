@@ -94,6 +94,7 @@ float2 CalcPrevFrameUvFromWorldPos(float3 pos_ws, out bool is_valid)
 
 uint PackTileId(int2 tile_id)
 {
+    // 3x3探索で扱うTile座標を1つのuintへ圧縮.
     return (uint(tile_id.y) << 16) | uint(tile_id.x & 0xffff);
 }
 
@@ -104,6 +105,7 @@ int2 UnpackTileId(uint packed)
 
 uint CalcFrameLockTag(uint frame_count)
 {
+    // フレーム毎に変わるタグ値. lock clear無しでも同フレーム競合だけを回避する用途.
     return frame_count * 747796405u + 2891336453u;
 }
 
@@ -294,6 +296,7 @@ void main_cs(
     }
 
     // Side cache fallback candidate search.
+    // Temporalが取れないケース向けに, 近傍3x3から再利用候補を選ぶ.
     if(0 != cb_srvs.ss_probe_side_cache_enable)
     {
         uint local_best_score = 0xffffffff;
@@ -321,6 +324,7 @@ void main_cs(
                                             && (cache_age <= float(cb_srvs.ss_probe_side_cache_max_life_frame));
                 if(is_cache_alive)
                 {
+                    // SideCacheはmeta.xyzを基準に幾何近傍性を評価して候補化.
                     const float3 cache_probe_pos_ws = side_cache_meta.xyz;
                     const float3 probe_pos_diff_ws = cache_probe_pos_ws - ss_probe_pos_ws;
                     const float plane_dist = abs(dot(probe_pos_diff_ws, ss_probe_approx_normal_ws));
@@ -354,6 +358,7 @@ void main_cs(
 
         if((0xffffffff == ss_temporal_best_prev_tile_packed) && (0xffffffff != ss_side_cache_best_tile_packed))
         {
+            // Temporal失敗時のみSideCache値を再投影値へ注入.
             const int2 best_cache_tile = int2(int(ss_side_cache_best_tile_packed & 0xffffu), int((ss_side_cache_best_tile_packed >> 16) & 0xffffu));
             const int2 cache_global_pos = clamp(best_cache_tile * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
             const float cache_value = ScreenSpaceProbeSideCacheTex.Load(int3(cache_global_pos, 0)).r;
@@ -491,6 +496,7 @@ void main_cs(
 
     if(0 == gindex)
     {
+        // Temporal失敗タイルを次フレーム救済するためSideCacheへ保存候補化.
         const bool should_store_side_cache = (0 != cb_srvs.ss_probe_side_cache_enable)
                                             && (0xffffffff == ss_temporal_best_prev_tile_packed);
         ss_side_cache_store_enable = should_store_side_cache ? 1u : 0u;
@@ -515,6 +521,7 @@ void main_cs(
             const uint start_index = seed % 9u;
             const uint step = step_table[(seed >> 8) % 6u];
 
+            // 3x3内を疑似ランダム順に巡回し, CASで取れたTileにのみ保存する.
             [unroll]
             for(uint i = 0u; i < 9u; ++i)
             {
@@ -543,6 +550,7 @@ void main_cs(
 
     if((0 != ss_side_cache_store_enable) && (0 != ss_side_cache_store_locked) && (0xffffffff != ss_side_cache_store_tile_packed))
     {
+        // lock獲得済みTileへ8x8出力を転写してPersistent cache化.
         const int2 side_cache_store_tile = UnpackTileId(ss_side_cache_store_tile_packed);
         const int2 side_cache_global_pos = clamp(side_cache_store_tile * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
         RWScreenSpaceProbeSideCacheTex[side_cache_global_pos] = out_probe_value;
@@ -556,6 +564,7 @@ void main_cs(
 
         if((0 != cb_srvs.ss_probe_side_cache_enable) && (0xffffffff != ss_side_cache_best_tile_packed))
         {
+            // HitしたSideCacheのmetaを現フレームで更新して寿命を延命(MRU相当).
             const int2 side_cache_hit_tile = int2(int(ss_side_cache_best_tile_packed & 0xffffu), int((ss_side_cache_best_tile_packed >> 16) & 0xffffu));
             RWScreenSpaceProbeSideCacheMetaTex[side_cache_hit_tile] = float4(ss_probe_pos_ws, float(cb_srvs.frame_count));
         }
@@ -565,6 +574,7 @@ void main_cs(
 
     if((0 != cb_srvs.ss_probe_side_cache_enable) && (0xffffffff != ss_side_cache_best_tile_packed))
     {
+        // SideCacheで再利用したTileは最新の出力で上書きし, 次フレームの再利用品質を安定化.
         const int2 side_cache_hit_tile = int2(int(ss_side_cache_best_tile_packed & 0xffffu), int((ss_side_cache_best_tile_packed >> 16) & 0xffffu));
         const int2 side_cache_hit_pos = clamp(side_cache_hit_tile * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
         RWScreenSpaceProbeSideCacheTex[side_cache_hit_pos] = out_probe_value;
