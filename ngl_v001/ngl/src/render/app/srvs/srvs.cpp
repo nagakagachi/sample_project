@@ -33,13 +33,10 @@ namespace ngl::render::app
     static const float k_ss_probe_ray_start_offset_scale = sqrt(3.0f);
     static const float k_ss_probe_ray_normal_offset_scale = 0.2f;
     static const float k_ss_probe_temporal_depth_threshold = 0.02f;
-    static const float k_ss_probe_temporal_normal_threshold_cos = 0.85f;
+    
     static const float k_ss_probe_temporal_min_hysteresis = 0.85f;
     static const float k_ss_probe_temporal_max_hysteresis = 0.98f;
     static const int k_ss_probe_side_cache_max_life_frame = 24;
-    static const float k_ss_probe_side_cache_plane_threshold = 2.0f;
-    static const float k_ss_probe_side_cache_normal_threshold_cos = 0.7f;
-    static const float k_ss_probe_side_cache_blend_weight = 1.0f;
 
 
     // デバッグ.
@@ -582,17 +579,12 @@ namespace ngl::render::app
             p->ss_probe_temporal_update_group_size = k_ss_probe_update_skip_tile_group_width;
             p->ss_probe_ray_start_offset_scale = k_ss_probe_ray_start_offset_scale;
             p->ss_probe_ray_normal_offset_scale = k_ss_probe_ray_normal_offset_scale;
-            p->ss_probe_temporal_depth_threshold = k_ss_probe_temporal_depth_threshold;
-            p->ss_probe_temporal_normal_threshold_cos = k_ss_probe_temporal_normal_threshold_cos;
             p->ss_probe_temporal_min_hysteresis = k_ss_probe_temporal_min_hysteresis;
             p->ss_probe_temporal_max_hysteresis = k_ss_probe_temporal_max_hysteresis;
             p->ss_probe_temporal_reprojection_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_;
             p->ss_probe_ray_guiding_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_;
             p->ss_probe_side_cache_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_enable_;
             p->ss_probe_side_cache_max_life_frame = k_ss_probe_side_cache_max_life_frame;
-            p->ss_probe_side_cache_plane_threshold = k_ss_probe_side_cache_plane_threshold;
-            p->ss_probe_side_cache_normal_threshold_cos = k_ss_probe_side_cache_normal_threshold_cos;
-            p->ss_probe_side_cache_blend_weight = k_ss_probe_side_cache_blend_weight;
 
             p->main_light_dir_ws = main_view_info.main_light_dir_ws;
 

@@ -92,11 +92,16 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     #define SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT (SCREEN_SPACE_PROBE_TILE_SIZE * SCREEN_SPACE_PROBE_TILE_SIZE)
 
 
-    // GI-1.0
-    //#define SCREEN_SPACE_PROBE_REUSE_ANGLE_THRESHOLD cos(2e-2 * 3.141592)
-    // 緩和してみる. 下げると法線の差異があっても採択. 0.8->0.2 くらいまで下げるとノイズが減るがのっぺりする.
-    #define SCREEN_SPACE_PROBE_REUSE_ANGLE_THRESHOLD 0.2
-    #define SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE 8.0
+    // Spatial Filterの棄却パラメータ.
+    #define SCREEN_SPACE_PROBE_TEMPORAL_FILTER_NORMAL_COS_THRESHOLD 0.2
+    #define SCREEN_SPACE_PROBE_TEMPORAL_FILTER_PLANE_DIST_THRESHOLD 0.25
+
+    //#define SCREEN_SPACE_PROBE_SPATIAL_FILTER_NORMAL_COS_THRESHOLD cos(2e-2 * 3.141592) // GI-1.0
+    #define SCREEN_SPACE_PROBE_SPATIAL_FILTER_NORMAL_COS_THRESHOLD 0.2
+    #define SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE 100.0
+
+    // SideCacheの棄却パラメータ.
+    #define SCREEN_SPACE_PROBE_SIDE_CACHE_PLANE_THRESHOLD 0.25
 
 
     // シェーダとCppで一致させる.
@@ -173,25 +178,20 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int dummy1;
         int dummy2;
 
-        float ss_probe_temporal_normal_threshold_cos;// Temporal再利用の法線内積閾値.
         float ss_probe_temporal_min_hysteresis;// Temporal再利用重みの最小値.
         float ss_probe_temporal_max_hysteresis;// Temporal再利用重みの最大値.
-        int dummy3;
         int ss_probe_temporal_reprojection_enable;// Temporal再投影有効化フラグ.
         int ss_probe_ray_guiding_enable;// RayGuiding有効化フラグ.
+
         int ss_probe_side_cache_enable;// SideCache有効化フラグ.
         int ss_probe_side_cache_max_life_frame;// SideCache参照を許可する最大経過フレーム.
-
-        float ss_probe_side_cache_plane_threshold;// SideCache一致判定の平面距離閾値.
-        float ss_probe_side_cache_normal_threshold_cos;// SideCache一致判定の法線内積閾値.
-        float ss_probe_side_cache_blend_weight;// SideCache値の再構成寄与率.
-        float ss_probe_side_cache_dummy0;
+        int dummy3;
+        int dummy4;
         
         int ss_probe_temporal_update_group_size;// 1Fに一つだけ更新するProbeグループのサイズ. 1で毎フレーム更新, 2で2x2のProbeグループのうち1Fで一つだけ更新.
         float ss_probe_ray_start_offset_scale;// SSプローブ更新時のレイ開始オフセットスケール. 単位はBbvセル幅.
         float ss_probe_ray_normal_offset_scale;// SSプローブ更新時のレイ始点法線オフセットスケール. 単位はBbvセル幅.
-        float ss_probe_temporal_depth_threshold;// Temporal再利用の深度差閾値.
-
+        int dummy3_2;
 
         SrvsToroidalGridParam wcp;
         int3 wcp_indirect_cs_thread_group_size;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
@@ -199,7 +199,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
         int2 tex_main_view_depth_size;// MainViewのDepthBuffer解像度.
         uint frame_count;
-        int dummy4;
+        int dummy4_2;
 
         float3 main_light_dir_ws;
 

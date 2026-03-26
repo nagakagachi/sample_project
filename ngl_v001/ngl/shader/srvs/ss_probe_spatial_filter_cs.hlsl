@@ -89,7 +89,7 @@ void main_cs(
         const float3 neighbor_normal = OctDecode(neighbor_tile_info.zw);
         const float normal_dot = dot(center_normal, neighbor_normal);
         // 法線棄却.
-        if (normal_dot < SCREEN_SPACE_PROBE_REUSE_ANGLE_THRESHOLD)
+        if (normal_dot < SCREEN_SPACE_PROBE_SPATIAL_FILTER_NORMAL_COS_THRESHOLD)
         {
             continue;
         }
