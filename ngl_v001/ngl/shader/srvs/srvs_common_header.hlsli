@@ -94,8 +94,8 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
     // GI-1.0
     //#define SCREEN_SPACE_PROBE_REUSE_ANGLE_THRESHOLD cos(2e-2 * 3.141592)
-    // より緩和. .
-    #define SCREEN_SPACE_PROBE_REUSE_ANGLE_THRESHOLD 0.8
+    // 緩和してみる. 下げると法線の差異があっても採択. 0.8->0.2 くらいまで下げるとノイズが減るがのっぺりする.
+    #define SCREEN_SPACE_PROBE_REUSE_ANGLE_THRESHOLD 0.2
     #define SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE 8.0
 
 
