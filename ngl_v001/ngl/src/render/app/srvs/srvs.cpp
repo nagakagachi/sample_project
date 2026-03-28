@@ -6,6 +6,7 @@
 #include "render/app/srvs/srvs.h"
 
 #include <cmath>
+#include <cstring>
 #include <string>
 
 #include "gfx/command_helper.h"
@@ -30,13 +31,6 @@ namespace ngl::render::app
     
     // 時間分散するScreenProbeグループのサイズ. 幅がこのサイズのProbeグループ毎に1Fに一つ更新をする. GI-1.0などは2を指定して 4フレームで2x2のグループが更新される.
     static const int k_ss_probe_update_skip_tile_group_width = 1;
-    static const float k_ss_probe_ray_start_offset_scale = sqrt(3.0f);
-    static const float k_ss_probe_ray_normal_offset_scale = 0.2f;
-    static const float k_ss_probe_temporal_depth_threshold = 0.02f;
-    
-    static const float k_ss_probe_temporal_min_hysteresis = 0.85f;
-    static const float k_ss_probe_temporal_max_hysteresis = 0.98f;
-    static const int k_ss_probe_side_cache_max_life_frame = 24;
 
 
     // デバッグ.
@@ -49,12 +43,12 @@ namespace ngl::render::app
     int ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_ = 1;
     int ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_ = 1;
     int ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_enable_ = 1;
-    float ScreenReconstructedVoxelStructure::dbg_ss_probe_preupdate_relocation_probability_ = static_cast<float>(SCREEN_SPACE_PROBE_PREUPDATE_RELOCATION_PROBABILITY);
-    float ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_normal_cos_threshold_ = static_cast<float>(SCREEN_SPACE_PROBE_TEMPORAL_FILTER_NORMAL_COS_THRESHOLD);
-    float ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_plane_dist_threshold_ = static_cast<float>(SCREEN_SPACE_PROBE_TEMPORAL_FILTER_PLANE_DIST_THRESHOLD);
-    float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_ = static_cast<float>(SCREEN_SPACE_PROBE_SPATIAL_FILTER_NORMAL_COS_THRESHOLD);
-    float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_ = static_cast<float>(SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE);
-    float ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_ = static_cast<float>(SCREEN_SPACE_PROBE_SIDE_CACHE_PLANE_THRESHOLD);
+    float ScreenReconstructedVoxelStructure::dbg_ss_probe_preupdate_relocation_probability_ = k_default_srvs_param.ss_probe_preupdate_relocation_probability;
+    float ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_normal_cos_threshold_ = k_default_srvs_param.ss_probe_temporal_filter_normal_cos_threshold;
+    float ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_plane_dist_threshold_ = k_default_srvs_param.ss_probe_temporal_filter_plane_dist_threshold;
+    float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_ = k_default_srvs_param.ss_probe_spatial_filter_normal_cos_threshold;
+    float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_ = k_default_srvs_param.ss_probe_spatial_filter_depth_exp_scale;
+    float ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_ = k_default_srvs_param.ss_probe_side_cache_plane_dist_threshold;
     
     using SrvsShaderBindName = ngl::text::HashText<128>;
     constexpr SrvsShaderBindName k_shader_bind_name_wcp_atlas_srv = "WcpProbeAtlasTex";
@@ -537,76 +531,75 @@ namespace ngl::render::app
 
         cbh_dispatch_ = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(SrvsParam));
         {
-            auto* p = cbh_dispatch_->buffer.MapAs<SrvsParam>();
+            // メンバデフォルト値で初期化し、ランタイム可変値のみ上書き.
+            SrvsParam param{};
 
             //Bbv
             {
-                p->bbv.grid_resolution = bbv_grid_updater_.Get().resolution.Cast<int>();
-                p->bbv.grid_min_pos     = bbv_grid_updater_.Get().min_pos;
-                p->bbv.grid_min_voxel_coord = math::Vec3::Floor(bbv_grid_updater_.Get().min_pos * (1.0f / bbv_grid_updater_.Get().cell_size)).Cast<int>();
+                param.bbv.grid_resolution = bbv_grid_updater_.Get().resolution.Cast<int>();
+                param.bbv.grid_min_pos     = bbv_grid_updater_.Get().min_pos;
+                param.bbv.grid_min_voxel_coord = math::Vec3::Floor(bbv_grid_updater_.Get().min_pos * (1.0f / bbv_grid_updater_.Get().cell_size)).Cast<int>();
 
-                p->bbv.grid_toroidal_offset =  bbv_grid_updater_.Get().toroidal_offset;
-                p->bbv.grid_toroidal_offset_prev =  bbv_grid_updater_.Get().toroidal_offset_prev;
+                param.bbv.grid_toroidal_offset =  bbv_grid_updater_.Get().toroidal_offset;
+                param.bbv.grid_toroidal_offset_prev =  bbv_grid_updater_.Get().toroidal_offset_prev;
 
-                p->bbv.grid_move_cell_delta = bbv_grid_updater_.Get().min_pos_delta_cell;
+                param.bbv.grid_move_cell_delta = bbv_grid_updater_.Get().min_pos_delta_cell;
 
-                p->bbv.flatten_2d_width = bbv_grid_updater_.Get().flatten_2d_width;
+                param.bbv.flatten_2d_width = bbv_grid_updater_.Get().flatten_2d_width;
 
-                p->bbv.cell_size       = bbv_grid_updater_.Get().cell_size;
-                p->bbv.cell_size_inv    = 1.0f / bbv_grid_updater_.Get().cell_size;
+                param.bbv.cell_size       = bbv_grid_updater_.Get().cell_size;
+                param.bbv.cell_size_inv    = 1.0f / bbv_grid_updater_.Get().cell_size;
 
-                p->bbv_indirect_cs_thread_group_size = math::Vec3i(pso_bbv_visible_surface_element_update_->GetThreadGroupSizeX(), pso_bbv_visible_surface_element_update_->GetThreadGroupSizeY(), pso_bbv_visible_surface_element_update_->GetThreadGroupSizeZ());
-                p->bbv_visible_voxel_buffer_size = bbv_fine_update_voxel_count_max_;
-                p->bbv_hollow_voxel_buffer_size = bbv_hollow_voxel_list_count_max_;
+                param.bbv_indirect_cs_thread_group_size = math::Vec3i(pso_bbv_visible_surface_element_update_->GetThreadGroupSizeX(), pso_bbv_visible_surface_element_update_->GetThreadGroupSizeY(), pso_bbv_visible_surface_element_update_->GetThreadGroupSizeZ());
+                param.bbv_visible_voxel_buffer_size = bbv_fine_update_voxel_count_max_;
+                param.bbv_hollow_voxel_buffer_size = bbv_hollow_voxel_list_count_max_;
             }
             // Wcp
             {
-                p->wcp.grid_resolution = wcp_grid_updater_.Get().resolution.Cast<int>();
-                p->wcp.grid_min_pos     = wcp_grid_updater_.Get().min_pos;
-                p->wcp.grid_min_voxel_coord = math::Vec3::Floor(wcp_grid_updater_.Get().min_pos * (1.0f / wcp_grid_updater_.Get().cell_size)).Cast<int>();
+                param.wcp.grid_resolution = wcp_grid_updater_.Get().resolution.Cast<int>();
+                param.wcp.grid_min_pos     = wcp_grid_updater_.Get().min_pos;
+                param.wcp.grid_min_voxel_coord = math::Vec3::Floor(wcp_grid_updater_.Get().min_pos * (1.0f / wcp_grid_updater_.Get().cell_size)).Cast<int>();
 
-                p->wcp.grid_toroidal_offset =  wcp_grid_updater_.Get().toroidal_offset;
-                p->wcp.grid_toroidal_offset_prev =  wcp_grid_updater_.Get().toroidal_offset_prev;
+                param.wcp.grid_toroidal_offset =  wcp_grid_updater_.Get().toroidal_offset;
+                param.wcp.grid_toroidal_offset_prev =  wcp_grid_updater_.Get().toroidal_offset_prev;
 
-                p->wcp.grid_move_cell_delta = wcp_grid_updater_.Get().min_pos_delta_cell;
+                param.wcp.grid_move_cell_delta = wcp_grid_updater_.Get().min_pos_delta_cell;
 
-                p->wcp.flatten_2d_width = wcp_grid_updater_.Get().flatten_2d_width;
+                param.wcp.flatten_2d_width = wcp_grid_updater_.Get().flatten_2d_width;
 
-                p->wcp.cell_size       = wcp_grid_updater_.Get().cell_size;
-                p->wcp.cell_size_inv    = 1.0f / wcp_grid_updater_.Get().cell_size;
+                param.wcp.cell_size       = wcp_grid_updater_.Get().cell_size;
+                param.wcp.cell_size_inv    = 1.0f / wcp_grid_updater_.Get().cell_size;
 
-                p->wcp_indirect_cs_thread_group_size = math::Vec3i(pso_wcp_visible_surface_element_update_->GetThreadGroupSizeX(), pso_wcp_visible_surface_element_update_->GetThreadGroupSizeY(), pso_wcp_visible_surface_element_update_->GetThreadGroupSizeZ());
-                p->wcp_visible_voxel_buffer_size = wcp_visible_surface_buffer_size_;
+                param.wcp_indirect_cs_thread_group_size = math::Vec3i(pso_wcp_visible_surface_element_update_->GetThreadGroupSizeX(), pso_wcp_visible_surface_element_update_->GetThreadGroupSizeY(), pso_wcp_visible_surface_element_update_->GetThreadGroupSizeZ());
+                param.wcp_visible_voxel_buffer_size = wcp_visible_surface_buffer_size_;
             }
 
-            p->tex_main_view_depth_size = hw_depth_size;
-            p->frame_count = frame_count_;
+            param.tex_main_view_depth_size = hw_depth_size;
+            param.frame_count = frame_count_;
 
-            p->ss_probe_temporal_update_group_size = k_ss_probe_update_skip_tile_group_width;
-            p->ss_probe_ray_start_offset_scale = k_ss_probe_ray_start_offset_scale;
-            p->ss_probe_ray_normal_offset_scale = k_ss_probe_ray_normal_offset_scale;
-            p->ss_probe_spatial_filter_normal_cos_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_;
-            p->ss_probe_spatial_filter_depth_exp_scale = ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_;
-            p->ss_probe_temporal_min_hysteresis = k_ss_probe_temporal_min_hysteresis;
-            p->ss_probe_temporal_max_hysteresis = k_ss_probe_temporal_max_hysteresis;
-            p->ss_probe_temporal_reprojection_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_;
-            p->ss_probe_ray_guiding_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_;
-            p->ss_probe_side_cache_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_enable_;
-            p->ss_probe_side_cache_max_life_frame = k_ss_probe_side_cache_max_life_frame;
-            p->ss_probe_preupdate_relocation_probability = ScreenReconstructedVoxelStructure::dbg_ss_probe_preupdate_relocation_probability_;
-            p->ss_probe_temporal_filter_normal_cos_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_normal_cos_threshold_;
-            p->ss_probe_temporal_filter_plane_dist_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_plane_dist_threshold_;
-            p->ss_probe_side_cache_plane_dist_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_;
+            // dbg_系: ランタイム変更可能なパラメータ.
+            param.ss_probe_spatial_filter_normal_cos_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_;
+            param.ss_probe_spatial_filter_depth_exp_scale = ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_;
+            param.ss_probe_temporal_reprojection_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_;
+            param.ss_probe_ray_guiding_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_;
+            param.ss_probe_side_cache_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_enable_;
+            param.ss_probe_preupdate_relocation_probability = ScreenReconstructedVoxelStructure::dbg_ss_probe_preupdate_relocation_probability_;
+            param.ss_probe_temporal_filter_normal_cos_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_normal_cos_threshold_;
+            param.ss_probe_temporal_filter_plane_dist_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_plane_dist_threshold_;
+            param.ss_probe_side_cache_plane_dist_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_;
 
-            p->main_light_dir_ws = main_view_info.main_light_dir_ws;
+            param.main_light_dir_ws = main_view_info.main_light_dir_ws;
 
-            p->debug_view_mode = ScreenReconstructedVoxelStructure::dbg_view_mode_;
-            p->debug_bbv_probe_mode = ScreenReconstructedVoxelStructure::dbg_bbv_probe_debug_mode_;
-            p->debug_wcp_probe_mode = ScreenReconstructedVoxelStructure::dbg_wcp_probe_debug_mode_;
+            param.debug_view_mode = ScreenReconstructedVoxelStructure::dbg_view_mode_;
+            param.debug_bbv_probe_mode = ScreenReconstructedVoxelStructure::dbg_bbv_probe_debug_mode_;
+            param.debug_wcp_probe_mode = ScreenReconstructedVoxelStructure::dbg_wcp_probe_debug_mode_;
 
-            p->debug_probe_radius = ScreenReconstructedVoxelStructure::dbg_probe_scale_ * 0.5f * bbv_grid_updater_.Get().cell_size / k_bbv_per_voxel_resolution;
-            p->debug_probe_near_geom_scale = ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_;
+            param.debug_probe_radius = ScreenReconstructedVoxelStructure::dbg_probe_scale_ * 0.5f * bbv_grid_updater_.Get().cell_size / k_bbv_per_voxel_resolution;
+            param.debug_probe_near_geom_scale = ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_;
 
+            // ローカル変数からマップ先バッファへコピー.
+            auto* p_mapped = cbh_dispatch_->buffer.MapAs<SrvsParam>();
+            std::memcpy(p_mapped, &param, sizeof(SrvsParam));
             cbh_dispatch_->buffer.Unmap();
         }
         // 初回クリア.

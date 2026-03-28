@@ -241,6 +241,10 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         float debug_probe_radius NGL_CPP_MEMBER_INIT({0.0f});
         float debug_probe_near_geom_scale NGL_CPP_MEMBER_INIT({0.2f});
     };
+#ifdef NGL_SHADER_CPP_INCLUDE
+    // C++用のコンパイル時定数デフォルト構造体.
+    inline constexpr SrvsParam k_default_srvs_param{};
+#endif
 
 #ifdef NGL_SHADER_CPP_INCLUDE
     static_assert((sizeof(SrvsToroidalGridParam) % 16) == 0, "SrvsToroidalGridParam size must be 16-byte aligned");
