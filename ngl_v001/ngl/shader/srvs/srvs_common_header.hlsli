@@ -104,7 +104,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     #define SCREEN_SPACE_PROBE_SIDE_CACHE_PLANE_THRESHOLD 0.25
 
     // SsProbe PreUpdateの再配置確率.
-    #define SCREEN_SPACE_PROBE_PREUPDATE_RELOCATION_PROBABILITY 0.05
+    #define SCREEN_SPACE_PROBE_PREUPDATE_RELOCATION_PROBABILITY 0.025
 
 
     // シェーダとCppで一致させる.

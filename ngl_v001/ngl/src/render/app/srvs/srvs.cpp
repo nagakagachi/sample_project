@@ -1114,6 +1114,7 @@ namespace ngl::render::app
                 pso_ss_probe_preupdate_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_ss_probe_preupdate_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                 pso_ss_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].uav.Get());
+                pso_ss_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_history_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_history_index].srv.Get());
 
                 p_command_list->SetPipelineState(pso_ss_probe_preupdate_.Get());
                 p_command_list->SetDescriptorSet(pso_ss_probe_preupdate_.Get(), &desc_set);

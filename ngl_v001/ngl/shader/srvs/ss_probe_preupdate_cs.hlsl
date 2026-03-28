@@ -47,14 +47,18 @@ void main_cs(
     float probe_depth = 1.0;
     {
         // 再配置を確率的に実行する.
-        const float4 prev_info = RWScreenSpaceProbeTileInfoTex[probe_id];
+        //const float4 prev_info = RWScreenSpaceProbeTileInfoTex[probe_id];
+        // 正しく更新するため前回をコピーして今回のバッファに格納するため、前回の情報を読み取る.
+        const float4 prev_info = ScreenSpaceProbeHistoryTileInfoTex[probe_id];
+        
+
         probe_pos_in_tile = SspTileInfoDecodeProbePosInTile(prev_info.y);// 前回のプローブ位置をタイル内で復元.
         current_probe_texel_pos = ss_probe_tile_pixel_start + probe_pos_in_tile;// 前回のプローブ位置をフル解像度テクセル位置に変換.
         probe_depth = TexHardwareDepth.Load(int3(current_probe_texel_pos, 0)).r;// 前回のプローブ位置の深度を取得.
 
         const bool force_relocation = false;//(ss_probe_tile_pixel_start.x < (1920/2));
         const float relocation_probability = cb_srvs.ss_probe_preupdate_relocation_probability;// 有効なプローブ位置が見つかっても一定確率で再配置する.
-        if(force_relocation || (!isValidDepth(probe_depth) || relocation_probability >= rng.rand()))
+        if(force_relocation || (!isValidDepth(probe_depth) || (relocation_probability > rng.rand())))
         {
             // 何回かリトライする.
             for(int i = 0; i < SCREEN_SPACE_PROBE_TILE_SIZE; ++i)
