@@ -746,6 +746,7 @@ bool AppGame::ExecuteApp()
         ImGui::SetNextWindowSize(ImVec2(400, 400), ImGuiCond_FirstUseEver);
 
         ImGui::Begin("Debug Window", &dbgw_test_window_enable, ImGuiWindowFlags_None);
+        ImGui::PushItemWidth(180.0f);
 
         ImGui::TextColored(ImColor(1.0f, 0.2f, 0.2f), " ");
         ImGui::TextColored(ImColor(1.0f, 0.2f, 0.2f), "[Camera Control]");
@@ -837,61 +838,7 @@ bool AppGame::ExecuteApp()
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-            if (ImGui::CollapsingHeader("Srvs"))
-            {
-                NGL_IMGUI_SCOPED_INDENT(10.0f);
-                
-                ImGui::Checkbox("Bbv Injection", &dbgw_enable_srvs_injection_pass);
-                ImGui::Checkbox("Bbv Rejection", &dbgw_enable_srvs_rejection_pass);
-
-                bool ss_probe_temporal_reprojection_enable = (0 != ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_);
-                if(ImGui::Checkbox("SsProbe TemporalReprojection", &ss_probe_temporal_reprojection_enable))
-                {
-                    ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_ = ss_probe_temporal_reprojection_enable ? 1 : 0;
-                }
-
-                bool ss_probe_spatial_filter_enable = (0 != ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_enable_);
-                if(ImGui::Checkbox("SsProbe SpatialFilter", &ss_probe_spatial_filter_enable))
-                {
-                    ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_enable_ = ss_probe_spatial_filter_enable ? 1 : 0;
-                }
-
-                bool ss_probe_ray_guiding_enable = (0 != ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_);
-                if(ImGui::Checkbox("SsProbe RayGuiding", &ss_probe_ray_guiding_enable))
-                {
-                    ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_ = ss_probe_ray_guiding_enable ? 1 : 0;
-                }
-
-                bool ss_probe_side_cache_enable = (0 != ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_enable_);
-                if(ImGui::Checkbox("SsProbe SideCache", &ss_probe_side_cache_enable))
-                {
-                    ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_enable_ = ss_probe_side_cache_enable ? 1 : 0;
-                }
-
-                ImGui::SliderFloat("SsProbe PreUpdate Relocation Probability", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_preupdate_relocation_probability_, 0.0f, 1.0f, "%.4f");
-                ImGui::SliderFloat("SsProbe TemporalFilter Normal Cos Threshold", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_normal_cos_threshold_, -1.0f, 1.0f, "%.4f");
-                ImGui::SliderFloat("SsProbe TemporalFilter Plane Distance Threshold", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_plane_dist_threshold_, 0.0f, 5.0f, "%.4f");
-                ImGui::SliderFloat("SsProbe SpatialFilter Normal Cos Threshold", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_, -1.0f, 1.0f, "%.4f");
-                ImGui::SliderFloat("SsProbe SpatialFilter Depth Exp Scale", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_, 0.0f, 500.0f, "%.4f");
-                ImGui::SliderFloat("SsProbe SideCache Plane Distance Threshold", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_, 0.0f, 5.0f, "%.4f");
-
-                ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-                if (ImGui::CollapsingHeader("Voxel Debug"))
-                {
-                    NGL_IMGUI_SCOPED_INDENT(10.0f);
-                    ImGui::SliderInt("Debug Texture Mode", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_view_mode_, -1, 16);
-                }
-
-                if (ImGui::CollapsingHeader("Probe Debug"))
-                {
-                    NGL_IMGUI_SCOPED_INDENT(10.0f);
-                    ImGui::SliderInt("Wcp Probe Mode", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_wcp_probe_debug_mode_, -1, 10);
-                    ImGui::SliderInt("Bbv Probe Mode", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_bbv_probe_debug_mode_, -1, 10);
-
-                    ImGui::SliderFloat("Probe Scale", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_probe_scale_, 0.01f, 10.0f);
-                    ImGui::SliderFloat("Probe Near Geometry Scale", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_, 0.01f, 10.0f);
-                }
-            }
+            ngl::render::app::ScreenReconstructedVoxelStructure::DrawDebugMenu(&dbgw_enable_srvs_injection_pass, &dbgw_enable_srvs_rejection_pass);
 
             if (ImGui::CollapsingHeader("GTAO Demo"))
             {
@@ -981,6 +928,7 @@ bool AppGame::ExecuteApp()
                         free_dynamic_descriptor_count, max_dynamic_descriptor_count, 100.0f * (float)free_dynamic_descriptor_count / (float)max_dynamic_descriptor_count);
         }
 
+        ImGui::PopItemWidth();
         ImGui::End();
     }
     const auto dlit_dir = ngl::math::Vec3::Normalize(ngl::math::Mat33::RotAxisY(dbgw_dlit_angle_h) * ngl::math::Mat33::RotAxisX(dbgw_dlit_angle_v) * (-ngl::math::Vec3::UnitY()));

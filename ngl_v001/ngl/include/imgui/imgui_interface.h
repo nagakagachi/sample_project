@@ -63,11 +63,27 @@ namespace ngl::imgui
             ImGui::Unindent(indent_);
         }
     };
+    // ImguiのIDスタックのPushID/PopIDをスコープで管理するヘルパークラス.
+    class ScopedId
+    {
+    public:
+        ScopedId(const char* id)
+        {
+            ImGui::PushID(id);
+        }
+        ~ScopedId()
+        {
+            ImGui::PopID();
+        }
+    };
+
     // https://www.jpcert.or.jp/sc-rules/c-pre05-c.html
     #define NGL_IMGUI_JOIN_AGAIN(a,b) a ## b
     #define NGL_IMGUI_JOIN(a,b) NGL_IMGUI_JOIN_AGAIN(a, b)
     // IMGUIのIndent/Unindentをスコープで管理するヘルパークラス用マクロ.
     //	ex. NGL_IMGUI_SCOPED_INDENT(10.0f);
     #define NGL_IMGUI_SCOPED_INDENT(size) const ngl::imgui::ScopedIndent NGL_IMGUI_JOIN(imgui_scoped_indent , __LINE__) (size);
+
+    #define NGL_IMGUI_SCOPED_ID(ID) const ngl::imgui::ScopedId NGL_IMGUI_JOIN(imgui_scoped_id_, __LINE__) (ID);
 
 }

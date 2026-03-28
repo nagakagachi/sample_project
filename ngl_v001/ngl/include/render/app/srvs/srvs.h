@@ -244,6 +244,9 @@ namespace ngl::render::app
         static float dbg_ss_probe_spatial_filter_depth_exp_scale_;
         static float dbg_ss_probe_side_cache_plane_dist_threshold_;
 
+        // デバッグメニューを描画する. ImGuiウィンドウ内で呼び出すこと.
+        static void DrawDebugMenu(bool* p_enable_injection, bool* p_enable_rejection);
+
     public:
         ScreenReconstructedVoxelStructure() = default;
         ~ScreenReconstructedVoxelStructure();

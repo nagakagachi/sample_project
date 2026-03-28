@@ -14,6 +14,7 @@
 #include "gfx/rtg/graph_builder.h"
 #include "gfx/rtg/rtg_common.h"
 #include "resource/resource_manager.h"
+#include "imgui/imgui_interface.h"
 
 
 namespace ngl::render::app
@@ -49,7 +50,169 @@ namespace ngl::render::app
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_ = k_default_srvs_param.ss_probe_spatial_filter_normal_cos_threshold;
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_ = k_default_srvs_param.ss_probe_spatial_filter_depth_exp_scale;
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_ = k_default_srvs_param.ss_probe_side_cache_plane_dist_threshold;
-    
+
+    void ScreenReconstructedVoxelStructure::DrawDebugMenu(bool* p_enable_injection, bool* p_enable_rejection)
+    {
+        ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+        if (ImGui::CollapsingHeader("Srvs"))
+        {
+            NGL_IMGUI_SCOPED_INDENT(10.0f);
+
+            // 右クリックで個別リセット. BeginPopupContextItem は直前のウィジェットを対象とする.
+            ImGui::Checkbox("Bbv Injection", p_enable_injection);
+            ImGui::Checkbox("Bbv Rejection", p_enable_rejection);
+
+            
+            ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+            if (ImGui::CollapsingHeader("Screen Space Probe"))
+            {
+                NGL_IMGUI_SCOPED_INDENT(10.0f);
+                
+                {
+                    bool v = (0 != dbg_ss_probe_temporal_reprojection_enable_);
+                    if (ImGui::Checkbox("TemporalReprojection", &v))
+                        dbg_ss_probe_temporal_reprojection_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ss_probe_temporal_reprojection_enable_ = k_default_srvs_param.ss_probe_temporal_reprojection_enable;
+                        ImGui::EndPopup();
+                    }
+                }
+                {
+                    bool v = (0 != dbg_ss_probe_spatial_filter_enable_);
+                    if (ImGui::Checkbox("SpatialFilter", &v))
+                        dbg_ss_probe_spatial_filter_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ss_probe_spatial_filter_enable_ = 1;
+                        ImGui::EndPopup();
+                    }
+                }
+                {
+                    bool v = (0 != dbg_ss_probe_ray_guiding_enable_);
+                    if (ImGui::Checkbox("RayGuiding", &v))
+                        dbg_ss_probe_ray_guiding_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ss_probe_ray_guiding_enable_ = k_default_srvs_param.ss_probe_ray_guiding_enable;
+                        ImGui::EndPopup();
+                    }
+                }
+                {
+                    bool v = (0 != dbg_ss_probe_side_cache_enable_);
+                    if (ImGui::Checkbox("SideCache", &v))
+                        dbg_ss_probe_side_cache_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ss_probe_side_cache_enable_ = k_default_srvs_param.ss_probe_side_cache_enable;
+                        ImGui::EndPopup();
+                    }
+                }
+
+                ImGui::SliderFloat("Probe Relocation Probability", &dbg_ss_probe_preupdate_relocation_probability_, 0.0f, 1.0f, "%.4f");
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        dbg_ss_probe_preupdate_relocation_probability_ = k_default_srvs_param.ss_probe_preupdate_relocation_probability;
+                    ImGui::EndPopup();
+                }
+
+                ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+                if (ImGui::CollapsingHeader("Temporal Filter"))
+                {
+                    NGL_IMGUI_SCOPED_INDENT(10.0f);
+                    NGL_IMGUI_SCOPED_ID("TemporalFilter");
+                    
+
+                    ImGui::SliderFloat("Normal Cos Threshold", &dbg_ss_probe_temporal_filter_normal_cos_threshold_, -1.0f, 1.0f, "%.4f");
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ss_probe_temporal_filter_normal_cos_threshold_ = k_default_srvs_param.ss_probe_temporal_filter_normal_cos_threshold;
+                        ImGui::EndPopup();
+                    }
+                    ImGui::SliderFloat("Plane Distance Threshold", &dbg_ss_probe_temporal_filter_plane_dist_threshold_, 0.0f, 5.0f, "%.4f");
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ss_probe_temporal_filter_plane_dist_threshold_ = k_default_srvs_param.ss_probe_temporal_filter_plane_dist_threshold;
+                        ImGui::EndPopup();
+                    }
+                }
+                ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+                if (ImGui::CollapsingHeader("Spatial Filter"))
+                {
+                    NGL_IMGUI_SCOPED_INDENT(10.0f);
+                    NGL_IMGUI_SCOPED_ID("SpatialFilter");
+
+                    ImGui::SliderFloat("Normal Cos Threshold", &dbg_ss_probe_spatial_filter_normal_cos_threshold_, -1.0f, 1.0f, "%.4f");
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ss_probe_spatial_filter_normal_cos_threshold_ = k_default_srvs_param.ss_probe_spatial_filter_normal_cos_threshold;
+                        ImGui::EndPopup();
+                    }
+                    ImGui::SliderFloat("Depth Exp Scale", &dbg_ss_probe_spatial_filter_depth_exp_scale_, 0.0f, 500.0f, "%.4f");
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ss_probe_spatial_filter_depth_exp_scale_ = k_default_srvs_param.ss_probe_spatial_filter_depth_exp_scale;
+                        ImGui::EndPopup();
+                    }
+                }
+                ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+                if (ImGui::CollapsingHeader("Side Cache"))
+                {
+                    NGL_IMGUI_SCOPED_INDENT(10.0f);
+                    NGL_IMGUI_SCOPED_ID("SideCache");
+                    
+                    ImGui::SliderFloat("Plane Distance Threshold", &dbg_ss_probe_side_cache_plane_dist_threshold_, 0.0f, 5.0f, "%.4f");
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ss_probe_side_cache_plane_dist_threshold_ = k_default_srvs_param.ss_probe_side_cache_plane_dist_threshold;
+                        ImGui::EndPopup();
+                    }
+                }
+            }
+
+            ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+            if (ImGui::CollapsingHeader("Voxel Debug"))
+            {
+                NGL_IMGUI_SCOPED_INDENT(10.0f);
+                ImGui::SliderInt("Debug Texture Mode", &dbg_view_mode_, -1, 16);
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        dbg_view_mode_ = k_default_srvs_param.debug_view_mode;
+                    ImGui::EndPopup();
+                }
+            }
+
+            if (ImGui::CollapsingHeader("Probe Debug"))
+            {
+                NGL_IMGUI_SCOPED_INDENT(10.0f);
+                ImGui::SliderInt("Wcp Probe Mode", &dbg_wcp_probe_debug_mode_, -1, 10);
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        dbg_wcp_probe_debug_mode_ = k_default_srvs_param.debug_wcp_probe_mode;
+                    ImGui::EndPopup();
+                }
+                ImGui::SliderInt("Bbv Probe Mode", &dbg_bbv_probe_debug_mode_, -1, 10);
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        dbg_bbv_probe_debug_mode_ = k_default_srvs_param.debug_bbv_probe_mode;
+                    ImGui::EndPopup();
+                }
+                ImGui::SliderFloat("Probe Scale", &dbg_probe_scale_, 0.01f, 10.0f);
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        dbg_probe_scale_ = 1.0f;
+                    ImGui::EndPopup();
+                }
+                ImGui::SliderFloat("Probe Near Geometry Scale", &dbg_probe_near_geom_scale_, 0.01f, 10.0f);
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        dbg_probe_near_geom_scale_ = k_default_srvs_param.debug_probe_near_geom_scale;
+                    ImGui::EndPopup();
+                }
+            }
+        }
+    }
+
     using SrvsShaderBindName = ngl::text::HashText<128>;
     constexpr SrvsShaderBindName k_shader_bind_name_wcp_atlas_srv = "WcpProbeAtlasTex";
     constexpr SrvsShaderBindName k_shader_bind_name_wcp_atlas_uav = "RWWcpProbeAtlasTex";
