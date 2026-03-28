@@ -253,8 +253,8 @@ void main_cs(
                     // 法線での棄却を加えると完全に失敗してしまうケースが多い. AddaptiveSamplingでレイの割り当てを増やせるならありかもしれない.
                     //if((plane_dist < 5.0))// 閾値は要調整.
                     // むしろここできちんと棄却して失敗させ, Persistent Least-Recently Used (LRU) Side Cache で解決するなどした方が良いかもしれない.
-                    if((plane_dist < SCREEN_SPACE_PROBE_TEMPORAL_FILTER_PLANE_DIST_THRESHOLD)
-                     && (probe_normal_dot > SCREEN_SPACE_PROBE_TEMPORAL_FILTER_NORMAL_COS_THRESHOLD))
+                    if((plane_dist < cb_srvs.ss_probe_temporal_filter_plane_dist_threshold)
+                     && (probe_normal_dot > cb_srvs.ss_probe_temporal_filter_normal_cos_threshold))
                     {
                         //float probe_dist = length(float2(candidate_offset));// 初期実装. 安定はするが移動物体表面で適切なリプロジェクションにならずノイズになりやすい.
                         // GI-1.0はプローブ配置位置の差分を採用している. 法線の向きも評価に加えてみる.
@@ -329,7 +329,7 @@ void main_cs(
                     const float3 cache_probe_pos_ws = side_cache_meta.xyz;
                     const float3 probe_pos_diff_ws = cache_probe_pos_ws - ss_probe_pos_ws;
                     const float plane_dist = abs(dot(probe_pos_diff_ws, ss_probe_approx_normal_ws));
-                    if(plane_dist < SCREEN_SPACE_PROBE_SIDE_CACHE_PLANE_THRESHOLD)
+                    if(plane_dist < cb_srvs.ss_probe_side_cache_plane_dist_threshold)
                     {
                         float probe_dist = length(probe_pos_diff_ws) * 100.0;
                         const uint quantized_dist = min((uint)(probe_dist * 1024.0), 0x03ffffffu);

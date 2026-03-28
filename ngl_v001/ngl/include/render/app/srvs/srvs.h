@@ -237,6 +237,12 @@ namespace ngl::render::app
         static int dbg_ss_probe_temporal_reprojection_enable_;
         static int dbg_ss_probe_ray_guiding_enable_;
         static int dbg_ss_probe_side_cache_enable_;
+        static float dbg_ss_probe_preupdate_relocation_probability_;
+        static float dbg_ss_probe_temporal_filter_normal_cos_threshold_;
+        static float dbg_ss_probe_temporal_filter_plane_dist_threshold_;
+        static float dbg_ss_probe_spatial_filter_normal_cos_threshold_;
+        static float dbg_ss_probe_spatial_filter_depth_exp_scale_;
+        static float dbg_ss_probe_side_cache_plane_dist_threshold_;
 
     public:
         ScreenReconstructedVoxelStructure() = default;

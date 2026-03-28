@@ -89,13 +89,13 @@ void main_cs(
         const float3 neighbor_normal = OctDecode(neighbor_tile_info.zw);
         const float normal_dot = dot(center_normal, neighbor_normal);
         // 法線棄却.
-        if (normal_dot < SCREEN_SPACE_PROBE_SPATIAL_FILTER_NORMAL_COS_THRESHOLD)
+        if (normal_dot < cb_srvs.ss_probe_spatial_filter_normal_cos_threshold)
         {
             continue;
         }
 
         const float depth_diff = abs(neighbor_tile_info.x - center_depth) / max(center_depth, 1e-4);
-        const float depth_weight = exp(-SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE * depth_diff);
+        const float depth_weight = exp(-cb_srvs.ss_probe_spatial_filter_depth_exp_scale * depth_diff);
         const float4 neighbor_value = ScreenSpaceProbeTex.Load(int3(neighbor_tile * SCREEN_SPACE_PROBE_TILE_SIZE + local_cell, 0));
 
         accum_value += neighbor_value * depth_weight;

@@ -53,7 +53,7 @@ void main_cs(
         probe_depth = TexHardwareDepth.Load(int3(current_probe_texel_pos, 0)).r;// 前回のプローブ位置の深度を取得.
 
         const bool force_relocation = false;//(ss_probe_tile_pixel_start.x < (1920/2));
-        const float relocation_probability = 0.05;// 有効なプローブ位置が見つかっても一定確率で再配置する.
+        const float relocation_probability = cb_srvs.ss_probe_preupdate_relocation_probability;// 有効なプローブ位置が見つかっても一定確率で再配置する.
         if(force_relocation || (!isValidDepth(probe_depth) || relocation_probability >= rng.rand()))
         {
             // 何回かリトライする.

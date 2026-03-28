@@ -868,6 +868,13 @@ bool AppGame::ExecuteApp()
                     ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_enable_ = ss_probe_side_cache_enable ? 1 : 0;
                 }
 
+                ImGui::SliderFloat("SsProbe PreUpdate Relocation Probability", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_preupdate_relocation_probability_, 0.0f, 1.0f, "%.4f");
+                ImGui::SliderFloat("SsProbe TemporalFilter Normal Cos Threshold", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_normal_cos_threshold_, -1.0f, 1.0f, "%.4f");
+                ImGui::SliderFloat("SsProbe TemporalFilter Plane Distance Threshold", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_plane_dist_threshold_, 0.0f, 5.0f, "%.4f");
+                ImGui::SliderFloat("SsProbe SpatialFilter Normal Cos Threshold", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_, -1.0f, 1.0f, "%.4f");
+                ImGui::SliderFloat("SsProbe SpatialFilter Depth Exp Scale", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_, 0.0f, 500.0f, "%.4f");
+                ImGui::SliderFloat("SsProbe SideCache Plane Distance Threshold", &ngl::render::app::ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_, 0.0f, 5.0f, "%.4f");
+
                 ImGui::SetNextItemOpen(true, ImGuiCond_Once);
                 if (ImGui::CollapsingHeader("Voxel Debug"))
                 {

@@ -49,6 +49,12 @@ namespace ngl::render::app
     int ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_ = 1;
     int ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_ = 1;
     int ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_enable_ = 1;
+    float ScreenReconstructedVoxelStructure::dbg_ss_probe_preupdate_relocation_probability_ = static_cast<float>(SCREEN_SPACE_PROBE_PREUPDATE_RELOCATION_PROBABILITY);
+    float ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_normal_cos_threshold_ = static_cast<float>(SCREEN_SPACE_PROBE_TEMPORAL_FILTER_NORMAL_COS_THRESHOLD);
+    float ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_plane_dist_threshold_ = static_cast<float>(SCREEN_SPACE_PROBE_TEMPORAL_FILTER_PLANE_DIST_THRESHOLD);
+    float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_ = static_cast<float>(SCREEN_SPACE_PROBE_SPATIAL_FILTER_NORMAL_COS_THRESHOLD);
+    float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_ = static_cast<float>(SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE);
+    float ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_ = static_cast<float>(SCREEN_SPACE_PROBE_SIDE_CACHE_PLANE_THRESHOLD);
     
     using SrvsShaderBindName = ngl::text::HashText<128>;
     constexpr SrvsShaderBindName k_shader_bind_name_wcp_atlas_srv = "WcpProbeAtlasTex";
@@ -579,12 +585,18 @@ namespace ngl::render::app
             p->ss_probe_temporal_update_group_size = k_ss_probe_update_skip_tile_group_width;
             p->ss_probe_ray_start_offset_scale = k_ss_probe_ray_start_offset_scale;
             p->ss_probe_ray_normal_offset_scale = k_ss_probe_ray_normal_offset_scale;
+            p->ss_probe_spatial_filter_normal_cos_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_;
+            p->ss_probe_spatial_filter_depth_exp_scale = ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_;
             p->ss_probe_temporal_min_hysteresis = k_ss_probe_temporal_min_hysteresis;
             p->ss_probe_temporal_max_hysteresis = k_ss_probe_temporal_max_hysteresis;
             p->ss_probe_temporal_reprojection_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_;
             p->ss_probe_ray_guiding_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_;
             p->ss_probe_side_cache_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_enable_;
             p->ss_probe_side_cache_max_life_frame = k_ss_probe_side_cache_max_life_frame;
+            p->ss_probe_preupdate_relocation_probability = ScreenReconstructedVoxelStructure::dbg_ss_probe_preupdate_relocation_probability_;
+            p->ss_probe_temporal_filter_normal_cos_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_normal_cos_threshold_;
+            p->ss_probe_temporal_filter_plane_dist_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_plane_dist_threshold_;
+            p->ss_probe_side_cache_plane_dist_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_;
 
             p->main_light_dir_ws = main_view_info.main_light_dir_ws;
 

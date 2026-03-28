@@ -20,7 +20,6 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 #endif
 
 
-
 // ScreenSpaceProbe OctMap mode switch.
 // SsProbeのキャプチャを球面か半球面のどちらで実行するか切り替え. 半球面は向きが低解像度法線によるノイズの影響が大きいため, 現状は球面で検証中.
 // 0: spherical octahedral map, 1: hemispherical octahedral map.
@@ -92,16 +91,20 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     #define SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT (SCREEN_SPACE_PROBE_TILE_SIZE * SCREEN_SPACE_PROBE_TILE_SIZE)
 
 
-    // Spatial Filterの棄却パラメータ.
+    // Temporal Filterの棄却パラメータ.
     #define SCREEN_SPACE_PROBE_TEMPORAL_FILTER_NORMAL_COS_THRESHOLD 0.2
     #define SCREEN_SPACE_PROBE_TEMPORAL_FILTER_PLANE_DIST_THRESHOLD 0.25
 
+    // Spatial Filterの棄却パラメータ.
     //#define SCREEN_SPACE_PROBE_SPATIAL_FILTER_NORMAL_COS_THRESHOLD cos(2e-2 * 3.141592) // GI-1.0
     #define SCREEN_SPACE_PROBE_SPATIAL_FILTER_NORMAL_COS_THRESHOLD 0.2
-    #define SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE 100.0
+    #define SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE 32.0
 
     // SideCacheの棄却パラメータ.
     #define SCREEN_SPACE_PROBE_SIDE_CACHE_PLANE_THRESHOLD 0.25
+
+    // SsProbe PreUpdateの再配置確率.
+    #define SCREEN_SPACE_PROBE_PREUPDATE_RELOCATION_PROBABILITY 0.05
 
 
     // シェーダとCppで一致させる.
@@ -167,50 +170,82 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     };
 
     // Dispatchパラメータ.
+    // 16byte align でmenberレイアウトを調整すること.
     struct SrvsParam
     {
         // bitmask brick voxel関連パラメータ.
-        SrvsToroidalGridParam bbv;
-        int3 bbv_indirect_cs_thread_group_size;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
-        int bbv_visible_voxel_buffer_size;// 更新プローブ用のワークサイズ.
-        int bbv_hollow_voxel_buffer_size;// 削除用中空Voxel情報のワークサイズ.
-        int dummy0;
-        int dummy1;
-        int dummy2;
+        SrvsToroidalGridParam bbv NGL_CPP_MEMBER_INIT({});
+        int3 bbv_indirect_cs_thread_group_size NGL_CPP_MEMBER_INIT({});// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
+        int bbv_visible_voxel_buffer_size NGL_CPP_MEMBER_INIT({});// 更新プローブ用のワークサイズ.
+        int bbv_hollow_voxel_buffer_size NGL_CPP_MEMBER_INIT({});// 削除用中空Voxel情報のワークサイズ.
+        int dummy0 NGL_CPP_MEMBER_INIT({});
+        int dummy1 NGL_CPP_MEMBER_INIT({});
+        int dummy2 NGL_CPP_MEMBER_INIT({});
 
-        float ss_probe_temporal_min_hysteresis;// Temporal再利用重みの最小値.
-        float ss_probe_temporal_max_hysteresis;// Temporal再利用重みの最大値.
-        int ss_probe_temporal_reprojection_enable;// Temporal再投影有効化フラグ.
-        int ss_probe_ray_guiding_enable;// RayGuiding有効化フラグ.
+        // Temporal再利用重みの最小値.
+        float ss_probe_temporal_min_hysteresis NGL_CPP_MEMBER_INIT({0.85f});
+        // Temporal再利用重みの最大値.
+        float ss_probe_temporal_max_hysteresis NGL_CPP_MEMBER_INIT({0.98f});
+        // Temporal再投影有効化フラグ.
+        int ss_probe_temporal_reprojection_enable NGL_CPP_MEMBER_INIT({1});
+        // RayGuiding有効化フラグ.
+        int ss_probe_ray_guiding_enable NGL_CPP_MEMBER_INIT({1});
 
-        int ss_probe_side_cache_enable;// SideCache有効化フラグ.
-        int ss_probe_side_cache_max_life_frame;// SideCache参照を許可する最大経過フレーム.
-        int dummy3;
-        int dummy4;
+        // SideCache有効化フラグ.
+        int ss_probe_side_cache_enable NGL_CPP_MEMBER_INIT({1});
+        // SideCache参照を許可する最大経過フレーム.
+        int ss_probe_side_cache_max_life_frame NGL_CPP_MEMBER_INIT({24});
+        // Probe位置再選択確率.
+        float ss_probe_preupdate_relocation_probability NGL_CPP_MEMBER_INIT({float(SCREEN_SPACE_PROBE_PREUPDATE_RELOCATION_PROBABILITY)});
+        // TemporalFilter 法線Cos閾値.
+        float ss_probe_temporal_filter_normal_cos_threshold NGL_CPP_MEMBER_INIT({float(SCREEN_SPACE_PROBE_TEMPORAL_FILTER_NORMAL_COS_THRESHOLD)});
+        // TemporalFilter 平面距離閾値.
+        float ss_probe_temporal_filter_plane_dist_threshold NGL_CPP_MEMBER_INIT({float(SCREEN_SPACE_PROBE_TEMPORAL_FILTER_PLANE_DIST_THRESHOLD)});
+        // SideCache 平面距離閾値.
+        float ss_probe_side_cache_plane_dist_threshold NGL_CPP_MEMBER_INIT({float(SCREEN_SPACE_PROBE_SIDE_CACHE_PLANE_THRESHOLD)});
         
-        int ss_probe_temporal_update_group_size;// 1Fに一つだけ更新するProbeグループのサイズ. 1で毎フレーム更新, 2で2x2のProbeグループのうち1Fで一つだけ更新.
-        float ss_probe_ray_start_offset_scale;// SSプローブ更新時のレイ開始オフセットスケール. 単位はBbvセル幅.
-        float ss_probe_ray_normal_offset_scale;// SSプローブ更新時のレイ始点法線オフセットスケール. 単位はBbvセル幅.
-        int dummy3_2;
+        // 1Fに一つだけ更新するProbeグループのサイズ. 1で毎フレーム更新, 2で2x2のProbeグループのうち1Fで一つだけ更新.
+        int ss_probe_temporal_update_group_size NGL_CPP_MEMBER_INIT({1});
+        // SSプローブ更新時のレイ開始オフセットスケール. 単位はBbvセル幅. sqrt(3.0f).
+        float ss_probe_ray_start_offset_scale NGL_CPP_MEMBER_INIT({1.732050808f});
+        // SSプローブ更新時のレイ始点法線オフセットスケール. 単位はBbvセル幅.
+        float ss_probe_ray_normal_offset_scale NGL_CPP_MEMBER_INIT({0.2f});
+        // SpatialFilter 法線Cos閾値.
+        float ss_probe_spatial_filter_normal_cos_threshold NGL_CPP_MEMBER_INIT({float(SCREEN_SPACE_PROBE_SPATIAL_FILTER_NORMAL_COS_THRESHOLD)});
 
-        SrvsToroidalGridParam wcp;
-        int3 wcp_indirect_cs_thread_group_size;// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
-        int wcp_visible_voxel_buffer_size;// 更新プローブ用のワークサイズ.
+        // SpatialFilter 深度差重み影響度.
+        float ss_probe_spatial_filter_depth_exp_scale NGL_CPP_MEMBER_INIT({float(SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE)});
+        int dummy3_2 NGL_CPP_MEMBER_INIT({0});
+        int dummy3_3 NGL_CPP_MEMBER_INIT({0});
+        int dummy3_4 NGL_CPP_MEMBER_INIT({0});
+        int2 dummy3_5_6 NGL_CPP_MEMBER_INIT({});// wcp開始を16byte alignに揃えるためのパディング.
 
-        int2 tex_main_view_depth_size;// MainViewのDepthBuffer解像度.
-        uint frame_count;
-        int dummy4_2;
+        SrvsToroidalGridParam wcp NGL_CPP_MEMBER_INIT({});
+        // IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
+        int3 wcp_indirect_cs_thread_group_size NGL_CPP_MEMBER_INIT({});
+        // 更新プローブ用のワークサイズ.
+        int wcp_visible_voxel_buffer_size NGL_CPP_MEMBER_INIT({});
 
-        float3 main_light_dir_ws;
+        // MainViewのDepthBuffer解像度.
+        int2 tex_main_view_depth_size NGL_CPP_MEMBER_INIT({});
+        uint frame_count NGL_CPP_MEMBER_INIT({0});
+        int dummy4_2 NGL_CPP_MEMBER_INIT({0});
 
-        int debug_view_mode;
+        float3 main_light_dir_ws NGL_CPP_MEMBER_INIT({});
+
+        int debug_view_mode NGL_CPP_MEMBER_INIT({-1});
         
-        int debug_bbv_probe_mode;
-        int debug_wcp_probe_mode;
+        int debug_bbv_probe_mode NGL_CPP_MEMBER_INIT({-1});
+        int debug_wcp_probe_mode NGL_CPP_MEMBER_INIT({-1});
 
-        float debug_probe_radius;
-        float debug_probe_near_geom_scale;
+        float debug_probe_radius NGL_CPP_MEMBER_INIT({0.0f});
+        float debug_probe_near_geom_scale NGL_CPP_MEMBER_INIT({0.2f});
     };
+
+#ifdef NGL_SHADER_CPP_INCLUDE
+    static_assert((sizeof(SrvsToroidalGridParam) % 16) == 0, "SrvsToroidalGridParam size must be 16-byte aligned");
+    static_assert((sizeof(SrvsParam) % 16) == 0, "SrvsParam size must be 16-byte aligned");
+#endif
 
 
 #endif // NGL_SHADER_SRVS_COMMON_HEADER_H
