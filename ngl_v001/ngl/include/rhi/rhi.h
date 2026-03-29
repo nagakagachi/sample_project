@@ -22,7 +22,7 @@ namespace ngl
 {
 	namespace rhi
 	{
-		using ResourceViewName = ngl::text::HashText<32>;
+		using ResourceViewName = ngl::text::HashText<64>;
 
 		enum class ERootParameterType : u16
 		{

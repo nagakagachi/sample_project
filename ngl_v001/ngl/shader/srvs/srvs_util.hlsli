@@ -84,6 +84,17 @@ Texture2D<float4>      ScreenSpaceProbeSideCacheMetaTex;
 RWTexture2D<float4>    RWScreenSpaceProbeSideCacheMetaTex;
 RWTexture2D<uint>      RWScreenSpaceProbeSideCacheLockTex;
 
+// DirectSH方式専用リソース (OctMapを持たずSHで直接保持する検証パス).
+// 1/8解像度のProbeタイル情報 (既存 ScreenSpaceProbeTileInfoTex と同形式).
+Texture2D<float4>      ScreenSpaceProbeDirectSHTileInfoTex;
+Texture2D<float4>      ScreenSpaceProbeDirectSHHistoryTileInfoTex;
+RWTexture2D<float4>    RWScreenSpaceProbeDirectSHTileInfoTex;
+// 1/8解像度のL1 SH係数 (rgba = l00, l1x, l1y, l1z).
+Texture2D<float4>      ScreenSpaceProbeDirectSHTex;
+Texture2D<float4>      ScreenSpaceProbeDirectSHHistoryTex;
+RWTexture2D<float4>    RWScreenSpaceProbeDirectSHTex;
+RWTexture2D<float4>    RWScreenSpaceProbeDirectSHFilteredTex;
+
 
 // srvsのメインパラメータ.
 ConstantBuffer<SrvsParam> cb_srvs;

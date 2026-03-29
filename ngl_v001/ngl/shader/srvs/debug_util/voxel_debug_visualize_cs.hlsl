@@ -209,19 +209,16 @@ void main_cs(
     }
     else if(13 == cb_srvs.debug_view_mode)
     {
+        // SH係数をそのままRGBAで可視化 (l00=R, l1x=G, l1y=B, l1z=A).
+        const float4 ss_probe_sh = ScreenSpaceProbeSHTex.Load(int3(ss_probe_tile_id, 0));
+        RWTexWork[dtid.xy] = ss_probe_sh;
+    }
+    else if(14 == cb_srvs.debug_view_mode)
+    {
         // main_light_dir_ws方向のSH再評価結果を表示.
         const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);
         const float4 sh_basis = EvaluateL1ShBasis(sample_dir);
         const float4 ss_probe_sh = ScreenSpaceProbeSHTex.Load(int3(ss_probe_tile_id, 0));
-        const float sh_sample = max(0.0, dot(ss_probe_sh, sh_basis));
-        RWTexWork[dtid.xy] = sh_sample.xxxx;
-    }
-    else if(14 == cb_srvs.debug_view_mode)
-    {
-        // main_light_dir_ws方向のSH再評価結果を表示 (Bilinear).
-        const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);
-        const float4 sh_basis = EvaluateL1ShBasis(sample_dir);
-        const float4 ss_probe_sh = ScreenSpaceProbeSHTex.SampleLevel(SmpLinearClamp, screen_uv, 0);
         const float sh_sample = max(0.0, dot(ss_probe_sh, sh_basis));
         RWTexWork[dtid.xy] = sh_sample.xxxx;
     }
@@ -273,6 +270,29 @@ void main_cs(
                     RWTexWork[dtid.xy] = float4(debug_color, 1.0);
                 }
             }
+        }
+    }
+    else if(17 == cb_srvs.debug_view_mode)
+    {
+        // [DirectSH] SH係数をそのままRGBAで可視化 (l00=R, l1x=G, l1y=B, l1z=A).
+        const float4 sh_coeff = ScreenSpaceProbeDirectSHTex.Load(int3(ss_probe_tile_id, 0));
+        RWTexWork[dtid.xy] = sh_coeff;
+    }
+    else if(18 == cb_srvs.debug_view_mode)
+    {
+        // [DirectSH] main_light方向で DirectSH を評価した結果を可視化.
+        const float4 dsh_tile_info = ScreenSpaceProbeDirectSHTileInfoTex.Load(int3(ss_probe_tile_id, 0));
+        if(!isValidDepth(dsh_tile_info.x))
+        {
+            RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
+        }
+        else
+        {
+            const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);
+            const float4 sh_basis   = EvaluateL1ShBasis(sample_dir);
+            const float4 sh_coeff   = ScreenSpaceProbeDirectSHTex.Load(int3(ss_probe_tile_id, 0));
+            const float  sky_vis    = max(0.0, dot(sh_coeff, sh_basis));
+            RWTexWork[dtid.xy] = sky_vis.xxxx;
         }
     }
 }
