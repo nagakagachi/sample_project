@@ -481,7 +481,7 @@ void main_cs(
     float new_sky_visibility = sky_visibility;
     float reprojection_succeed = 0.0;
     const bool has_temporal_history = (0xffffffff != ss_temporal_best_prev_tile_packed);
-    const bool has_side_cache_history = (0 != cb_srvs.ss_probe_side_cache_enable) && (0xffffffff != ss_side_cache_best_tile_packed);
+    const bool has_side_cache_history = (0xffffffff != ss_side_cache_best_tile_packed);
     if((has_temporal_history || has_side_cache_history) && (0 != cb_srvs.ss_probe_temporal_reprojection_enable))
     {
         float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_reprojected_value);
@@ -498,8 +498,7 @@ void main_cs(
     if(0 == gindex)
     {
         // Temporal失敗タイルを次フレーム救済するためSideCacheへ保存候補化.
-        const bool should_store_side_cache = (0 != cb_srvs.ss_probe_side_cache_enable)
-                                            && (0xffffffff == ss_temporal_best_prev_tile_packed);
+        const bool should_store_side_cache = (0xffffffff == ss_temporal_best_prev_tile_packed);
         ss_side_cache_store_enable = should_store_side_cache ? 1u : 0u;
         if(should_store_side_cache)
         {
@@ -563,7 +562,7 @@ void main_cs(
         const bool is_reprojection_succeeded = (reprojection_succeed > 0.5);
         RWScreenSpaceProbeTileInfoTex[ss_probe_tile_id] = SspTileInfoSetReprojectionSucceeded(ss_probe_tile_info, is_reprojection_succeeded);
 
-        if((0 != cb_srvs.ss_probe_side_cache_enable) && (0xffffffff != ss_side_cache_best_tile_packed))
+        if((0xffffffff != ss_side_cache_best_tile_packed))
         {
             // HitしたSideCacheのmetaを現フレームで更新して寿命を延命(MRU相当).
             const int2 side_cache_hit_tile = int2(int(ss_side_cache_best_tile_packed & 0xffffu), int((ss_side_cache_best_tile_packed >> 16) & 0xffffu));
@@ -573,7 +572,7 @@ void main_cs(
 
     RWScreenSpaceProbeTex[global_pos] = out_probe_value;
 
-    if((0 != cb_srvs.ss_probe_side_cache_enable) && (0xffffffff != ss_side_cache_best_tile_packed))
+    if((0xffffffff != ss_side_cache_best_tile_packed))
     {
         // SideCacheで再利用したTileは最新の出力で上書きし, 次フレームの再利用品質を安定化.
         const int2 side_cache_hit_tile = int2(int(ss_side_cache_best_tile_packed & 0xffffu), int((ss_side_cache_best_tile_packed >> 16) & 0xffffu));
