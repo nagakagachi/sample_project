@@ -280,14 +280,14 @@ void main_cs(
     #if NGL_SSP_DIRECT_SH_TEMPORAL_FILTER_SH
         {
             const uint   hit_count = gs_ray_sample_accum[gindex * 2 + 0];
-            const float  curr_vis  = (hit_count > 0) ? (float(gs_ray_sample_accum[gindex * 2 + 1]) / float(hit_count)) : 1.0;
+            const float  curr_vis  = (hit_count > 0) ? (float(gs_ray_sample_accum[gindex * 2 + 1]) / float(hit_count)) : 0.0;
             gs_blended_value[gindex] = curr_vis;
         }
     #else
         // ---- Step 7: Temporal Blend ----
         {
             const uint   hit_count = gs_ray_sample_accum[gindex * 2 + 0];
-            const float  curr_vis  = (hit_count > 0) ? (float(gs_ray_sample_accum[gindex * 2 + 1]) / float(hit_count)) : 1.0;
+            const float  curr_vis  = (hit_count > 0) ? (float(gs_ray_sample_accum[gindex * 2 + 1]) / float(hit_count)) : 0.0;
 
             float new_vis = curr_vis;
             if(0xffffffff != gs_temporal_best_prev_tile_packed && (0 != cb_srvs.ss_probe_temporal_reprojection_enable))
@@ -340,8 +340,7 @@ void main_cs(
                     const int2 prev_tile = int2(int(gs_temporal_best_prev_tile_packed & 0xffffu), int((gs_temporal_best_prev_tile_packed >> 16) & 0xffffu));
                     prev_sh4 = ScreenSpaceProbeDirectSHHistoryTex.Load(int3(prev_tile, 0));
                 }
-                float temporal_rate = 0.5;
-                temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
+                float temporal_rate = 0.85; // OctahedralMapCellの輝度ベースのブレンドヒューリスティクスのようなことができるだろうか?
                 sh_out = lerp(sh_out, prev_sh4, temporal_rate);
             }
         #else
