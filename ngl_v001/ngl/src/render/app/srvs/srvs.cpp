@@ -886,6 +886,13 @@ namespace ngl::render::app
                     p_command_list->ResourceBarrier(ss_probe_side_cache_lock_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 }
                 p_command_list->ResourceBarrier(ss_probe_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+
+                // DirectSH テクスチャの初期状態を Common → UnorderedAccess に遷移.
+                for(int i = 0; i < 2; ++i)
+                {
+                    p_command_list->ResourceBarrier(ss_probe_direct_sh_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                    p_command_list->ResourceBarrier(ss_probe_direct_sh_tile_info_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                }
             }
         }
         // Bbv Begin Update Pass.
@@ -1295,7 +1302,7 @@ namespace ngl::render::app
                 pso_ss_probe_direct_sh_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_ss_probe_direct_sh_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_ss_probe_direct_sh_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                pso_ss_probe_direct_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_tile_info_srv.Get(), ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].srv.Get());
+                pso_ss_probe_direct_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_tile_info_uav.Get(), ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].uav.Get());
                 pso_ss_probe_direct_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_history_tile_info_srv.Get(), ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_history_index].srv.Get());
                 pso_ss_probe_direct_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_history_srv.Get(), ss_probe_direct_sh_tex_[dsh_history_index].srv.Get());
                 pso_ss_probe_direct_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_uav.Get(), ss_probe_direct_sh_tex_[dsh_curr_index].uav.Get());
@@ -1307,6 +1314,7 @@ namespace ngl::render::app
                 p_command_list->Dispatch(ss_probe_direct_sh_tex_[dsh_curr_index].texture->GetWidth(), ss_probe_direct_sh_tex_[dsh_curr_index].texture->GetHeight(), 1);
 
                 p_command_list->ResourceUavBarrier(ss_probe_direct_sh_tex_[dsh_curr_index].texture.Get());
+                p_command_list->ResourceUavBarrier(ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].texture.Get());
             }
             if(is_ss_probe_spatial_filter_enable)
             {

@@ -52,7 +52,10 @@ groupshared float  gs_prev_radiance[NGL_SSP_RAY_COUNT];
 groupshared float  gs_blended_value[NGL_SSP_RAY_COUNT];
 groupshared float  gs_guiding_cdf[NGL_SSP_RAY_COUNT];
 groupshared float  gs_guiding_total_weight;
-groupshared uint   gs_temporal_best_prev_tile_packed; // 0xffffffff = 無効
+groupshared uint   gs_temporal_best_score;                                   // InterlockedMin ベストスコア
+groupshared uint   gs_temporal_best_prev_tile_packed;                         // 0xffffffff = 無効
+groupshared uint   gs_temporal_candidate_prev_tile_packed[NGL_SSP_RAY_COUNT]; // 3x3 候補タイル
+groupshared float  gs_temporal_reprojected_value[NGL_SSP_RAY_COUNT];          // 前フレームSHをセル値に展開
 
 // ---- SH 積算用 (float として InterlockedAdd で利用するため uint に bit-reinterpret) ----
 groupshared uint   gs_sh_accum[4]; // l00, l1x, l1y, l1z (asuint/asfloat 変換)
@@ -77,6 +80,19 @@ float2 CalcPrevUvFromWorldPos(float3 pos_ws, out bool is_valid)
     return uv;
 }
 
+uint PackTileId(int2 tile_id)
+{
+    return (uint(tile_id.y) << 16) | uint(tile_id.x & 0xffff);
+}
+int2 UnpackTileId(uint packed)
+{
+    return int2(int(packed & 0xffffu), int((packed >> 16) & 0xffffu));
+}
+int2 CalcOffsetFrom3x3Index(uint index)
+{
+    return int2(int(index % 3u), int(index / 3u)) - int2(1, 1);
+}
+
 // float を uint ビット列として InterlockedAdd するヘルパー (fixed-point 近似).
 // 精度が十分でないため, スレッド0による逐次積算に置き換えている (gs_blended_value を使用).
 // こちらは使用しないが参考として残す.
@@ -91,7 +107,7 @@ void main_cs(
 {
     // Dispatch は 1/8 解像度 (TileInfo と同サイズ) でかける.
     uint2 tile_tex_size;
-    ScreenSpaceProbeDirectSHTileInfoTex.GetDimensions(tile_tex_size.x, tile_tex_size.y);
+    RWScreenSpaceProbeDirectSHTileInfoTex.GetDimensions(tile_tex_size.x, tile_tex_size.y);
     if(any(gid.xy >= tile_tex_size))
         return;
 
@@ -105,13 +121,15 @@ void main_cs(
                                                       float(cb_srvs.frame_count))));
 
     // ---- Step 1: スレッド0 が TileInfo を読み込んで共有メモリに展開 ----
-    const float4 tile_info = ScreenSpaceProbeDirectSHTileInfoTex.Load(int3(probe_tile_id, 0));
+    // RWTexture2D から読み込む (TileInfo は update パスでも書き戻しをするため UAV で保持).
+    const float4 tile_info = RWScreenSpaceProbeDirectSHTileInfoTex[probe_tile_id];
 
     if(0 == gindex)
     {
         gs_probe_hw_depth         = 1.0;
         gs_probe_pos_ws           = float3(0,0,0);
         gs_probe_approx_normal_ws = float3(0,0,1);
+        gs_temporal_best_score    = 0xffffffff;
         gs_temporal_best_prev_tile_packed = 0xffffffff;
         gs_guiding_total_weight   = 0.0;
         gs_sh_accum[0] = 0; gs_sh_accum[1] = 0; gs_sh_accum[2] = 0; gs_sh_accum[3] = 0;
@@ -140,6 +158,8 @@ void main_cs(
         gs_prev_radiance[gindex] = 0.0;
         gs_blended_value[gindex] = 1.0; // デフォルト: 空として扱う.
         gs_guiding_cdf[gindex]   = 0.0;
+        gs_temporal_candidate_prev_tile_packed[gindex] = 0xffffffff;
+        gs_temporal_reprojected_value[gindex] = 0.0;
     }
     GroupMemoryBarrierWithGroupSync();
 
@@ -159,52 +179,81 @@ void main_cs(
     const float2 cell_oct_uv = (float2(probe_atlas_local_pos) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
     const float3 cell_dir_ws = SspDecodeDirByNormal(cell_oct_uv, base_tangent_ws, base_bitangent_ws, base_normal_ws);
 
-    // ---- Step 3: 簡易 Temporal 再投影 (スレッド0 のみ対応 TileId を決定) ----
-    if(0 == gindex)
+    // ---- Step 3: Temporal 再投影 (3x3 近傍探索 + InterlockedMin スコアリング) ----
     {
-        bool is_valid_prev_uv;
-        const float2 prev_uv = CalcPrevUvFromWorldPos(gs_probe_pos_ws, is_valid_prev_uv);
-        if(is_valid_prev_uv && (0 != cb_srvs.ss_probe_temporal_reprojection_enable))
-        {
-            const uint2 depth_size = cb_ngl_sceneview.cb_render_resolution;
-            const int tile_size = SCREEN_SPACE_PROBE_TILE_SIZE;
-            const int2 probe_tile_count = max((int2(depth_size) + tile_size - 1) / tile_size, int2(1, 1));
-            const int2 prev_center_tile = clamp(int2(prev_uv * float2(depth_size)) / tile_size, int2(0, 0), probe_tile_count - 1);
+        uint local_best_score = 0xffffffff;
+        uint local_best_tile_packed = 0xffffffff;
 
-            const float4 prev_tile_info = ScreenSpaceProbeDirectSHHistoryTileInfoTex.Load(int3(prev_center_tile, 0));
-            if(isValidDepth(prev_tile_info.x))
+        if(gindex < 9 && (0 != cb_srvs.ss_probe_temporal_reprojection_enable))
+        {
+            bool is_valid_prev_uv;
+            const float2 prev_uv = CalcPrevUvFromWorldPos(gs_probe_pos_ws, is_valid_prev_uv);
+            if(is_valid_prev_uv)
             {
-                const int2 prev_probe_texel = prev_center_tile * tile_size + SspTileInfoDecodeProbePosInTile(prev_tile_info.y);
-                const float prev_view_z = calc_view_z_from_ndc_z(prev_tile_info.x, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
-                const float3 prev_pos_vs = CalcViewSpacePosition((float2(prev_probe_texel) + 0.5) * cb_ngl_sceneview.cb_render_resolution_inv, prev_view_z, cb_ngl_sceneview.cb_prev_proj_mtx);
-                const float3 prev_pos_ws = mul(cb_ngl_sceneview.cb_prev_view_inv_mtx, float4(prev_pos_vs, 1.0));
-                const float3 diff_ws = prev_pos_ws - gs_probe_pos_ws;
-                const float  plane_dist = abs(dot(diff_ws, gs_probe_approx_normal_ws));
-                const float  normal_dot = dot(gs_probe_approx_normal_ws, OctDecode(prev_tile_info.zw));
-                if(plane_dist < cb_srvs.ss_probe_temporal_filter_plane_dist_threshold
-                    && normal_dot > cb_srvs.ss_probe_temporal_filter_normal_cos_threshold)
+                const uint2 depth_size = cb_ngl_sceneview.cb_render_resolution;
+                const int tile_size = SCREEN_SPACE_PROBE_TILE_SIZE;
+                const int2 probe_tile_count = max((int2(depth_size) + tile_size - 1) / tile_size, int2(1, 1));
+                const float2 prev_pos_texel = prev_uv * float2(depth_size);
+                const int2 prev_center_tile = clamp(int2(prev_pos_texel) / tile_size, int2(0, 0), probe_tile_count - 1);
+                const int2 candidate_offset = CalcOffsetFrom3x3Index(gindex);
+                const int2 candidate_tile_id = clamp(prev_center_tile + candidate_offset, int2(0, 0), probe_tile_count - 1);
+
+                const float4 candidate_tile_info = ScreenSpaceProbeDirectSHHistoryTileInfoTex.Load(int3(candidate_tile_id, 0));
+                if(isValidDepth(candidate_tile_info.x))
                 {
-                    gs_temporal_best_prev_tile_packed = (uint(prev_center_tile.y) << 16) | uint(prev_center_tile.x & 0xffff);
+                    const int2 candidate_probe_texel = candidate_tile_id * tile_size + SspTileInfoDecodeProbePosInTile(candidate_tile_info.y);
+                    const float candidate_view_z = calc_view_z_from_ndc_z(candidate_tile_info.x, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
+                    const float3 candidate_pos_vs = CalcViewSpacePosition((float2(candidate_probe_texel) + 0.5) * cb_ngl_sceneview.cb_render_resolution_inv, candidate_view_z, cb_ngl_sceneview.cb_prev_proj_mtx);
+                    const float3 candidate_pos_ws = mul(cb_ngl_sceneview.cb_prev_view_inv_mtx, float4(candidate_pos_vs, 1.0));
+                    const float3 diff_ws = candidate_pos_ws - gs_probe_pos_ws;
+                    const float  plane_dist = abs(dot(diff_ws, gs_probe_approx_normal_ws));
+                    const float  normal_dot = dot(gs_probe_approx_normal_ws, OctDecode(candidate_tile_info.zw));
+
+                    if(plane_dist < cb_srvs.ss_probe_temporal_filter_plane_dist_threshold
+                        && normal_dot > cb_srvs.ss_probe_temporal_filter_normal_cos_threshold)
+                    {
+                        // ワールド位置差分 + 法線差分をスコア化し, InterlockedMin で最良タイルを選択.
+                        float probe_dist = length(diff_ws) * 100.0;
+                        probe_dist += (1.0 - normal_dot) * 1.0;
+                        const uint quantized_dist = min((uint)(probe_dist * 1024.0), 0x03ffffffu);
+                        local_best_score       = (quantized_dist << 6) | (gindex & 0x3fu);
+                        local_best_tile_packed = PackTileId(candidate_tile_id);
+                    }
                 }
             }
+        }
+
+        gs_temporal_candidate_prev_tile_packed[gindex] = local_best_tile_packed;
+        if(0xffffffff != local_best_score)
+            InterlockedMin(gs_temporal_best_score, local_best_score);
+        GroupMemoryBarrierWithGroupSync();
+
+        if(0 == gindex)
+        {
+            if(0xffffffff != gs_temporal_best_score)
+            {
+                const uint winner_lane = gs_temporal_best_score & 0x3fu;
+                gs_temporal_best_prev_tile_packed = gs_temporal_candidate_prev_tile_packed[winner_lane];
+            }
+        }
+        GroupMemoryBarrierWithGroupSync();
+
+        // ベストタイルの SH を全スレッド並列でセル方向値に展開 → gs_temporal_reprojected_value.
+        if(0xffffffff != gs_temporal_best_prev_tile_packed)
+        {
+            const int2 best_prev_tile = UnpackTileId(gs_temporal_best_prev_tile_packed);
+            const float4 prev_sh = ScreenSpaceProbeDirectSHHistoryTex.Load(int3(best_prev_tile, 0));
+            // SkyVisibility として評価するため saturate.
+            gs_temporal_reprojected_value[gindex] = saturate(max(0.0, dot(prev_sh, EvaluateL1ShBasis(cell_dir_ws))));
         }
     }
     GroupMemoryBarrierWithGroupSync();
 
-    // ---- Step 4: 前フレーム SH を方向ごとに評価 → ss_prev_radiance ----
+    // ---- Step 4: gs_prev_radiance を gs_temporal_reprojected_value から計算 ----
     {
-        float prev_val = 0.0;
-        if(0xffffffff != gs_temporal_best_prev_tile_packed)
-        {
-            const int2 prev_tile = int2(int(gs_temporal_best_prev_tile_packed & 0xffffu), int((gs_temporal_best_prev_tile_packed >> 16) & 0xffffu));
-            const float4 prev_sh = ScreenSpaceProbeDirectSHHistoryTex.Load(int3(prev_tile, 0));
-            const float4 sh_basis = EvaluateL1ShBasis(cell_dir_ws);
-            // SkyVisibilityとして評価するためsaturate.
-            prev_val = saturate(max(0.0, dot(prev_sh, sh_basis)));
-        }
-
+        const float temporal_val_for_guiding = (0 == cb_srvs.ss_probe_ray_guiding_enable) ? 0.0 : gs_temporal_reprojected_value[gindex];
         const float clamped_normal_dot = max(0.0, dot(base_normal_ws, cell_dir_ws));
-        gs_prev_radiance[gindex] = (prev_val + NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS) * clamped_normal_dot;
+        gs_prev_radiance[gindex] = (temporal_val_for_guiding + NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS) * clamped_normal_dot;
     }
     GroupMemoryBarrierWithGroupSync();
 
@@ -331,22 +380,28 @@ void main_cs(
 
         
         #if NGL_SSP_DIRECT_SH_TEMPORAL_FILTER_SH
-            // SHでの Temporal Filter を行う. DirectSHモードはこちらで高速補間できる点を活かしたい.
+            // SHスペースで Temporal Filter.
+            // 法線方向の代表輝度差から動的ブレンドレートを計算し min/max_hysteresis でクランプ.
             if(0xffffffff != gs_temporal_best_prev_tile_packed && (0 != cb_srvs.ss_probe_temporal_reprojection_enable))
             {
-                // SH から再評価した前フレーム値.
-                float4 prev_sh4;
-                {
-                    const int2 prev_tile = int2(int(gs_temporal_best_prev_tile_packed & 0xffffu), int((gs_temporal_best_prev_tile_packed >> 16) & 0xffffu));
-                    prev_sh4 = ScreenSpaceProbeDirectSHHistoryTex.Load(int3(prev_tile, 0));
-                }
-                float temporal_rate = 0.85; // OctahedralMapCellの輝度ベースのブレンドヒューリスティクスのようなことができるだろうか?
+                const int2 prev_tile = UnpackTileId(gs_temporal_best_prev_tile_packed);
+                const float4 prev_sh4 = ScreenSpaceProbeDirectSHHistoryTex.Load(int3(prev_tile, 0));
+                // 法線方向の代表輝度差分から動的ブレンドレートを計算.
+                const float4 normal_sh_basis = EvaluateL1ShBasis(base_normal_ws);
+                const float curr_repr_val = saturate(max(0.0, dot(sh_out, normal_sh_basis)));
+                const float prev_repr_val = saturate(max(0.0, dot(prev_sh4, normal_sh_basis)));
+                float temporal_rate = biased_shadow_temporal_weight(curr_repr_val, prev_repr_val);
+                temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
                 sh_out = lerp(sh_out, prev_sh4, temporal_rate);
             }
         #else
             // None. 基本使わないはず.
         #endif
-        
+
+        // TileInfo に reprojection 成功フラグを書き戻し.
+        const bool is_reprojection_succeeded = (0xffffffff != gs_temporal_best_prev_tile_packed);
+        RWScreenSpaceProbeDirectSHTileInfoTex[probe_tile_id] = SspTileInfoSetReprojectionSucceeded(tile_info, is_reprojection_succeeded);
+
         // Output.
         RWScreenSpaceProbeDirectSHTex[probe_tile_id] = sh_out;
     }
