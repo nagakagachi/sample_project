@@ -1656,7 +1656,11 @@ namespace ngl::render::app
         p_pso->SetView(p_desc_set, k_shader_bind_name_wcp_atlas_srv.Get(), bbvgi_instance_->GetWcpProbeAtlasTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_srv.Get(), bbvgi_instance_->GetSsProbeTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), bbvgi_instance_->GetSsProbeTileInfoTex().Get());
-        p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_sh_srv.Get(), bbvgi_instance_->GetSsProbeShTex().Get());
+        // DirectSH Mode が有効なときは DirectSH テクスチャを同スロットにバインドして切り替え.
+        const auto sh_tex = (0 != dbg_ss_probe_direct_sh_enable_)
+            ? bbvgi_instance_->GetSsProbeDirectShTex()
+            : bbvgi_instance_->GetSsProbeShTex();
+        p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_sh_srv.Get(), sh_tex.Get());
         p_pso->SetView(p_desc_set, "cb_srvs", &bbvgi_instance_->GetDispatchCbh()->cbv);
     }
 
