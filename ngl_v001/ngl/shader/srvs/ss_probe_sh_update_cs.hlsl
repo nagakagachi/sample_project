@@ -56,7 +56,7 @@ void main_cs(
         }
     }
 
-#if NGL_SSP_HEMI_OCTMAP
+#if NGL_SSP_OCTAHEDRALMAP_STORAGE_HEMISPHERE_MODE
     const float texel_solid_angle = (2.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT);
 #else
     const float texel_solid_angle = (4.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT);

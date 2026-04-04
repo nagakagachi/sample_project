@@ -173,55 +173,70 @@ float4 SspTileInfoBuild(float depth, uint2 probe_pos_in_tile, float2 approx_norm
 
 // ------------------------------------------------------------------------------------------------------------------------
 
-float3 SspDecodeRayDirLocal(float2 oct_uv)
+
+// ワールド法線->半球OctahedralMapエンコード.
+float2 OctahedralEncodeHemisphereDirWs(float3 dir_ws, float3 base_normal_ws)
 {
-    #if NGL_SSP_HEMI_OCTMAP
-        return OctDecodeHemi(oct_uv);
-    #else
-        return OctDecode(oct_uv);
-    #endif
+    return OctEncodeHemiByNormal(dir_ws, base_normal_ws);
+}
+// ワールド法線->球面OctahedralMapエンコード.
+float2 OctahedralEncodeSphereDirWs(float3 dir_ws)
+{
+    return OctEncode(dir_ws);
 }
 
-float3 SspBuildSampleRayDirFromLocal(float3 local_dir, float3 basis_t_ws, float3 basis_b_ws, float3 base_normal_ws)
+// 半球OctahedralMapデコード->ワールド空間方向.
+float3 OctahedralDecodeHemisphereDirWs(float2 oct_uv, float3 basis_t_ws, float3 basis_b_ws, float3 base_normal_ws)
 {
-    #if NGL_SSP_HEMI_OCTMAP
-        return local_dir.x * basis_t_ws + local_dir.y * basis_b_ws + local_dir.z * base_normal_ws;
-    #else
-        return local_dir;
-    #endif
+    const float3 local_dir = OctDecodeHemi(oct_uv);
+    return local_dir.x * basis_t_ws + local_dir.y * basis_b_ws + local_dir.z * base_normal_ws;
 }
-float3 SspBuildSampleRayDirFromLocal(float3 local_dir, float3 base_normal_ws)
+// 半球OctahedralMapデコード->ワールド空間方向. 内部で接空間構築するバージョン.
+float3 OctahedralDecodeHemisphereDirWs(float2 oct_uv, float3 base_normal_ws)
 {
-    #if NGL_SSP_HEMI_OCTMAP
-        // 内部で接空間構築するバージョン.
-        float3 basis_t_ws;
-        float3 basis_b_ws;
-        BuildOrthonormalBasis(base_normal_ws, basis_t_ws, basis_b_ws);
-        return SspBuildSampleRayDirFromLocal(local_dir, basis_t_ws, basis_b_ws, base_normal_ws);
-    #else
-        return local_dir;
-    #endif
+    // 内部で接空間構築するバージョン.
+    float3 basis_t_ws;
+    float3 basis_b_ws;
+    BuildOrthonormalBasis(base_normal_ws, basis_t_ws, basis_b_ws);
+    return OctahedralDecodeHemisphereDirWs(oct_uv, basis_t_ws, basis_b_ws, base_normal_ws);
+}
+// 球面OctahedralMapデコード->ワールド空間方向.
+float3 OctahedralDecodeSphereDirWs(float2 oct_uv)
+{
+    return OctDecode(oct_uv);
 }
 
+
+
+// OctahedralMapストレージ向け.
+// 球面/半球切り替え用. ワールド空間方向->OctahedralMapエンコード. DirectSHモードでは半球OctahedralMap, それ以外のモードでは球面OctahedralMapを使用するため、モードに応じて切り替える.
 float2 SspEncodeDirByNormal(float3 dir_ws, float3 base_normal_ws)
 {
-    #if NGL_SSP_HEMI_OCTMAP
-        return OctEncodeHemiByNormal(dir_ws, base_normal_ws);
+    #if NGL_SSP_OCTAHEDRALMAP_STORAGE_HEMISPHERE_MODE
+        return OctahedralEncodeHemisphereDirWs(dir_ws, base_normal_ws);
     #else
-        return OctEncode(dir_ws);
+        return OctahedralEncodeSphereDirWs(dir_ws);
     #endif
 }
-
+// OctahedralMapストレージ向け.
+// 球面/半球切り替え用. UV空間方向->OctahedralMapエンコード. DirectSHモードでは半球OctahedralMap, それ以外のモードでは球面OctahedralMapを使用するため、モードに応じて切り替える. 内部で接空間構築するバージョン.
 float3 SspDecodeDirByNormal(float2 oct_uv, float3 base_normal_ws)
 {
-    const float3 local_dir = SspDecodeRayDirLocal(oct_uv);
-    return SspBuildSampleRayDirFromLocal(local_dir, base_normal_ws);
+    #if NGL_SSP_OCTAHEDRALMAP_STORAGE_HEMISPHERE_MODE
+        return OctahedralDecodeHemisphereDirWs(oct_uv, base_normal_ws);
+    #else
+        return OctahedralDecodeSphereDirWs(oct_uv);
+    #endif
 }
-
+// OctahedralMapストレージ向け.
+// 球面/半球切り替え用. UV空間方向->OctahedralMapエンコード. DirectSHモードでは半球OctahedralMap, それ以外のモードでは球面OctahedralMapを使用するため、モードに応じて切り替える.
 float3 SspDecodeDirByNormal(float2 oct_uv, float3 basis_t_ws, float3 basis_b_ws, float3 base_normal_ws)
 {
-    const float3 local_dir = SspDecodeRayDirLocal(oct_uv);
-    return SspBuildSampleRayDirFromLocal(local_dir, basis_t_ws, basis_b_ws, base_normal_ws);
+    #if NGL_SSP_OCTAHEDRALMAP_STORAGE_HEMISPHERE_MODE
+        return OctahedralDecodeHemisphereDirWs(oct_uv, basis_t_ws, basis_b_ws, base_normal_ws);
+    #else
+        return OctahedralDecodeSphereDirWs(oct_uv);
+    #endif
 }
 
 

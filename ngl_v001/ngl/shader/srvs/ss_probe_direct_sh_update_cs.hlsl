@@ -24,6 +24,11 @@ Dispatch は 1/8 解像度 (TileInfo と同サイズ).
 #include "../include/scene_view_struct.hlsli"
 #include "../include/rand_util.hlsli"
 
+// SHストレージ版のサンプリングを半球モードにするか.
+#ifndef NGL_SSP_DIRECT_SH_SAMPLE_HEMISPHERE
+#define NGL_SSP_DIRECT_SH_SAMPLE_HEMISPHERE 1
+#endif
+
 #if !defined(NGL_SSP_RAY_GUIDING_ENABLE)
 #define NGL_SSP_RAY_GUIDING_ENABLE 1
 #endif
@@ -35,10 +40,6 @@ Dispatch は 1/8 解像度 (TileInfo と同サイズ).
 #ifndef NGL_SSP_RAY_COUNT
 #define NGL_SSP_RAY_COUNT (SCREEN_SPACE_PROBE_TILE_SIZE * SCREEN_SPACE_PROBE_TILE_SIZE)
 #endif
-
-
-#define NGL_SSP_DIRECT_SH_TEMPORAL_FILTER_SH 1
-
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
@@ -177,7 +178,11 @@ void main_cs(
 
     // ---- Step 2: 全スレッドが担当セルの方向を計算 ----
     const float2 cell_oct_uv = (float2(probe_atlas_local_pos) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
-    const float3 cell_dir_ws = SspDecodeDirByNormal(cell_oct_uv, base_tangent_ws, base_bitangent_ws, base_normal_ws);
+    #if NGL_SSP_DIRECT_SH_SAMPLE_HEMISPHERE
+        const float3 cell_dir_ws = OctahedralDecodeHemisphereDirWs(cell_oct_uv, base_tangent_ws, base_bitangent_ws, base_normal_ws);
+    #else
+        const float3 cell_dir_ws = OctahedralDecodeSphereDirWs(cell_oct_uv);
+    #endif
 
     // ---- Step 3: Temporal 再投影 (3x3 近傍探索 + InterlockedMin スコアリング) ----
     {
@@ -300,7 +305,11 @@ void main_cs(
         const uint2 selected_cell = uint2(selected_oct_cell_index % SCREEN_SPACE_PROBE_TILE_SIZE, selected_oct_cell_index / SCREEN_SPACE_PROBE_TILE_SIZE);
         const float2 jitter = rng.rand2();
         const float2 selected_oct_uv = (float2(selected_cell) + jitter) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
-        float3 sample_ray_dir = SspDecodeDirByNormal(selected_oct_uv, base_tangent_ws, base_bitangent_ws, base_normal_ws);
+        #if NGL_SSP_DIRECT_SH_SAMPLE_HEMISPHERE
+            float3 sample_ray_dir = OctahedralDecodeHemisphereDirWs(selected_oct_uv, base_tangent_ws, base_bitangent_ws, base_normal_ws);
+        #else
+            float3 sample_ray_dir = OctahedralDecodeSphereDirWs(selected_oct_uv);
+        #endif
     #else
         const float3 unit_v3 = random_unit_vector3(float3(asfloat(probe_tile_id.x), asfloat(probe_tile_id.y), asfloat(gindex ^ cb_srvs.frame_count)));
         const float3 local_dir = normalize(unit_v3 + float3(0, 0, 1));
@@ -318,7 +327,12 @@ void main_cs(
 
         const float sky_vis = (curr_ray_t.x < 0.0) ? 1.0 : 0.0;
         // 担当セルへ蓄積.
-        const float2 hit_oct_uv = SspEncodeDirByNormal(sample_ray_dir, base_normal_ws);
+        #if NGL_SSP_DIRECT_SH_SAMPLE_HEMISPHERE
+            const float2 hit_oct_uv = OctahedralEncodeHemisphereDirWs(sample_ray_dir, base_normal_ws);// 半球版.
+        #else
+            const float2 hit_oct_uv = OctahedralEncodeSphereDirWs(sample_ray_dir);
+        #endif
+
         const int2   hit_cell = clamp(int2(hit_oct_uv * SCREEN_SPACE_PROBE_TILE_SIZE), int2(0,0), int2(SCREEN_SPACE_PROBE_TILE_SIZE-1, SCREEN_SPACE_PROBE_TILE_SIZE-1));
         const int    hit_index = hit_cell.y * SCREEN_SPACE_PROBE_TILE_SIZE + hit_cell.x;
         InterlockedAdd(gs_ray_sample_accum[hit_index * 2 + 0], 1u);
@@ -326,42 +340,18 @@ void main_cs(
     }
     GroupMemoryBarrierWithGroupSync();
 
-    #if NGL_SSP_DIRECT_SH_TEMPORAL_FILTER_SH
-        {
-            const uint   hit_count = gs_ray_sample_accum[gindex * 2 + 0];
-            const float  curr_vis  = (hit_count > 0) ? (float(gs_ray_sample_accum[gindex * 2 + 1]) / float(hit_count)) : 0.0;
-            gs_blended_value[gindex] = curr_vis;
-        }
-    #else
-        // ---- Step 7: Temporal Blend ----
-        {
-            const uint   hit_count = gs_ray_sample_accum[gindex * 2 + 0];
-            const float  curr_vis  = (hit_count > 0) ? (float(gs_ray_sample_accum[gindex * 2 + 1]) / float(hit_count)) : 0.0;
-
-            float new_vis = curr_vis;
-            if(0xffffffff != gs_temporal_best_prev_tile_packed && (0 != cb_srvs.ss_probe_temporal_reprojection_enable))
-            {
-                // SH から再評価した前フレーム値.
-                float4 prev_sh4;
-                {
-                    const int2 prev_tile = int2(int(gs_temporal_best_prev_tile_packed & 0xffffu), int((gs_temporal_best_prev_tile_packed >> 16) & 0xffffu));
-                    prev_sh4 = ScreenSpaceProbeDirectSHHistoryTex.Load(int3(prev_tile, 0));
-                }
-                // SkyVisibilityとして評価するためsaturate.
-                const float prev_vis = saturate(max(0.0, dot(prev_sh4, EvaluateL1ShBasis(cell_dir_ws))));
-                float temporal_rate = biased_shadow_temporal_weight(curr_vis, prev_vis);
-                temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
-                new_vis = lerp(new_vis, prev_vis, temporal_rate);
-            }
-            gs_blended_value[gindex] = new_vis;
-        }
-    #endif
+    // 最新のサンプルによるOctahedralMap
+    {
+        const uint   hit_count = gs_ray_sample_accum[gindex * 2 + 0];
+        const float  curr_vis  = (hit_count > 0) ? (float(gs_ray_sample_accum[gindex * 2 + 1]) / float(hit_count)) : 0.0;
+        gs_blended_value[gindex] = curr_vis;
+    }
     GroupMemoryBarrierWithGroupSync();
 
     // ---- Step 8: SH 積分 (スレッド0 が全セルを逐次処理) ----
     if(0 == gindex)
     {
-#if NGL_SSP_HEMI_OCTMAP
+#if NGL_SSP_DIRECT_SH_SAMPLE_HEMISPHERE
         const float solid_angle = (2.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT);
 #else
         const float solid_angle = (4.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT);
@@ -372,31 +362,30 @@ void main_cs(
         {
             const uint2  cell = uint2(i % SCREEN_SPACE_PROBE_TILE_SIZE, i / SCREEN_SPACE_PROBE_TILE_SIZE);
             const float2 oct_uv = (float2(cell) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
-            const float3 dir_ws = SspDecodeDirByNormal(oct_uv, base_tangent_ws, base_bitangent_ws, base_normal_ws);
+            #if NGL_SSP_DIRECT_SH_SAMPLE_HEMISPHERE
+                const float3 dir_ws = OctahedralDecodeHemisphereDirWs(oct_uv, base_tangent_ws, base_bitangent_ws, base_normal_ws);
+            #else
+                const float3 dir_ws = OctahedralDecodeSphereDirWs(oct_uv);
+            #endif
             
             sh_out += gs_blended_value[i] * EvaluateL1ShBasis(dir_ws);
         }
         sh_out = sh_out * solid_angle;
 
-        
-        #if NGL_SSP_DIRECT_SH_TEMPORAL_FILTER_SH
-            // SHスペースで Temporal Filter.
-            // 法線方向の代表輝度差から動的ブレンドレートを計算し min/max_hysteresis でクランプ.
-            if(0xffffffff != gs_temporal_best_prev_tile_packed && (0 != cb_srvs.ss_probe_temporal_reprojection_enable))
-            {
-                const int2 prev_tile = UnpackTileId(gs_temporal_best_prev_tile_packed);
-                const float4 prev_sh4 = ScreenSpaceProbeDirectSHHistoryTex.Load(int3(prev_tile, 0));
-                // 法線方向の代表輝度差分から動的ブレンドレートを計算.
-                const float4 normal_sh_basis = EvaluateL1ShBasis(base_normal_ws);
-                const float curr_repr_val = saturate(max(0.0, dot(sh_out, normal_sh_basis)));
-                const float prev_repr_val = saturate(max(0.0, dot(prev_sh4, normal_sh_basis)));
-                float temporal_rate = biased_shadow_temporal_weight(curr_repr_val, prev_repr_val);
-                temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
-                sh_out = lerp(sh_out, prev_sh4, temporal_rate);
-            }
-        #else
-            // None. 基本使わないはず.
-        #endif
+        // SHスペースで Temporal Filter.
+        // 法線方向の代表輝度差から動的ブレンドレートを計算し min/max_hysteresis でクランプ.
+        if(0xffffffff != gs_temporal_best_prev_tile_packed && (0 != cb_srvs.ss_probe_temporal_reprojection_enable))
+        {
+            const int2 prev_tile = UnpackTileId(gs_temporal_best_prev_tile_packed);
+            const float4 prev_sh4 = ScreenSpaceProbeDirectSHHistoryTex.Load(int3(prev_tile, 0));
+            // 法線方向の代表輝度差分から動的ブレンドレートを計算.
+            const float4 normal_sh_basis = EvaluateL1ShBasis(base_normal_ws);
+            const float curr_repr_val = saturate(max(0.0, dot(sh_out, normal_sh_basis)));
+            const float prev_repr_val = saturate(max(0.0, dot(prev_sh4, normal_sh_basis)));
+            float temporal_rate = biased_shadow_temporal_weight(curr_repr_val, prev_repr_val);
+            temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
+            sh_out = lerp(sh_out, prev_sh4, temporal_rate);
+        }
 
         // TileInfo に reprojection 成功フラグを書き戻し.
         const bool is_reprojection_succeeded = (0xffffffff != gs_temporal_best_prev_tile_packed);
