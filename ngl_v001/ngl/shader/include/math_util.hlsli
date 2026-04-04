@@ -18,16 +18,20 @@
 #define NGL_EPSILON 0.00001
 
 // Spherical harmonics (L1) basis constants.
-static const float k_sh_l0 = 0.2820947918;
-static const float k_sh_l1 = 0.4886025119;
+//  Standard real SH convention: l=0 m=0, l=1 m=-1, l=1 m=0, l=1 m=+1.
+//  References: Ramamoorthi & Hanrahan 2001, Peter-Pike Sloan "Stupid SH Tricks", DirectX SH math.
+static const float k_sh_l0 = 0.2820947918; // Y_0^0  = 1/(2*sqrt(pi))
+static const float k_sh_l1 = 0.4886025119; // |Y_1^m| = sqrt(3)/(2*sqrt(pi))
 
+// L1 SH basis evaluation.  Returns float4(Y00, Y1m-1, Y10, Y1m+1).
+//  Component mapping: x=Y00, y=Y1_{-1}(dir.y), z=Y1_0(dir.z), w=Y1_{+1}(dir.x).
 float4 EvaluateL1ShBasis(float3 dir_ws)
 {
     return float4(
-        k_sh_l0,
-        k_sh_l1 * dir_ws.x,
-        k_sh_l1 * dir_ws.y,
-        k_sh_l1 * dir_ws.z);
+        k_sh_l0,              // l=0, m= 0 : Y_0^0
+        k_sh_l1 * dir_ws.y,   // l=1, m=-1 : Y_1^{-1}
+        k_sh_l1 * dir_ws.z,   // l=1, m= 0 : Y_1^{ 0}
+        k_sh_l1 * dir_ws.x);  // l=1, m=+1 : Y_1^{+1}
 }
 
 

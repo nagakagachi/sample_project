@@ -89,7 +89,7 @@ RWTexture2D<uint>      RWScreenSpaceProbeSideCacheLockTex;
 Texture2D<float4>      ScreenSpaceProbeDirectSHTileInfoTex;
 Texture2D<float4>      ScreenSpaceProbeDirectSHHistoryTileInfoTex;
 RWTexture2D<float4>    RWScreenSpaceProbeDirectSHTileInfoTex;
-// 1/8解像度のL1 SH係数 (rgba = l00, l1x, l1y, l1z).
+// 1/8解像度のL1 SH係数 (rgba = Y00, Y1_{-1}(y), Y1_0(z), Y1_{+1}(x)).
 Texture2D<float4>      ScreenSpaceProbeDirectSHTex;
 Texture2D<float4>      ScreenSpaceProbeDirectSHHistoryTex;
 RWTexture2D<float4>    RWScreenSpaceProbeDirectSHTex;

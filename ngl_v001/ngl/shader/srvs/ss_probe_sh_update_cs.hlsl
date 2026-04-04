@@ -3,7 +3,7 @@
 ss_probe_sh_update_cs.hlsl
 
 ScreenSpaceProbeの最新フレームOctMapからL1 SHを毎フレーム再構築する.
-rgba = l00, l1x, l1y, l1z
+rgba = Y00, Y1_{-1}(y), Y1_0(z), Y1_{+1}(x)  (standard SH L1 order)
 
 #endif
 

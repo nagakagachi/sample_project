@@ -209,7 +209,7 @@ void main_cs(
     }
     else if(13 == cb_srvs.debug_view_mode)
     {
-        // SH係数をそのままRGBAで可視化 (l00=R, l1x=G, l1y=B, l1z=A).
+        // SH係数をそのままRGBAで可視化 (Y00=R, Y1_{-1}(y)=G, Y1_0(z)=B, Y1_{+1}(x)=A).
         const float4 ss_probe_sh = ScreenSpaceProbeSHTex.Load(int3(ss_probe_tile_id, 0));
         RWTexWork[dtid.xy] = ss_probe_sh;
     }
@@ -274,7 +274,7 @@ void main_cs(
     }
     else if(17 == cb_srvs.debug_view_mode)
     {
-        // [DirectSH] SH係数をそのままRGBAで可視化 (l00=R, l1x=G, l1y=B, l1z=A).
+        // [DirectSH] SH係数をそのままRGBAで可視化 (Y00=R, Y1_{-1}(y)=G, Y1_0(z)=B, Y1_{+1}(x)=A).
         const float4 sh_coeff = ScreenSpaceProbeDirectSHTex.Load(int3(ss_probe_tile_id, 0));
         RWTexWork[dtid.xy] = sh_coeff;
     }

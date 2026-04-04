@@ -4,7 +4,7 @@ ss_probe_direct_sh_update_cs.hlsl
 
 DirectSH方式 SkyVisibility 更新.
 
-OctahedralMap テクスチャを持たず, L1 SH (float4: l00,l1x,l1y,l1z) を直接保持する検証パス.
+OctahedralMap テクスチャを持たず, L1 SH (float4: Y00, Y1_{-1}(y), Y1_0(z), Y1_{+1}(x)) を直接保持する検証パス.
 1 ThreadGroup = 1 ProbeタイルTile (8x8 = 64 threads).
 Dispatch は 1/8 解像度 (TileInfo と同サイズ).
 
@@ -58,7 +58,7 @@ groupshared uint   gs_temporal_candidate_prev_tile_packed[NGL_SSP_RAY_COUNT]; //
 groupshared float  gs_temporal_reprojected_value[NGL_SSP_RAY_COUNT];          // 前フレームSHをセル値に展開
 
 // ---- SH 積算用 (float として InterlockedAdd で利用するため uint に bit-reinterpret) ----
-groupshared uint   gs_sh_accum[4]; // l00, l1x, l1y, l1z (asuint/asfloat 変換)
+groupshared uint   gs_sh_accum[4]; // Y00, Y1_{-1}(y), Y1_0(z), Y1_{+1}(x) (asuint/asfloat 変換)
 
 // ---- ユーティリティ ----
 float biased_shadow_temporal_weight(float curr, float prev)
