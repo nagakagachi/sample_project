@@ -274,11 +274,41 @@ void main_cs(
     }
     else if(17 == cb_srvs.debug_view_mode)
     {
+        // [DirectSH] Screen Space Probe の Normalデバッグ.
+        const float4 dsh_tile_info = ScreenSpaceProbeDirectSHTileInfoTex.Load(int3(ss_probe_tile_id, 0));
+        if(!isValidDepth(dsh_tile_info.x))
+        {
+            RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
+        }
+        else
+        {
+            const float3 dsh_normal_ws = OctDecode(dsh_tile_info.zw);
+            RWTexWork[dtid.xy] = float4(dsh_normal_ws * 0.5 + 0.5, 1.0);
+        }
+    }
+    else if(18 == cb_srvs.debug_view_mode)
+    {
+        // [DirectSH] Screen Space Probe の Tile内配置Positionデバッグ.
+        const float4 dsh_tile_info = ScreenSpaceProbeDirectSHTileInfoTex.Load(int3(ss_probe_tile_id, 0));
+        const float dsh_depth = dsh_tile_info.x;
+        const int2 dsh_pos_in_tile = SspTileInfoDecodeProbePosInTile(dsh_tile_info.y);
+        if(isValidDepth(dsh_depth) && all(ss_probe_tile_base_pos + dsh_pos_in_tile == texel_pos))
+        {
+            const float debug_d = 0.01 / (dsh_depth + 1e-6);
+            RWTexWork[dtid.xy] = float4(cos(debug_d) * 0.5 + 0.5, cos(debug_d * 0.5)*0.5+0.5, cos(debug_d * 0.25)*0.5+0.5, 1.0);
+        }
+        else
+        {
+            RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
+        }
+    }
+    else if(19 == cb_srvs.debug_view_mode)
+    {
         // [DirectSH] SH係数をそのままRGBAで可視化 (Y00=R, Y1_{-1}(y)=G, Y1_0(z)=B, Y1_{+1}(x)=A).
         const float4 sh_coeff = ScreenSpaceProbeDirectSHTex.Load(int3(ss_probe_tile_id, 0));
         RWTexWork[dtid.xy] = sh_coeff;
     }
-    else if(18 == cb_srvs.debug_view_mode)
+    else if(20 == cb_srvs.debug_view_mode)
     {
         // [DirectSH] main_light方向で DirectSH を評価した結果を可視化.
         const float4 dsh_tile_info = ScreenSpaceProbeDirectSHTileInfoTex.Load(int3(ss_probe_tile_id, 0));
@@ -295,7 +325,7 @@ void main_cs(
             RWTexWork[dtid.xy] = sky_vis.xxxx;
         }
     }
-    else if(19 == cb_srvs.debug_view_mode)
+    else if(21 == cb_srvs.debug_view_mode)
     {
         // [DirectSH] Reprojection成功/失敗可視化. 緑=成功, 赤=失敗.
         const float4 dsh_tile_info = ScreenSpaceProbeDirectSHTileInfoTex.Load(int3(ss_probe_tile_id, 0));
