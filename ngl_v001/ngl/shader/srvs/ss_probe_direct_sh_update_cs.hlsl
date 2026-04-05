@@ -50,16 +50,14 @@ groupshared float3 gs_probe_approx_normal_ws;
 
 groupshared uint   gs_ray_sample_accum[THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT * 2]; // [i*2+0]=count, [i*2+1]=sum_visibility_fixed
 groupshared float  gs_prev_radiance[THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT];
-groupshared float  gs_blended_value[THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT];
 groupshared float  gs_guiding_cdf[THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT];
-groupshared float  gs_guiding_total_weight;
 groupshared uint   gs_temporal_best_score;                                   // InterlockedMin ベストスコア
 groupshared uint   gs_temporal_best_prev_tile_packed;                         // 0xffffffff = 無効
 groupshared uint   gs_temporal_candidate_prev_tile_packed[THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT]; // 3x3 候補タイル
 groupshared float  gs_temporal_reprojected_value[THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT];          // 前フレームSHをセル値に展開
 
-// ---- SH 積算用 (float として InterlockedAdd で利用するため uint に bit-reinterpret) ----
-groupshared uint   gs_sh_accum[4]; // Y00, Y1_{-1}(y), Y1_0(z), Y1_{+1}(x) (asuint/asfloat 変換)
+// ---- SH Parallel Reduction 用 ----
+groupshared float4 gs_sh_reduce[THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT];
 
 // ---- ユーティリティ ----
 float biased_shadow_temporal_weight(float curr, float prev)
@@ -94,9 +92,7 @@ int2 CalcOffsetFrom3x3Index(uint index)
     return int2(int(index % 3u), int(index / 3u)) - int2(1, 1);
 }
 
-// float を uint ビット列として InterlockedAdd するヘルパー (fixed-point 近似).
-// 精度が十分でないため, スレッド0による逐次積算に置き換えている (gs_blended_value を使用).
-// こちらは使用しないが参考として残す.
+
 
 [numthreads(SCREEN_SPACE_PROBE_TILE_SIZE, SCREEN_SPACE_PROBE_TILE_SIZE, 1)]
 void main_cs(
@@ -132,8 +128,7 @@ void main_cs(
         gs_probe_approx_normal_ws = float3(0,0,1);
         gs_temporal_best_score    = 0xffffffff;
         gs_temporal_best_prev_tile_packed = 0xffffffff;
-        gs_guiding_total_weight   = 0.0;
-        gs_sh_accum[0] = 0; gs_sh_accum[1] = 0; gs_sh_accum[2] = 0; gs_sh_accum[3] = 0;
+        gs_sh_reduce[0] = float4(0, 0, 0, 0);
 
         if(isValidDepth(tile_info.x))
         {
@@ -157,7 +152,6 @@ void main_cs(
         gs_ray_sample_accum[gindex * 2 + 0] = 0;
         gs_ray_sample_accum[gindex * 2 + 1] = 0;
         gs_prev_radiance[gindex] = 0.0;
-        gs_blended_value[gindex] = 1.0; // デフォルト: 空として扱う.
         gs_guiding_cdf[gindex]   = 0.0;
         gs_temporal_candidate_prev_tile_packed[gindex] = 0xffffffff;
         gs_temporal_reprojected_value[gindex] = 0.0;
@@ -276,7 +270,6 @@ void main_cs(
         [unroll]
         for(uint i = 0; i < THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT; ++i)
             gs_guiding_cdf[i] *= cdf_inv;
-        gs_guiding_total_weight = cdf_sum;
     }
     GroupMemoryBarrierWithGroupSync();
 
@@ -340,37 +333,34 @@ void main_cs(
     }
     GroupMemoryBarrierWithGroupSync();
 
-    // 最新のサンプルによるOctahedralMap
+    // 最新のサンプルによるOctahedralMap → SH投影値を直接計算.
     {
         const uint   hit_count = gs_ray_sample_accum[gindex * 2 + 0];
-        const float  curr_vis  = (hit_count > 0) ? (float(gs_ray_sample_accum[gindex * 2 + 1]) / float(hit_count)) : 0.0;
-        gs_blended_value[gindex] = curr_vis;
-    }
-    GroupMemoryBarrierWithGroupSync();
+        const float  blended_value = (hit_count > 0) ? (float(gs_ray_sample_accum[gindex * 2 + 1]) / float(hit_count)) : 0.0;
 
-    // ---- Step 8: SH 積分 (スレッド0 が全セルを逐次処理) ----
-    if(0 == gindex)
-    {
+        // ---- Step 8: SH 積分 (全スレッド並列 SH投影 + Parallel Reduction) ----
 #if NGL_SSP_DIRECT_SH_SAMPLE_HEMISPHERE
         const float solid_angle = (2.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT);
 #else
         const float solid_angle = (4.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT);
 #endif
-        float4 sh_out = float4(0, 0, 0, 0);
-        [unroll]
-        for(uint i = 0; i < THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT; ++i)
-        {
-            const uint2  cell = uint2(i % SCREEN_SPACE_PROBE_TILE_SIZE, i / SCREEN_SPACE_PROBE_TILE_SIZE);
-            const float2 oct_uv = (float2(cell) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
-            #if NGL_SSP_DIRECT_SH_SAMPLE_HEMISPHERE
-                const float3 dir_ws = OctahedralDecodeHemisphereDirWs(oct_uv, base_tangent_ws, base_bitangent_ws, base_normal_ws);
-            #else
-                const float3 dir_ws = OctahedralDecodeSphereDirWs(oct_uv);
-            #endif
-            
-            sh_out += gs_blended_value[i] * EvaluateL1ShBasis(dir_ws);
-        }
-        sh_out = sh_out * solid_angle;
+        // 各スレッドが自身のセルの SH 投影値を計算 (cell_dir_ws は Step 2 で計算済み).
+        gs_sh_reduce[gindex] = (solid_angle * blended_value) * EvaluateL1ShBasis(cell_dir_ws);
+    }
+    GroupMemoryBarrierWithGroupSync();
+
+    // Parallel Reduction (log2(64) = 6 steps).
+    [unroll]
+    for(uint stride = THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT / 2; stride > 0; stride >>= 1)
+    {
+        if(gindex < stride)
+            gs_sh_reduce[gindex] += gs_sh_reduce[gindex + stride];
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if(0 == gindex)
+    {
+        float4 sh_out = gs_sh_reduce[0];
 
         // SHスペースで Temporal Filter.
         // 法線方向の代表輝度差から動的ブレンドレートを計算し min/max_hysteresis でクランプ.
