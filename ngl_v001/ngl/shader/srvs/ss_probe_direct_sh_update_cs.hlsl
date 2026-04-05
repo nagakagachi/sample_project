@@ -227,24 +227,21 @@ void main_cs(
             InterlockedMin(gs_temporal_best_score, local_best_score);
         GroupMemoryBarrierWithGroupSync();
 
-        if(0 == gindex)
+        if(0 == gindex && 0xffffffff != gs_temporal_best_score)
         {
-            if(0xffffffff != gs_temporal_best_score)
-            {
-                const uint winner_lane = gs_temporal_best_score & 0x3fu;
-                gs_temporal_best_prev_tile_packed = gs_temporal_candidate_prev_tile_packed[winner_lane];
-            }
+            const uint winner_lane = gs_temporal_best_score & 0x3fu;
+            gs_temporal_best_prev_tile_packed = gs_temporal_candidate_prev_tile_packed[winner_lane];
         }
         GroupMemoryBarrierWithGroupSync();
-
-        // ベストタイルの SH を全スレッド並列でセル方向値に展開 → gs_temporal_reprojected_value.
-        if(0xffffffff != gs_temporal_best_prev_tile_packed)
-        {
-            const int2 best_prev_tile = UnpackTileId(gs_temporal_best_prev_tile_packed);
-            const float4 prev_sh = ScreenSpaceProbeDirectSHHistoryTex.Load(int3(best_prev_tile, 0));
-            // SkyVisibility として評価するため saturate.
-            gs_temporal_reprojected_value[gindex] = saturate(max(0.0, dot(prev_sh, EvaluateL1ShBasis(cell_dir_ws))));
-        }
+    }
+    
+    // 探索結果のReprojectionProbeのSHからOctahedralMap展開.
+    if(0xffffffff != gs_temporal_best_prev_tile_packed)
+    {
+        const int2 best_prev_tile = UnpackTileId(gs_temporal_best_prev_tile_packed);
+        const float4 prev_sh = ScreenSpaceProbeDirectSHHistoryTex.Load(int3(best_prev_tile, 0));
+        // SkyVisibility として評価するため saturate.
+        gs_temporal_reprojected_value[gindex] = saturate(max(0.0, dot(prev_sh, EvaluateL1ShBasis(cell_dir_ws))));
     }
     GroupMemoryBarrierWithGroupSync();
 
@@ -336,9 +333,22 @@ void main_cs(
     // 最新のサンプルによるOctahedralMap → SH投影値を直接計算.
     {
         const uint   hit_count = gs_ray_sample_accum[gindex * 2 + 0];
-        const float  blended_value = (hit_count > 0) ? (float(gs_ray_sample_accum[gindex * 2 + 1]) / float(hit_count)) : 0.0;
+        // ヒットなしセルは temporal 再投影値にフォールバック (Octahedral モードと同等).
+        const float  current_value = (hit_count > 0) ? (float(gs_ray_sample_accum[gindex * 2 + 1]) / float(hit_count)) : gs_temporal_reprojected_value[gindex];
 
-        // ---- Step 8: SH 積分 (全スレッド並列 SH投影 + Parallel Reduction) ----
+        // ---- per-cell Temporal Blend (SH投影前) ----
+        float blended_value = current_value;
+        const bool has_temporal = (0xffffffff != gs_temporal_best_prev_tile_packed)
+                               && (0 != cb_srvs.ss_probe_temporal_reprojection_enable);
+        if(has_temporal)
+        {
+            const float prev_val = gs_temporal_reprojected_value[gindex];
+            float temporal_rate = biased_shadow_temporal_weight(current_value, prev_val);
+            temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
+            blended_value = lerp(current_value, prev_val, temporal_rate);
+        }
+
+        // ---- SH 積分 (全スレッド並列 SH投影 + Parallel Reduction) ----
 #if NGL_SSP_DIRECT_SH_SAMPLE_HEMISPHERE
         const float solid_angle = (2.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT);
 #else
@@ -361,21 +371,6 @@ void main_cs(
     if(0 == gindex)
     {
         float4 sh_out = gs_sh_reduce[0];
-
-        // SHスペースで Temporal Filter.
-        // 法線方向の代表輝度差から動的ブレンドレートを計算し min/max_hysteresis でクランプ.
-        if(0xffffffff != gs_temporal_best_prev_tile_packed && (0 != cb_srvs.ss_probe_temporal_reprojection_enable))
-        {
-            const int2 prev_tile = UnpackTileId(gs_temporal_best_prev_tile_packed);
-            const float4 prev_sh4 = ScreenSpaceProbeDirectSHHistoryTex.Load(int3(prev_tile, 0));
-            // 法線方向の代表輝度差分から動的ブレンドレートを計算.
-            const float4 normal_sh_basis = EvaluateL1ShBasis(base_normal_ws);
-            const float curr_repr_val = saturate(max(0.0, dot(sh_out, normal_sh_basis)));
-            const float prev_repr_val = saturate(max(0.0, dot(prev_sh4, normal_sh_basis)));
-            float temporal_rate = biased_shadow_temporal_weight(curr_repr_val, prev_repr_val);
-            temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
-            sh_out = lerp(sh_out, prev_sh4, temporal_rate);
-        }
 
         // TileInfo に reprojection 成功フラグを書き戻し.
         const bool is_reprojection_succeeded = (0xffffffff != gs_temporal_best_prev_tile_packed);
