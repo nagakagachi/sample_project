@@ -37,9 +37,9 @@ Dispatch は 1/8 解像度 (TileInfo と同サイズ).
 #define NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS 0.03
 #endif
 
-#ifndef NGL_SSP_RAY_COUNT
-#define NGL_SSP_RAY_COUNT (SCREEN_SPACE_PROBE_TILE_SIZE * SCREEN_SPACE_PROBE_TILE_SIZE)
-#endif
+// スレッド
+#define THREAD_GROUP_OCTAHEDRAL_MAP_WIDTH (SCREEN_SPACE_PROBE_TILE_SIZE)
+#define THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT (THREAD_GROUP_OCTAHEDRAL_MAP_WIDTH*THREAD_GROUP_OCTAHEDRAL_MAP_WIDTH)
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
@@ -48,15 +48,15 @@ groupshared float  gs_probe_hw_depth;
 groupshared float3 gs_probe_pos_ws;
 groupshared float3 gs_probe_approx_normal_ws;
 
-groupshared uint   gs_ray_sample_accum[NGL_SSP_RAY_COUNT * 2]; // [i*2+0]=count, [i*2+1]=sum_visibility_fixed
-groupshared float  gs_prev_radiance[NGL_SSP_RAY_COUNT];
-groupshared float  gs_blended_value[NGL_SSP_RAY_COUNT];
-groupshared float  gs_guiding_cdf[NGL_SSP_RAY_COUNT];
+groupshared uint   gs_ray_sample_accum[THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT * 2]; // [i*2+0]=count, [i*2+1]=sum_visibility_fixed
+groupshared float  gs_prev_radiance[THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT];
+groupshared float  gs_blended_value[THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT];
+groupshared float  gs_guiding_cdf[THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT];
 groupshared float  gs_guiding_total_weight;
 groupshared uint   gs_temporal_best_score;                                   // InterlockedMin ベストスコア
 groupshared uint   gs_temporal_best_prev_tile_packed;                         // 0xffffffff = 無効
-groupshared uint   gs_temporal_candidate_prev_tile_packed[NGL_SSP_RAY_COUNT]; // 3x3 候補タイル
-groupshared float  gs_temporal_reprojected_value[NGL_SSP_RAY_COUNT];          // 前フレームSHをセル値に展開
+groupshared uint   gs_temporal_candidate_prev_tile_packed[THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT]; // 3x3 候補タイル
+groupshared float  gs_temporal_reprojected_value[THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT];          // 前フレームSHをセル値に展開
 
 // ---- SH 積算用 (float として InterlockedAdd で利用するため uint に bit-reinterpret) ----
 groupshared uint   gs_sh_accum[4]; // Y00, Y1_{-1}(y), Y1_0(z), Y1_{+1}(x) (asuint/asfloat 変換)
@@ -267,14 +267,14 @@ void main_cs(
     {
         float cdf_sum = 0.0;
         [unroll]
-        for(uint i = 0; i < NGL_SSP_RAY_COUNT; ++i)
+        for(uint i = 0; i < THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT; ++i)
         {
             cdf_sum += gs_prev_radiance[i];
             gs_guiding_cdf[i] = cdf_sum;
         }
         const float cdf_inv = 1.0 / max(cdf_sum, 1e-6);
         [unroll]
-        for(uint i = 0; i < NGL_SSP_RAY_COUNT; ++i)
+        for(uint i = 0; i < THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT; ++i)
             gs_guiding_cdf[i] *= cdf_inv;
         gs_guiding_total_weight = cdf_sum;
     }
@@ -285,16 +285,16 @@ void main_cs(
     const float ray_normal_offset = cb_srvs.bbv.cell_size * k_bbv_per_voxel_resolution_inv * cb_srvs.ss_probe_ray_normal_offset_scale;
     const float3 ray_origin_base = gs_probe_pos_ws + base_normal_ws * ray_normal_offset;
 
-    const uint ray_count = NGL_SSP_RAY_COUNT;
+    const uint ray_count = THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT;
     for(int sample_index = 0; sample_index < 1; ++sample_index)
     {
         const uint ray_index = gindex + ray_count * sample_index;
             
     #if NGL_SSP_RAY_GUIDING_ENABLE
         const float guiding_rand = rng.rand();
-        uint selected_oct_cell_index = gindex & (NGL_SSP_RAY_COUNT - 1);
+        uint selected_oct_cell_index = gindex & (THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT - 1);
         [unroll]
-        for(uint i = 0; i < NGL_SSP_RAY_COUNT; ++i)
+        for(uint i = 0; i < THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT; ++i)
         {
             if(guiding_rand <= gs_guiding_cdf[i])
             {
@@ -358,7 +358,7 @@ void main_cs(
 #endif
         float4 sh_out = float4(0, 0, 0, 0);
         [unroll]
-        for(uint i = 0; i < NGL_SSP_RAY_COUNT; ++i)
+        for(uint i = 0; i < THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT; ++i)
         {
             const uint2  cell = uint2(i % SCREEN_SPACE_PROBE_TILE_SIZE, i / SCREEN_SPACE_PROBE_TILE_SIZE);
             const float2 oct_uv = (float2(cell) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;

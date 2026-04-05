@@ -36,22 +36,22 @@ void main_cs(
     const uint2 probe_2d_map_pos = uint2(voxel_index % cb_srvs.wcp.flatten_2d_width, voxel_index / cb_srvs.wcp.flatten_2d_width);
 
     // 境界部込のOctmap最小位置.
-    const uint2 octmap_atlas_texel_pos_min = probe_2d_map_pos * k_probe_octmap_width_with_border;
+    const uint2 octmap_atlas_texel_pos_min = probe_2d_map_pos * k_wcp_probe_octmap_width_with_border;
     
     // 4隅の頂点コピー.
-    RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(0, 0)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_probe_octmap_width_with_border-2, k_probe_octmap_width_with_border-2)];
-    RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_probe_octmap_width_with_border-1, 0)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(1, k_probe_octmap_width_with_border-2)];
-    RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(0, k_probe_octmap_width_with_border-1)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_probe_octmap_width_with_border-2, 1)];
-    RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_probe_octmap_width_with_border-1, k_probe_octmap_width_with_border-1)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(1, 1)];
-    for(int i = 1; i < k_probe_octmap_width_with_border-1; ++i)
+    RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(0, 0)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_wcp_probe_octmap_width_with_border-2, k_wcp_probe_octmap_width_with_border-2)];
+    RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_wcp_probe_octmap_width_with_border-1, 0)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(1, k_wcp_probe_octmap_width_with_border-2)];
+    RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(0, k_wcp_probe_octmap_width_with_border-1)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_wcp_probe_octmap_width_with_border-2, 1)];
+    RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_wcp_probe_octmap_width_with_border-1, k_wcp_probe_octmap_width_with_border-1)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(1, 1)];
+    for(int i = 1; i < k_wcp_probe_octmap_width_with_border-1; ++i)
     {
         // 上エッジ
-        RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(i, 0)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_probe_octmap_width_with_border-1 - i, 1)];
+        RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(i, 0)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_wcp_probe_octmap_width_with_border-1 - i, 1)];
         // 左エッジ
-        RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(0, i)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(1, k_probe_octmap_width_with_border-1 - i)];
+        RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(0, i)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(1, k_wcp_probe_octmap_width_with_border-1 - i)];
         // 右エッジ
-        RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_probe_octmap_width_with_border-1, i)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_probe_octmap_width_with_border-2, k_probe_octmap_width_with_border-1 - i)];
+        RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_wcp_probe_octmap_width_with_border-1, i)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_wcp_probe_octmap_width_with_border-2, k_wcp_probe_octmap_width_with_border-1 - i)];
         // 下エッジ
-        RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(i, k_probe_octmap_width_with_border-1)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_probe_octmap_width_with_border-1 - i, k_probe_octmap_width_with_border-2)];
+        RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(i, k_wcp_probe_octmap_width_with_border-1)] = RWWcpProbeAtlasTex[octmap_atlas_texel_pos_min + int2(k_wcp_probe_octmap_width_with_border-1 - i, k_wcp_probe_octmap_width_with_border-2)];
     }
 }

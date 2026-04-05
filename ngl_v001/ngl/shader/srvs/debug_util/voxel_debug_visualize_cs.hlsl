@@ -164,7 +164,7 @@ void main_cs(
     {
         // Probe Atlas Textureの表示.
         const int2 texel_pos = dtid.xy * 0.1;
-        if(any(cb_srvs.wcp.flatten_2d_width * k_probe_octmap_width_with_border <= texel_pos))
+        if(any(cb_srvs.wcp.flatten_2d_width * k_wcp_probe_octmap_width_with_border <= texel_pos))
             return;
 
         const float4 probe_data = WcpProbeAtlasTex.Load(uint3(texel_pos, 0));

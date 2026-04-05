@@ -194,7 +194,7 @@ uint2 calc_2d_position_from_index(uint index, uint tex_width)
 uint2 calc_probe_octahedral_map_atlas_texel_base_pos(uint index, uint tex_width)
 {
     // 境界部分の +1.
-    return calc_2d_position_from_index(index, tex_width) * k_probe_octmap_width_with_border + 1.0;
+    return calc_2d_position_from_index(index, tex_width) * k_wcp_probe_octmap_width_with_border + 1.0;
 }
 
 float4 main_ps(VS_OUTPUT input) : SV_TARGET

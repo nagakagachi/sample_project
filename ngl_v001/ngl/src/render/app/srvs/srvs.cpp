@@ -471,11 +471,11 @@ namespace ngl::render::app
                                         ,   "Srvs_BbvFineUpdateVoxelIndirectArg");
         }
         {
-            // 1F更新可能プローブ数分の k_probe_octmap_width*k_probe_octmap_width テクセル分バッファ.
+            // 1F更新可能プローブ数分の k_wcp_probe_octmap_width*k_wcp_probe_octmap_width テクセル分バッファ.
             bbv_fine_update_voxel_probe_buffer_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = sizeof(float),
-                                               .element_count     = bbv_fine_update_voxel_count_max_ * (k_probe_octmap_width*k_probe_octmap_width),
+                                               .element_count     = bbv_fine_update_voxel_count_max_ * (k_wcp_probe_octmap_width*k_wcp_probe_octmap_width),
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
@@ -545,8 +545,8 @@ namespace ngl::render::app
         {
             rhi::TextureDep::Desc desc = {};
             desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  wcp_grid_updater_.Get().flatten_2d_width * k_probe_octmap_width_with_border;
-            desc.height = static_cast<u32>(std::ceil((wcp_grid_updater_.Get().total_count + wcp_grid_updater_.Get().flatten_2d_width - 1) / wcp_grid_updater_.Get().flatten_2d_width)) * k_probe_octmap_width_with_border;
+            desc.width =  wcp_grid_updater_.Get().flatten_2d_width * k_wcp_probe_octmap_width_with_border;
+            desc.height = static_cast<u32>(std::ceil((wcp_grid_updater_.Get().total_count + wcp_grid_updater_.Get().flatten_2d_width - 1) / wcp_grid_updater_.Get().flatten_2d_width)) * k_wcp_probe_octmap_width_with_border;
             desc.depth = 1;
             desc.mip_count = 1;
             desc.array_size = 1;

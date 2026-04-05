@@ -128,7 +128,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     const uint2 probe_2d_map_pos = uint2(voxel_index % cb_srvs.wcp.flatten_2d_width, voxel_index / cb_srvs.wcp.flatten_2d_width);
     uint tex_width, tex_height;
     WcpProbeAtlasTex.GetDimensions(tex_width, tex_height);
-    const float2 octmap_texel_pos = float2(probe_2d_map_pos * k_probe_octmap_width_with_border + 1.0) + OctEncode(normal_ws)*k_probe_octmap_width;
+    const float2 octmap_texel_pos = float2(probe_2d_map_pos * k_wcp_probe_octmap_width_with_border + 1.0) + OctEncode(normal_ws)*k_wcp_probe_octmap_width;
 
 
     

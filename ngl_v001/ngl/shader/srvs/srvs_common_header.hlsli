@@ -61,14 +61,13 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     #define k_bbv_per_voxel_resolution_inv (1.0 / float(k_bbv_per_voxel_resolution))
     #define k_bbv_per_voxel_resolution_vec3i int3(k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution)
 
-    // probeあたりのOctahedralMapAtlas解像度.
-    #define k_probe_octmap_width (6)
-    // それぞれのOctMapの+側境界に1テクセルボーダーを追加することで全方向に1テクセルのマージンを確保する.
-    #define k_probe_octmap_width_with_border (k_probe_octmap_width + 2)
-    // probeあたりのOctMapテクセル数.
-    #define k_per_probe_texel_count (k_probe_octmap_width * k_probe_octmap_width)
-
+    // wcp probeあたりのOctahedralMapAtlas解像度.
+    #define k_wcp_probe_octmap_width (6)
+    // wcp それぞれのOctMapの+側境界に1テクセルボーダーを追加することで全方向に1テクセルのマージンを確保する.
+    #define k_wcp_probe_octmap_width_with_border (k_wcp_probe_octmap_width + 2)
+    // wcp 
     #define k_wcp_probe_distance_max (50.0)
+    // wcp 
     #define k_wcp_probe_distance_max_inv (1.0 / k_wcp_probe_distance_max)
 
     

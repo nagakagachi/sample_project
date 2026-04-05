@@ -18,6 +18,8 @@ Texture2D                     TexHardwareDepth;
 #define DISPATCH_GROUP_SIZE_X SCREEN_SPACE_PROBE_TILE_SIZE
 #define DISPATCH_GROUP_SIZE_Y SCREEN_SPACE_PROBE_TILE_SIZE
 
+#define PROBE_RELOCATION_RETRY_COUNT 8
+
 [numthreads(DISPATCH_GROUP_SIZE_X, DISPATCH_GROUP_SIZE_Y, 1)]
 void main_cs(
     uint3 dtid   : SV_DispatchThreadID,
@@ -51,7 +53,7 @@ void main_cs(
         const float relocation_probability = cb_srvs.ss_probe_preupdate_relocation_probability;
         if(!isValidDepth(probe_depth) || (relocation_probability > rng.rand()))
         {
-            for(int i = 0; i < SCREEN_SPACE_PROBE_TILE_SIZE; ++i)
+            for(int i = 0; i < PROBE_RELOCATION_RETRY_COUNT; ++i)
             {
                 probe_pos_in_tile = rng.rand2() * (SCREEN_SPACE_PROBE_TILE_SIZE - 1);
                 current_probe_texel_pos = ss_probe_tile_pixel_start + probe_pos_in_tile;

@@ -109,7 +109,7 @@ void main_cs(
                 const uint2 probe_2d_map_pos = uint2(voxel_index % cb_srvs.wcp.flatten_2d_width, voxel_index / cb_srvs.wcp.flatten_2d_width);
 
                 // 境界部込のテクセル位置.
-                const uint2 octmap_atlas_texel_pos = probe_2d_map_pos * k_probe_octmap_width_with_border + 1 + clamp(uint2(octmap_uv * k_probe_octmap_width), 0, (k_probe_octmap_width - 1));
+                const uint2 octmap_atlas_texel_pos = probe_2d_map_pos * k_wcp_probe_octmap_width_with_border + 1 + clamp(uint2(octmap_uv * k_wcp_probe_octmap_width), 0, (k_wcp_probe_octmap_width - 1));
                 RWWcpProbeAtlasTex[octmap_atlas_texel_pos] = lerp(RWWcpProbeAtlasTex[octmap_atlas_texel_pos], distance_probe_value, PROBE_UPDATE_TEMPORAL_RATE);
             }
         }
