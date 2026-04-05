@@ -181,7 +181,7 @@ namespace ngl::render::app
             if (ImGui::CollapsingHeader("Voxel Debug"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
-                ImGui::SliderInt("Debug Texture Mode", &dbg_view_mode_, -1, 18);
+                ImGui::SliderInt("Debug Texture Mode", &dbg_view_mode_, -1, 19);
                 if (ImGui::BeginPopupContextItem()) {
                     if (ImGui::MenuItem("Reset to Default"))
                         dbg_view_mode_ = k_default_srvs_param.debug_view_mode;

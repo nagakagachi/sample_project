@@ -295,4 +295,19 @@ void main_cs(
             RWTexWork[dtid.xy] = sky_vis.xxxx;
         }
     }
+    else if(19 == cb_srvs.debug_view_mode)
+    {
+        // [DirectSH] Reprojection成功/失敗可視化. 緑=成功, 赤=失敗.
+        const float4 dsh_tile_info = ScreenSpaceProbeDirectSHTileInfoTex.Load(int3(ss_probe_tile_id, 0));
+        if(!isValidDepth(dsh_tile_info.x))
+        {
+            RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
+        }
+        else
+        {
+            const bool dsh_reprojection_succeeded = SspTileInfoIsReprojectionSucceeded(dsh_tile_info.y);
+            const float3 debug_color = dsh_reprojection_succeeded ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
+            RWTexWork[dtid.xy] = float4(debug_color, 1.0);
+        }
+    }
 }
