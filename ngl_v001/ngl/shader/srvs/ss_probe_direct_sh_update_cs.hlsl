@@ -62,6 +62,7 @@ groupshared float4 gs_sh_reduce[THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT];
 // ---- ユーティリティ ----
 float biased_shadow_temporal_weight(float curr, float prev)
 {
+    // https://gpuopen.com/download/GPUOpen2022_GI1_0.pdf
     const float l1 = curr, l2 = prev;
     float alpha = max(l1 - l2 - min(l1, l2), 0.0) / max(max(l1, l2), 1e-4);
     alpha = clamp(alpha, 0.0, 0.95);
