@@ -632,7 +632,8 @@ bool AppGame::Initialize()
 #if 1
     // Srvs.
     srvs_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f);
-    ngl::render::app::ScreenReconstructedVoxelStructure::dbg_view_mode_ = 9;
+    ngl::render::app::ScreenReconstructedVoxelStructure::dbg_view_category_ = 2;
+    ngl::render::app::ScreenReconstructedVoxelStructure::dbg_view_sub_mode_ = 0;
 #endif
 
     // Texture Rexource読み込みのテスト.

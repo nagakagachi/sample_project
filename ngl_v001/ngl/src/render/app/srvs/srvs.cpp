@@ -35,7 +35,8 @@ namespace ngl::render::app
 
 
     // デバッグ.
-    int ScreenReconstructedVoxelStructure::dbg_view_mode_ = -1;
+    int ScreenReconstructedVoxelStructure::dbg_view_category_ = -1;
+    int ScreenReconstructedVoxelStructure::dbg_view_sub_mode_ = 0;
     int ScreenReconstructedVoxelStructure::dbg_bbv_probe_debug_mode_ = -1;
     int ScreenReconstructedVoxelStructure::dbg_wcp_probe_debug_mode_ = -1;
     float ScreenReconstructedVoxelStructure::dbg_probe_scale_ = 1.0f;
@@ -181,11 +182,32 @@ namespace ngl::render::app
             if (ImGui::CollapsingHeader("Voxel Debug"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
-                ImGui::SliderInt("Debug Texture Mode", &dbg_view_mode_, -1, 21);
-                if (ImGui::BeginPopupContextItem()) {
-                    if (ImGui::MenuItem("Reset to Default"))
-                        dbg_view_mode_ = k_default_srvs_param.debug_view_mode;
-                    ImGui::EndPopup();
+
+                // カテゴリ選択ラジオボタン.
+                if (ImGui::RadioButton("Off", dbg_view_category_ == -1)) { dbg_view_category_ = -1; }
+                ImGui::SameLine();
+                if (ImGui::RadioButton("BBV", dbg_view_category_ == 0)) { dbg_view_category_ = 0; }
+                ImGui::SameLine();
+                if (ImGui::RadioButton("WCP", dbg_view_category_ == 1)) { dbg_view_category_ = 1; }
+                ImGui::SameLine();
+                if (ImGui::RadioButton("SSP_Oct", dbg_view_category_ == 2)) { dbg_view_category_ = 2; }
+                ImGui::SameLine();
+                if (ImGui::RadioButton("SSP_SH", dbg_view_category_ == 3)) { dbg_view_category_ = 3; }
+
+                // カテゴリ別サブモードスライダ.
+                if (0 <= dbg_view_category_)
+                {
+                    const int k_sub_mode_max[] = { 7, 0, 7, 4 };
+                    const int sub_max = k_sub_mode_max[dbg_view_category_];
+                    // カテゴリ切替時にクランプ.
+                    if (dbg_view_sub_mode_ > sub_max) dbg_view_sub_mode_ = sub_max;
+                    if (dbg_view_sub_mode_ < 0) dbg_view_sub_mode_ = 0;
+                    ImGui::SliderInt("Sub Mode", &dbg_view_sub_mode_, 0, sub_max);
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_view_sub_mode_ = 0;
+                        ImGui::EndPopup();
+                    }
                 }
             }
 
@@ -812,7 +834,8 @@ namespace ngl::render::app
 
             param.main_light_dir_ws = main_view_info.main_light_dir_ws;
 
-            param.debug_view_mode = ScreenReconstructedVoxelStructure::dbg_view_mode_;
+            param.debug_view_category = ScreenReconstructedVoxelStructure::dbg_view_category_;
+            param.debug_view_sub_mode = ScreenReconstructedVoxelStructure::dbg_view_sub_mode_;
             param.debug_bbv_probe_mode = ScreenReconstructedVoxelStructure::dbg_bbv_probe_debug_mode_;
             param.debug_wcp_probe_mode = ScreenReconstructedVoxelStructure::dbg_wcp_probe_debug_mode_;
 
@@ -1468,7 +1491,7 @@ namespace ngl::render::app
         auto& global_res = gfx::GlobalRenderResource::Instance();
 
         // デバッグ描画準備.
-        if(0 <= ScreenReconstructedVoxelStructure::dbg_view_mode_)
+        if(0 <= ScreenReconstructedVoxelStructure::dbg_view_category_)
         {
             const math::Vec2i work_tex_size = math::Vec2i(static_cast<int>(work_tex->GetWidth()), static_cast<int>(work_tex->GetHeight()));
 

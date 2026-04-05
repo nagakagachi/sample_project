@@ -228,11 +228,11 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         // MainViewのDepthBuffer解像度.
         int2 tex_main_view_depth_size NGL_CPP_MEMBER_INIT({});
         uint frame_count NGL_CPP_MEMBER_INIT({0});
-        int dummy4_2 NGL_CPP_MEMBER_INIT({0});
+        int debug_view_sub_mode NGL_CPP_MEMBER_INIT({0});
 
         float3 main_light_dir_ws NGL_CPP_MEMBER_INIT({});
 
-        int debug_view_mode NGL_CPP_MEMBER_INIT({-1});
+        int debug_view_category NGL_CPP_MEMBER_INIT({-1});
         
         int debug_bbv_probe_mode NGL_CPP_MEMBER_INIT({-1});
         int debug_wcp_probe_mode NGL_CPP_MEMBER_INIT({-1});

@@ -242,7 +242,8 @@ namespace ngl::render::app
     class ScreenReconstructedVoxelStructure
     {
     public:
-        static int dbg_view_mode_;
+        static int dbg_view_category_;
+        static int dbg_view_sub_mode_;
         
         
         static int dbg_bbv_probe_debug_mode_;
