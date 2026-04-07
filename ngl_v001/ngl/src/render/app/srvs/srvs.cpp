@@ -267,6 +267,8 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_direct_sh_history_srv = "ScreenSpaceProbeDirectSHHistoryTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_direct_sh_uav = "RWScreenSpaceProbeDirectSHTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_direct_sh_filtered_uav = "RWScreenSpaceProbeDirectSHFilteredTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_direct_sh_best_prev_tile_srv = "ScreenSpaceProbeDirectSHBestPrevTileTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_direct_sh_best_prev_tile_uav = "RWScreenSpaceProbeDirectSHBestPrevTileTex";
 
     void ToroidalGridUpdater::Initialize(const math::Vec3u& grid_resolution, float bbv_cell_size)
     {
@@ -716,6 +718,22 @@ namespace ngl::render::app
 
             ss_probe_direct_sh_tex_[i].Initialize(p_device, desc, (0 == i)? "Srvs_SsProbeDirectSHTexA" : "Srvs_SsProbeDirectSHTexB");
         }
+        // DirectSH方式専用: Best Prev Tile テクスチャ (フレーム内 preupdate→update 受け渡し用, ダブルバッファ不要).
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R32_UINT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            ss_probe_direct_sh_best_prev_tile_tex_.Initialize(p_device, desc, "Srvs_SsProbeDirectSHBestPrevTileTex");
+        }
 
         return true;
     }
@@ -916,6 +934,7 @@ namespace ngl::render::app
                     p_command_list->ResourceBarrier(ss_probe_direct_sh_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                     p_command_list->ResourceBarrier(ss_probe_direct_sh_tile_info_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 }
+                p_command_list->ResourceBarrier(ss_probe_direct_sh_best_prev_tile_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
             }
         }
         // Bbv Begin Update Pass.
@@ -1311,12 +1330,14 @@ namespace ngl::render::app
                 pso_ss_probe_direct_sh_preupdate_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                 pso_ss_probe_direct_sh_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_tile_info_uav.Get(), ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].uav.Get());
                 pso_ss_probe_direct_sh_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_history_tile_info_srv.Get(), ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_history_index].srv.Get());
+                pso_ss_probe_direct_sh_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_best_prev_tile_uav.Get(), ss_probe_direct_sh_best_prev_tile_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_ss_probe_direct_sh_preupdate_.Get());
                 p_command_list->SetDescriptorSet(pso_ss_probe_direct_sh_preupdate_.Get(), &desc_set);
                 pso_ss_probe_direct_sh_preupdate_->DispatchHelper(p_command_list, ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].texture->GetWidth(), ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].texture->GetHeight(), 1);
 
                 p_command_list->ResourceUavBarrier(ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].texture.Get());
+                p_command_list->ResourceUavBarrier(ss_probe_direct_sh_best_prev_tile_tex_.texture.Get());
             }
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ScreenSpaceProbeDirectSHUpdate");
@@ -1325,8 +1346,8 @@ namespace ngl::render::app
                 pso_ss_probe_direct_sh_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_ss_probe_direct_sh_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_ss_probe_direct_sh_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                pso_ss_probe_direct_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_tile_info_uav.Get(), ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].uav.Get());
-                pso_ss_probe_direct_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_history_tile_info_srv.Get(), ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_history_index].srv.Get());
+                pso_ss_probe_direct_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_tile_info_srv.Get(), ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].srv.Get());
+                pso_ss_probe_direct_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_best_prev_tile_srv.Get(), ss_probe_direct_sh_best_prev_tile_tex_.srv.Get());
                 pso_ss_probe_direct_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_history_srv.Get(), ss_probe_direct_sh_tex_[dsh_history_index].srv.Get());
                 pso_ss_probe_direct_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_uav.Get(), ss_probe_direct_sh_tex_[dsh_curr_index].uav.Get());
 
@@ -1337,7 +1358,6 @@ namespace ngl::render::app
                 p_command_list->Dispatch(ss_probe_direct_sh_tex_[dsh_curr_index].texture->GetWidth(), ss_probe_direct_sh_tex_[dsh_curr_index].texture->GetHeight(), 1);
 
                 p_command_list->ResourceUavBarrier(ss_probe_direct_sh_tex_[dsh_curr_index].texture.Get());
-                p_command_list->ResourceUavBarrier(ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].texture.Get());
             }
             if(is_ss_probe_spatial_filter_enable)
             {

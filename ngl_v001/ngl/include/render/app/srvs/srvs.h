@@ -235,6 +235,7 @@ namespace ngl::render::app
         // DirectSH方式専用テクスチャ.
         ComputeTextureSet ss_probe_direct_sh_tile_info_tex_[2] = {}; //f16_rgba, 1/8解像度のProbeタイル用情報 (既存 ss_probe_tile_info_tex_ と同形式).
         ComputeTextureSet ss_probe_direct_sh_tex_[2]= {}; //f16_rgba, OctMapではなくSHでサンプルを保持する検証, 1/8解像度のL1 SH係数. rgba = l00, l1x, l1y, l1z.
+        ComputeTextureSet ss_probe_direct_sh_best_prev_tile_tex_ = {}; //r32_uint, Preupdateで計算したBestPrevTile (packed tile id).
 
     };
 

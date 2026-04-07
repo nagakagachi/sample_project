@@ -2,9 +2,14 @@
 
 ss_probe_direct_sh_preupdate_cs.hlsl
 
-DirectSH方式専用 ProbeタイルTileInfo 更新.
+DirectSH方式専用 ProbeタイルTileInfo 更新 + Temporal Reprojection Best Probe 探索.
 既存の ss_probe_preupdate_cs.hlsl と同ロジックだが,
 入出力先を DirectSH専用テクスチャ (ScreenSpaceProbeDirectSHTileInfoTex) に変更している.
+
+追加処理:
+  - 3x3 近傍タイル探索による Best Prev Tile 決定を行い,
+    RWScreenSpaceProbeDirectSHBestPrevTileTex へ packed tile id を書き出す.
+    (以前は update シェーダ内で 9/64 スレッドのみで行っていた処理を, 1 スレッド = 1 タイル の preupdate 側へ移動.)
 
 #endif
 
@@ -133,12 +138,70 @@ void main_cs(
         #else
             // 深度から復元した法線をそのまま使うシンプルなフロー.
             const float2 approx_normal_oct = OctEncode(normalize(approx_normal_ws));
+            const float3 final_normal_ws = normalize(approx_normal_ws);
         #endif
-        RWScreenSpaceProbeDirectSHTileInfoTex[probe_id] = SspTileInfoBuild(probe_depth, probe_pos_in_tile, approx_normal_oct, false);
 
+        // ---- 3x3 Temporal Reprojection Best Probe 探索 ----
+        uint best_prev_tile_packed = 0xffffffff;
+        if(0 != cb_srvs.ss_probe_temporal_reprojection_enable)
+        {
+            // 現フレームプローブ位置を前フレームスクリーンに再投影.
+            const float3 prev_vs = mul(cb_ngl_sceneview.cb_prev_view_mtx, float4(pixel_pos_ws, 1.0));
+            const float4 prev_cs = mul(cb_ngl_sceneview.cb_prev_proj_mtx, float4(prev_vs, 1.0));
+            const bool is_valid_prev_w = (abs(prev_cs.w) > 1e-6);
+            if(is_valid_prev_w)
+            {
+                const float2 ndc = prev_cs.xy / prev_cs.w;
+                const float2 prev_uv = float2(ndc.x * 0.5 + 0.5, -ndc.y * 0.5 + 0.5);
+                if(all(prev_uv >= 0.0) && all(prev_uv <= 1.0))
+                {
+                    const int tile_size = SCREEN_SPACE_PROBE_TILE_SIZE;
+                    const int2 probe_tile_count = max((int2(depth_size) + tile_size - 1) / tile_size, int2(1, 1));
+                    const float2 prev_pos_texel = prev_uv * float2(depth_size);
+                    const int2 prev_center_tile = clamp(int2(prev_pos_texel) / tile_size, int2(0, 0), probe_tile_count - 1);
+
+                    uint best_score = 0xffffffff;
+                    for(int ci = 0; ci < 9; ++ci)
+                    {
+                        const int2 candidate_offset = int2(ci % 3, ci / 3) - int2(1, 1);
+                        const int2 candidate_tile_id = clamp(prev_center_tile + candidate_offset, int2(0, 0), probe_tile_count - 1);
+
+                        const float4 candidate_tile_info = ScreenSpaceProbeDirectSHHistoryTileInfoTex.Load(int3(candidate_tile_id, 0));
+                        if(!isValidDepth(candidate_tile_info.x))
+                            continue;
+
+                        const int2 candidate_probe_texel = candidate_tile_id * tile_size + SspTileInfoDecodeProbePosInTile(candidate_tile_info.y);
+                        const float candidate_view_z = calc_view_z_from_ndc_z(candidate_tile_info.x, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
+                        const float3 candidate_pos_vs = CalcViewSpacePosition((float2(candidate_probe_texel) + 0.5) * depth_size_inv, candidate_view_z, cb_ngl_sceneview.cb_prev_proj_mtx);
+                        const float3 candidate_pos_ws = mul(cb_ngl_sceneview.cb_prev_view_inv_mtx, float4(candidate_pos_vs, 1.0));
+                        const float3 diff_ws = candidate_pos_ws - pixel_pos_ws;
+                        const float  plane_dist = abs(dot(diff_ws, final_normal_ws));
+                        const float  normal_dot = dot(final_normal_ws, OctDecode(candidate_tile_info.zw));
+
+                        if(plane_dist < cb_srvs.ss_probe_temporal_filter_plane_dist_threshold
+                            && normal_dot > cb_srvs.ss_probe_temporal_filter_normal_cos_threshold)
+                        {
+                            float probe_dist = length(diff_ws) * 100.0;
+                            probe_dist += (1.0 - normal_dot) * 1.0;
+                            const uint quantized_dist = min((uint)(probe_dist * 1024.0), 0xfffffffu);
+                            if(quantized_dist < best_score)
+                            {
+                                best_score = quantized_dist;
+                                best_prev_tile_packed = SspPackTileId(candidate_tile_id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        const bool is_reprojection_succeeded = (0xffffffff != best_prev_tile_packed);
+        RWScreenSpaceProbeDirectSHTileInfoTex[probe_id] = SspTileInfoBuild(probe_depth, probe_pos_in_tile, approx_normal_oct, is_reprojection_succeeded);
+        RWScreenSpaceProbeDirectSHBestPrevTileTex[probe_id] = best_prev_tile_packed;
     }
     else
     {
         RWScreenSpaceProbeDirectSHTileInfoTex[probe_id] = SspTileInfoBuild(1.0, uint2(0, 0), float2(0.0, 0.0), false);
+        RWScreenSpaceProbeDirectSHBestPrevTileTex[probe_id] = 0xffffffff;
     }
 }

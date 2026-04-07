@@ -94,6 +94,9 @@ Texture2D<float4>      ScreenSpaceProbeDirectSHTex;
 Texture2D<float4>      ScreenSpaceProbeDirectSHHistoryTex;
 RWTexture2D<float4>    RWScreenSpaceProbeDirectSHTex;
 RWTexture2D<float4>    RWScreenSpaceProbeDirectSHFilteredTex;
+// Preupdate で計算した Best Prev Tile (packed uint: upper16=y, lower16=x, 0xffffffff=無効).
+Texture2D<uint>        ScreenSpaceProbeDirectSHBestPrevTileTex;
+RWTexture2D<uint>      RWScreenSpaceProbeDirectSHBestPrevTileTex;
 
 
 // srvsのメインパラメータ.
@@ -169,6 +172,16 @@ float4 SspTileInfoSetReprojectionSucceeded(float4 tile_info, bool is_reprojectio
 float4 SspTileInfoBuild(float depth, uint2 probe_pos_in_tile, float2 approx_normal_oct, bool is_reprojection_succeeded)
 {
     return float4(depth, SspTileInfoBuildY(probe_pos_in_tile, is_reprojection_succeeded), approx_normal_oct.x, approx_normal_oct.y);
+}
+
+// ---- Temporal Reprojection ユーティリティ ----
+uint SspPackTileId(int2 tile_id)
+{
+    return (uint(tile_id.y) << 16) | uint(tile_id.x & 0xffff);
+}
+int2 SspUnpackTileId(uint packed)
+{
+    return int2(int(packed & 0xffffu), int((packed >> 16) & 0xffffu));
 }
 
 // ------------------------------------------------------------------------------------------------------------------------
