@@ -167,6 +167,7 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_clear_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_preupdate_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_direct_sh_update_ = {};
 
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
@@ -204,6 +205,7 @@ namespace ngl::render::app
         // ScreenSpaceProbe.
         ComputeTextureSet ss_probe_tile_info_tex_ = {}; // 1/8解像度のProbeタイル用情報. x: depth, y: probe local pos(flat), zw: OctEncode WS normal.
         ComputeTextureSet ss_probe_tex_ = {};// 8x8 texel per probe.
+        ComputeTextureSet ss_probe_direct_sh_best_prev_tile_tex_ = {}; // DirectSH 再投影用の前フレームBestPrevTile. R32_UINT, upper16=tileY, lower16=tileX, 0xffffffff=invalid.
 
     };
 

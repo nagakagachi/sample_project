@@ -19,6 +19,9 @@ Texture2D			           TexHardwareDepth;
 #define DISPATCH_GROUP_SIZE_X SCREEN_SPACE_PROBE_TILE_SIZE
 #define DISPATCH_GROUP_SIZE_Y SCREEN_SPACE_PROBE_TILE_SIZE
 
+// DirectSH BestPrevTile 再投影: 有効な再投影候補とみなすための最低スコア閾値.
+static const float k_direct_sh_reprojection_min_score = 0.5;
+
 [numthreads(DISPATCH_GROUP_SIZE_X, DISPATCH_GROUP_SIZE_Y, 1)]
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,
@@ -120,10 +123,65 @@ void main_cs(
         // 配置できたらその情報を格納.
         const float2 approx_normal_oct = OctEncode(normalize(approx_normal_ws));
         RWScreenSpaceProbeTileInfoTex[probe_id] = float4(probe_depth, probe_pos_flat_index_in_tile, approx_normal_oct.x, approx_normal_oct.y);
+
+        // DirectSH用 BestPrevTile: 前フレームタイルの 3x3 近傍を探索して最良の再投影候補を求める.
+        {
+            const float curr_view_z = calc_view_z_from_ndc_z(probe_depth, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
+            const float3 curr_normal_ws_n = normalize(approx_normal_ws);
+
+            // タイル情報テクスチャのサイズ(境界チェック用).
+            uint2 tile_tex_size;
+            RWScreenSpaceProbeTileInfoTex.GetDimensions(tile_tex_size.x, tile_tex_size.y);
+            const int2 tile_tex_size_i = int2(tile_tex_size);
+
+            uint best_prev_tile_packed = 0xffffffffu;
+            float best_score = -1.0;
+
+            // 3x3 近傍を探索して最良の前フレームタイルを選択.
+            for(int dy = -1; dy <= 1; ++dy)
+            {
+                for(int dx = -1; dx <= 1; ++dx)
+                {
+                    const int2 neighbor_id = probe_id + int2(dx, dy);
+                    // 範囲外チェック.
+                    if(any(neighbor_id < int2(0, 0)) || any(neighbor_id >= tile_tex_size_i))
+                        continue;
+
+                    // 前フレームのタイル情報を UAV で読み取る(同一フレームの他スレッドとの競合はテンポラル再投影では許容).
+                    const float4 prev_tile_info = RWScreenSpaceProbeTileInfoTex[neighbor_id];
+                    const float prev_depth = prev_tile_info.x;
+                    if(!isValidDepth(prev_depth))
+                        continue;
+
+                    // スコア計算: 法線類似度 × 深度近接度.
+                    const float2 prev_normal_oct = prev_tile_info.zw;
+                    const float prev_view_z = calc_view_z_from_ndc_z(prev_depth, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
+                    const float3 prev_normal_ws_n = OctDecode(prev_normal_oct);
+
+                    const float normal_sim = saturate(dot(curr_normal_ws_n, prev_normal_ws_n));
+                    const float depth_sim = exp(-abs(curr_view_z - prev_view_z) * 2.0);
+                    const float score = normal_sim * depth_sim;
+
+                    if(score > best_score)
+                    {
+                        best_score = score;
+                        best_prev_tile_packed = SspPackTileId(uint2(neighbor_id));
+                    }
+                }
+            }
+
+            // 最低スコア閾値を下回る場合は無効.
+            if(best_score < k_direct_sh_reprojection_min_score)
+                best_prev_tile_packed = 0xffffffffu;
+
+            RWScreenSpaceProbeDirectSHBestPrevTileTex[probe_id] = best_prev_tile_packed;
+        }
     }
     else
     {
         RWScreenSpaceProbeTileInfoTex[probe_id] = float4(1.0, 0, 0, 0);// 配置できなかった場合はDepthに負の値を入れておくなどして無効化.
+        // 有効プローブなし: BestPrevTile は無効値.
+        RWScreenSpaceProbeDirectSHBestPrevTileTex[probe_id] = 0xffffffffu;
     }
 
 }
