@@ -19,6 +19,9 @@ Texture2D			           TexHardwareDepth;
 #define DISPATCH_GROUP_SIZE_X SCREEN_SPACE_PROBE_TILE_SIZE
 #define DISPATCH_GROUP_SIZE_Y SCREEN_SPACE_PROBE_TILE_SIZE
 
+// DirectSH BestPrevTile 再投影: 有効な再投影候補とみなすための最低スコア閾値.
+static const float k_direct_sh_reprojection_min_score = 0.5;
+
 [numthreads(DISPATCH_GROUP_SIZE_X, DISPATCH_GROUP_SIZE_Y, 1)]
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,
@@ -168,8 +171,7 @@ void main_cs(
             }
 
             // 最低スコア閾値を下回る場合は無効.
-            const float k_reprojection_min_score = 0.5;
-            if(best_score < k_reprojection_min_score)
+            if(best_score < k_direct_sh_reprojection_min_score)
                 best_prev_tile_packed = 0xffffffffu;
 
             RWScreenSpaceProbeDirectSHBestPrevTileTex[probe_id] = best_prev_tile_packed;

@@ -85,6 +85,7 @@ uint SspPackTileId(uint2 tile)
     return (tile.y << 16u) | (tile.x & 0xffffu);
 }
 // パックされたuintをタイル座標にアンパックする. 無効値 (0xffffffff) の場合は uint2(0xffff, 0xffff) を返す.
+// 戻り値: x = tile X 座標 (または無効時 0xffff), y = tile Y 座標 (または無効時 0xffff).
 uint2 SspUnpackTileId(uint packed)
 {
     if(packed == 0xffffffffu) return uint2(0xffffu, 0xffffu);

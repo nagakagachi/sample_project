@@ -879,7 +879,7 @@ namespace ngl::render::app
 
                 p_command_list->SetPipelineState(pso_ss_probe_direct_sh_update_.Get());
                 p_command_list->SetDescriptorSet(pso_ss_probe_direct_sh_update_.Get(), &desc_set);
-                // タイル単位のDisaptch (full-res / tile_size).
+                // タイル単位のDispatch (full-res / tile_size).
                 pso_ss_probe_direct_sh_update_->DispatchHelper(p_command_list, ss_probe_tex_.texture->GetWidth(), ss_probe_tex_.texture->GetHeight(), 1);
             }
         }
