@@ -27,5 +27,7 @@ void main_cs(
         // 1/8 Per ScreenSpaceProbe Tile Info Texture.
         // ThreadGroup毎に1Texelなのでgid.xyでアクセス可能.
         RWScreenSpaceProbeTileInfoTex[gid.xy] = float4(0.0, 0.0, 0.0, 0.0);
+        // DirectSH BestPrevTile テクスチャを無効値でクリア.
+        RWScreenSpaceProbeDirectSHBestPrevTileTex[gid.xy] = 0xffffffffu;
     }
 }

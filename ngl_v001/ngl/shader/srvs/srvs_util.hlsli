@@ -68,9 +68,28 @@ RWTexture2D<float4>    RWScreenSpaceProbeTex;
 Texture2D<float4>      ScreenSpaceProbeTileInfoTex;
 RWTexture2D<float4>    RWScreenSpaceProbeTileInfoTex;
 
+// 1/8 resolution Per ScreenSpaceProbe Tile Best-Prev-Tile texture for DirectSH temporal reprojection.
+// R32_UINT. Packed prev-frame tile id: upper 16 bits = tile Y, lower 16 bits = tile X. 0xffffffff = invalid.
+Texture2D<uint>        ScreenSpaceProbeDirectSHBestPrevTileTex;
+RWTexture2D<uint>      RWScreenSpaceProbeDirectSHBestPrevTileTex;
+
 
 // srvsのメインパラメータ.
 ConstantBuffer<SrvsParam> cb_srvs;
+
+
+// ScreenSpaceProbe BestPrevTile パック/アンパックユーティリティ.
+// タイル座標を1つのuintにパックする. upper 16 bits = tile Y, lower 16 bits = tile X.
+uint SspPackTileId(uint2 tile)
+{
+    return (tile.y << 16u) | (tile.x & 0xffffu);
+}
+// パックされたuintをタイル座標にアンパックする. 無効値 (0xffffffff) の場合は uint2(0xffff, 0xffff) を返す.
+uint2 SspUnpackTileId(uint packed)
+{
+    if(packed == 0xffffffffu) return uint2(0xffffu, 0xffffu);
+    return uint2(packed & 0xffffu, packed >> 16u);
+}
 
 
 

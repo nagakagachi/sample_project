@@ -48,6 +48,8 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_uav = "RWScreenSpaceProbeTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_tile_info_srv = "ScreenSpaceProbeTileInfoTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_tile_info_uav = "RWScreenSpaceProbeTileInfoTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_direct_sh_best_prev_tile_srv = "ScreenSpaceProbeDirectSHBestPrevTileTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_direct_sh_best_prev_tile_uav = "RWScreenSpaceProbeDirectSHBestPrevTileTex";
 
     void ToroidalGridUpdater::Initialize(const math::Vec3u& grid_resolution, float bbv_cell_size)
     {
@@ -146,6 +148,7 @@ namespace ngl::render::app
             pso_ss_probe_clear_ = CreateComputePSO("srvs/ss_probe_clear_cs.hlsl");
             pso_ss_probe_preupdate_ = CreateComputePSO("srvs/ss_probe_preupdate_cs.hlsl");
             pso_ss_probe_update_ = CreateComputePSO("srvs/ss_probe_update_cs.hlsl");
+            pso_ss_probe_direct_sh_update_ = CreateComputePSO("srvs/ss_probe_direct_sh_update_cs.hlsl");
             
             
             // デバッグ用PSO.
@@ -381,6 +384,23 @@ namespace ngl::render::app
 
             ss_probe_tile_info_tex_.Initialize(p_device, desc);
         }
+        // Screen Space Probe DirectSH BestPrevTile テクスチャ. R32_UINT.
+        // DirectSH 再投影用の前フレームタイル ID (upper16=tileY, lower16=tileX, 0xffffffff=invalid).
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R32_UINT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::UnorderedAccess;
+
+            ss_probe_direct_sh_best_prev_tile_tex_.Initialize(p_device, desc);
+        }
 
         return true;
     }
@@ -529,6 +549,7 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_ss_probe_clear_->SetView(&desc_set, k_shader_bind_name_ssprobe_uav.Get(), ss_probe_tex_.uav.Get());
                 pso_ss_probe_clear_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_.uav.Get());
+                pso_ss_probe_clear_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_best_prev_tile_uav.Get(), ss_probe_direct_sh_best_prev_tile_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_ss_probe_clear_.Get());
                 p_command_list->SetDescriptorSet(pso_ss_probe_clear_.Get(), &desc_set);
@@ -537,6 +558,7 @@ namespace ngl::render::app
 
                 p_command_list->ResourceUavBarrier(ss_probe_tex_.texture.Get());
                 p_command_list->ResourceUavBarrier(ss_probe_tile_info_tex_.texture.Get());
+                p_command_list->ResourceUavBarrier(ss_probe_direct_sh_best_prev_tile_tex_.texture.Get());
             }
         }
         // Bbv Begin Update Pass.
@@ -817,6 +839,7 @@ namespace ngl::render::app
                 pso_ss_probe_preupdate_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_ss_probe_preupdate_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                 pso_ss_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_.uav.Get());
+                pso_ss_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_best_prev_tile_uav.Get(), ss_probe_direct_sh_best_prev_tile_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_ss_probe_preupdate_.Get());
                 p_command_list->SetDescriptorSet(pso_ss_probe_preupdate_.Get(), &desc_set);
@@ -824,6 +847,7 @@ namespace ngl::render::app
                 pso_ss_probe_preupdate_->DispatchHelper(p_command_list, ss_probe_tile_info_tex_.texture->GetWidth(), ss_probe_tile_info_tex_.texture->GetHeight(), 1);
 
                 p_command_list->ResourceUavBarrier(ss_probe_tile_info_tex_.texture.Get());
+                p_command_list->ResourceUavBarrier(ss_probe_direct_sh_best_prev_tile_tex_.texture.Get());
             }
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ScreenSpaceProbeUpdate");
@@ -842,6 +866,21 @@ namespace ngl::render::app
                 pso_ss_probe_update_->DispatchHelper(p_command_list, ss_probe_tex_.texture->GetWidth()/k_ss_probe_update_skip_tile_group_width, ss_probe_tex_.texture->GetHeight()/k_ss_probe_update_skip_tile_group_width, 1);
 
                 p_command_list->ResourceUavBarrier(ss_probe_tex_.texture.Get());
+            }
+            // DirectSH 更新パス: プリアップデートで計算した BestPrevTile を使ってセル毎の SH ヒストリ展開.
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ScreenSpaceProbeDirectSHUpdate");
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_ss_probe_direct_sh_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
+                pso_ss_probe_direct_sh_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+                pso_ss_probe_direct_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ss_probe_tile_info_tex_.srv.Get());
+                pso_ss_probe_direct_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_best_prev_tile_srv.Get(), ss_probe_direct_sh_best_prev_tile_tex_.srv.Get());
+
+                p_command_list->SetPipelineState(pso_ss_probe_direct_sh_update_.Get());
+                p_command_list->SetDescriptorSet(pso_ss_probe_direct_sh_update_.Get(), &desc_set);
+                // タイル単位のDisaptch (full-res / tile_size).
+                pso_ss_probe_direct_sh_update_->DispatchHelper(p_command_list, ss_probe_tex_.texture->GetWidth(), ss_probe_tex_.texture->GetHeight(), 1);
             }
         }
 
