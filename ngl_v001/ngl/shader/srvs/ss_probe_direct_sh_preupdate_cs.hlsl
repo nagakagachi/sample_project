@@ -19,6 +19,8 @@ Texture2D                     TexHardwareDepth;
 #define DISPATCH_GROUP_SIZE_Y SCREEN_SPACE_PROBE_TILE_SIZE
 
 #define PROBE_RELOCATION_RETRY_COUNT 8
+// 0: disable, 1: depth-based neighbor normals
+#define ENABLE_NEIGHBOR_NORMAL_FALLBACK 1
 
 [numthreads(DISPATCH_GROUP_SIZE_X, DISPATCH_GROUP_SIZE_Y, 1)]
 void main_cs(
@@ -73,8 +75,67 @@ void main_cs(
         const float3 approx_normal_vs = reconstruct_normal_vs_fine(TexHardwareDepth, current_probe_texel_pos, probe_depth, depth_size_inv, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef, cb_ngl_sceneview.cb_proj_mtx);
         const float3 approx_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, approx_normal_vs);
 
-        const float2 approx_normal_oct = OctEncode(approx_normal_ws);
+        #if ENABLE_NEIGHBOR_NORMAL_FALLBACK == 1
+            // 近傍Probeの法線平均との差が大きい場合のみフォールバックするフロー.
+            // 薄い段差などで法線が反転する外れ値を抑制するための閾値.
+            const float k_normal_cos_threshold = 0.6;
+            float3 neighbor_normal_sum = float3(0.0, 0.0, 0.0);
+            uint neighbor_count = 0;
+            {
+            // 近傍Probe(上下左右)の履歴位置から法線を得て平均法線を作る.
+                uint2 tile_info_size;
+                ScreenSpaceProbeDirectSHHistoryTileInfoTex.GetDimensions(tile_info_size.x, tile_info_size.y);
+
+                const int2 neighbor_offsets[4] = {
+                    int2(-1, 0),
+                    int2(1, 0),
+                    int2(0, -1),
+                    int2(0, 1)
+                };
+
+                for(int i = 0; i < 4; ++i)
+                {
+                    const int2 neighbor_tile_id = ss_probe_tile_id + neighbor_offsets[i];
+                    if(neighbor_tile_id.x < 0 || neighbor_tile_id.y < 0 || neighbor_tile_id.x >= (int)tile_info_size.x || neighbor_tile_id.y >= (int)tile_info_size.y)
+                        continue;
+
+                    const float4 neighbor_info = ScreenSpaceProbeDirectSHHistoryTileInfoTex[neighbor_tile_id];
+                    float3 neighbor_normal_ws = float3(0.0, 0.0, 0.0);
+
+                    const int2 neighbor_probe_pos_in_tile = SspTileInfoDecodeProbePosInTile(neighbor_info.y);
+                    const int2 neighbor_tile_pixel_start = neighbor_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
+                    const int2 neighbor_probe_texel_pos = neighbor_tile_pixel_start + neighbor_probe_pos_in_tile;
+                    const float neighbor_depth = TexHardwareDepth.Load(int3(neighbor_probe_texel_pos, 0)).r;
+                    if(!isValidDepth(neighbor_depth))
+                        continue;
+
+                    const float3 neighbor_normal_vs = reconstruct_normal_vs_fine(TexHardwareDepth, neighbor_probe_texel_pos, neighbor_depth, depth_size_inv, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef, cb_ngl_sceneview.cb_proj_mtx);
+                    neighbor_normal_ws = mul((float3x3)cb_ngl_sceneview.cb_view_inv_mtx, neighbor_normal_vs);
+                    neighbor_normal_ws = normalize(neighbor_normal_ws);
+
+                    neighbor_normal_sum += neighbor_normal_ws;
+                    neighbor_count += 1;
+                }
+            }
+
+            float3 final_normal_ws = normalize(approx_normal_ws);
+            if(neighbor_count > 0)
+            {
+                const float3 neighbor_avg_ws = normalize(neighbor_normal_sum);
+                // 現在法線が近傍平均と大きく乖離する場合は外れ値として平均法線へフォールバック.
+                if(dot(final_normal_ws, neighbor_avg_ws) < k_normal_cos_threshold)
+                {
+                    final_normal_ws = neighbor_avg_ws;
+                }
+            }
+
+            const float2 approx_normal_oct = OctEncode(final_normal_ws);
+        #else
+            // 深度から復元した法線をそのまま使うシンプルなフロー.
+            const float2 approx_normal_oct = OctEncode(normalize(approx_normal_ws));
+        #endif
         RWScreenSpaceProbeDirectSHTileInfoTex[probe_id] = SspTileInfoBuild(probe_depth, probe_pos_in_tile, approx_normal_oct, false);
+
     }
     else
     {
