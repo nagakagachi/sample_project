@@ -1327,7 +1327,6 @@ namespace ngl::render::app
                 pso_ss_probe_direct_sh_preupdate_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
                 pso_ss_probe_direct_sh_preupdate_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_ss_probe_direct_sh_preupdate_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-                pso_ss_probe_direct_sh_preupdate_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                 pso_ss_probe_direct_sh_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_tile_info_uav.Get(), ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].uav.Get());
                 pso_ss_probe_direct_sh_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_history_tile_info_srv.Get(), ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_history_index].srv.Get());
                 pso_ss_probe_direct_sh_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_direct_sh_best_prev_tile_uav.Get(), ss_probe_direct_sh_best_prev_tile_tex_.uav.Get());
