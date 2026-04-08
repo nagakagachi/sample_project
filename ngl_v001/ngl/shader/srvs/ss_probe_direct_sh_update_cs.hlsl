@@ -215,7 +215,7 @@ void main_cs(
             float3 sample_ray_dir = OctahedralDecodeSphereDirWs(selected_oct_uv);
         #endif
     #else
-        const float3 unit_v3 = random_unit_vector3(float3(asfloat(probe_tile_id.x), asfloat(probe_tile_id.y), asfloat(gindex ^ cb_srvs.frame_count)));
+        const float3 unit_v3 = random_unit_vector3(float3(probe_tile_id.x, probe_tile_id.y, rng.rand()));
         const float3 local_dir = normalize(unit_v3 + float3(0, 0, 1));
         float3 sample_ray_dir = local_dir.x * base_tangent_ws + local_dir.y * base_bitangent_ws + local_dir.z * base_normal_ws;
     #endif
