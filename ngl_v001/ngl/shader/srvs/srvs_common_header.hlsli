@@ -62,8 +62,8 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     // Brick data region の 1 Brick あたり要素数.
     // 現状は occupied voxel count と work(last visible frame) を保持する。
     #define k_bbv_brick_data_u32_count (2)
-    // HiBrick は 4x4x4 Brick cluster を 1 単位とする。
-    #define k_bbv_hibrick_brick_resolution (4)
+    // HiBrick は 2x2x2 Brick cluster を 1 単位とする。
+    #define k_bbv_hibrick_brick_resolution (2)
     // HiBrick data region の 1 HiBrick あたり要素数.
     // 初段階では cluster 内 occupied voxel 総数のみを持つ。
     #define k_bbv_hibrick_data_u32_count (1)

@@ -3,7 +3,7 @@
 bbv_hibrick_count_aggregate_cs.hlsl
 
 Brick occupied voxel count から HiBrick occupied voxel total count を再構築する.
-HiBrick data region は logical 4x4x4 Brick cluster として保持し、
+HiBrick data region は logical 2x2x2 Brick cluster として保持し、
 集計時に logical Brick 座標を current toroidal offset で physical Brick へ写して count を足し上げる。
 
 #endif
