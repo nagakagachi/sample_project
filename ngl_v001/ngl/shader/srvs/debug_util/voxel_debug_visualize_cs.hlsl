@@ -62,13 +62,13 @@ void main_cs(
     // Category 0: BBV.
     if(0 == debug_category)
     {
-        if(4 >= debug_sub_mode)
+        if((0 == debug_sub_mode) || (2 <= debug_sub_mode && 5 >= debug_sub_mode))
         {
             // Voxel単位Traceのテスト.
             const float trace_distance = 10000.0;          
             int hit_voxel_index = -1;
             float4 debug_ray_info;
-            float4 curr_ray_t_ws = trace_bbv_dev(
+            float4 curr_ray_t_ws = trace_bbv_dev_hibrick(
                 hit_voxel_index, debug_ray_info,
                 view_origin, ray_dir_ws, trace_distance, 
                 cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
@@ -92,7 +92,7 @@ void main_cs(
                     debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
                     debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
                 }
-                else if(1 == debug_sub_mode)
+                else if(2 == debug_sub_mode)
                 {
                     // VoxelIDを可視化.
                     debug_color.xyz = float4(noise_float_to_float(hit_voxel_index), noise_float_to_float(hit_voxel_index*2), noise_float_to_float(hit_voxel_index*3), 1);
@@ -101,7 +101,7 @@ void main_cs(
                     debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
                     debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
                 }
-                else if(2 == debug_sub_mode)
+                else if(3 == debug_sub_mode)
                 {
                     // Bbvセルのヒット法線可視化.
                     const float3 bbv_cell_id = floor((view_origin + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_srvs.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
@@ -111,12 +111,12 @@ void main_cs(
                     debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
                     debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
                 }
-                else if(3 == debug_sub_mode)
+                else if(4 == debug_sub_mode)
                 {
                     // Bbvセルの深度を可視化.
                     debug_color.xyz = float4(saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), saturate(curr_ray_t_ws.x/100.0), 1);
                 }
-                else if(4 == debug_sub_mode)
+                else if(5 == debug_sub_mode)
                 {
                     const float count_rate = saturate(float(brick_occupied_voxel_count) / float(k_bbv_per_voxel_bitmask_bit_count));
                     debug_color.xyz = lerp(float3(0.0, 0.0, 0.1), float3(1.0, 0.8, 0.2), count_rate);
@@ -124,13 +124,38 @@ void main_cs(
             }
             RWTexWork[dtid.xy] = debug_color;
         }
-        else if(5 == debug_sub_mode)
+        else if(1 == debug_sub_mode)
+        {
+            // 最細セル単位の色分けを非 HiBrick トレーサで可視化して比較するモード.
+            const float trace_distance = 10000.0;
+            int hit_voxel_index = -1;
+            float4 debug_ray_info;
+            float4 curr_ray_t_ws = trace_bbv_dev(
+                hit_voxel_index, debug_ray_info,
+                view_origin, ray_dir_ws, trace_distance,
+                cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
+                cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel, false);
+
+            float4 debug_color = float4(0, 0, 1, 0);
+            if(0.0 <= curr_ray_t_ws.x)
+            {
+                const float3 bbv_cell_id = floor((view_origin + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_srvs.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
+                debug_color.xyz = float4(noise_float_to_float(bbv_cell_id.xyzz), noise_float_to_float(bbv_cell_id.xzyy), noise_float_to_float(bbv_cell_id.xyzx), 1);
+                debug_color.xyz = lerp(debug_color.xyz, float3(1.0, 0.35, 0.15), 0.18);
+
+                // 簡易フォグ.
+                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), pow(saturate((curr_ray_t_ws.x - 20.0)/100.0), 1.0/1.2) * 0.8);
+                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), saturate((curr_ray_t_ws.x - 70.0)/500.0) * 0.8);
+            }
+            RWTexWork[dtid.xy] = debug_color;
+        }
+        else if(6 == debug_sub_mode)
         {
             // Brick単位Traceのテスト. Brickの占有フラグが適切に設定または除去されているかのテスト.
             const float trace_distance = 10000.0;          
             int hit_voxel_index = -1;
             float4 debug_ray_info;
-            float4 curr_ray_t_ws = trace_bbv_dev(
+            float4 curr_ray_t_ws = trace_bbv_dev_hibrick(
                 hit_voxel_index, debug_ray_info,
                 view_origin, ray_dir_ws, trace_distance, 
                 cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
@@ -148,7 +173,7 @@ void main_cs(
             }
             RWTexWork[dtid.xy] = debug_color;
         }
-        else if(6 == debug_sub_mode)
+        else if(7 == debug_sub_mode)
         {
             // Voxel上面図X-Ray表示.
             const int3 bv_full_reso = cb_srvs.bbv.grid_resolution * k_bbv_per_voxel_resolution;
@@ -170,34 +195,6 @@ void main_cs(
             }
 
             RWTexWork[dtid.xy] = float4(write_data, write_data, write_data, 1.0);
-        }
-        else if(7 == debug_sub_mode)
-        {
-            // HiBrick トレーサによる Voxel 単位 Trace のテスト.
-            const float trace_distance = 10000.0;
-            int hit_voxel_index = -1;
-            float4 debug_ray_info;
-            float4 curr_ray_t_ws = trace_bbv_dev_hibrick(
-                hit_voxel_index, debug_ray_info,
-                view_origin, ray_dir_ws, trace_distance,
-                cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
-                cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel, false);
-
-            float4 debug_color = float4(0, 0, 1, 0);
-            if(0.0 <= curr_ray_t_ws.x)
-            {
-                const float fog_rate0 = pow(saturate((curr_ray_t_ws.x - 20.0)/100.0), 1.0/1.2);
-                const float fog_rate1 = saturate((curr_ray_t_ws.x - 70.0)/500.0);
-
-                const float3 bbv_cell_id = floor((view_origin + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_srvs.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
-                debug_color.xyz = float4(noise_float_to_float(bbv_cell_id.xyzz), noise_float_to_float(bbv_cell_id.xzyy), noise_float_to_float(bbv_cell_id.xyzx), 1);
-
-                // HiBrick 経由でのヒット確認モードとして少しだけ緑寄りにする.
-                debug_color.xyz = lerp(debug_color.xyz, float3(0.2, 1.0, 0.2), 0.15);
-                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
-                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
-            }
-            RWTexWork[dtid.xy] = debug_color;
         }
         else if(8 == debug_sub_mode)
         {
@@ -273,34 +270,6 @@ void main_cs(
 
             const float skip_efficiency = debug_ray_info.x / max(debug_ray_info.x + debug_ray_info.y, 1.0);
             RWTexWork[dtid.xy] = float4(lerp(float3(0.8, 0.1, 0.1), float3(0.1, 1.0, 0.2), skip_efficiency), 1.0);
-        }
-        else if(13 == debug_sub_mode)
-        {
-            // HiBrick トレーサ比較用: skip 無効版.
-            const float trace_distance = 10000.0;
-            int hit_voxel_index = -1;
-            float4 debug_ray_info;
-            float4 curr_ray_t_ws = trace_bbv_dev_hibrick_no_skip(
-                hit_voxel_index, debug_ray_info,
-                view_origin, ray_dir_ws, trace_distance,
-                cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
-                cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel, false);
-
-            float4 debug_color = float4(0, 0, 1, 0);
-            if(0.0 <= curr_ray_t_ws.x)
-            {
-                const float fog_rate0 = pow(saturate((curr_ray_t_ws.x - 20.0)/100.0), 1.0/1.2);
-                const float fog_rate1 = saturate((curr_ray_t_ws.x - 70.0)/500.0);
-
-                const float3 bbv_cell_id = floor((view_origin + ray_dir_ws*(curr_ray_t_ws.x + 0.001)) * (cb_srvs.bbv.cell_size_inv*float(k_bbv_per_voxel_resolution)));
-                debug_color.xyz = float4(noise_float_to_float(bbv_cell_id.xyzz), noise_float_to_float(bbv_cell_id.xzyy), noise_float_to_float(bbv_cell_id.xyzx), 1);
-
-                // skip 無効版は赤寄りに着色して比較しやすくする.
-                debug_color.xyz = lerp(debug_color.xyz, float3(1.0, 0.2, 0.2), 0.2);
-                debug_color.xyz = lerp(debug_color.xyz, float3(1,1,1), fog_rate0 * 0.8);
-                debug_color.xyz = lerp(debug_color.xyz, float3(0.1,0.1,1), fog_rate1 * 0.8);
-            }
-            RWTexWork[dtid.xy] = debug_color;
         }
     }
     // Category 1: WCP.
