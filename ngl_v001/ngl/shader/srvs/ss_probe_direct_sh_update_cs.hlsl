@@ -38,7 +38,7 @@ Dispatch は 1/8 解像度 (TileInfo と同サイズ).
 #endif
 
 // スレッド
-#define THREAD_GROUP_OCTAHEDRAL_MAP_WIDTH (SCREEN_SPACE_PROBE_TILE_SIZE)
+#define THREAD_GROUP_OCTAHEDRAL_MAP_WIDTH (SCREEN_SPACE_PROBE_OCT_RESOLUTION)
 #define THREAD_GROUP_OCTAHEDRAL_MAP_CELL_COUNT (THREAD_GROUP_OCTAHEDRAL_MAP_WIDTH*THREAD_GROUP_OCTAHEDRAL_MAP_WIDTH)
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
@@ -68,7 +68,7 @@ float biased_shadow_temporal_weight(float curr, float prev)
 }
 
 
-[numthreads(SCREEN_SPACE_PROBE_TILE_SIZE, SCREEN_SPACE_PROBE_TILE_SIZE, 1)]
+[numthreads(SCREEN_SPACE_PROBE_OCT_RESOLUTION, SCREEN_SPACE_PROBE_OCT_RESOLUTION, 1)]
 void main_cs(
     uint3 dtid   : SV_DispatchThreadID,
     uint3 gtid   : SV_GroupThreadID,
@@ -87,8 +87,8 @@ void main_cs(
 
     // RandomInstance
     RandomInstance rng;
-    rng.rngState = asuint(noise_float_to_float(float3(float(probe_tile_id.x * SCREEN_SPACE_PROBE_TILE_SIZE + gtid.x),
-                                                      float(probe_tile_id.y * SCREEN_SPACE_PROBE_TILE_SIZE + gtid.y),
+    rng.rngState = asuint(noise_float_to_float(float3(float(probe_tile_id.x * SCREEN_SPACE_PROBE_OCT_RESOLUTION + gtid.x),
+                                                      float(probe_tile_id.y * SCREEN_SPACE_PROBE_OCT_RESOLUTION + gtid.y),
                                                       float(cb_srvs.frame_count))));
 
     // ---- Step 1: スレッド0 が TileInfo + BestPrevTile を読み込んで共有メモリに展開 ----
@@ -107,7 +107,7 @@ void main_cs(
             const uint2  depth_size = cb_ngl_sceneview.cb_render_resolution;
             const float2 depth_size_inv = cb_ngl_sceneview.cb_render_resolution_inv;
             const int2   probe_pos_in_tile = SspTileInfoDecodeProbePosInTile(tile_info.y);
-            const int2   probe_texel_pos = probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE + probe_pos_in_tile;
+            const int2   probe_texel_pos = probe_tile_id * SCREEN_SPACE_PROBE_INFO_DOWNSCALE + probe_pos_in_tile;
             const float2 probe_uv = (float2(probe_texel_pos) + 0.5) * depth_size_inv;
 
             const float view_z = calc_view_z_from_ndc_z(tile_info.x, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
@@ -142,7 +142,7 @@ void main_cs(
     BuildOrthonormalBasis(base_normal_ws, base_tangent_ws, base_bitangent_ws);
 
     // ---- Step 2: 全スレッドが担当セルの方向を計算 ----
-    const float2 cell_oct_uv = (float2(probe_atlas_local_pos) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+    const float2 cell_oct_uv = (float2(probe_atlas_local_pos) + 0.5) * SCREEN_SPACE_PROBE_OCT_RESOLUTION_INV;
     #if NGL_SSP_DIRECT_SH_SAMPLE_HEMISPHERE
         const float3 cell_dir_ws = OctahedralDecodeHemisphereDirWs(cell_oct_uv, base_tangent_ws, base_bitangent_ws, base_normal_ws);
     #else
@@ -206,9 +206,9 @@ void main_cs(
                 break;
             }
         }
-        const uint2 selected_cell = uint2(selected_oct_cell_index % SCREEN_SPACE_PROBE_TILE_SIZE, selected_oct_cell_index / SCREEN_SPACE_PROBE_TILE_SIZE);
+        const uint2 selected_cell = uint2(selected_oct_cell_index % SCREEN_SPACE_PROBE_OCT_RESOLUTION, selected_oct_cell_index / SCREEN_SPACE_PROBE_OCT_RESOLUTION);
         const float2 jitter = rng.rand2();
-        const float2 selected_oct_uv = (float2(selected_cell) + jitter) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+        const float2 selected_oct_uv = (float2(selected_cell) + jitter) * SCREEN_SPACE_PROBE_OCT_RESOLUTION_INV;
         #if NGL_SSP_DIRECT_SH_SAMPLE_HEMISPHERE
             float3 sample_ray_dir = OctahedralDecodeHemisphereDirWs(selected_oct_uv, base_tangent_ws, base_bitangent_ws, base_normal_ws);
         #else
@@ -237,8 +237,8 @@ void main_cs(
             const float2 hit_oct_uv = OctahedralEncodeSphereDirWs(sample_ray_dir);
         #endif
 
-        const int2   hit_cell = clamp(int2(hit_oct_uv * SCREEN_SPACE_PROBE_TILE_SIZE), int2(0,0), int2(SCREEN_SPACE_PROBE_TILE_SIZE-1, SCREEN_SPACE_PROBE_TILE_SIZE-1));
-        const int    hit_index = hit_cell.y * SCREEN_SPACE_PROBE_TILE_SIZE + hit_cell.x;
+        const int2   hit_cell = clamp(int2(hit_oct_uv * SCREEN_SPACE_PROBE_OCT_RESOLUTION), int2(0,0), int2(SCREEN_SPACE_PROBE_OCT_RESOLUTION-1, SCREEN_SPACE_PROBE_OCT_RESOLUTION-1));
+        const int    hit_index = hit_cell.y * SCREEN_SPACE_PROBE_OCT_RESOLUTION + hit_cell.x;
         InterlockedAdd(gs_ray_sample_accum[hit_index * 2 + 0], 1u);
         InterlockedAdd(gs_ray_sample_accum[hit_index * 2 + 1], uint(sky_vis));
     }
@@ -264,9 +264,9 @@ void main_cs(
 
         // ---- SH 積分 (全スレッド並列 SH投影 + Parallel Reduction) ----
 #if NGL_SSP_DIRECT_SH_SAMPLE_HEMISPHERE
-        const float solid_angle = (2.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT);
+        const float solid_angle = (2.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT);
 #else
-        const float solid_angle = (4.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT);
+        const float solid_angle = (4.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT);
 #endif
         // 各スレッドが自身のセルの SH 投影値を計算 (cell_dir_ws は Step 2 で計算済み).
         gs_sh_reduce[gindex] = (solid_angle * blended_value) * EvaluateL1ShBasis(cell_dir_ws);

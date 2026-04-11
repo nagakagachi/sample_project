@@ -30,7 +30,7 @@ Temporal Filter.
 
 #ifndef NGL_SSP_RAY_COUNT
 // Adjust this for ray budget per tile.
-#define NGL_SSP_RAY_COUNT (SCREEN_SPACE_PROBE_TILE_SIZE * SCREEN_SPACE_PROBE_TILE_SIZE)
+#define NGL_SSP_RAY_COUNT (SCREEN_SPACE_PROBE_OCT_RESOLUTION * SCREEN_SPACE_PROBE_OCT_RESOLUTION)
 #endif
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
@@ -115,7 +115,7 @@ int2 CalcOffsetFrom3x3Index(uint index)
 }
 
 
-[numthreads(SCREEN_SPACE_PROBE_TILE_SIZE, SCREEN_SPACE_PROBE_TILE_SIZE, 1)]
+[numthreads(SCREEN_SPACE_PROBE_OCT_RESOLUTION, SCREEN_SPACE_PROBE_OCT_RESOLUTION, 1)]
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,
 	uint3 gtid : SV_GroupThreadID,
@@ -128,11 +128,11 @@ void main_cs(
 
     const int2 probe_atlas_local_pos = gtid.xy;// タイル内でのローカル位置は時間分散でスキップされないのでそのまま.
     const int2 probe_id = gid.xy * cb_srvs.ss_probe_temporal_update_group_size + frame_skip_probe_offset;// プローブフレームスキップ考慮.
-    const int2 global_pos = probe_id * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos;// グローバルテクセル位置計算.
+    const int2 global_pos = probe_id * SCREEN_SPACE_PROBE_OCT_RESOLUTION + probe_atlas_local_pos;// OctahedralMapAtlas上のグローバルテクセル位置計算.
     
     // Tile内で今回処理するテクセルを決定して最小限のテクスチャ読み取り.
     const int2 ss_probe_tile_id = probe_id;
-    const int2 ss_probe_tile_pixel_start = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
+    const int2 ss_probe_tile_pixel_start = ss_probe_tile_id * SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
 
     // ScreenSpaceProbeTexelTile情報テクスチャから取得.
     const float4 ss_probe_tile_info = RWScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
@@ -230,7 +230,7 @@ void main_cs(
             if(is_valid_prev_uv)
             {
                 const int2 full_res = int2(depth_size);
-                const int tile_size = SCREEN_SPACE_PROBE_TILE_SIZE;
+                const int tile_size = SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
                 const int2 probe_tile_count = max((full_res + tile_size - 1) / tile_size, int2(1, 1));
                 const float2 prev_pos_texel = prev_uv * float2(full_res);
                 const int2 prev_center_tile = clamp(int2(prev_pos_texel) / tile_size, int2(0, 0), probe_tile_count - 1);
@@ -290,7 +290,7 @@ void main_cs(
         if(0xffffffff != ss_temporal_best_prev_tile_packed)
         {
             const int2 best_prev_tile = int2(int(ss_temporal_best_prev_tile_packed & 0xffffu), int((ss_temporal_best_prev_tile_packed >> 16) & 0xffffu));
-            const int2 prev_global_pos = clamp(best_prev_tile * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
+            const int2 prev_global_pos = clamp(best_prev_tile * SCREEN_SPACE_PROBE_OCT_RESOLUTION + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
             const float prev_value = ScreenSpaceProbeHistoryTex.Load(int3(prev_global_pos, 0)).r;
             ss_temporal_reprojected_value[gindex] = prev_value;
         }
@@ -310,7 +310,7 @@ void main_cs(
             if(is_valid_prev_uv)
             {
                 const int2 full_res = int2(depth_size);
-                const int tile_size = SCREEN_SPACE_PROBE_TILE_SIZE;
+                const int tile_size = SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
                 const int2 probe_tile_count = max((full_res + tile_size - 1) / tile_size, int2(1, 1));
                 const float2 prev_pos_texel = prev_uv * float2(full_res);
                 const int2 prev_center_tile = clamp(int2(prev_pos_texel) / tile_size, int2(0, 0), probe_tile_count - 1);
@@ -361,14 +361,14 @@ void main_cs(
         {
             // Temporal失敗時のみSideCache値を再投影値へ注入.
             const int2 best_cache_tile = int2(int(ss_side_cache_best_tile_packed & 0xffffu), int((ss_side_cache_best_tile_packed >> 16) & 0xffffu));
-            const int2 cache_global_pos = clamp(best_cache_tile * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
+            const int2 cache_global_pos = clamp(best_cache_tile * SCREEN_SPACE_PROBE_OCT_RESOLUTION + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
             const float cache_value = ScreenSpaceProbeSideCacheTex.Load(int3(cache_global_pos, 0)).r;
             ss_temporal_reprojected_value[gindex] = cache_value;
         }
     }
 
     // 担当セルのOctMapベクトルとProbe面法線の内積.
-    const float2 cell_oct_uv = (float2(probe_atlas_local_pos) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+    const float2 cell_oct_uv = (float2(probe_atlas_local_pos) + 0.5) * SCREEN_SPACE_PROBE_OCT_RESOLUTION_INV;
     const float3 cell_dir_ws = SspDecodeDirByNormal(cell_oct_uv, ss_probe_approx_normal_ws);
     const float cell_octmap_normal_dot_probe_normal = max(0.0, dot(ss_probe_approx_normal_ws, cell_dir_ws));
     
@@ -436,9 +436,9 @@ void main_cs(
             }
         }
 
-        const uint2 selected_cell = uint2(selected_oct_cell_index % SCREEN_SPACE_PROBE_TILE_SIZE, selected_oct_cell_index / SCREEN_SPACE_PROBE_TILE_SIZE);
+        const uint2 selected_cell = uint2(selected_oct_cell_index % SCREEN_SPACE_PROBE_OCT_RESOLUTION, selected_oct_cell_index / SCREEN_SPACE_PROBE_OCT_RESOLUTION);
         const float2 local_cell_jitter = rng.rand2();
-        const float2 selected_oct_uv = (float2(float(selected_cell.x), float(selected_cell.y)) + local_cell_jitter) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+        const float2 selected_oct_uv = (float2(float(selected_cell.x), float(selected_cell.y)) + local_cell_jitter) * SCREEN_SPACE_PROBE_OCT_RESOLUTION_INV;
 
         float3 sample_ray_dir = SspDecodeDirByNormal(selected_oct_uv, base_tangent_ws, base_bitangent_ws, base_normal_ws);
 #else
@@ -462,8 +462,8 @@ void main_cs(
         const float sky_visibility = (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0;// 負ならヒットなしで空が見えている.
 
         const float2 oct_uv = SspEncodeDirByNormal(sample_ray_dir, base_normal_ws);// レイ方向を法線基準のOctahedralマップUVにエンコードして格納.
-        const int2 oct_cell_id = clamp(int2(oct_uv * SCREEN_SPACE_PROBE_TILE_SIZE), int2(0, 0), int2(SCREEN_SPACE_PROBE_TILE_SIZE - 1, SCREEN_SPACE_PROBE_TILE_SIZE - 1));
-        const int oct_cell_index = oct_cell_id.y * SCREEN_SPACE_PROBE_TILE_SIZE + oct_cell_id.x;
+        const int2 oct_cell_id = clamp(int2(oct_uv * SCREEN_SPACE_PROBE_OCT_RESOLUTION), int2(0, 0), int2(SCREEN_SPACE_PROBE_OCT_RESOLUTION - 1, SCREEN_SPACE_PROBE_OCT_RESOLUTION - 1));
+        const int oct_cell_index = oct_cell_id.y * SCREEN_SPACE_PROBE_OCT_RESOLUTION + oct_cell_id.x;
         
         // Result Accumulation.
         InterlockedAdd(ss_ray_sample_accum[oct_cell_index * 4 + 0], 1);// accum_count
@@ -506,7 +506,7 @@ void main_cs(
             const float2 prev_uv = CalcPrevFrameUvFromWorldPos(ss_probe_pos_ws, is_valid_prev_uv);
 
             const int2 full_res = int2(depth_size);
-            const int tile_size = SCREEN_SPACE_PROBE_TILE_SIZE;
+            const int tile_size = SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
             const int2 probe_tile_count = max((full_res + tile_size - 1) / tile_size, int2(1, 1));
             int2 store_center_tile = ss_probe_tile_id;
             if(is_valid_prev_uv)
@@ -552,7 +552,7 @@ void main_cs(
     {
         // lock獲得済みTileへ8x8出力を転写してPersistent cache化.
         const int2 side_cache_store_tile = UnpackTileId(ss_side_cache_store_tile_packed);
-        const int2 side_cache_global_pos = clamp(side_cache_store_tile * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
+        const int2 side_cache_global_pos = clamp(side_cache_store_tile * SCREEN_SPACE_PROBE_OCT_RESOLUTION + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
         RWScreenSpaceProbeSideCacheTex[side_cache_global_pos] = out_probe_value;
     }
 
@@ -576,7 +576,7 @@ void main_cs(
     {
         // SideCacheで再利用したTileは最新の出力で上書きし, 次フレームの再利用品質を安定化.
         const int2 side_cache_hit_tile = int2(int(ss_side_cache_best_tile_packed & 0xffffu), int((ss_side_cache_best_tile_packed >> 16) & 0xffffu));
-        const int2 side_cache_hit_pos = clamp(side_cache_hit_tile * SCREEN_SPACE_PROBE_TILE_SIZE + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
+        const int2 side_cache_hit_pos = clamp(side_cache_hit_tile * SCREEN_SPACE_PROBE_OCT_RESOLUTION + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
         RWScreenSpaceProbeSideCacheTex[side_cache_hit_pos] = out_probe_value;
     }
 }

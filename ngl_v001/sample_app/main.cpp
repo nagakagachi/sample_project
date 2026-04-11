@@ -72,7 +72,7 @@ static float dbgw_gi_probe_sample_offset_bent_normal    = 0.5f;
 static bool dbgw_enable_srvs_injection_pass = true;
 static bool dbgw_enable_srvs_rejection_pass = true;
 
-static bool dbgw_enable_gtao_demo = true;
+static bool dbgw_enable_gtao_demo = false;
 
 // Camera.
 static float dbgw_camera_speed = 5.0f;  // 10.0f;

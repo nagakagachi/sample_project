@@ -41,8 +41,9 @@ void main_cs(
 
 
     // ScreenSpaceProbe Octahedral Map.
-    const int2 ss_probe_tile_id = int2(floor(float2(texel_pos) / SCREEN_SPACE_PROBE_TILE_SIZE));
-    const int2 ss_probe_tile_base_pos = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
+    const int2 ss_probe_tile_id = int2(floor(float2(texel_pos) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE));
+    const int2 ss_probe_screen_tile_base_pos = ss_probe_tile_id * SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+    const int2 ss_probe_atlas_tile_base_pos = ss_probe_tile_id * SCREEN_SPACE_PROBE_OCT_RESOLUTION;
     const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
     const float ss_probe_depth = ss_probe_tile_info.x;
     const float3 ss_probe_tile_normal_ws = OctDecode(ss_probe_tile_info.zw);
@@ -198,7 +199,7 @@ void main_cs(
         else if(2 == debug_sub_mode)
         {
             // Screen Space Probe の Tile内配置Positionデバッグ.
-            if(isValidDepth(ss_probe_depth) && all(ss_probe_tile_base_pos + ss_probe_pos_in_tile == texel_pos))
+            if(isValidDepth(ss_probe_depth) && all(ss_probe_screen_tile_base_pos + ss_probe_pos_in_tile == texel_pos))
             {
                 const float debug_d = 0.01 / (ss_probe_depth + 1e-6);
                 RWTexWork[dtid.xy] = float4(cos(debug_d) * 0.5 + 0.5, cos(debug_d * 0.5)*0.5+0.5, cos(debug_d * 0.25)*0.5+0.5, 1.0);
@@ -214,8 +215,8 @@ void main_cs(
             const float3 sample_dir = -cb_srvs.main_light_dir_ws;
         
             // Octmapのテクセルが外側をBilinearSamplingしないようにクランプ.
-            float2 octmap_texel_pos = clamp(SspEncodeDirByNormal(sample_dir, ss_probe_tile_normal_ws) * SCREEN_SPACE_PROBE_TILE_SIZE, 0.5, SCREEN_SPACE_PROBE_TILE_SIZE-0.5);
-            float2 ss_probe_sample_texel_pos = ss_probe_tile_base_pos + octmap_texel_pos;
+            float2 octmap_texel_pos = clamp(SspEncodeDirByNormal(sample_dir, ss_probe_tile_normal_ws) * SCREEN_SPACE_PROBE_OCT_RESOLUTION, 0.5, SCREEN_SPACE_PROBE_OCT_RESOLUTION-0.5);
+            float2 ss_probe_sample_texel_pos = ss_probe_atlas_tile_base_pos + octmap_texel_pos;
 
             // BilinearSampling. 半球ではないOctahedralMapであるためボーダー部の処理スキップによるカクツキが目立つ..
             float4 ss_probe_value = ScreenSpaceProbeTex.SampleLevel(SmpLinearClamp, ss_probe_sample_texel_pos / screen_size_f, 0);
@@ -310,7 +311,7 @@ void main_cs(
             const float4 dsh_tile_info = ScreenSpaceProbeDirectSHTileInfoTex.Load(int3(ss_probe_tile_id, 0));
             const float dsh_depth = dsh_tile_info.x;
             const int2 dsh_pos_in_tile = SspTileInfoDecodeProbePosInTile(dsh_tile_info.y);
-            if(isValidDepth(dsh_depth) && all(ss_probe_tile_base_pos + dsh_pos_in_tile == texel_pos))
+            if(isValidDepth(dsh_depth) && all(ss_probe_screen_tile_base_pos + dsh_pos_in_tile == texel_pos))
             {
                 const float debug_d = 0.01 / (dsh_depth + 1e-6);
                 RWTexWork[dtid.xy] = float4(cos(debug_d) * 0.5 + 0.5, cos(debug_d * 0.5)*0.5+0.5, cos(debug_d * 0.25)*0.5+0.5, 1.0);

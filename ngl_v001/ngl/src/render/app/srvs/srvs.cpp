@@ -608,8 +608,8 @@ namespace ngl::render::app
         {
             rhi::TextureDep::Desc desc = {};
             desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
             desc.depth = 1;
             desc.mip_count = 1;
             desc.array_size = 1;
@@ -624,8 +624,8 @@ namespace ngl::render::app
         {
             rhi::TextureDep::Desc desc = {};
             desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
             desc.depth = 1;
             desc.mip_count = 1;
             desc.array_size = 1;
@@ -656,8 +656,8 @@ namespace ngl::render::app
         {
             rhi::TextureDep::Desc desc = {};
             desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
             desc.depth = 1;
             desc.mip_count = 1;
             desc.array_size = 1;
@@ -672,8 +672,8 @@ namespace ngl::render::app
         {
             rhi::TextureDep::Desc desc = {};
             desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
             desc.depth = 1;
             desc.mip_count = 1;
             desc.array_size = 1;
@@ -689,8 +689,8 @@ namespace ngl::render::app
         {
             rhi::TextureDep::Desc desc = {};
             desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
             desc.depth = 1;
             desc.mip_count = 1;
             desc.array_size = 1;
@@ -706,8 +706,8 @@ namespace ngl::render::app
         {
             rhi::TextureDep::Desc desc = {};
             desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
             desc.depth = 1;
             desc.mip_count = 1;
             desc.array_size = 1;
@@ -722,8 +722,8 @@ namespace ngl::render::app
         {
             rhi::TextureDep::Desc desc = {};
             desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_TILE_SIZE -1) / SCREEN_SPACE_PROBE_TILE_SIZE;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
             desc.depth = 1;
             desc.mip_count = 1;
             desc.array_size = 1;
@@ -1333,7 +1333,9 @@ namespace ngl::render::app
 
                 p_command_list->SetPipelineState(pso_ss_probe_direct_sh_preupdate_.Get());
                 p_command_list->SetDescriptorSet(pso_ss_probe_direct_sh_preupdate_.Get(), &desc_set);
-                pso_ss_probe_direct_sh_preupdate_->DispatchHelper(p_command_list, ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].texture->GetWidth(), ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].texture->GetHeight(), 1);
+                // Preupdate は 1 スレッドグループ(5x5) = 1 ProbeTile.
+                p_command_list->Dispatch(ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].texture->GetWidth(),
+                    ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].texture->GetHeight(), 1);
 
                 p_command_list->ResourceUavBarrier(ss_probe_direct_sh_tile_info_tex_[dsh_tile_info_curr_index].texture.Get());
                 p_command_list->ResourceUavBarrier(ss_probe_direct_sh_best_prev_tile_tex_.texture.Get());

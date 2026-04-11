@@ -40,15 +40,15 @@ void main_cs(
 
     // OctahedronMap to SH.
     [unroll]
-    for(int oy = 0; oy < SCREEN_SPACE_PROBE_TILE_SIZE; ++oy)
+    for(int oy = 0; oy < SCREEN_SPACE_PROBE_OCT_RESOLUTION; ++oy)
     {
         [unroll]
-        for(int ox = 0; ox < SCREEN_SPACE_PROBE_TILE_SIZE; ++ox)
+        for(int ox = 0; ox < SCREEN_SPACE_PROBE_OCT_RESOLUTION; ++ox)
         {
-            const int2 atlas_texel_pos = probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE + int2(ox, oy);
+            const int2 atlas_texel_pos = probe_tile_id * SCREEN_SPACE_PROBE_OCT_RESOLUTION + int2(ox, oy);
             const float visibility = ScreenSpaceProbeTex.Load(int3(atlas_texel_pos, 0)).r;
 
-            const float2 oct_uv = (float2(float(ox), float(oy)) + 0.5) * SCREEN_SPACE_PROBE_TILE_SIZE_INV;
+            const float2 oct_uv = (float2(float(ox), float(oy)) + 0.5) * SCREEN_SPACE_PROBE_OCT_RESOLUTION_INV;
             const float3 dir_ws = SspDecodeDirByNormal(oct_uv, basis_t_ws, basis_b_ws, probe_normal_ws);
             
             // SideCacheありの場合は逆向きを棄却しないこちらの方が品質向上する.
@@ -57,9 +57,9 @@ void main_cs(
     }
 
 #if NGL_SSP_OCTAHEDRALMAP_STORAGE_HEMISPHERE_MODE
-    const float texel_solid_angle = (2.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT);
+    const float texel_solid_angle = (2.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT);
 #else
-    const float texel_solid_angle = (4.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT);
+    const float texel_solid_angle = (4.0 * 3.14159265359) / float(SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT);
 #endif
     RWScreenSpaceProbeSHTex[probe_tile_id] = sh_coeff * texel_solid_angle;
 }

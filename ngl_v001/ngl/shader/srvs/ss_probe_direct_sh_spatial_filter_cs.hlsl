@@ -17,7 +17,9 @@ Dispatch: DispatchHelper(sh_tex_width, sh_tex_height, 1) with numthreads(8,8,1).
 
 #include "srvs_util.hlsli"
 
-[numthreads(SCREEN_SPACE_PROBE_TILE_SIZE, SCREEN_SPACE_PROBE_TILE_SIZE, 1)]
+#define DIRECT_SH_SPATIAL_FILTER_THREAD_GROUP_SIZE 8
+
+[numthreads(DIRECT_SH_SPATIAL_FILTER_THREAD_GROUP_SIZE, DIRECT_SH_SPATIAL_FILTER_THREAD_GROUP_SIZE, 1)]
 void main_cs(
     uint3 dtid : SV_DispatchThreadID)
 {

@@ -65,7 +65,7 @@ Texture2D<float4>      ScreenSpaceProbeTex;
 Texture2D<float4>      ScreenSpaceProbeHistoryTex;
 RWTexture2D<float4>    RWScreenSpaceProbeTex;
 
-// 1/8 resolution Per ScreenSpaceProbe Tile Info Texture. (SCREEN_SPACE_PROBE_TILE_SIZE = 8)
+// 1/SCREEN_SPACE_PROBE_INFO_DOWNSCALE resolution Per ScreenSpaceProbe Tile Info Texture.
 // r.x : Depth, r.y : Probe位置オフセットのフラットインデックス, r.zw : OctEncodeしたWS法線.
 // x が1 の場合は無効深度で, Probeも存在しない.
 Texture2D<float4>      ScreenSpaceProbeTileInfoTex;
@@ -128,7 +128,7 @@ uint SspTileInfoYToPackedBits(float tile_info_y)
 
 uint SspTileInfoEncodeProbePosFlatIndex(uint2 probe_pos_in_tile)
 {
-    return probe_pos_in_tile.x + probe_pos_in_tile.y * SCREEN_SPACE_PROBE_TILE_SIZE;
+    return probe_pos_in_tile.x + probe_pos_in_tile.y * SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
 }
 
 uint SspTileInfoDecodeProbePosFlatIndex(float tile_info_y)
@@ -139,7 +139,7 @@ uint SspTileInfoDecodeProbePosFlatIndex(float tile_info_y)
 int2 SspTileInfoDecodeProbePosInTile(float tile_info_y)
 {
     const uint flat_index = SspTileInfoDecodeProbePosFlatIndex(tile_info_y);
-    return int2(flat_index % SCREEN_SPACE_PROBE_TILE_SIZE, flat_index / SCREEN_SPACE_PROBE_TILE_SIZE);
+    return int2(flat_index % SCREEN_SPACE_PROBE_INFO_DOWNSCALE, flat_index / SCREEN_SPACE_PROBE_INFO_DOWNSCALE);
 }
 
 bool SspTileInfoIsReprojectionSucceeded(float tile_info_y)

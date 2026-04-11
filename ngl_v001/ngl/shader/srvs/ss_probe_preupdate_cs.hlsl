@@ -17,8 +17,9 @@ Texture2D			           TexHardwareDepth;
 
 // -------------------------------------
 
-#define DISPATCH_GROUP_SIZE_X SCREEN_SPACE_PROBE_TILE_SIZE
-#define DISPATCH_GROUP_SIZE_Y SCREEN_SPACE_PROBE_TILE_SIZE
+#define DISPATCH_GROUP_SIZE_X 8
+#define DISPATCH_GROUP_SIZE_Y 8
+#define PROBE_RELOCATION_RETRY_COUNT 8
 
 
 [numthreads(DISPATCH_GROUP_SIZE_X, DISPATCH_GROUP_SIZE_Y, 1)]
@@ -28,7 +29,7 @@ void main_cs(
 	uint3 gid : SV_GroupID
 )
 {
-    const int2 probe_id = dtid.xy;// フル解像度に対して 1/SCREEN_SPACE_PROBE_TILE_SIZE で, ScreenSpaceProbeごとに1テクセル.
+    const int2 probe_id = dtid.xy;// フル解像度に対して 1/SCREEN_SPACE_PROBE_INFO_DOWNSCALE で, ScreenSpaceProbeごとに1テクセル.
     // RandomInstance.
     RandomInstance rng;
     rng.rngState = asuint(noise_float_to_float(float3(probe_id.x, probe_id.y, cb_srvs.frame_count)));
@@ -39,7 +40,7 @@ void main_cs(
     
     // Tile内で今回処理するテクセルを決定して最小限のテクスチャ読み取り.
     const int2 ss_probe_tile_id = probe_id;
-    const int2 ss_probe_tile_pixel_start = ss_probe_tile_id * SCREEN_SPACE_PROBE_TILE_SIZE;
+    const int2 ss_probe_tile_pixel_start = ss_probe_tile_id * SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
 
     // Tile内探索.
     uint2 probe_pos_in_tile = uint2(0,0);
@@ -61,9 +62,9 @@ void main_cs(
         if(force_relocation || (!isValidDepth(probe_depth) || (relocation_probability > rng.rand())))
         {
             // 何回かリトライする.
-            for(int i = 0; i < SCREEN_SPACE_PROBE_TILE_SIZE; ++i)
+            for(int i = 0; i < PROBE_RELOCATION_RETRY_COUNT; ++i)
             {
-                probe_pos_in_tile = rng.rand2() * (SCREEN_SPACE_PROBE_TILE_SIZE - 1);
+                probe_pos_in_tile = rng.rand2() * (SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1);
                 // このフレームでのプローブ配置テクセル位置をタイル内ランダム選択.
                 current_probe_texel_pos = ss_probe_tile_pixel_start + probe_pos_in_tile;
                 // プローブの配置テクセルの深度取得.

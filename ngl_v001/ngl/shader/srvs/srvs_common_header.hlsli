@@ -84,10 +84,14 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     // 非可視表面Voxel除去用スタックの1要素のコンポーネント数.
     #define k_component_count_RemoveVoxelList 4
 
-    // ScreenSpaceProbeタイルサイズ. 1ProbeあたりのOctahedralMapAtlasの幅.
-    #define SCREEN_SPACE_PROBE_TILE_SIZE 8
-    #define SCREEN_SPACE_PROBE_TILE_SIZE_INV (1.0 / float(SCREEN_SPACE_PROBE_TILE_SIZE))
-    #define SCREEN_SPACE_PROBE_TILE_TEXEL_COUNT (SCREEN_SPACE_PROBE_TILE_SIZE * SCREEN_SPACE_PROBE_TILE_SIZE)
+    // ScreenSpaceProbe情報テクスチャ群のフル解像度に対する縮小率.
+    #define SCREEN_SPACE_PROBE_INFO_DOWNSCALE 8
+    // 1ProbeあたりのOctahedralMapAtlas解像度.
+    #define SCREEN_SPACE_PROBE_OCT_RESOLUTION 8
+    #define SCREEN_SPACE_PROBE_OCT_RESOLUTION_INV (1.0 / float(SCREEN_SPACE_PROBE_OCT_RESOLUTION))
+    #define SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT (SCREEN_SPACE_PROBE_OCT_RESOLUTION * SCREEN_SPACE_PROBE_OCT_RESOLUTION)
+    // DirectSH preupdate の temporal reprojection 探索用 ThreadGroup サイズ.
+    #define SCREEN_SPACE_PROBE_DIRECT_SH_PREUPDATE_SEARCH_GROUP_SIZE 5
 
 
     // Temporal Filterの棄却パラメータ.
