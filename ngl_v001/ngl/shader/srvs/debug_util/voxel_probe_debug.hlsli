@@ -67,8 +67,7 @@ VS_OUTPUT main_vs(VS_INPUT input)
     const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_coord, cb_srvs.bbv.grid_toroidal_offset, cb_srvs.bbv.grid_resolution), cb_srvs.bbv.grid_resolution);
 
     // Bbv固有データ.
-    const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
-    const uint bbv_occupied_flag = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_index)] & k_bbv_per_voxel_bitmask_u32_component_mask;
+    const uint bbv_occupied_voxel_count = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_index)];
     
 
     // Bbv追加データ.
@@ -80,7 +79,7 @@ VS_OUTPUT main_vs(VS_INPUT input)
     // 表示位置.
     const float3 instance_pos = probe_pos_ws;
     float draw_scale = cb_srvs.debug_probe_radius;
-    if(0 != (bbv_occupied_flag))
+    if(0 != bbv_occupied_voxel_count)
     {
         draw_scale *= cb_srvs.debug_probe_near_geom_scale;
     }

@@ -47,14 +47,14 @@ void main_cs(
     const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal, cb_srvs.bbv.grid_resolution);
 
     const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
-    const uint bbv_occupied_flag = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_index)] & k_bbv_per_voxel_bitmask_u32_component_mask;
+    const uint bbv_occupied_voxel_count = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_index)];
     
     BbvOptionalData voxel_optional_data = RWBitmaskBrickVoxelOptionData[voxel_index];
 
 
     // Probe位置探索. 埋まり対策のために空Bitcell位置を探す.
     int candidate_probe_bitcell_index = -1;
-    if(0 != bbv_occupied_flag)
+    if(0 != bbv_occupied_voxel_count)
     {
         // Voxel内のProbe位置の更新.
         // Bbvセルを参照して空のセルから選択する. Bitmaskが変化したVoxelだけ更新するようにしたいところ.
@@ -114,10 +114,8 @@ void main_cs(
                 if(all(prev_nearest_voxel_coord >= 0) && all(prev_nearest_voxel_coord < cb_srvs.bbv.grid_resolution))
                 {
                     const int3 surface_voxel_coord_toroidal = voxel_coord_toroidal_mapping(prev_nearest_voxel_coord, cb_srvs.bbv.grid_toroidal_offset, cb_srvs.bbv.grid_resolution);
-                    const uint surface_voxel_bbv_addr = bbv_voxel_bitmask_data_addr(voxel_coord_to_index(surface_voxel_coord_toroidal, cb_srvs.bbv.grid_resolution));
-
-                    const uint surface_occupied_flag = BitmaskBrickVoxel[surface_voxel_bbv_addr + 0] & k_bbv_per_voxel_bitmask_u32_component_mask;
-                    if(0 != surface_occupied_flag)
+                    const uint surface_occupied_voxel_count = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_coord_to_index(surface_voxel_coord_toroidal, cb_srvs.bbv.grid_resolution))];
+                    if(0 != surface_occupied_voxel_count)
                     {
                         // 現在も有効なVoxelなら有効なDistanceとして利用.
                         nearest_surface_dist = voxel_optional_data.to_surface_vector;
@@ -142,8 +140,8 @@ void main_cs(
                 
                 const BbvOptionalData neighbor_voxel_optional_data = RWBitmaskBrickVoxelOptionData[neighbor_voxel_index];
 
-                const uint neighbor_occupied_flag = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(neighbor_voxel_index)] & k_bbv_per_voxel_bitmask_u32_component_mask;
-                if(0 != neighbor_occupied_flag)
+                const uint neighbor_occupied_voxel_count = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(neighbor_voxel_index)];
+                if(0 != neighbor_occupied_voxel_count)
                 {
                     if(length_int_vector3(nearest_surface_dist) > length_int_vector3(neighbor_offset[i]))
                     {

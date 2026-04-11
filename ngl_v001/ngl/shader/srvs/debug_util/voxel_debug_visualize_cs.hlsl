@@ -57,7 +57,7 @@ void main_cs(
     // Category 0: BBV.
     if(0 == debug_category)
     {
-        if(6 >= debug_sub_mode)
+        if(4 >= debug_sub_mode)
         {
             // Voxel単位Traceのテスト.
             const float trace_distance = 10000.0;          
@@ -75,7 +75,7 @@ void main_cs(
                 const float fog_rate0 = pow(saturate((curr_ray_t_ws.x - 20.0)/100.0), 1.0/1.2);
                 const float fog_rate1 = saturate((curr_ray_t_ws.x - 70.0)/500.0);
 
-                const uint unique_data_addr = bbv_voxel_unique_data_addr(hit_voxel_index);
+                const uint brick_occupied_voxel_count = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(hit_voxel_index)];
                 // デバッグ用テクスチャにモード別描画.
                 if(0 == debug_sub_mode)
                 {
@@ -113,14 +113,13 @@ void main_cs(
                 }
                 else if(4 == debug_sub_mode)
                 {
-                }
-                else if(5 == debug_sub_mode)
-                {
+                    const float count_rate = saturate(float(brick_occupied_voxel_count) / float(k_bbv_per_voxel_bitmask_bit_count));
+                    debug_color.xyz = lerp(float3(0.0, 0.0, 0.1), float3(1.0, 0.8, 0.2), count_rate);
                 }
             }
             RWTexWork[dtid.xy] = debug_color;
         }
-        else if(6 == debug_sub_mode)
+        else if(5 == debug_sub_mode)
         {
             // Brick単位Traceのテスト. Brickの占有フラグが適切に設定または除去されているかのテスト.
             const float trace_distance = 10000.0;          
@@ -144,7 +143,7 @@ void main_cs(
             }
             RWTexWork[dtid.xy] = debug_color;
         }
-        else if(7 == debug_sub_mode)
+        else if(6 == debug_sub_mode)
         {
             // Voxel上面図X-Ray表示.
             const int3 bv_full_reso = cb_srvs.bbv.grid_resolution * k_bbv_per_voxel_resolution;

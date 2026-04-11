@@ -159,6 +159,8 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_removal_list_build_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_removal_apply_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_injection_apply_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_brick_count_aggregate_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_hibrick_count_aggregate_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_generate_visible_voxel_indirect_arg_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_removal_indirect_arg_build_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_element_update_ = {};

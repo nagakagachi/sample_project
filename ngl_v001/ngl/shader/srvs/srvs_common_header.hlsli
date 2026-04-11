@@ -46,16 +46,27 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
 
     // シェーダとCppで一致させる.
-    // Bbv単位の固有データ部のu32単位数.ジオメトリを表現する占有ビットマスクとは別に荒い単位で保持するデータ. レイアウトの簡易化のためビット単位ではなくu32単位.
-    #define k_bbv_common_data_u32_count (2)
+    // BBV本体バッファは
+    //   1. Brickごとの 8x8x8 occupancy bitmask 領域
+    //   2. Brickごとの補助データ領域
+    //   3. HiBrickごとの集約データ領域
+    // の順で連続配置する。
+    //
+    // ここではその各領域サイズ計算に使う共通定数だけを置く。
     // Bbv単位の占有ビットマスク解像度. 2の冪でなくても良い.
     #define k_bbv_per_voxel_resolution (8)
+    // 1 Brick あたりの fine voxel 数.
     #define k_bbv_per_voxel_bitmask_bit_count (k_bbv_per_voxel_resolution*k_bbv_per_voxel_resolution*k_bbv_per_voxel_resolution)
+    // fine voxel bitmask を u32 配列へ詰めた時の要素数.
     #define k_bbv_per_voxel_bitmask_u32_count ((k_bbv_per_voxel_bitmask_bit_count + 31) / 32)
-    // k_bbv_per_voxel_bitmask_u32_count == 16 なら それぞれのu32コンポーネントの非ゼロフラグを管理する16bitをマスクする定義.
-    #define k_bbv_per_voxel_bitmask_u32_component_mask ((1 << k_bbv_per_voxel_bitmask_u32_count) - 1)
-    // Bbv単位が持つデータサイズ(u32単位).
-    #define k_bbv_per_voxel_u32_count (k_bbv_per_voxel_bitmask_u32_count + k_bbv_common_data_u32_count)
+    // Brick data region の 1 Brick あたり要素数.
+    // 現状は occupied voxel count と work(last visible frame) を保持する。
+    #define k_bbv_brick_data_u32_count (2)
+    // HiBrick は 4x4x4 Brick cluster を 1 単位とする。
+    #define k_bbv_hibrick_brick_resolution (4)
+    // HiBrick data region の 1 HiBrick あたり要素数.
+    // 初段階では cluster 内 occupied voxel 総数のみを持つ。
+    #define k_bbv_hibrick_data_u32_count (1)
 
 
     #define k_bbv_per_voxel_resolution_inv (1.0 / float(k_bbv_per_voxel_resolution))

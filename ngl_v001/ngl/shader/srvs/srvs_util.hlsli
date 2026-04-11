@@ -26,8 +26,9 @@ srvs_util.hlsli
 
 // ------------------------------------------------------------------------------------------------------------------------
 // Bbv. bbv.
-// uint UniqueData + uint[brick数分] OccupancyBitMask.
-// UniqueData : 0bit:空ではないなら1, 1-31: 最後に可視状態になったフレーム番号.
+// 1. Voxel bit data region
+// 2. Brick data region
+// 3. HiBrick data region
 Buffer<uint>		BitmaskBrickVoxel;
 RWBuffer<uint>		RWBitmaskBrickVoxel;
 
@@ -298,31 +299,96 @@ int3 voxel_coord_toroidal_mapping(int3 voxel_coord, int3 toroidal_offset, int3 r
 
 // Bbvの取り扱い.
 // ------------------------------------------------------------------------------------------------------------------------
-// VoxelIndexからアドレス計算. Buffer上の該当Voxelデータの先頭アドレスを返す.
-uint bbv_voxel_index_to_addr(uint voxel_index)
+// Brick数. Toroidal offset を加味したアドレス計算の前に使う物理バッファ上の総Brick数。
+uint bbv_brick_count()
 {
-    return voxel_index * k_bbv_per_voxel_u32_count;
+    return cb_srvs.bbv.grid_resolution.x * cb_srvs.bbv.grid_resolution.y * cb_srvs.bbv.grid_resolution.z;
 }
-// Voxel毎のデータ部の固有データ先頭アドレス計算.
+// HiBrickグリッド解像度. 端数は切り上げで末端HiBrickに畳み込む。
+int3 bbv_hibrick_grid_resolution()
+{
+    return (cb_srvs.bbv.grid_resolution + int3(k_bbv_hibrick_brick_resolution - 1, k_bbv_hibrick_brick_resolution - 1, k_bbv_hibrick_brick_resolution - 1)) / k_bbv_hibrick_brick_resolution;
+}
+// HiBrick総数.
+uint bbv_hibrick_count()
+{
+    const int3 hibrick_grid_resolution = bbv_hibrick_grid_resolution();
+    return hibrick_grid_resolution.x * hibrick_grid_resolution.y * hibrick_grid_resolution.z;
+}
+// Brick座標から、それを内包する logical HiBrick 座標へ変換する。
+int3 bbv_voxel_coord_to_hibrick_coord(int3 voxel_coord)
+{
+    return voxel_coord / k_bbv_hibrick_brick_resolution;
+}
+// Brick座標から HiBrick data region 用のリニアindexを得る。
+// HiBrick data region は toroidal 化せず、logical 4x4x4 Brick cluster 順で保持する。
+uint bbv_hibrick_index_from_voxel_coord(int3 voxel_coord)
+{
+    return voxel_coord_to_index(bbv_voxel_coord_to_hibrick_coord(voxel_coord), bbv_hibrick_grid_resolution());
+}
+// Brick index から HiBrick data region 用のリニアindexを得る。
+// voxel_index は physical index 解釈になるため、logical HiBrick を参照したい箇所では
+// index ではなく logical Brick 座標を直接渡す helper を優先する。
+uint bbv_hibrick_index_from_voxel_index(uint voxel_index)
+{
+    return bbv_hibrick_index_from_voxel_coord(index_to_voxel_coord(voxel_index, cb_srvs.bbv.grid_resolution));
+}
+// BBV本体バッファは [bitmask region][brick data region][hibrick data region] の順。
+// それぞれの base helper から絶対アドレスを導出する。
+uint bbv_bitmask_region_addr_base()
+{
+    return 0;
+}
+// Brick data region は bitmask region の直後に連続配置する。
+uint bbv_brick_data_region_addr_base()
+{
+    return bbv_brick_count() * k_bbv_per_voxel_bitmask_u32_count;
+}
+// HiBrick data region は brick data region の直後に連続配置する。
+uint bbv_hibrick_data_region_addr_base()
+{
+    return bbv_brick_data_region_addr_base() + bbv_brick_count() * k_bbv_brick_data_u32_count;
+}
+// Brick毎のデータ部先頭アドレス計算.
 uint bbv_voxel_unique_data_addr(uint voxel_index)
 {
-    return bbv_voxel_index_to_addr(voxel_index) + 0;
+    return bbv_brick_data_region_addr_base() + voxel_index * k_bbv_brick_data_u32_count;
 }
-// Voxel毎のCoarseOccupancyビットマスクのアドレス計算. Voxelのu32要素毎の非ゼロ状態を集約した粗いビットマスク情報.
+// Brick毎の occupied voxel count のアドレス計算.
+// 旧 coarse occupancy flag 名を残しているのは既存呼び出し側の変更量を抑えるため。
+// 現在の実体は「bitmask成分フラグ」ではなく「Brick内 occupied voxel count」。
 uint bbv_voxel_coarse_occupancy_info_addr(uint voxel_index)
 {
-    return bbv_voxel_unique_data_addr(voxel_index) + 0;// ユニーク部の先頭に配置.
+    return bbv_voxel_unique_data_addr(voxel_index) + 0;
 }
-// Voxel毎の作業用データ部アドレス.
+// Brick毎の作業用データ部アドレス.
 uint bbv_voxel_brick_work_addr(uint voxel_index)
 {
-    return bbv_voxel_unique_data_addr(voxel_index) + 1;// ユニーク部の２つ目に配置.
+    return bbv_voxel_unique_data_addr(voxel_index) + 1;
 }
-// Voxel毎のデータ部の占有ビットマスクデータ先頭アドレス計算.
+// HiBrick毎の occupied voxel total count のアドレス計算.
+// count > 0 なら、その logical HiBrick 配下のどこかに occupied voxel が存在する。
+uint bbv_hibrick_voxel_count_addr(uint hibrick_index)
+{
+    return bbv_hibrick_data_region_addr_base() + hibrick_index * k_bbv_hibrick_data_u32_count;
+}
+// logical Brick 座標から直接 HiBrick の count アドレスを引く helper.
+uint bbv_hibrick_voxel_count_addr_from_voxel_coord(int3 voxel_coord)
+{
+    return bbv_hibrick_voxel_count_addr(bbv_hibrick_index_from_voxel_coord(voxel_coord));
+}
+// physical Brick index から直接 HiBrick の count アドレスを引く helper.
+// HiBrick data が logical cluster ベースになった後は、trace や debug のように
+// logical 空間で扱う用途では使わないこと。
+uint bbv_hibrick_voxel_count_addr_from_voxel_index(uint voxel_index)
+{
+    return bbv_hibrick_voxel_count_addr(bbv_hibrick_index_from_voxel_index(voxel_index));
+}
+// Brick毎の占有ビットマスクデータ先頭アドレス計算.
+// bitmask region は Brick ごとに固定長で前詰め配置しているため単純な積で引ける。
 uint bbv_voxel_bitmask_data_addr(uint voxel_index)
 {
-    // Voxel毎のデータ部の先頭はVoxel固有データ, 占有ビットマスク の順にレイアウト.
-    return bbv_voxel_index_to_addr(voxel_index) + k_bbv_common_data_u32_count;
+    return bbv_bitmask_region_addr_base() + voxel_index * k_bbv_per_voxel_bitmask_u32_count;
 }
 // Voxel毎の占有ビットマスクのu32単位数.
 uint bbv_voxel_bitmask_uint_count()
@@ -362,9 +428,9 @@ uint3 calc_bbv_bitcell_pos_from_bit_index(uint bit_index)
 
 
 // ------------------------------------------------------------------------------------------------------------------------
-// Bbvのユニークデータレイアウト.
+// BbvのBrickデータレイアウト.
 
-// uint[0]      :  brickの各u32コンポーネントそれぞれの非ゼロフラグ集約ビット. ここだけ独立してAtomic操作をしたいためuintコンポーネントを分けた.
+// uint[0]      : Brick内 occupied voxel count.
 // uint[1].8bit : 最後に可視状態になったフレーム番号. 0-255でループ.
 
 // ユニークデータに埋め込むためのフレーム番号マスク処理.
@@ -374,12 +440,12 @@ uint mask_bbv_voxel_unique_data_last_visible_frame(uint last_visible_frame)
 }
 
 // ------------------------------------------------------------------------------------------------------------------------
-// Bbv. Voxelデータクリア.
+// Bbv. Brickデータクリア.
 void clear_voxel_data(RWBuffer<uint> bbv_buffer, uint voxel_index)
 {
     const uint unique_data_addr = bbv_voxel_unique_data_addr(voxel_index);
-    // 固有データクリア.
-    for(int i = 0; i < k_bbv_common_data_u32_count; ++i)
+    // Brickデータクリア.
+    for(int i = 0; i < k_bbv_brick_data_u32_count; ++i)
     {
         bbv_buffer[unique_data_addr + i] = 0;
     }
@@ -459,7 +525,6 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
 
     return true;
 };
-
 
 // Bbv内部のビットセル単位でのレイトレース.
 // https://github.com/dubiousconst282/VoxelRT
@@ -567,7 +632,6 @@ float4 trace_bbv_core(
     
     const int3 trace_cell_min = min(clampled_start_pos_i, clampled_end_pos_i);
     const int3 trace_cell_max = max(clampled_start_pos_i, clampled_end_pos_i);
-
     float3 sideDist = ((float3(clampled_start_pos_i) - clampled_start_pos) + step(0.0, ray_dir_ws)) * ray_dir_inv;
     int3 mapPos = clampled_start_pos_i;
     bool3 stepMask = calc_dda_trace_step_mask(sideDist);
@@ -579,8 +643,9 @@ float4 trace_bbv_core(
     for(;;)
     {
         // 読み取り用のマッピングをして読み取り.
-        const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(mapPos, bbv_grid_toroidal_offset, grid_resolution), grid_resolution);
-        const bool bbv_occupied_flag = (0 != bbv_buffer[bbv_voxel_coarse_occupancy_info_addr(voxel_index)] & k_bbv_per_voxel_bitmask_u32_component_mask);
+        const int3 toroidal_map_pos = voxel_coord_toroidal_mapping(mapPos, bbv_grid_toroidal_offset, grid_resolution);
+        const uint voxel_index = voxel_coord_to_index(toroidal_map_pos, grid_resolution);
+        const bool bbv_occupied_flag = (0 != bbv_buffer[bbv_voxel_coarse_occupancy_info_addr(voxel_index)]);
         // Brick単位の簡易判定.
         // 反転交差モードではBrick単位の占有フラグが意味をなさないため無条件で詳細判定へ進む. 反転交差モードは短距離利用の特殊な使い方のため許容とする.
         if(!intersection_bit_mode || bbv_occupied_flag)
@@ -720,9 +785,6 @@ float4 trace_bbv_dev(
         is_brick_mode
     );
 }
-
-
-
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 // Wcp.
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------

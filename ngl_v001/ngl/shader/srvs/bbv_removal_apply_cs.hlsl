@@ -36,12 +36,6 @@ void main_cs(
     
     const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
     // bitmask部に削除ビット反転Andを実行して除去.
-    uint old_value;
-    InterlockedAnd(RWBitmaskBrickVoxel[bbv_addr + bitmask_u32_offset], ~clear_bitmask, old_value);
-    // 前回値に操作した結果が0となった場合は対応するComponentのOccupiedフラグも落とす.
-    if(0 == (old_value & (~clear_bitmask)))
-    {
-        // Occupiedフラグの該当ビットを落とす.
-        InterlockedAnd(RWBitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_index)], ~(1 << bitmask_u32_offset));
-    }
+    // Brick / HiBrick count は後段の集計パスで再構築するため、ここでは bitmask 更新だけ行う。
+    InterlockedAnd(RWBitmaskBrickVoxel[bbv_addr + bitmask_u32_offset], ~clear_bitmask);
 }

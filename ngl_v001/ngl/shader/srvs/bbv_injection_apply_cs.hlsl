@@ -146,10 +146,8 @@ void main_cs(
         const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
     
         // 詳細ジオメトリをbitmask書き込み.
+        // Brick / HiBrick count は後段の集計パスで再構築するため、ここでは bitmask 更新だけ行う。
         InterlockedOr(RWBitmaskBrickVoxel[bbv_addr + bitmask_u32_offset], bitmask_append);
-        // 表面が存在し非ゼロbitがあるコンポーネントのビットを立てたOccupiedフラグをAtomic OR で書き込む.
-        // 中空になって占有されなくなったBrickのOccupiedフラグの除去は, bitmaskの除去といっしょに別シェーダで実行される.
-        InterlockedOr(RWBitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_index)], (1 << bitmask_u32_offset));
         
         // ここから先はBrick単位で行いたい処理のAtomic操作を最小化するための分岐.
         if(0 != is_unique_brick_flag)

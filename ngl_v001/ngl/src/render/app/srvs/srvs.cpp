@@ -197,7 +197,7 @@ namespace ngl::render::app
                 // カテゴリ別サブモードスライダ.
                 if (0 <= dbg_view_category_)
                 {
-                    const int k_sub_mode_max[] = { 7, 0, 7, 4 };
+                    const int k_sub_mode_max[] = { 6, 0, 7, 4 };
                     const int sub_max = k_sub_mode_max[dbg_view_category_];
                     // カテゴリ切替時にクランプ.
                     if (dbg_view_sub_mode_ > sub_max) dbg_view_sub_mode_ = sub_max;
@@ -316,7 +316,21 @@ namespace ngl::render::app
         wcp_grid_updater_.Initialize(init_arg.probe_resolution, init_arg.probe_cell_size);
 
 
-        const u32 voxel_count = bbv_grid_updater_.Get().resolution.x * bbv_grid_updater_.Get().resolution.y * bbv_grid_updater_.Get().resolution.z;
+        const auto bbv_grid_resolution = bbv_grid_updater_.Get().resolution;
+        const u32 voxel_count = bbv_grid_resolution.x * bbv_grid_resolution.y * bbv_grid_resolution.z;
+        // BBV本体バッファは shader 側と同じく
+        //   [bitmask region][brick data region][hibrick data region]
+        // の順で単一の R32_UINT バッファへ確保する。
+        const auto hibrick_grid_resolution = ngl::math::Vec3u(
+            (bbv_grid_resolution.x + k_bbv_hibrick_brick_resolution - 1) / k_bbv_hibrick_brick_resolution,
+            (bbv_grid_resolution.y + k_bbv_hibrick_brick_resolution - 1) / k_bbv_hibrick_brick_resolution,
+            (bbv_grid_resolution.z + k_bbv_hibrick_brick_resolution - 1) / k_bbv_hibrick_brick_resolution);
+        const u32 hibrick_count = hibrick_grid_resolution.x * hibrick_grid_resolution.y * hibrick_grid_resolution.z;
+        // bitmask は Brick ごとの固定長、brick/hibrick data はそれぞれ別領域の固定長配列として積み上げる。
+        const u32 bbv_buffer_element_count =
+            voxel_count * k_bbv_per_voxel_bitmask_u32_count +
+            voxel_count * k_bbv_brick_data_u32_count +
+            hibrick_count * k_bbv_hibrick_data_u32_count;
         // サーフェイスVoxelのリスト. スクリーン上でサーフェイスとして充填された要素を詰め込む. Bbvの充填とは別で, 後処理でサーフェイスVoxelを処理するためのリスト.
         bbv_fine_update_voxel_count_max_= std::clamp(voxel_count / 50u, 64u, k_max_update_probe_work_count);
 
@@ -351,6 +365,8 @@ namespace ngl::render::app
             pso_bbv_removal_list_build_ = CreateComputePSO("srvs/bbv_removal_list_build_cs.hlsl");
             pso_bbv_removal_apply_ = CreateComputePSO("srvs/bbv_removal_apply_cs.hlsl");
             pso_bbv_injection_apply_     = CreateComputePSO("srvs/bbv_injection_apply_cs.hlsl");
+            pso_bbv_brick_count_aggregate_ = CreateComputePSO("srvs/bbv_brick_count_aggregate_cs.hlsl");
+            pso_bbv_hibrick_count_aggregate_ = CreateComputePSO("srvs/bbv_hibrick_count_aggregate_cs.hlsl");
             pso_bbv_generate_visible_voxel_indirect_arg_ = CreateComputePSO("srvs/bbv_generate_visible_surface_list_indirect_arg_cs.hlsl");
             pso_bbv_removal_indirect_arg_build_ = CreateComputePSO("srvs/bbv_removal_indirect_arg_build_cs.hlsl");
             pso_bbv_element_update_ = CreateComputePSO("srvs/bbv_element_update_cs.hlsl");
@@ -465,7 +481,7 @@ namespace ngl::render::app
             bbv_buffer_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = sizeof(uint32_t),
-                                               .element_count     = voxel_count * k_bbv_per_voxel_u32_count,
+                                               .element_count     = bbv_buffer_element_count,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
@@ -1121,6 +1137,42 @@ namespace ngl::render::app
                 func_call_injection_pass(p_command_list, scene_cbv, cbh_injection_view_info, target_depth_info);
                 func_call_removal_pass(p_command_list, scene_cbv, cbh_injection_view_info, target_depth_info);
             #endif
+        }
+
+        // BBV count rebuild pass.
+        // Injection / Removal は bitmask のみを更新し、Brick / HiBrick count はここで再構築する。
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvBrickCountAggregate");
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_bbv_brick_count_aggregate_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+            pso_bbv_brick_count_aggregate_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_bbv_brick_count_aggregate_.Get());
+            p_command_list->SetDescriptorSet(pso_bbv_brick_count_aggregate_.Get(), &desc_set);
+            pso_bbv_brick_count_aggregate_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
+
+            p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
+        }
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvHiBrickCountAggregate");
+
+            const auto bbv_grid_resolution = bbv_grid_updater_.Get().resolution;
+            const auto hibrick_grid_resolution = ngl::math::Vec3u(
+                (bbv_grid_resolution.x + k_bbv_hibrick_brick_resolution - 1) / k_bbv_hibrick_brick_resolution,
+                (bbv_grid_resolution.y + k_bbv_hibrick_brick_resolution - 1) / k_bbv_hibrick_brick_resolution,
+                (bbv_grid_resolution.z + k_bbv_hibrick_brick_resolution - 1) / k_bbv_hibrick_brick_resolution);
+            const u32 hibrick_count = hibrick_grid_resolution.x * hibrick_grid_resolution.y * hibrick_grid_resolution.z;
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_bbv_hibrick_count_aggregate_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+            pso_bbv_hibrick_count_aggregate_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_bbv_hibrick_count_aggregate_.Get());
+            p_command_list->SetDescriptorSet(pso_bbv_hibrick_count_aggregate_.Get(), &desc_set);
+            pso_bbv_hibrick_count_aggregate_->DispatchHelper(p_command_list, hibrick_count, 1, 1);
+
+            p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
         }
 
         // ここから先はDebugBuffer数に依らず実行.
