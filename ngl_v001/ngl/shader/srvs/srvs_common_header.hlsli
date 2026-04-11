@@ -95,12 +95,12 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
 
     // Temporal Filterの棄却パラメータ.
-    #define SCREEN_SPACE_PROBE_TEMPORAL_FILTER_NORMAL_COS_THRESHOLD 0.2
+    #define SCREEN_SPACE_PROBE_TEMPORAL_FILTER_NORMAL_COS_THRESHOLD 0.95
     #define SCREEN_SPACE_PROBE_TEMPORAL_FILTER_PLANE_DIST_THRESHOLD 0.25
 
     // Spatial Filterの棄却パラメータ.
     //#define SCREEN_SPACE_PROBE_SPATIAL_FILTER_NORMAL_COS_THRESHOLD cos(2e-2 * 3.141592) // GI-1.0
-    #define SCREEN_SPACE_PROBE_SPATIAL_FILTER_NORMAL_COS_THRESHOLD 0.2
+    #define SCREEN_SPACE_PROBE_SPATIAL_FILTER_NORMAL_COS_THRESHOLD 0.5
     #define SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE 32.0
 
     // SideCacheの棄却パラメータ.
@@ -186,7 +186,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int dummy2 NGL_CPP_MEMBER_INIT({});
 
         // Temporal再利用重みの最小値.
-        float ss_probe_temporal_min_hysteresis NGL_CPP_MEMBER_INIT({0.85f});
+        float ss_probe_temporal_min_hysteresis NGL_CPP_MEMBER_INIT({0.5f});
         // Temporal再利用重みの最大値.
         float ss_probe_temporal_max_hysteresis NGL_CPP_MEMBER_INIT({0.98f});
         // Temporal再投影有効化フラグ.
