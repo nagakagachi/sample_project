@@ -608,11 +608,14 @@ float4 trace_bbv_core(
     const bool is_brick_mode
 );
 
-// DDA 用にゼロ軸を安全な巨大値へ置き換えた逆数を計算.
+// BBV trace 用の ray_dir reciprocal。
+// もともとは ray_dir の 0 軸を巨大値へ置き換える safe reciprocal を試したが、
+// HiBrick 有無に関係なく Bbv デバッグ表示で特定カメラ角度に 1px の横線欠けが発生した。
+// DDA 側を切り分けた結果 reciprocal の扱いが原因と分かり、旧来実装の 1.0 / ray_dir に戻している。
+// 現状は運用実績のある旧挙動を優先し、境界判定の安定性を保つ。
 float3 calc_safe_trace_ray_dir_inv(float3 ray_dir)
 {
-    const float3 abs_ray_dir = abs(ray_dir);
-    return select(abs_ray_dir > NGL_EPSILON, 1.0 / ray_dir, float3(1e20, 1e20, 1e20));
+    return 1.0 / ray_dir;
 }
 
 // レイ上の現在 t 位置から、次のセル内側を確実にサンプルするための t を計算.
