@@ -1379,6 +1379,25 @@ float4 trace_bbv_hibrick(
         false
     );
 }
+// 標準の BBV voxel cone trace 入口。
+// HiBrick skip と Brick occupancy 積分で透過率を見積もる基本用途向け wrapper。
+float4 trace_bbv_hibrick_brick_transmittance(
+    out float4 out_debug,
+    float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws,
+    float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
+    int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer,
+    const float transmittance_stop_threshold
+)
+{
+    return trace_bbv_hibrick_brick_transmittance_core(
+        out_debug,
+        ray_origin_ws, ray_dir_ws, trace_distance_ws,
+        grid_min_ws, cell_width_ws, grid_resolution,
+        bbv_grid_toroidal_offset, bbv_buffer,
+        true,
+        transmittance_stop_threshold
+    );
+}
 // 開発用 BBV トレース入口. is_brick_mode で Brick coarse hit のみを見る。
 float4 trace_bbv_dev(
     out int out_hit_voxel_index,
@@ -1432,12 +1451,11 @@ float4 trace_bbv_dev_hibrick_brick_transmittance(
     const float transmittance_stop_threshold
 )
 {
-    return trace_bbv_hibrick_brick_transmittance_core(
+    return trace_bbv_hibrick_brick_transmittance(
         out_debug,
         ray_origin_ws, ray_dir_ws, trace_distance_ws,
         grid_min_ws, cell_width_ws, grid_resolution,
         bbv_grid_toroidal_offset, bbv_buffer,
-        true,
         transmittance_stop_threshold
     );
 }
