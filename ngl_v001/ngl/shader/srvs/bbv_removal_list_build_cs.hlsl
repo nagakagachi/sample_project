@@ -23,6 +23,8 @@ Texture2D			TexHardwareDepth;
 
 // ThreadGroupタイル単位でスキップする最適化のグループタイル幅. 1より大きい数値で実行.
 #define THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH 4
+// Removal trace の検証用切り替え. 0: 従来 trace_bbv, 1: HiBrick trace.
+#define BBV_REMOVAL_TRACE_USE_HIBRICK 0
 
 // SharedMem上のタイルで簡易重複除去をする際のサイズ.(小タイルで重複処理する場合)
 #define REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH 4
@@ -82,11 +84,19 @@ void main_cs(
     int hit_voxel_index = -1;
     float4 debug_ray_info;
     // Trace最適化検証.
+#if BBV_REMOVAL_TRACE_USE_HIBRICK
+    float4 curr_ray_t_ws = trace_bbv_hibrick(
+        hit_voxel_index, debug_ray_info,
+        view_ray_origin, ray_dir_ws, trace_distance,
+        cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
+        cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
+#else
     float4 curr_ray_t_ws = trace_bbv(
         hit_voxel_index, debug_ray_info,
         view_ray_origin, ray_dir_ws, trace_distance, 
         cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
         cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
+#endif
 
     if(0.0 <= curr_ray_t_ws.x)
     {

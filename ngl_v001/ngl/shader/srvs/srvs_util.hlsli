@@ -1358,6 +1358,27 @@ float4 trace_bbv(
         false
     );
 }
+// 標準の BBV トレース入口. HiBrick で空クラスタをスキップしてから Brick / bitmask を走査する。
+float4 trace_bbv_hibrick(
+    out int out_hit_voxel_index,
+    out float4 out_debug,
+    float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws,
+    float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
+    int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer
+)
+{
+    return trace_bbv_hibrick_core(
+        out_hit_voxel_index,
+        out_debug,
+        ray_origin_ws, ray_dir_ws, trace_distance_ws,
+        grid_min_ws, cell_width_ws, grid_resolution,
+        bbv_grid_toroidal_offset, bbv_buffer,
+        true,
+        0,
+        true,
+        false
+    );
+}
 // 開発用 BBV トレース入口. is_brick_mode で Brick coarse hit のみを見る。
 float4 trace_bbv_dev(
     out int out_hit_voxel_index,
