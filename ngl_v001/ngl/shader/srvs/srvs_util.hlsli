@@ -1338,6 +1338,7 @@ float4 trace_bbv_core(
 
 
 // 標準の BBV トレース入口. 従来どおり Brick / bitmask を全域走査する。
+// HiBrickスキップのオーバーヘッドがない分だけ短距離トレースは高速.
 float4 trace_bbv(
     out int out_hit_voxel_index,
     out float4 out_debug,
@@ -1354,133 +1355,6 @@ float4 trace_bbv(
         bbv_grid_toroidal_offset, bbv_buffer,
         true, // 通常モード.
         0, // 初期ヒット回避無効.
-        false
-    );
-}
-// BBV トレース入口. HiBrick で空クラスタをスキップしてから Brick / bitmask を走査する。
-float4 trace_bbv_hibrick(
-    out int out_hit_voxel_index,
-    out float4 out_debug,
-    float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws,
-    float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
-    int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer
-)
-{
-    return trace_bbv_hibrick_core(
-        out_hit_voxel_index,
-        out_debug,
-        ray_origin_ws, ray_dir_ws, trace_distance_ws,
-        grid_min_ws, cell_width_ws, grid_resolution,
-        bbv_grid_toroidal_offset, bbv_buffer,
-        true,
-        0,
-        true,
-        false
-    );
-}
-// BBV トレース入口. HiBrick DDA は使うが skip を無効化して比較用に使う。
-float4 trace_bbv_hibrick_no_skip(
-    out int out_hit_voxel_index,
-    out float4 out_debug,
-    float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws,
-    float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
-    int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer
-)
-{
-    return trace_bbv_hibrick_core(
-        out_hit_voxel_index,
-        out_debug,
-        ray_origin_ws, ray_dir_ws, trace_distance_ws,
-        grid_min_ws, cell_width_ws, grid_resolution,
-        bbv_grid_toroidal_offset, bbv_buffer,
-        true,
-        0,
-        false,
-        false
-    );
-}
-// BBV トレース入口. 非占有側との交差を見る inverse bit モード。
-float4 trace_bbv_inverse_bit(
-    out int out_hit_voxel_index,
-    out float4 out_debug,
-    float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws, 
-    float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
-    int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer
-)
-{
-    return trace_bbv_core(
-        out_hit_voxel_index,
-        out_debug,
-        ray_origin_ws, ray_dir_ws, trace_distance_ws,
-        grid_min_ws, cell_width_ws, grid_resolution,
-        bbv_grid_toroidal_offset, bbv_buffer,
-        false, // 反転モード.
-        0, // 初期ヒット回避無効.
-        false
-    );
-}
-// BBV トレース入口. 始点近傍の自己ヒットを所定回数だけ無視する。
-float4 trace_bbv_initial_hit_avoidance(
-    out int out_hit_voxel_index,
-    out float4 out_debug,
-    float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws, 
-    float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
-    int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer,
-    const int initial_hit_avoidance_count // 始点からヒットしている場合に無視するヒット回数.
-)
-{
-    return trace_bbv_core(
-        out_hit_voxel_index,
-        out_debug,
-        ray_origin_ws, ray_dir_ws, trace_distance_ws,
-        grid_min_ws, cell_width_ws, grid_resolution,
-        bbv_grid_toroidal_offset, bbv_buffer,
-        true, // 通常モード.
-        initial_hit_avoidance_count, // 初期ヒット回避無効.
-        false
-    );
-}
-// BBV トレース入口. 初期ヒット回避付きの HiBrick 版。
-float4 trace_bbv_initial_hit_avoidance_hibrick(
-    out int out_hit_voxel_index,
-    out float4 out_debug,
-    float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws,
-    float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
-    int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer,
-    const int initial_hit_avoidance_count
-)
-{
-    return trace_bbv_hibrick_core(
-        out_hit_voxel_index,
-        out_debug,
-        ray_origin_ws, ray_dir_ws, trace_distance_ws,
-        grid_min_ws, cell_width_ws, grid_resolution,
-        bbv_grid_toroidal_offset, bbv_buffer,
-        true,
-        initial_hit_avoidance_count,
-        true,
-        false
-    );
-}
-// BBV トレース入口. 初期ヒット回避付きの HiBrick skip 無効版。
-float4 trace_bbv_initial_hit_avoidance_hibrick_no_skip(
-    out int out_hit_voxel_index,
-    out float4 out_debug,
-    float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws,
-    float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
-    int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer,
-    const int initial_hit_avoidance_count
-)
-{
-    return trace_bbv_hibrick_core(
-        out_hit_voxel_index,
-        out_debug,
-        ray_origin_ws, ray_dir_ws, trace_distance_ws,
-        grid_min_ws, cell_width_ws, grid_resolution,
-        bbv_grid_toroidal_offset, bbv_buffer,
-        true,
-        initial_hit_avoidance_count,
-        false,
         false
     );
 }
@@ -1527,29 +1401,6 @@ float4 trace_bbv_dev_hibrick(
         is_brick_mode
     );
 }
-// 開発用 BBV トレース入口. HiBrick DDA は維持しつつ skip を無効化した比較用。
-float4 trace_bbv_dev_hibrick_no_skip(
-    out int out_hit_voxel_index,
-    out float4 out_debug,
-    float3 ray_origin_ws, float3 ray_dir_ws, float trace_distance_ws,
-    float3 grid_min_ws, float cell_width_ws, int3 grid_resolution,
-    int3 bbv_grid_toroidal_offset, Buffer<uint> bbv_buffer,
-    const bool is_brick_mode
-)
-{
-    return trace_bbv_hibrick_core(
-        out_hit_voxel_index,
-        out_debug,
-        ray_origin_ws, ray_dir_ws, trace_distance_ws,
-        grid_min_ws, cell_width_ws, grid_resolution,
-        bbv_grid_toroidal_offset, bbv_buffer,
-        true,
-        0,
-        false,
-        is_brick_mode
-    );
-}
-
 // 開発用 BBV voxel cone trace 入口。
 // 本番の cone 実装を入れる前に、HiBrick skip と Brick occupancy 積分の見え方をデバッグ表示で確認するための入口。
 float4 trace_bbv_dev_hibrick_brick_transmittance(
