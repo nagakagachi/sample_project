@@ -24,7 +24,7 @@ Texture2D			TexHardwareDepth;
 // ThreadGroupタイル単位でスキップする最適化のグループタイル幅. 1より大きい数値で実行.
 #define THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH 4
 // Removal trace の検証用切り替え. 0: 従来 trace_bbv, 1: HiBrick trace.
-#define BBV_REMOVAL_TRACE_USE_HIBRICK 0
+#define BBV_REMOVAL_TRACE_USE_HIBRICK 1
 
 // SharedMem上のタイルで簡易重複除去をする際のサイズ.(小タイルで重複処理する場合)
 #define REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH 4
