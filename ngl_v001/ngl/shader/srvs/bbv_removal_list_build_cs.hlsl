@@ -115,60 +115,31 @@ void main_cs(
     }
     
     GroupMemoryBarrierWithGroupSync();
-    #if 0
-        // シンプルに小Tile毎に最小インデックスの要素との一致をチェックしてマージと除去をする.後段のAtomic操作を減らすことが目的.
-        // 小タイルの0番目が担当.
-        if(0 == (gtid.x%REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH) && 0 == (gtid.y%REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH))
+    // シンプルにshared_bbv_bitmask_addrを線形探索して x,zが一致する要素はマージし, インデックスが若い方のみを残す.
+    const uint k_reduce_tile_size = TILE_WIDTH*TILE_WIDTH;
+    if(0 == (gindex%(k_reduce_tile_size)))
+    {
+        for(int i = gindex; i < k_reduce_tile_size-1; ++i)
         {
-            for(int ix = 0; ix < REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH; ++ix)
-            {
-                for(int iy = 0; iy < REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH; ++iy)
-                {
-                    const uint check_index = (gtid.y + iy)*TILE_WIDTH + (gtid.x + ix);
-                    if(check_index == gindex || check_index >= (TILE_WIDTH*TILE_WIDTH))
-                        continue;
-                    
-                    // Voxelの一致チェック.
-                    if(shared_bbv_bitmask_addr[gindex].x == shared_bbv_bitmask_addr[check_index].x)
-                    {
-                        // u32オフセットも一致する場合はビットマスクをマージ.
-                        if(shared_bbv_bitmask_addr[gindex].z == shared_bbv_bitmask_addr[check_index].z)
-                        {
-                            shared_bbv_bitmask_addr[gindex].w |= shared_bbv_bitmask_addr[check_index].w;// マージ.
-                            shared_bbv_bitmask_addr[check_index].x = ~uint(0);// Voxelも書き込みu32オフセットも一致するため完全にマージして無効化.
-                        }
-                    }   
-                }
-            }
-        }
-    #else
-        // シンプルにshared_bbv_bitmask_addrを線形探索して x,zが一致する要素はマージし, インデックスが若い方のみを残す.
-        //const uint k_reduce_tile_size = REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH*REDUCE_ATOMIC_WRITE_OPTIMIZE_TILE_WIDTH;
-        const uint k_reduce_tile_size = TILE_WIDTH*TILE_WIDTH;
-        if(0 == (gindex%(k_reduce_tile_size)))
-        {
-            for(int i = gindex; i < k_reduce_tile_size-1; ++i)
-            {
-                const uint base_voxel_index = shared_bbv_bitmask_addr[i].x;
-                const uint base_bitmask_u32_offset = shared_bbv_bitmask_addr[i].z;
-                if(~uint(0) == base_voxel_index)
-                    continue;
+            const uint base_voxel_index = shared_bbv_bitmask_addr[i].x;
+            const uint base_bitmask_u32_offset = shared_bbv_bitmask_addr[i].z;
+            if(~uint(0) == base_voxel_index)
+                continue;
 
-                for(int j = i + 1; j < k_reduce_tile_size; ++j)
+            for(int j = i + 1; j < k_reduce_tile_size; ++j)
+            {
+                // VoxelIndex, u32オフセットが一致する場合はマージ.
+                if((base_voxel_index == shared_bbv_bitmask_addr[j].x) &&
+                    (base_bitmask_u32_offset == shared_bbv_bitmask_addr[j].z))
                 {
-                    // VoxelIndex, u32オフセットが一致する場合はマージ.
-                    if((base_voxel_index == shared_bbv_bitmask_addr[j].x) &&
-                        (base_bitmask_u32_offset == shared_bbv_bitmask_addr[j].z))
-                    {
-                        // マージ.
-                        shared_bbv_bitmask_addr[i].w |= shared_bbv_bitmask_addr[j].w;
-                        // 無効化.
-                        shared_bbv_bitmask_addr[j].x = ~uint(0);
-                    }
+                    // マージ.
+                    shared_bbv_bitmask_addr[i].w |= shared_bbv_bitmask_addr[j].w;
+                    // 無効化.
+                    shared_bbv_bitmask_addr[j].x = ~uint(0);
                 }
             }
         }
-    #endif
+    }
 
     GroupMemoryBarrierWithGroupSync();
 
