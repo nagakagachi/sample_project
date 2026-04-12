@@ -700,6 +700,13 @@ int3 calc_trace_grid_coord_from_t(float3 ray_origin, float3 ray_dir, float sampl
     return clamp(coord, int3(0, 0, 0), grid_resolution - 1);
 }
 
+// DDA で訪れるセル数の理論上限を、始点セルと終点セルの差から見積もる。
+int calc_trace_grid_max_iteration_count(int3 begin_coord, int3 end_coord)
+{
+    const int3 trace_extent = abs(end_coord - begin_coord) + 1;
+    return max(1, trace_extent.x + trace_extent.y + trace_extent.z) + 2;
+}
+
 // BBV の Brick 単位 DDA を走らせる共通処理.
 bool trace_bbv_brick_dda_range(
     out int3 out_hit_map_pos,
@@ -976,7 +983,6 @@ float4 trace_bbv_hibrick_core(
     int initial_hit_avoidance_count = static_initial_hit_avoidance_count;
 
     const int3 hibrick_grid_resolution = bbv_hibrick_grid_resolution();
-    const int max_hibrick_iteration_count = bbv_hibrick_count() + 2;
     const float k_trace_t_epsilon = 1e-4;
 
     int3 hit_map_pos = int3(-1, -1, -1);
@@ -990,6 +996,8 @@ float4 trace_bbv_hibrick_core(
 
     float curr_t = 0.0;
     int3 hibrick_coord = calc_trace_grid_coord_from_t(clampled_start_pos, ray_dir_ws, calc_trace_sample_t(0.0, trace_t_end), k_bbv_hibrick_brick_resolution, hibrick_grid_resolution);
+    const int3 hibrick_end_coord = calc_trace_grid_coord_from_t(clampled_start_pos, ray_dir_ws, trace_t_end, k_bbv_hibrick_brick_resolution, hibrick_grid_resolution);
+    const int max_hibrick_iteration_count = calc_trace_grid_max_iteration_count(hibrick_coord, hibrick_end_coord);
     float3 hibrick_next_t = calc_trace_grid_next_boundary_t(
         clampled_start_pos,
         ray_dir_inv,
@@ -1130,7 +1138,6 @@ float4 trace_bbv_hibrick_brick_transmittance_core(
     }
 
     const int3 hibrick_grid_resolution = bbv_hibrick_grid_resolution();
-    const int max_hibrick_iteration_count = bbv_hibrick_count() + 2;
     const float k_trace_t_epsilon = 1e-4;
 
     uint empty_hibrick_skip_count = 0;
@@ -1144,6 +1151,8 @@ float4 trace_bbv_hibrick_brick_transmittance_core(
 
     float curr_t = 0.0;
     int3 hibrick_coord = calc_trace_grid_coord_from_t(clampled_start_pos, ray_dir_ws, calc_trace_sample_t(0.0, trace_t_end), k_bbv_hibrick_brick_resolution, hibrick_grid_resolution);
+    const int3 hibrick_end_coord = calc_trace_grid_coord_from_t(clampled_start_pos, ray_dir_ws, trace_t_end, k_bbv_hibrick_brick_resolution, hibrick_grid_resolution);
+    const int max_hibrick_iteration_count = calc_trace_grid_max_iteration_count(hibrick_coord, hibrick_end_coord);
     float3 hibrick_next_t = calc_trace_grid_next_boundary_t(
         clampled_start_pos,
         ray_dir_inv,
