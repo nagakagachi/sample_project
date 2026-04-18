@@ -359,36 +359,36 @@ namespace ngl::render::app
             return pso_cache->GetOrCreate(p_device, cpso_desc);
         };
         {
-            pso_bbv_clear_  = CreateComputePSO("srvs/bbv_clear_voxel_cs.hlsl");
-            pso_bbv_begin_update_ = CreateComputePSO("srvs/bbv_begin_update_cs.hlsl");
-            pso_bbv_begin_view_update_ = CreateComputePSO("srvs/bbv_begin_view_update_cs.hlsl");
-            pso_bbv_removal_list_build_ = CreateComputePSO("srvs/bbv_removal_list_build_cs.hlsl");
-            pso_bbv_removal_apply_ = CreateComputePSO("srvs/bbv_removal_apply_cs.hlsl");
-            pso_bbv_injection_apply_     = CreateComputePSO("srvs/bbv_injection_apply_cs.hlsl");
-            pso_bbv_brick_count_aggregate_ = CreateComputePSO("srvs/bbv_brick_count_aggregate_cs.hlsl");
-            pso_bbv_hibrick_count_aggregate_ = CreateComputePSO("srvs/bbv_hibrick_count_aggregate_cs.hlsl");
-            pso_bbv_generate_visible_voxel_indirect_arg_ = CreateComputePSO("srvs/bbv_generate_visible_surface_list_indirect_arg_cs.hlsl");
-            pso_bbv_removal_indirect_arg_build_ = CreateComputePSO("srvs/bbv_removal_indirect_arg_build_cs.hlsl");
-            pso_bbv_element_update_ = CreateComputePSO("srvs/bbv_element_update_cs.hlsl");
-            pso_bbv_visible_surface_element_update_ = CreateComputePSO("srvs/bbv_visible_surface_element_update_cs.hlsl");
+            pso_bbv_clear_  = CreateComputePSO("srvs/bbv/bbv_clear_voxel_cs.hlsl");
+            pso_bbv_begin_update_ = CreateComputePSO("srvs/bbv/bbv_begin_update_cs.hlsl");
+            pso_bbv_begin_view_update_ = CreateComputePSO("srvs/bbv/bbv_begin_view_update_cs.hlsl");
+            pso_bbv_removal_list_build_ = CreateComputePSO("srvs/bbv/bbv_removal_list_build_cs.hlsl");
+            pso_bbv_removal_apply_ = CreateComputePSO("srvs/bbv/bbv_removal_apply_cs.hlsl");
+            pso_bbv_injection_apply_     = CreateComputePSO("srvs/bbv/bbv_injection_apply_cs.hlsl");
+            pso_bbv_brick_count_aggregate_ = CreateComputePSO("srvs/bbv/bbv_brick_count_aggregate_cs.hlsl");
+            pso_bbv_hibrick_count_aggregate_ = CreateComputePSO("srvs/bbv/bbv_hibrick_count_aggregate_cs.hlsl");
+            pso_bbv_generate_visible_voxel_indirect_arg_ = CreateComputePSO("srvs/bbv/bbv_generate_visible_surface_list_indirect_arg_cs.hlsl");
+            pso_bbv_removal_indirect_arg_build_ = CreateComputePSO("srvs/bbv/bbv_removal_indirect_arg_build_cs.hlsl");
+            pso_bbv_element_update_ = CreateComputePSO("srvs/bbv/bbv_element_update_cs.hlsl");
+            pso_bbv_visible_surface_element_update_ = CreateComputePSO("srvs/bbv/bbv_visible_surface_element_update_cs.hlsl");
 
-            pso_wcp_clear_ = CreateComputePSO("srvs/wcp_clear_voxel_cs.hlsl");
-            pso_wcp_begin_update_ = CreateComputePSO("srvs/wcp_begin_update_cs.hlsl");
-            pso_wcp_visible_surface_proc_ = CreateComputePSO("srvs/wcp_screen_space_pass_cs.hlsl");
-            pso_wcp_generate_visible_surface_list_indirect_arg_ = CreateComputePSO("srvs/wcp_generate_visible_surface_list_indirect_arg_cs.hlsl");
-            pso_wcp_visible_surface_element_update_ = CreateComputePSO("srvs/wcp_visible_surface_element_update_cs.hlsl");
-            pso_wcp_coarse_ray_sample_ = CreateComputePSO("srvs/wcp_element_update_cs.hlsl");
-            pso_wcp_fill_probe_octmap_atlas_border_ = CreateComputePSO("srvs/wcp_fill_probe_octmap_atlas_border_cs.hlsl");
+            pso_wcp_clear_ = CreateComputePSO("srvs/wcp/wcp_clear_voxel_cs.hlsl");
+            pso_wcp_begin_update_ = CreateComputePSO("srvs/wcp/wcp_begin_update_cs.hlsl");
+            pso_wcp_visible_surface_proc_ = CreateComputePSO("srvs/wcp/wcp_screen_space_pass_cs.hlsl");
+            pso_wcp_generate_visible_surface_list_indirect_arg_ = CreateComputePSO("srvs/wcp/wcp_generate_visible_surface_list_indirect_arg_cs.hlsl");
+            pso_wcp_visible_surface_element_update_ = CreateComputePSO("srvs/wcp/wcp_visible_surface_element_update_cs.hlsl");
+            pso_wcp_coarse_ray_sample_ = CreateComputePSO("srvs/wcp/wcp_element_update_cs.hlsl");
+            pso_wcp_fill_probe_octmap_atlas_border_ = CreateComputePSO("srvs/wcp/wcp_fill_probe_octmap_atlas_border_cs.hlsl");
 
-            pso_ss_probe_clear_ = CreateComputePSO("srvs/ss_probe_clear_cs.hlsl");
-            pso_ss_probe_preupdate_ = CreateComputePSO("srvs/ss_probe_preupdate_cs.hlsl");
-            pso_ss_probe_update_ = CreateComputePSO("srvs/ss_probe_update_cs.hlsl");
-            pso_ss_probe_spatial_filter_ = CreateComputePSO("srvs/ss_probe_spatial_filter_cs.hlsl");
-            pso_ss_probe_sh_update_ = CreateComputePSO("srvs/ss_probe_sh_update_cs.hlsl");
+            pso_ss_probe_clear_ = CreateComputePSO("srvs/ssp/ss_probe_clear_cs.hlsl");
+            pso_ss_probe_preupdate_ = CreateComputePSO("srvs/ssp/ss_probe_preupdate_cs.hlsl");
+            pso_ss_probe_update_ = CreateComputePSO("srvs/ssp/ss_probe_update_cs.hlsl");
+            pso_ss_probe_spatial_filter_ = CreateComputePSO("srvs/ssp/ss_probe_spatial_filter_cs.hlsl");
+            pso_ss_probe_sh_update_ = CreateComputePSO("srvs/ssp/ss_probe_sh_update_cs.hlsl");
 
-            pso_ss_probe_direct_sh_preupdate_ = CreateComputePSO("srvs/ss_probe_direct_sh_preupdate_cs.hlsl");
-            pso_ss_probe_direct_sh_update_ = CreateComputePSO("srvs/ss_probe_direct_sh_update_cs.hlsl");
-            pso_ss_probe_direct_sh_spatial_filter_ = CreateComputePSO("srvs/ss_probe_direct_sh_spatial_filter_cs.hlsl");
+            pso_ss_probe_direct_sh_preupdate_ = CreateComputePSO("srvs/ssp/ss_probe_direct_sh_preupdate_cs.hlsl");
+            pso_ss_probe_direct_sh_update_ = CreateComputePSO("srvs/ssp/ss_probe_direct_sh_update_cs.hlsl");
+            pso_ss_probe_direct_sh_spatial_filter_ = CreateComputePSO("srvs/ssp/ss_probe_direct_sh_spatial_filter_cs.hlsl");
             
             
             // デバッグ用PSO.

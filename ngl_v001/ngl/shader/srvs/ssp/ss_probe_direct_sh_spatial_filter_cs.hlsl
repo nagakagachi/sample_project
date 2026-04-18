@@ -15,7 +15,7 @@ Dispatch: DispatchHelper(sh_tex_width, sh_tex_height, 1) with numthreads(8,8,1).
 
 #endif
 
-#include "srvs_util.hlsli"
+#include "../srvs_util.hlsli"
 
 #define DIRECT_SH_SPATIAL_FILTER_THREAD_GROUP_SIZE 8
 

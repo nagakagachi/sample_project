@@ -13,9 +13,9 @@ DirectSH方式専用 ProbeタイルTileInfo 更新 + Temporal Reprojection Best 
 
 #endif
 
-#include "srvs_util.hlsli"
-#include "../include/scene_view_struct.hlsli"
-#include "../include/depth_buffer_util.hlsli"
+#include "../srvs_util.hlsli"
+#include "../../include/scene_view_struct.hlsli"
+#include "../../include/depth_buffer_util.hlsli"
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 Texture2D                     TexHardwareDepth;

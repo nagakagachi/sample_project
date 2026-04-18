@@ -10,9 +10,9 @@ wcp_screen_space_pass_cs.hlsl
 
 #define TILE_WIDTH 16
 
-#include "srvs_util.hlsli"
+#include "../srvs_util.hlsli"
 // SceneView定数バッファ構造定義.
-#include "../include/scene_view_struct.hlsli"
+#include "../../include/scene_view_struct.hlsli"
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 Texture2D			TexHardwareDepth;

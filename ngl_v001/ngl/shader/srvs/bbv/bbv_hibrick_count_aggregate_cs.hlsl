@@ -8,7 +8,7 @@ HiBrick data region は logical 2x2x2 Brick cluster として保持し、
 
 #endif
 
-#include "srvs_util.hlsli"
+#include "../srvs_util.hlsli"
 
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(

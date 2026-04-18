@@ -8,7 +8,7 @@ bbv_removal_apply_cs.hlsl
 
 #endif
 
-#include "srvs_util.hlsli"
+#include "../srvs_util.hlsli"
 
 // 中空Voxelリストに対してDispatch.
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]

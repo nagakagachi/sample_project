@@ -20,9 +20,9 @@ Dispatch は 1/8 解像度 (TileInfo と同サイズ).
 
 #endif
 
-#include "srvs_util.hlsli"
-#include "../include/scene_view_struct.hlsli"
-#include "../include/rand_util.hlsli"
+#include "../srvs_util.hlsli"
+#include "../../include/scene_view_struct.hlsli"
+#include "../../include/rand_util.hlsli"
 
 // SHストレージ版のサンプリングを半球モードにするか.
 #ifndef NGL_SSP_DIRECT_SH_SAMPLE_HEMISPHERE

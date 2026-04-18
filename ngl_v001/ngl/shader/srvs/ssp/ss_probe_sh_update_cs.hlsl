@@ -7,7 +7,7 @@ rgba = Y00, Y1_{-1}(y), Y1_0(z), Y1_{+1}(x)  (standard SH L1 order)
 
 #endif
 
-#include "srvs_util.hlsli"
+#include "../srvs_util.hlsli"
 
 [numthreads(8, 8, 1)]
 void main_cs(

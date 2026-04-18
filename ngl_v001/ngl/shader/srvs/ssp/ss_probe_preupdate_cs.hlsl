@@ -7,10 +7,10 @@ ScreenSpaceProbe ProbeTile用の情報更新.
 
 #endif
 
-#include "srvs_util.hlsli"
+#include "../srvs_util.hlsli"
 // SceneView定数バッファ構造定義.
-#include "../include/scene_view_struct.hlsli"
-#include "../include/depth_buffer_util.hlsli"
+#include "../../include/scene_view_struct.hlsli"
+#include "../../include/depth_buffer_util.hlsli"
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 Texture2D			           TexHardwareDepth;
