@@ -26,6 +26,7 @@ void main_cs(
 
     const int3 hibrick_grid_resolution = bbv_hibrick_grid_resolution();
     const int3 hibrick_coord = index_to_voxel_coord(dtid.x, hibrick_grid_resolution);
+    // 末端 HiBrick は 2x2x2 をはみ出す可能性があるため、grid_resolution で切る。
     const int3 logical_brick_coord_min = hibrick_coord * k_bbv_hibrick_brick_resolution;
     const int3 logical_brick_coord_max = min(logical_brick_coord_min + int3(k_bbv_hibrick_brick_resolution, k_bbv_hibrick_brick_resolution, k_bbv_hibrick_brick_resolution), cb_srvs.bbv.grid_resolution);
 
@@ -39,8 +40,7 @@ void main_cs(
             [loop]
             for(int x = logical_brick_coord_min.x; x < logical_brick_coord_max.x; ++x)
             {
-                // Brick count は physical BBV buffer 上にあるため、
-                // logical Brick 座標を current toroidal offset で physical 座標へ変換して読む。
+                // HiBrick data は logical 並び、Brick count は toroidal 後の physical 並びなのでここで写し替える。
                 const int3 physical_brick_coord = voxel_coord_toroidal_mapping(int3(x, y, z), cb_srvs.bbv.grid_toroidal_offset, cb_srvs.bbv.grid_resolution);
                 const uint physical_brick_index = voxel_coord_to_index(physical_brick_coord, cb_srvs.bbv.grid_resolution);
                 occupied_voxel_total_count += RWBitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(physical_brick_index)];

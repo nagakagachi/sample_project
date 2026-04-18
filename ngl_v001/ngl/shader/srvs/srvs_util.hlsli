@@ -366,6 +366,17 @@ uint bbv_voxel_brick_work_addr(uint voxel_index)
 {
     return bbv_voxel_unique_data_addr(voxel_index) + 1;
 }
+#if NGL_SRVS_ENABLE_BRICK_LOCAL_AABB
+// BrickLocalAABB の packed min/max アドレス.
+uint bbv_voxel_brick_local_aabb_min_addr(uint voxel_index)
+{
+    return bbv_voxel_unique_data_addr(voxel_index) + 2;
+}
+uint bbv_voxel_brick_local_aabb_max_addr(uint voxel_index)
+{
+    return bbv_voxel_unique_data_addr(voxel_index) + 3;
+}
+#endif
 // HiBrick毎の occupied voxel total count のアドレス計算.
 // count > 0 なら、その logical HiBrick 配下のどこかに occupied voxel が存在する。
 uint bbv_hibrick_voxel_count_addr(uint hibrick_index)
@@ -446,12 +457,39 @@ uint3 calc_bbv_bitcell_pos_from_bit_index(uint bit_index)
     return bit_pos;
 }
 
+#if NGL_SRVS_ENABLE_BRICK_LOCAL_AABB
+uint bbv_pack_brick_local_aabb_coord(int3 local_coord)
+{
+    return uint(local_coord.x) | (uint(local_coord.y) << 3) | (uint(local_coord.z) << 6);
+}
+int3 bbv_unpack_brick_local_aabb_coord(uint packed_coord)
+{
+    return int3(
+        int(packed_coord & 0x7u),
+        int((packed_coord >> 3) & 0x7u),
+        int((packed_coord >> 6) & 0x7u));
+}
+void bbv_load_brick_local_aabb(
+    out int3 out_local_coord_min,
+    out int3 out_local_coord_max_exclusive,
+    Buffer<uint> bbv_buffer,
+    uint voxel_index)
+{
+    out_local_coord_min = bbv_unpack_brick_local_aabb_coord(bbv_buffer[bbv_voxel_brick_local_aabb_min_addr(voxel_index)]);
+    out_local_coord_max_exclusive = bbv_unpack_brick_local_aabb_coord(bbv_buffer[bbv_voxel_brick_local_aabb_max_addr(voxel_index)]) + 1;
+}
+#endif
+
 
 // ------------------------------------------------------------------------------------------------------------------------
 // BbvのBrickデータレイアウト.
 
 // uint[0]      : Brick内 occupied voxel count.
 // uint[1].8bit : 最後に可視状態になったフレーム番号. 0-255でループ.
+#if NGL_SRVS_ENABLE_BRICK_LOCAL_AABB
+// uint[2]      : BrickLocalAABB min (packed xyz, 3bit each).
+// uint[3]      : BrickLocalAABB max inclusive (packed xyz, 3bit each).
+#endif
 
 // ユニークデータに埋め込むためのフレーム番号マスク処理.
 uint mask_bbv_voxel_unique_data_last_visible_frame(uint last_visible_frame)
@@ -548,7 +586,8 @@ bool calc_ray_t_offset_for_aabb(out float out_aabb_clamped_origin_t, out float o
 
 // Bbv内部のビットセル単位でのレイトレース.
 // https://github.com/dubiousconst282/VoxelRT
-int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3 invDir, inout bool3 stepMask, 
+int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3 invDir, inout bool3 stepMask,
+        int3 trace_coord_min, int3 trace_coord_max,
         Buffer<uint> bbv_buffer, uint bbv_bitmask_addr,
         
         const bool intersection_bit_mode, // Bbvの占有状態のどちらと交差をするか指定する. true:通常通り占有されたVoxelと交差, false:非占有Voxelと交差.
@@ -559,7 +598,7 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3
         const bool is_brick_mode // ヒットをVoxelではなくBrickで完了させるモード. Brickの占有フラグのデバッグ用.
     ) 
 {
-    rayPos = clamp(rayPos, 0.0001, float(k_bbv_per_voxel_resolution)-0.0001);
+    rayPos = clamp(rayPos, float3(trace_coord_min) + 0.0001, float3(trace_coord_max) - 0.0001);
 
     float3 sideDist = ((floor(rayPos) - rayPos) + step(0.0, rayDir)) * invDir;
     int3 mapPos = int3(floor(rayPos));
@@ -602,7 +641,7 @@ int3 trace_bitmask_brick(float3 rayPos, float3 rayDir, float3 rayDirSign, float3
             mapPos += mapPosDelta;
             //if(all(mapPosDelta == 0)) {break;}// 外側のBrick単位ループではこのチェックが必要だがここでは不要そう.
             
-        } while (all(uint3(mapPos) < k_bbv_per_voxel_resolution));
+        } while (all(mapPos >= trace_coord_min) && all(mapPos < trace_coord_max));
 
         return -1;
     }
@@ -763,29 +802,66 @@ bool trace_bbv_brick_dda_range(
         const bool bbv_occupied_flag = (0 != bbv_buffer[bbv_voxel_coarse_occupancy_info_addr(voxel_index)]);
         if(!intersection_bit_mode || bbv_occupied_flag)
         {
-            const float3 brick_entry_pos = clampled_start_pos + ray_dir_ws * brick_begin_t;
-            const float3 pos_in_brick = (brick_entry_pos - map_pos) * k_bbv_per_voxel_resolution;
-
-            inout_bitmask_check_count++;
-            bool3 detail_step_mask = bool3(false, false, false);
-            const int3 sub_map_pos = trace_bitmask_brick(
-                pos_in_brick,
-                ray_dir_ws,
-                ray_dir_sign,
-                ray_dir_inv,
-                detail_step_mask,
-                bbv_buffer,
-                bbv_voxel_bitmask_data_addr(voxel_index),
-                intersection_bit_mode,
-                enable_initial_hit_avoidance,
-                inout_initial_hit_avoidance_count,
-                is_brick_mode);
-            if(sub_map_pos.x >= 0)
+            float detail_begin_t = brick_begin_t;
+            float detail_end_t = brick_end_t;
+            int3 trace_coord_min = int3(0, 0, 0);
+            int3 trace_coord_max = int3(k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution);
+            bool should_trace_detail = true;
+#if NGL_SRVS_ENABLE_BRICK_LOCAL_AABB
+            if(intersection_bit_mode && bbv_occupied_flag && !is_brick_mode)
             {
-                out_hit_map_pos = map_pos;
-                out_hit_sub_map_pos = sub_map_pos;
-                out_hit_step_mask = detail_step_mask;
-                return true;
+                int3 local_coord_min;
+                int3 local_coord_max_exclusive;
+                bbv_load_brick_local_aabb(local_coord_min, local_coord_max_exclusive, bbv_buffer, voxel_index);
+
+                const float3 local_aabb_min = float3(map_pos) + float3(local_coord_min) * k_bbv_per_voxel_resolution_inv;
+                const float3 local_aabb_max = float3(map_pos) + float3(local_coord_max_exclusive) * k_bbv_per_voxel_resolution_inv;
+                if(!calc_ray_t_offset_for_aabb(detail_begin_t, detail_end_t, local_aabb_min, local_aabb_max, clampled_start_pos, ray_dir_ws, ray_dir_inv, brick_end_t))
+                {
+                    should_trace_detail = false;
+                }
+                if(should_trace_detail)
+                {
+                    detail_begin_t = max(detail_begin_t, brick_begin_t);
+                    detail_end_t = min(detail_end_t, brick_end_t);
+                    if(detail_end_t < detail_begin_t)
+                    {
+                        should_trace_detail = false;
+                    }
+                }
+
+                trace_coord_min = local_coord_min;
+                trace_coord_max = local_coord_max_exclusive;
+            }
+#endif
+            if(should_trace_detail)
+            {
+                const float3 brick_entry_pos = clampled_start_pos + ray_dir_ws * detail_begin_t;
+                const float3 pos_in_brick = (brick_entry_pos - map_pos) * k_bbv_per_voxel_resolution;
+
+                inout_bitmask_check_count++;
+                bool3 detail_step_mask = bool3(false, false, false);
+                const int3 sub_map_pos = trace_bitmask_brick(
+                    pos_in_brick,
+                    ray_dir_ws,
+                    ray_dir_sign,
+                    ray_dir_inv,
+                    detail_step_mask,
+                    trace_coord_min,
+                    trace_coord_max,
+                    bbv_buffer,
+                    bbv_voxel_bitmask_data_addr(voxel_index),
+                    intersection_bit_mode,
+                    enable_initial_hit_avoidance,
+                    inout_initial_hit_avoidance_count,
+                    is_brick_mode);
+                if(sub_map_pos.x >= 0)
+                {
+                    out_hit_map_pos = map_pos;
+                    out_hit_sub_map_pos = sub_map_pos;
+                    out_hit_step_mask = detail_step_mask;
+                    return true;
+                }
             }
         }
 
@@ -1016,11 +1092,13 @@ float4 trace_bbv_hibrick_core(
         const int3 brick_coord_min = hibrick_coord * k_bbv_hibrick_brick_resolution;
         const int3 brick_coord_max = min(brick_coord_min + int3(k_bbv_hibrick_brick_resolution, k_bbv_hibrick_brick_resolution, k_bbv_hibrick_brick_resolution), grid_resolution);
         const uint hibrick_index = voxel_coord_to_index(hibrick_coord, hibrick_grid_resolution);
+        // HiBrick count は logical HiBrick index 順に保持される。
         const uint hibrick_occupied_voxel_count = bbv_buffer[bbv_hibrick_voxel_count_addr(hibrick_index)];
         if(!static_enable_hibrick_skip || (0 != hibrick_occupied_voxel_count))
         {
             occupied_hibrick_descend_count++;
 
+            // occupied HiBrick 区間の中だけを Brick DDA へ渡し、leaf 判定は既存共通処理へ寄せる。
             if(trace_bbv_brick_dda_range(
                 hit_map_pos,
                 hit_sub_map_pos,
@@ -1153,6 +1231,7 @@ float4 trace_bbv_hibrick_brick_transmittance_core(
     int3 hibrick_coord = calc_trace_grid_coord_from_t(clampled_start_pos, ray_dir_ws, calc_trace_sample_t(0.0, trace_t_end), k_bbv_hibrick_brick_resolution, hibrick_grid_resolution);
     const int3 hibrick_end_coord = calc_trace_grid_coord_from_t(clampled_start_pos, ray_dir_ws, trace_t_end, k_bbv_hibrick_brick_resolution, hibrick_grid_resolution);
     const int max_hibrick_iteration_count = calc_trace_grid_max_iteration_count(hibrick_coord, hibrick_end_coord);
+    // HiBrick 境界までの t を先に持ち、空 HiBrick は Brick レベルへ降りずにまとめて飛ばす。
     float3 hibrick_next_t = calc_trace_grid_next_boundary_t(
         clampled_start_pos,
         ray_dir_inv,
@@ -1173,7 +1252,7 @@ float4 trace_bbv_hibrick_brick_transmittance_core(
         const float hibrick_occupancy_ratio = bbv_hibrick_occupancy_ratio_from_count(hibrick_occupied_voxel_count);
         if(!static_enable_hibrick_skip || (0 != hibrick_occupied_voxel_count))
         {
-            // occupied HiBrick に入った時だけ Brick レベルへ降り、leaf 側の密度近似を使う。
+            // occupied HiBrick のみ Brick 密度近似へ降り、空 HiBrick は optical depth を積まずに飛ばす。
             occupied_hibrick_descend_count++;
             sampled_hibrick_count++;
             hibrick_occupancy_ratio_sum += hibrick_occupancy_ratio;

@@ -1158,6 +1158,7 @@ namespace ngl::render::app
             NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvHiBrickCountAggregate");
 
             const auto bbv_grid_resolution = bbv_grid_updater_.Get().resolution;
+            // HiBrick は logical 2x2x2 Brick cluster 数で Dispatch する。
             const auto hibrick_grid_resolution = ngl::math::Vec3u(
                 (bbv_grid_resolution.x + k_bbv_hibrick_brick_resolution - 1) / k_bbv_hibrick_brick_resolution,
                 (bbv_grid_resolution.y + k_bbv_hibrick_brick_resolution - 1) / k_bbv_hibrick_brick_resolution,

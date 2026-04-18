@@ -223,11 +223,19 @@ void main_cs(
 
         int hit_voxel_index = -1;
         float4 debug_ray_info;
+#if NGL_SRVS_TRACE_USE_HIBRICK_SS_PROBE_DIRECT_SH_UPDATE
+        float4 curr_ray_t = trace_bbv_hibrick(
+            hit_voxel_index, debug_ray_info,
+            ray_origin, sample_ray_dir, 30.0,
+            cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
+            cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
+#else
         float4 curr_ray_t = trace_bbv(
             hit_voxel_index, debug_ray_info,
             ray_origin, sample_ray_dir, 30.0,
             cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
             cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
+#endif
 
         const float sky_vis = (curr_ray_t.x < 0.0) ? 1.0 : 0.0;
         // 担当セルへ蓄積.

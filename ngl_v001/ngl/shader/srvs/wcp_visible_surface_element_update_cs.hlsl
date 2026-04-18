@@ -95,11 +95,19 @@ void main_cs(
                 int hit_voxel_index = -1;
                     float4 debug_ray_info;
                 // リファクタリング版.
+#if NGL_SRVS_TRACE_USE_HIBRICK_WCP_VISIBLE_SURFACE_ELEMENT_UPDATE
+                float4 curr_ray_t_ws = trace_bbv_hibrick(
+                    hit_voxel_index, debug_ray_info,
+                    sample_ray_origin, sample_ray_dir, trace_distance, 
+                    cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
+                    cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
+#else
                 float4 curr_ray_t_ws = trace_bbv(
                     hit_voxel_index, debug_ray_info,
                     sample_ray_origin, sample_ray_dir, trace_distance, 
                     cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
                     cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
+#endif
 
                 // SkyVisibilityの方向平均を更新.
                 const float distance_probe_value = (0.0 > curr_ray_t_ws.x) ? 1.0 : 0.0;

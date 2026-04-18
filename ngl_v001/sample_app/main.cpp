@@ -175,8 +175,8 @@ private:
     std::vector<ngl::rhi::EResourceState> swapchain_resource_state_;
 
     // ngl::math::Vec3 camera_pos_   = {0.368f, 1.237f, 0.453f};//{0.0f, 2.0f, -5.0f};
-    ngl::math::Vec3 camera_pos_   = {1.871f, 1.347f, 1.399f};                                //{0.0f, 2.0f, -5.0f};
-    ngl::math::Mat33 camera_pose_ = ngl::math::Mat33::RotAxisY(ngl::math::Deg2Rad(-90.0f));  // ngl::math::Mat33::Identity();
+    ngl::math::Vec3 camera_pos_   = {16.0f, 5.5f, -20.0f}; //{1.871f, 1.347f, 1.399f};
+    ngl::math::Mat33 camera_pose_ = ngl::math::Mat33::RotAxisY(ngl::math::Deg2Rad(-40.0f));  // ngl::math::Mat33::Identity();
     float camera_fov_y            = ngl::math::Deg2Rad(60.0f);                               // not half fov.
     ngl::math::Vec3 prev_camera_pos_ = {0.0f, 0.0f, 0.0f};
     ngl::math::Mat33 prev_camera_pose_ = ngl::math::Mat33::Identity();

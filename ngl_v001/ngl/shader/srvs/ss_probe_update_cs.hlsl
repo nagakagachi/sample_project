@@ -452,8 +452,13 @@ void main_cs(
         const float trace_distance = 30.0;
         int hit_voxel_index = -1;
         float4 debug_ray_info;
-        float4 curr_ray_t_ws = 
+#if NGL_SRVS_TRACE_USE_HIBRICK_SS_PROBE_UPDATE
+        float4 curr_ray_t_ws =
+        trace_bbv_hibrick(
+#else
+        float4 curr_ray_t_ws =
         trace_bbv(
+#endif
             hit_voxel_index, debug_ray_info,
             sample_ray_origin, sample_ray_dir, trace_distance, 
             cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,

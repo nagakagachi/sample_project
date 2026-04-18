@@ -27,6 +27,31 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 #define NGL_SSP_OCTAHEDRALMAP_STORAGE_HEMISPHERE_MODE 0
 #endif
 
+// BrickLocalAABB の比較用コンパイル時切り替え.
+// 0: 従来どおり Brick 全域を leaf 走査, 1: Brick 内 occupied 範囲だけへ走査を絞る.
+//      複数ScreenのInjectionをする場合に, 前のScreenのInjectionで真のAABBが変わっても次のScreenのRemovalに反映されない, 許容可能そうであるが, 要確認.
+#ifndef NGL_SRVS_ENABLE_BRICK_LOCAL_AABB
+#define NGL_SRVS_ENABLE_BRICK_LOCAL_AABB 1
+#endif
+
+// BBV trace 呼び出し箇所ごとの比較用切り替え. 現状のHiBricｋTraceは通常版に比べてオーバヘッドが大きく負荷増加してしまうため修正中.
+// 0: 通常 trace_bbv, 1: trace_bbv_hibrick
+#ifndef NGL_SRVS_TRACE_USE_HIBRICK_BBV_REMOVAL_LIST_BUILD
+#define NGL_SRVS_TRACE_USE_HIBRICK_BBV_REMOVAL_LIST_BUILD 1
+#endif
+#ifndef NGL_SRVS_TRACE_USE_HIBRICK_SS_PROBE_DIRECT_SH_UPDATE
+#define NGL_SRVS_TRACE_USE_HIBRICK_SS_PROBE_DIRECT_SH_UPDATE 0
+#endif
+#ifndef NGL_SRVS_TRACE_USE_HIBRICK_SS_PROBE_UPDATE
+#define NGL_SRVS_TRACE_USE_HIBRICK_SS_PROBE_UPDATE 0
+#endif
+#ifndef NGL_SRVS_TRACE_USE_HIBRICK_WCP_ELEMENT_UPDATE
+#define NGL_SRVS_TRACE_USE_HIBRICK_WCP_ELEMENT_UPDATE 0
+#endif
+#ifndef NGL_SRVS_TRACE_USE_HIBRICK_WCP_VISIBLE_SURFACE_ELEMENT_UPDATE
+#define NGL_SRVS_TRACE_USE_HIBRICK_WCP_VISIBLE_SURFACE_ELEMENT_UPDATE 0
+#endif
+
 
 #ifdef NGL_SHADER_CPP_INCLUDE
     using uint = ngl::u32;
@@ -60,8 +85,14 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     // fine voxel bitmask を u32 配列へ詰めた時の要素数.
     #define k_bbv_per_voxel_bitmask_u32_count ((k_bbv_per_voxel_bitmask_bit_count + 31) / 32)
     // Brick data region の 1 Brick あたり要素数.
-    // 現状は occupied voxel count と work(last visible frame) を保持する。
-    #define k_bbv_brick_data_u32_count (2)
+    // occupied voxel count / work(last visible frame) に加え、
+    // 比較用に BrickLocalAABB を有効化した場合は packed min/max を保持する。
+    #if NGL_SRVS_ENABLE_BRICK_LOCAL_AABB
+        #define k_bbv_brick_local_aabb_data_u32_count (2)
+    #else
+        #define k_bbv_brick_local_aabb_data_u32_count (0)
+    #endif
+    #define k_bbv_brick_data_u32_count (2 + k_bbv_brick_local_aabb_data_u32_count)
     // HiBrick は 2x2x2 Brick cluster を 1 単位とする。
     #define k_bbv_hibrick_brick_resolution (2)
     // HiBrick data region の 1 HiBrick あたり要素数.
