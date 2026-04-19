@@ -427,11 +427,80 @@ float bbv_hibrick_occupancy_ratio_from_count(uint occupied_voxel_total_count)
     return saturate(float(occupied_voxel_total_count) / float(hibrick_voxel_capacity));
 }
 
-// Bbvの内部座標を元にリニアインデックスを計算.
+uint calc_bbv_subbrick_index(uint3 subbrick_coord)
+{
+    return subbrick_coord.x
+        + (subbrick_coord.y * k_bbv_subbrick_per_voxel_axis_count)
+        + (subbrick_coord.z * (k_bbv_subbrick_per_voxel_axis_count * k_bbv_subbrick_per_voxel_axis_count));
+}
+
+uint3 calc_bbv_subbrick_coord_from_index(uint subbrick_index)
+{
+    return uint3(
+        subbrick_index % k_bbv_subbrick_per_voxel_axis_count,
+        (subbrick_index / k_bbv_subbrick_per_voxel_axis_count) % k_bbv_subbrick_per_voxel_axis_count,
+        subbrick_index / (k_bbv_subbrick_per_voxel_axis_count * k_bbv_subbrick_per_voxel_axis_count));
+}
+
+uint calc_bbv_subbrick_linear_bitcell_index(uint3 subbrick_local_pos)
+{
+    return subbrick_local_pos.x
+        + (subbrick_local_pos.y * k_bbv_subbrick_resolution)
+        + (subbrick_local_pos.z * (k_bbv_subbrick_resolution * k_bbv_subbrick_resolution));
+}
+
+uint3 calc_bbv_subbrick_local_pos_from_linear_bitcell_index(uint bit_index)
+{
+    return uint3(
+        bit_index % k_bbv_subbrick_resolution,
+        (bit_index / k_bbv_subbrick_resolution) % k_bbv_subbrick_resolution,
+        bit_index / (k_bbv_subbrick_resolution * k_bbv_subbrick_resolution));
+}
+
+uint calc_bbv_subbrick_morton_bitcell_index(uint3 subbrick_local_pos)
+{
+    return ((subbrick_local_pos.x >> 0) & 1u) << 0
+        | (((subbrick_local_pos.y >> 0) & 1u) << 1)
+        | (((subbrick_local_pos.z >> 0) & 1u) << 2)
+        | (((subbrick_local_pos.x >> 1) & 1u) << 3)
+        | (((subbrick_local_pos.y >> 1) & 1u) << 4)
+        | (((subbrick_local_pos.z >> 1) & 1u) << 5);
+}
+
+uint3 calc_bbv_subbrick_local_pos_from_morton_bitcell_index(uint bit_index)
+{
+    return uint3(
+        ((bit_index >> 0) & 1u) | (((bit_index >> 3) & 1u) << 1),
+        ((bit_index >> 1) & 1u) | (((bit_index >> 4) & 1u) << 1),
+        ((bit_index >> 2) & 1u) | (((bit_index >> 5) & 1u) << 1));
+}
+
+uint calc_bbv_subbrick_bitcell_index(uint3 subbrick_local_pos)
+{
+#if (NGL_SRVS_BBV_SUBBRICK_BIT_LAYOUT == NGL_SRVS_BBV_SUBBRICK_BIT_LAYOUT_MORTON)
+    return calc_bbv_subbrick_morton_bitcell_index(subbrick_local_pos);
+#else
+    return calc_bbv_subbrick_linear_bitcell_index(subbrick_local_pos);
+#endif
+}
+
+uint3 calc_bbv_subbrick_local_pos_from_bitcell_index(uint bit_index)
+{
+#if (NGL_SRVS_BBV_SUBBRICK_BIT_LAYOUT == NGL_SRVS_BBV_SUBBRICK_BIT_LAYOUT_MORTON)
+    return calc_bbv_subbrick_local_pos_from_morton_bitcell_index(bit_index);
+#else
+    return calc_bbv_subbrick_local_pos_from_linear_bitcell_index(bit_index);
+#endif
+}
+
+// Bbvの内部座標を元に Brick 内 bitmask インデックスを計算.
+// Brick は 2x2x2 個の 4x4x4 SubBrick に分け、各 SubBrick 内 64bit を linear / Morton で切り替える。
 uint calc_bbv_bitcell_index(uint3 bitcell_pos)
 {
-    // 現状はX,Y,Z順のリニアレイアウト.
-    return bitcell_pos.x + (bitcell_pos.y * k_bbv_per_voxel_resolution) + (bitcell_pos.z * (k_bbv_per_voxel_resolution * k_bbv_per_voxel_resolution));
+    const uint3 subbrick_coord = bitcell_pos / k_bbv_subbrick_resolution;
+    const uint3 subbrick_local_pos = bitcell_pos % k_bbv_subbrick_resolution;
+    return calc_bbv_subbrick_index(subbrick_coord) * k_bbv_subbrick_bit_count
+        + calc_bbv_subbrick_bitcell_index(subbrick_local_pos);
 }
 // calc_bbv_bitcell_index で計算したリニアインデックスからVoxelブロック内のオフセットと読み取りビット位置を計算.
 void calc_bbv_bitcell_info_from_bitcell_index(out uint out_u32_offset, out uint out_bit_location, uint bitcell_index)
@@ -442,7 +511,6 @@ void calc_bbv_bitcell_info_from_bitcell_index(out uint out_u32_offset, out uint 
 // Bbvの内部座標を元にバッファの該当Voxelブロック内のオフセットと読み取りビット位置を計算.
 void calc_bbv_bitcell_info(out uint out_u32_offset, out uint out_bit_location, uint3 bitcell_pos)
 {
-    // 現状はX,Y,Z順のリニアレイアウト.
     const uint bitcell_index = calc_bbv_bitcell_index(bitcell_pos);
 
     calc_bbv_bitcell_info_from_bitcell_index(out_u32_offset, out_bit_location, bitcell_index);
@@ -452,9 +520,11 @@ void calc_bbv_bitcell_info(out uint out_u32_offset, out uint out_bit_location, u
 // bit_index : 0 〜 k_bbv_per_voxel_bitmask_bit_count-1
 uint3 calc_bbv_bitcell_pos_from_bit_index(uint bit_index)
 {
-    // 現状はX,Y,Z順のリニアレイアウト.
-    const uint3 bit_pos = uint3(bit_index % k_bbv_per_voxel_resolution, (bit_index / k_bbv_per_voxel_resolution) % k_bbv_per_voxel_resolution, bit_index / (k_bbv_per_voxel_resolution * k_bbv_per_voxel_resolution));
-    return bit_pos;
+    const uint subbrick_index = bit_index / k_bbv_subbrick_bit_count;
+    const uint subbrick_local_bit_index = bit_index % k_bbv_subbrick_bit_count;
+    const uint3 subbrick_coord = calc_bbv_subbrick_coord_from_index(subbrick_index);
+    const uint3 subbrick_local_pos = calc_bbv_subbrick_local_pos_from_bitcell_index(subbrick_local_bit_index);
+    return subbrick_coord * k_bbv_subbrick_resolution + subbrick_local_pos;
 }
 
 #if NGL_SRVS_ENABLE_BRICK_LOCAL_AABB

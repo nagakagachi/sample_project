@@ -84,6 +84,24 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     #define k_bbv_per_voxel_bitmask_bit_count (k_bbv_per_voxel_resolution*k_bbv_per_voxel_resolution*k_bbv_per_voxel_resolution)
     // fine voxel bitmask を u32 配列へ詰めた時の要素数.
     #define k_bbv_per_voxel_bitmask_u32_count ((k_bbv_per_voxel_bitmask_bit_count + 31) / 32)
+    // Brick 内 bitmask アクセスは 4x4x4 の SubBrick 単位で扱う。
+    // 8x8x8 Brick は 2x2x2 個の SubBrick へ分割され、各 SubBrick は 64bit で表現される。
+    #define k_bbv_subbrick_resolution (4)
+    #define k_bbv_subbrick_bit_count (k_bbv_subbrick_resolution * k_bbv_subbrick_resolution * k_bbv_subbrick_resolution)
+    #define k_bbv_subbrick_per_voxel_axis_count (k_bbv_per_voxel_resolution / k_bbv_subbrick_resolution)
+    #define k_bbv_subbrick_per_voxel_count (k_bbv_subbrick_per_voxel_axis_count * k_bbv_subbrick_per_voxel_axis_count * k_bbv_subbrick_per_voxel_axis_count)
+    #define k_bbv_subbrick_per_voxel_resolution_vec3i int3(k_bbv_subbrick_per_voxel_axis_count, k_bbv_subbrick_per_voxel_axis_count, k_bbv_subbrick_per_voxel_axis_count)
+
+    #define NGL_SRVS_BBV_SUBBRICK_BIT_LAYOUT_LINEAR (0)
+    #define NGL_SRVS_BBV_SUBBRICK_BIT_LAYOUT_MORTON (1)
+    // 4x4x4 SubBrick 内 64bit の配置を切り替える. 0: XYZ linear, 1: Morton 3D.
+    #ifndef NGL_SRVS_BBV_SUBBRICK_BIT_LAYOUT
+    #define NGL_SRVS_BBV_SUBBRICK_BIT_LAYOUT NGL_SRVS_BBV_SUBBRICK_BIT_LAYOUT_MORTON
+    #endif
+
+    #if (k_bbv_per_voxel_resolution != (k_bbv_subbrick_resolution * k_bbv_subbrick_per_voxel_axis_count))
+        #error "k_bbv_per_voxel_resolution must be an integer multiple of k_bbv_subbrick_resolution."
+    #endif
     // Brick data region の 1 Brick あたり要素数.
     // occupied voxel count / work(last visible frame) に加え、
     // 比較用に BrickLocalAABB を有効化した場合は packed min/max を保持する。
