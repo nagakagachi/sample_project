@@ -46,7 +46,7 @@ void main_cs(
         for(int ox = 0; ox < SCREEN_SPACE_PROBE_OCT_RESOLUTION; ++ox)
         {
             const int2 atlas_texel_pos = probe_tile_id * SCREEN_SPACE_PROBE_OCT_RESOLUTION + int2(ox, oy);
-            const float visibility = ScreenSpaceProbeTex.Load(int3(atlas_texel_pos, 0)).r;
+            const float visibility = ScreenSpaceProbeTex.Load(int3(atlas_texel_pos, 0)).a;
 
             const float2 oct_uv = (float2(float(ox), float(oy)) + 0.5) * SCREEN_SPACE_PROBE_OCT_RESOLUTION_INV;
             const float3 dir_ws = SspDecodeDirByNormal(oct_uv, basis_t_ws, basis_b_ws, probe_normal_ws);

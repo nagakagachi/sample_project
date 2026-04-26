@@ -799,8 +799,8 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("View GBuffer", &dbgw_view_gbuffer);
             ImGui::Checkbox("View Directional Shadow Atlas", &dbgw_view_dshadow);
             ImGui::Checkbox("View Half Dot Gray", &dbgw_view_half_dot_gray);
-            // sky visibilityデバッグ.
-            ImGui::Checkbox("View Srvs Sky Visibility", &dbgw_view_srvs_sky_visibility);
+            // SH から再評価した sky visibility デバッグ.
+            ImGui::Checkbox("View Srvs Sky Visibility (SH)", &dbgw_view_srvs_sky_visibility);
             ImGui::Checkbox("Enable GI Lighting", &dbgw_enable_gi_lighting);
             ImGui::SliderFloat("Probe Sample Offset View", &dbgw_gi_probe_sample_offset_view, 0.0f, 10.0f);
             ImGui::SliderFloat("Probe Sample Offset Surface Normal", &dbgw_gi_probe_sample_offset_surface_normal, 0.0f, 10.0f);

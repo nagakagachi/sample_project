@@ -339,16 +339,22 @@ void main_cs(
     {
         if(0 == debug_sub_mode)
         {
-            // Screen Space Probe Atlas Textureの表示.
+            // Screen Space Probe Atlas Textureの表示. RGB=radiance, A=sky visibility をそのまま表示。
             const float4 probe_data = ScreenSpaceProbeTex.Load(uint3(texel_pos, 0));
             RWTexWork[dtid.xy] = probe_data;
         }
         else if(1 == debug_sub_mode)
         {
+            // Screen Space Probe の Aチャンネル sky visibility 表示.
+            const float4 probe_data = ScreenSpaceProbeTex.Load(uint3(texel_pos, 0));
+            RWTexWork[dtid.xy] = probe_data.aaaa;
+        }
+        else if(2 == debug_sub_mode)
+        {
             // Screen Space Probe の Normalデバッグ.
             RWTexWork[dtid.xy] = float4(ss_probe_tile_normal_ws * 0.5 + 0.5, 1.0);
         }
-        else if(2 == debug_sub_mode)
+        else if(3 == debug_sub_mode)
         {
             // Screen Space Probe の Tile内配置Positionデバッグ.
             if(isValidDepth(ss_probe_depth) && all(ss_probe_screen_tile_base_pos + ss_probe_pos_in_tile == texel_pos))
@@ -361,7 +367,7 @@ void main_cs(
                 RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
             }
         }
-        else if(3 == debug_sub_mode)
+        else if(4 == debug_sub_mode)
         {
             // Screen Space ProbeのSkyVisibility投影デバッグ.
             const float3 sample_dir = -cb_srvs.main_light_dir_ws;
@@ -372,15 +378,15 @@ void main_cs(
 
             // BilinearSampling. 半球ではないOctahedralMapであるためボーダー部の処理スキップによるカクツキが目立つ..
             float4 ss_probe_value = ScreenSpaceProbeTex.SampleLevel(SmpLinearClamp, ss_probe_sample_texel_pos / screen_size_f, 0);
-            RWTexWork[dtid.xy] = ss_probe_value.xxxx;
+            RWTexWork[dtid.xy] = ss_probe_value.aaaa;
         }
-        else if(4 == debug_sub_mode)
+        else if(5 == debug_sub_mode)
         {
             // SH係数をそのままRGBAで可視化 (Y00=R, Y1_{-1}(y)=G, Y1_0(z)=B, Y1_{+1}(x)=A).
             const float4 ss_probe_sh = ScreenSpaceProbeSHTex.Load(int3(ss_probe_tile_id, 0));
             RWTexWork[dtid.xy] = ss_probe_sh;
         }
-        else if(5 == debug_sub_mode)
+        else if(6 == debug_sub_mode)
         {
             // main_light_dir_ws方向のSH再評価結果を表示.
             const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);
@@ -389,7 +395,7 @@ void main_cs(
             const float sh_sample = max(0.0, dot(ss_probe_sh, sh_basis));
             RWTexWork[dtid.xy] = sh_sample.xxxx;
         }
-        else if(6 == debug_sub_mode)
+        else if(7 == debug_sub_mode)
         {
             // Screen Space Probe の Reprojection成功可視化.
             if(!isValidDepth(ss_probe_depth))
@@ -402,7 +408,7 @@ void main_cs(
                 RWTexWork[dtid.xy] = float4(debug_color, 1.0);
             }
         }
-        else if(7 == debug_sub_mode)
+        else if(8 == debug_sub_mode)
         {
             // Screen Space Probe SideCache の生存状態可視化.
             if(0 == cb_srvs.ss_probe_side_cache_enable)

@@ -33,6 +33,14 @@ Temporal Filter.
 #define NGL_SSP_RAY_COUNT (SCREEN_SPACE_PROBE_OCT_RESOLUTION * SCREEN_SPACE_PROBE_OCT_RESOLUTION)
 #endif
 
+#define SSP_RAY_SAMPLE_ACCUM_STRIDE 5
+#define SSP_RAY_SAMPLE_ACCUM_COUNT 0
+#define SSP_RAY_SAMPLE_ACCUM_SKY_VISIBILITY 1
+#define SSP_RAY_SAMPLE_ACCUM_RADIANCE_R 2
+#define SSP_RAY_SAMPLE_ACCUM_RADIANCE_G 3
+#define SSP_RAY_SAMPLE_ACCUM_RADIANCE_B 4
+#define SSP_RADIANCE_FIXED_POINT_SCALE 256.0
+
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 
@@ -46,7 +54,8 @@ groupshared float3 ss_probe_pos_ws;
 // ScreenSpaceProbe配置位置の近似法線情報.
 groupshared float3 ss_probe_approx_normal_ws;
 
-groupshared uint ss_ray_sample_accum[NGL_SSP_RAY_COUNT * 4];// accum_count, sky_visibility_bool,,
+// count, sky visibility, radiance.rgb を groupshared uint の fixed-point で蓄積する。
+groupshared uint ss_ray_sample_accum[NGL_SSP_RAY_COUNT * SSP_RAY_SAMPLE_ACCUM_STRIDE];
 groupshared uint ss_temporal_best_prev_tile_packed;
 groupshared uint ss_side_cache_best_score;
 groupshared uint ss_side_cache_best_tile_packed;
@@ -54,10 +63,11 @@ groupshared uint ss_side_cache_candidate_tile_packed[NGL_SSP_RAY_COUNT];
 groupshared uint ss_side_cache_store_enable;
 groupshared uint ss_side_cache_store_tile_packed;
 groupshared uint ss_side_cache_store_locked;
-groupshared float ss_temporal_reprojected_value[NGL_SSP_RAY_COUNT];
-groupshared float ss_prev_radiance[NGL_SSP_RAY_COUNT];
+// OctaMap の常設データは RGB=radiance / A=sky visibility.
+groupshared float4 ss_temporal_reprojected_probe_value[NGL_SSP_RAY_COUNT];
+// Ray guiding 専用の一時重み. OctaMap の常設 ch には保持しない。
+groupshared float ss_prev_guiding_weight[NGL_SSP_RAY_COUNT];
 groupshared float ss_guiding_cdf[NGL_SSP_RAY_COUNT];
-groupshared float ss_guiding_total_weight;
 
 // -------------------------------------
 
@@ -153,19 +163,21 @@ void main_cs(
     // タイルが有効なプローブを持たない場合は終了.
     if(!isValidDepth(ss_probe_hw_depth))
     {
-        // ミスタイルはクリアすべきか, 近傍SSプローブやワールドプローブで補填すべきか.
-        RWScreenSpaceProbeTex[global_pos].r = 1.0;// ミスタイルは可視扱い.
+        // 無効タイルは radiance=0, sky visibility=1 として扱う.
+        RWScreenSpaceProbeTex[global_pos] = float4(0.0, 0.0, 0.0, 1.0);
         return;
     }
 
     // 作業用Sharedメモリクリア.
     {
-        ss_ray_sample_accum[gindex * 4 + 0] = 0;// accum_count
-        ss_ray_sample_accum[gindex * 4 + 1] = 0;// sky_visibility_bool
-        ss_ray_sample_accum[gindex * 4 + 2] = 0;// unused
-        ss_ray_sample_accum[gindex * 4 + 3] = 0;// unused
+        ss_ray_sample_accum[gindex * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_COUNT] = 0;
+        ss_ray_sample_accum[gindex * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_SKY_VISIBILITY] = 0;
+        ss_ray_sample_accum[gindex * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_RADIANCE_R] = 0;
+        ss_ray_sample_accum[gindex * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_RADIANCE_G] = 0;
+        ss_ray_sample_accum[gindex * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_RADIANCE_B] = 0;
 
-        ss_temporal_reprojected_value[gindex] = 0.0;
+        ss_temporal_reprojected_probe_value[gindex] = float4(0.0, 0.0, 0.0, 0.0);
+        ss_prev_guiding_weight[gindex] = 0.0;
         ss_guiding_cdf[gindex] = 0.0;
     }
     ss_side_cache_candidate_tile_packed[gindex] = 0xffffffff;
@@ -176,7 +188,6 @@ void main_cs(
         ss_side_cache_store_enable = 0;
         ss_side_cache_store_tile_packed = 0xffffffff;
         ss_side_cache_store_locked = 0;
-        ss_guiding_total_weight = 0.0;
     }
     GroupMemoryBarrierWithGroupSync();
 
@@ -185,8 +196,7 @@ void main_cs(
     {
         const int2 best_prev_tile = SspUnpackTileId(ss_temporal_best_prev_tile_packed);
         const int2 prev_global_pos = clamp(best_prev_tile * SCREEN_SPACE_PROBE_OCT_RESOLUTION + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
-        const float prev_value = ScreenSpaceProbeHistoryTex.Load(int3(prev_global_pos, 0)).r;
-        ss_temporal_reprojected_value[gindex] = prev_value;
+        ss_temporal_reprojected_probe_value[gindex] = ScreenSpaceProbeHistoryTex.Load(int3(prev_global_pos, 0));
     }
 
     // Side cache fallback candidate search.
@@ -255,8 +265,7 @@ void main_cs(
             // Temporal失敗時のみSideCache値を再投影値へ注入.
             const int2 best_cache_tile = SspUnpackTileId(ss_side_cache_best_tile_packed);
             const int2 cache_global_pos = clamp(best_cache_tile * SCREEN_SPACE_PROBE_OCT_RESOLUTION + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
-            const float cache_value = ScreenSpaceProbeSideCacheTex.Load(int3(cache_global_pos, 0)).r;
-            ss_temporal_reprojected_value[gindex] = cache_value;
+            ss_temporal_reprojected_probe_value[gindex] = ScreenSpaceProbeSideCacheTex.Load(int3(cache_global_pos, 0));
         }
     }
 
@@ -265,10 +274,12 @@ void main_cs(
     const float3 cell_dir_ws = SspDecodeDirByNormal(cell_oct_uv, ss_probe_approx_normal_ws);
     const float cell_octmap_normal_dot_probe_normal = max(0.0, dot(ss_probe_approx_normal_ws, cell_dir_ws));
     
-    // Probe面法線での輝度評価. 面の輝度への寄与が大きいほどGuidingで誘導されるようになる.
+    // Probe面法線での前フレーム radiance 輝度評価. 面への寄与が大きいほど Guiding で誘導されるようになる.
     // バイアスを加算してから乗ずることで法線の逆向きは完全にゼロにしつつ, 順方向全体にバイアスを足す.
-    const float temporal_reprojected_value_for_guiding = (0 == cb_srvs.ss_probe_ray_guiding_enable) ? 0.0 : ss_temporal_reprojected_value[gindex];
-    ss_prev_radiance[gindex] = (temporal_reprojected_value_for_guiding + NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS) * cell_octmap_normal_dot_probe_normal;
+    const float temporal_reprojected_luminance_for_guiding = (0 == cb_srvs.ss_probe_ray_guiding_enable)
+        ? 0.0
+        : dot(ss_temporal_reprojected_probe_value[gindex].rgb, float3(0.299, 0.587, 0.114));
+    ss_prev_guiding_weight[gindex] = (temporal_reprojected_luminance_for_guiding + NGL_SSP_RAY_GUIDING_VISIBILITY_PDF_BIAS) * cell_octmap_normal_dot_probe_normal;
 
     GroupMemoryBarrierWithGroupSync();
 
@@ -279,7 +290,7 @@ void main_cs(
         [unroll]
         for(uint i = 0; i < NGL_SSP_RAY_COUNT; ++i)
         {
-            cdf_sum += ss_prev_radiance[i];// 面法線側のサンプルを輝度に応じてウェイト付け.
+            cdf_sum += ss_prev_guiding_weight[i];// 面法線側のサンプルを前フレーム radiance 輝度に応じてウェイト付け.
             ss_guiding_cdf[i] = cdf_sum;
         }
 
@@ -290,8 +301,6 @@ void main_cs(
         {
             ss_guiding_cdf[i] *= cdf_sum_inv;
         }
-        
-        ss_guiding_total_weight = cdf_sum;
     }
     GroupMemoryBarrierWithGroupSync();
 
@@ -357,41 +366,53 @@ void main_cs(
             cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
             cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel);
 
-        const float sky_visibility = (0.0 > curr_ray_t_ws.x)? 1.0 : 0.0;// 負ならヒットなしで空が見えている.
+        const bool is_sky_visible = (0.0 > curr_ray_t_ws.x);// 負ならヒットなしで空が見えている.
+        const float sky_visibility = is_sky_visible ? 1.0 : 0.0;
+        const float3 hit_radiance = is_sky_visible
+            ? 0.0.xxx
+            : max(BitmaskBrickVoxelOptionData[hit_voxel_index].resolved_radiance, 0.0.xxx);
+        const uint3 fixed_point_hit_radiance = (uint3)(hit_radiance * SSP_RADIANCE_FIXED_POINT_SCALE + 0.5.xxx);
 
         const float2 oct_uv = SspEncodeDirByNormal(sample_ray_dir, base_normal_ws);// レイ方向を法線基準のOctahedralマップUVにエンコードして格納.
         const int2 oct_cell_id = clamp(int2(oct_uv * SCREEN_SPACE_PROBE_OCT_RESOLUTION), int2(0, 0), int2(SCREEN_SPACE_PROBE_OCT_RESOLUTION - 1, SCREEN_SPACE_PROBE_OCT_RESOLUTION - 1));
         const int oct_cell_index = oct_cell_id.y * SCREEN_SPACE_PROBE_OCT_RESOLUTION + oct_cell_id.x;
         
         // Result Accumulation.
-        InterlockedAdd(ss_ray_sample_accum[oct_cell_index * 4 + 0], 1);// accum_count
-        InterlockedAdd(ss_ray_sample_accum[oct_cell_index * 4 + 1], uint(sky_visibility));// sky_visibility_bool
+        InterlockedAdd(ss_ray_sample_accum[oct_cell_index * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_COUNT], 1);
+        InterlockedAdd(ss_ray_sample_accum[oct_cell_index * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_SKY_VISIBILITY], uint(sky_visibility));
+        InterlockedAdd(ss_ray_sample_accum[oct_cell_index * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_RADIANCE_R], fixed_point_hit_radiance.x);
+        InterlockedAdd(ss_ray_sample_accum[oct_cell_index * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_RADIANCE_G], fixed_point_hit_radiance.y);
+        InterlockedAdd(ss_ray_sample_accum[oct_cell_index * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_RADIANCE_B], fixed_point_hit_radiance.z);
     }
     GroupMemoryBarrierWithGroupSync();
 
-    uint hit_count = ss_ray_sample_accum[gindex * 4 + 0];// accum_count
-    float sum_sky_visibility = ss_ray_sample_accum[gindex * 4 + 1];// sky_visibility_boolの合計.
+    const uint hit_count = ss_ray_sample_accum[gindex * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_COUNT];
+    const float sum_sky_visibility = ss_ray_sample_accum[gindex * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_SKY_VISIBILITY];
+    const float3 sum_radiance = float3(
+        ss_ray_sample_accum[gindex * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_RADIANCE_R],
+        ss_ray_sample_accum[gindex * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_RADIANCE_G],
+        ss_ray_sample_accum[gindex * SSP_RAY_SAMPLE_ACCUM_STRIDE + SSP_RAY_SAMPLE_ACCUM_RADIANCE_B]);
     
-    const float prev_reprojected_value = ss_temporal_reprojected_value[gindex];
+    const float4 prev_reprojected_probe_value = ss_temporal_reprojected_probe_value[gindex];
     const float inv_hit_count = (hit_count > 0)? (1.0 / float(hit_count)) : 1.0;
-    const float sky_visibility = (hit_count > 0)? (sum_sky_visibility * inv_hit_count) : prev_reprojected_value;
+    const float sky_visibility = (hit_count > 0)? (sum_sky_visibility * inv_hit_count) : prev_reprojected_probe_value.a;
+    const float3 radiance = (hit_count > 0)? (sum_radiance * (inv_hit_count / SSP_RADIANCE_FIXED_POINT_SCALE)) : prev_reprojected_probe_value.rgb;
 
     float new_sky_visibility = sky_visibility;
+    float3 new_radiance = radiance;
     float reprojection_succeed = 0.0;
     const bool has_temporal_history = (0xffffffff != ss_temporal_best_prev_tile_packed);
     const bool has_side_cache_history = (0xffffffff != ss_side_cache_best_tile_packed);
     if((has_temporal_history || has_side_cache_history) && (0 != cb_srvs.ss_probe_temporal_reprojection_enable))
     {
-        float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_reprojected_value);
+        float temporal_rate = biased_shadow_preserving_temporal_filter_weight(sky_visibility, prev_reprojected_probe_value.a);
         temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
 
-        const float3 curr_camera_pos_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
-        const float3 prev_camera_pos_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_prev_view_inv_mtx);
-
-        new_sky_visibility = lerp(new_sky_visibility, prev_reprojected_value, temporal_rate);// 補間.
+        new_radiance = lerp(new_radiance, prev_reprojected_probe_value.rgb, temporal_rate);
+        new_sky_visibility = lerp(new_sky_visibility, prev_reprojected_probe_value.a, temporal_rate);// 補間.
         reprojection_succeed = 1.0;
     }
-    const float4 out_probe_value = float4(new_sky_visibility, prev_reprojected_value, ss_prev_radiance[gindex], reprojection_succeed);
+    const float4 out_probe_value = float4(new_radiance, new_sky_visibility);
 
     if(0 == gindex)
     {

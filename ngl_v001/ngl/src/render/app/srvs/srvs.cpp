@@ -221,7 +221,7 @@ namespace ngl::render::app
                 // カテゴリ別サブモードスライダ.
                 if (0 <= dbg_view_category_)
                 {
-                    const int k_sub_mode_max[] = { 14, 0, 7, 4 };
+                    const int k_sub_mode_max[] = { 14, 0, 8, 4 };
                     const int sub_max = k_sub_mode_max[dbg_view_category_];
                     // カテゴリ切替時にクランプ.
                     if (dbg_view_sub_mode_ > sub_max) dbg_view_sub_mode_ = sub_max;
@@ -1420,6 +1420,7 @@ namespace ngl::render::app
                 pso_ss_probe_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_ss_probe_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_ss_probe_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+                pso_ss_probe_update_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].uav.Get());
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_best_prev_tile_srv.Get(), ss_probe_best_prev_tile_tex_.srv.Get());
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_history_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_history_index].srv.Get());

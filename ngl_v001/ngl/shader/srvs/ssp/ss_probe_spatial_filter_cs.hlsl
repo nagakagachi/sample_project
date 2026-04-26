@@ -71,6 +71,7 @@ void main_cs(
     };
 
     // 隣接4タイルを走査してフィルタリング.
+    // ScreenSpaceProbeTex は RGB=radiance / A=sky visibility を保持しているため float4 全体をそのまま平滑化する。
     [unroll]
     for (int i = 0; i < 4; ++i)
     {

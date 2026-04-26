@@ -19,6 +19,7 @@ void main_cs(
 {
     // 8x8 texel per probe.
     // フル解像度でScreenSpaceProbeのタイル内スレッドに対応するのでdtid.xyでアクセス可能.
+    // ScreenSpaceProbeTex は RGB=radiance / A=sky visibility として全クリアする。
     RWScreenSpaceProbeTex[dtid.xy] = float4(0.0, 0.0, 0.0, 0.0);
 
     // Group内で代表スレッドが処理.
