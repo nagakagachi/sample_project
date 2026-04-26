@@ -72,6 +72,9 @@ RWTexture2D<float4>    RWScreenSpaceProbeTex;
 Texture2D<float4>      ScreenSpaceProbeTileInfoTex;
 Texture2D<float4>      ScreenSpaceProbeHistoryTileInfoTex;
 RWTexture2D<float4>    RWScreenSpaceProbeTileInfoTex;
+// Preupdate で計算した Best Prev Tile (packed uint: upper16=y, lower16=x, 0xffffffff=無効).
+Texture2D<uint>        ScreenSpaceProbeBestPrevTileTex;
+RWTexture2D<uint>      RWScreenSpaceProbeBestPrevTileTex;
 
 // L1 SH (SkyVisibility).
 Texture2D<float4>      ScreenSpaceProbeSHTex;
@@ -183,6 +186,22 @@ uint SspPackTileId(int2 tile_id)
 int2 SspUnpackTileId(uint packed)
 {
     return int2(int(packed & 0xffffu), int((packed >> 16) & 0xffffu));
+}
+
+float2 SspCalcPrevFrameUvFromWorldPos(float3 pos_ws, float3x4 prev_view_mtx, float4x4 prev_proj_mtx, out bool is_valid)
+{
+    const float3 prev_pos_vs = mul(prev_view_mtx, float4(pos_ws, 1.0)).xyz;
+    const float4 prev_pos_cs = mul(prev_proj_mtx, float4(prev_pos_vs, 1.0));
+    if(abs(prev_pos_cs.w) <= 1e-6)
+    {
+        is_valid = false;
+        return float2(0.0, 0.0);
+    }
+
+    const float2 prev_ndc_xy = prev_pos_cs.xy / prev_pos_cs.w;
+    const float2 prev_uv = float2(prev_ndc_xy.x * 0.5 + 0.5, -prev_ndc_xy.y * 0.5 + 0.5);
+    is_valid = all(prev_uv >= 0.0) && all(prev_uv <= 1.0);
+    return prev_uv;
 }
 
 // ------------------------------------------------------------------------------------------------------------------------

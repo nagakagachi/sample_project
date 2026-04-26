@@ -41,17 +41,13 @@ ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 // TileのこのフレームでのScreenSpaceProbe配置テクセル情報.
 groupshared float ss_probe_hw_depth;
-groupshared float ss_probe_view_z;
-groupshared float3 ss_probe_pos_vs;
 groupshared float3 ss_probe_pos_ws;
 
 // ScreenSpaceProbe配置位置の近似法線情報.
 groupshared float3 ss_probe_approx_normal_ws;
 
 groupshared uint ss_ray_sample_accum[NGL_SSP_RAY_COUNT * 4];// accum_count, sky_visibility_bool,,
-groupshared uint ss_temporal_best_score;
 groupshared uint ss_temporal_best_prev_tile_packed;
-groupshared uint ss_temporal_candidate_prev_tile_packed[NGL_SSP_RAY_COUNT];
 groupshared uint ss_side_cache_best_score;
 groupshared uint ss_side_cache_best_tile_packed;
 groupshared uint ss_side_cache_candidate_tile_packed[NGL_SSP_RAY_COUNT];
@@ -74,33 +70,6 @@ float biased_shadow_preserving_temporal_filter_weight(float curr_value, float pr
     float alpha = max(l1 - l2 - min(l1, l2), 0.0) / max(max(l1, l2), 1e-4);
     alpha = CalcSquare(clamp(alpha, 0.0, 0.95));// オリジナル.
     return alpha;
-}
-
-float2 CalcPrevFrameUvFromWorldPos(float3 pos_ws, out bool is_valid)
-{
-    const float3 prev_pos_vs = mul(cb_ngl_sceneview.cb_prev_view_mtx, float4(pos_ws, 1.0));
-    const float4 prev_pos_cs = mul(cb_ngl_sceneview.cb_prev_proj_mtx, float4(prev_pos_vs, 1.0));
-    if(abs(prev_pos_cs.w) <= 1e-6)
-    {
-        is_valid = false;
-        return float2(0.0, 0.0);
-    }
-
-    const float2 prev_ndc_xy = prev_pos_cs.xy / prev_pos_cs.w;
-    const float2 prev_uv = float2(prev_ndc_xy.x * 0.5 + 0.5, -prev_ndc_xy.y * 0.5 + 0.5);
-    is_valid = all(prev_uv >= 0.0) && all(prev_uv <= 1.0);
-    return prev_uv;
-}
-
-uint PackTileId(int2 tile_id)
-{
-    // 3x3探索で扱うTile座標を1つのuintへ圧縮.
-    return (uint(tile_id.y) << 16) | uint(tile_id.x & 0xffff);
-}
-
-int2 UnpackTileId(uint packed)
-{
-    return int2(int(packed & 0xffffu), int((packed >> 16) & 0xffffu));
 }
 
 uint CalcFrameLockTag(uint frame_count)
@@ -156,10 +125,9 @@ void main_cs(
     {
         // クリア
         ss_probe_hw_depth = 1.0;
-        ss_probe_view_z = 0.0;
-        ss_probe_pos_vs = float3(0.0, 0.0, 0.0);
         ss_probe_pos_ws = float3(0.0, 0.0, 0.0);
         ss_probe_approx_normal_ws = float3(0.0, 0.0, 0.0);
+        ss_temporal_best_prev_tile_packed = ScreenSpaceProbeBestPrevTileTex.Load(int3(ss_probe_tile_id, 0)).x;
 
         // プローブのレイ始点とするピクセルの深度取得.
         const float d = ss_probe_depth;
@@ -174,8 +142,6 @@ void main_cs(
             // タイル共有情報.
             {
                 ss_probe_hw_depth = d;
-                ss_probe_view_z = view_z;
-                ss_probe_pos_vs = pixel_pos_vs;
                 ss_probe_pos_ws = pixel_pos_ws;
 
                 ss_probe_approx_normal_ws = approx_normal_ws;
@@ -202,12 +168,9 @@ void main_cs(
         ss_temporal_reprojected_value[gindex] = 0.0;
         ss_guiding_cdf[gindex] = 0.0;
     }
-    ss_temporal_candidate_prev_tile_packed[gindex] = 0xffffffff;
     ss_side_cache_candidate_tile_packed[gindex] = 0xffffffff;
     if(0 == gindex)
     {
-        ss_temporal_best_score = 0xffffffff;
-        ss_temporal_best_prev_tile_packed = 0xffffffff;
         ss_side_cache_best_score = 0xffffffff;
         ss_side_cache_best_tile_packed = 0xffffffff;
         ss_side_cache_store_enable = 0;
@@ -217,83 +180,13 @@ void main_cs(
     }
     GroupMemoryBarrierWithGroupSync();
 
-    // Temporal Reprojectionを先行して8x8値を再構成し, CDFを作る.
+    // PreUpdateで決定した最良タイルを全セル共通で参照して再構成.
+    if(0xffffffff != ss_temporal_best_prev_tile_packed)
     {
-        uint local_best_score = 0xffffffff;
-        uint local_best_prev_tile_packed = 0xffffffff;
-
-        // 3x3の9近傍を探索.
-        if(gindex < 9)
-        {
-            bool is_valid_prev_uv;
-            const float2 prev_uv = CalcPrevFrameUvFromWorldPos(ss_probe_pos_ws, is_valid_prev_uv);
-            if(is_valid_prev_uv)
-            {
-                const int2 full_res = int2(depth_size);
-                const int tile_size = SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-                const int2 probe_tile_count = max((full_res + tile_size - 1) / tile_size, int2(1, 1));
-                const float2 prev_pos_texel = prev_uv * float2(full_res);
-                const int2 prev_center_tile = clamp(int2(prev_pos_texel) / tile_size, int2(0, 0), probe_tile_count - 1);
-                const int2 candidate_offset = int2(int(gindex) % 3, int(gindex) / 3) - int2(1, 1);
-                const int2 candidate_tile_id = clamp(prev_center_tile + candidate_offset, int2(0, 0), probe_tile_count - 1);
-                // 前回フレームのProbeTexと対応するTileInfoテクスチャから候補タイルの情報を取得.
-                const float4 candidate_tile_info = ScreenSpaceProbeHistoryTileInfoTex.Load(int3(candidate_tile_id, 0));
-
-                if(isValidDepth(candidate_tile_info.x))
-                {
-                    // 前回プローブのワールド位置が今回プローブの位置と法線の平面から一定距離にあるかどうかで評価.
-                    const int2 candidate_probe_placement_texel = candidate_tile_id * tile_size + SspTileInfoDecodeProbePosInTile(candidate_tile_info.y);
-                    const float candidate_view_z = calc_view_z_from_ndc_z(candidate_tile_info.x, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
-                    const float3 candidate_pos_vs = CalcViewSpacePosition((float2(candidate_probe_placement_texel) + float2(0.5, 0.5)) * depth_size_inv, candidate_view_z, cb_ngl_sceneview.cb_prev_proj_mtx);
-                    const float3 candidate_pos_ws = mul(cb_ngl_sceneview.cb_prev_view_inv_mtx, float4(candidate_pos_vs, 1.0));
-                    const float3 probe_pos_diff_ws = candidate_pos_ws - ss_probe_pos_ws;
-                    const float plane_dist = abs(dot(probe_pos_diff_ws, ss_probe_approx_normal_ws));
-                    const float probe_normal_dot = dot(ss_probe_approx_normal_ws, OctDecode(candidate_tile_info.zw));
-
-                    // 法線での棄却を加えると完全に失敗してしまうケースが多い. AddaptiveSamplingでレイの割り当てを増やせるならありかもしれない.
-                    //if((plane_dist < 5.0))// 閾値は要調整.
-                    // むしろここできちんと棄却して失敗させ, Persistent Least-Recently Used (LRU) Side Cache で解決するなどした方が良いかもしれない.
-                    if((plane_dist < cb_srvs.ss_probe_temporal_filter_plane_dist_threshold)
-                     && (probe_normal_dot > cb_srvs.ss_probe_temporal_filter_normal_cos_threshold))
-                    {
-                        //float probe_dist = length(float2(candidate_offset));// 初期実装. 安定はするが移動物体表面で適切なリプロジェクションにならずノイズになりやすい.
-                        // GI-1.0はプローブ配置位置の差分を採用している. 法線の向きも評価に加えてみる.
-                        float probe_dist = length(probe_pos_diff_ws) * 100.0;// ワールド長さ単位の量子化で問題ない程度にスケール.
-                        probe_dist += (1.0 - probe_normal_dot) * 1.0;// 法線の向きの違いもスコアに加算.
-                        
-                        const uint quantized_dist = min((uint)(probe_dist * 1024.0), 0x03ffffffu);
-                        local_best_score = (quantized_dist << 6) | (gindex & 0x3fu);
-                        local_best_prev_tile_packed = (uint(candidate_tile_id.y) << 16) | uint(candidate_tile_id.x & 0xffff);
-                    }
-                }
-            }
-        }
-
-        ss_temporal_candidate_prev_tile_packed[gindex] = local_best_prev_tile_packed;
-        if(0xffffffff != local_best_score)
-        {
-            InterlockedMin(ss_temporal_best_score, local_best_score);
-        }
-        GroupMemoryBarrierWithGroupSync();
-
-        if(0 == gindex)
-        {
-            if(0xffffffff != ss_temporal_best_score)
-            {
-                const uint winner_lane = ss_temporal_best_score & 0x3fu;
-                ss_temporal_best_prev_tile_packed = ss_temporal_candidate_prev_tile_packed[winner_lane];
-            }
-        }
-        GroupMemoryBarrierWithGroupSync();
-
-        // 再構成: グループで選択した最良タイルを全セル共通で参照.
-        if(0xffffffff != ss_temporal_best_prev_tile_packed)
-        {
-            const int2 best_prev_tile = int2(int(ss_temporal_best_prev_tile_packed & 0xffffu), int((ss_temporal_best_prev_tile_packed >> 16) & 0xffffu));
-            const int2 prev_global_pos = clamp(best_prev_tile * SCREEN_SPACE_PROBE_OCT_RESOLUTION + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
-            const float prev_value = ScreenSpaceProbeHistoryTex.Load(int3(prev_global_pos, 0)).r;
-            ss_temporal_reprojected_value[gindex] = prev_value;
-        }
+        const int2 best_prev_tile = SspUnpackTileId(ss_temporal_best_prev_tile_packed);
+        const int2 prev_global_pos = clamp(best_prev_tile * SCREEN_SPACE_PROBE_OCT_RESOLUTION + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
+        const float prev_value = ScreenSpaceProbeHistoryTex.Load(int3(prev_global_pos, 0)).r;
+        ss_temporal_reprojected_value[gindex] = prev_value;
     }
 
     // Side cache fallback candidate search.
@@ -306,7 +199,7 @@ void main_cs(
         if(gindex < 9)
         {
             bool is_valid_prev_uv;
-            const float2 prev_uv = CalcPrevFrameUvFromWorldPos(ss_probe_pos_ws, is_valid_prev_uv);
+            const float2 prev_uv = SspCalcPrevFrameUvFromWorldPos(ss_probe_pos_ws, cb_ngl_sceneview.cb_prev_view_mtx, cb_ngl_sceneview.cb_prev_proj_mtx, is_valid_prev_uv);
             if(is_valid_prev_uv)
             {
                 const int2 full_res = int2(depth_size);
@@ -334,7 +227,7 @@ void main_cs(
                         float probe_dist = length(probe_pos_diff_ws) * 100.0;
                         const uint quantized_dist = min((uint)(probe_dist * 1024.0), 0x03ffffffu);
                         local_best_score = (quantized_dist << 6) | (gindex & 0x3fu);
-                        local_best_tile_packed = PackTileId(candidate_tile_id);
+                        local_best_tile_packed = SspPackTileId(candidate_tile_id);
                     }
                 }
             }
@@ -360,7 +253,7 @@ void main_cs(
         if((0xffffffff == ss_temporal_best_prev_tile_packed) && (0xffffffff != ss_side_cache_best_tile_packed))
         {
             // Temporal失敗時のみSideCache値を再投影値へ注入.
-            const int2 best_cache_tile = int2(int(ss_side_cache_best_tile_packed & 0xffffu), int((ss_side_cache_best_tile_packed >> 16) & 0xffffu));
+            const int2 best_cache_tile = SspUnpackTileId(ss_side_cache_best_tile_packed);
             const int2 cache_global_pos = clamp(best_cache_tile * SCREEN_SPACE_PROBE_OCT_RESOLUTION + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
             const float cache_value = ScreenSpaceProbeSideCacheTex.Load(int3(cache_global_pos, 0)).r;
             ss_temporal_reprojected_value[gindex] = cache_value;
@@ -508,7 +401,7 @@ void main_cs(
         if(should_store_side_cache)
         {
             bool is_valid_prev_uv;
-            const float2 prev_uv = CalcPrevFrameUvFromWorldPos(ss_probe_pos_ws, is_valid_prev_uv);
+            const float2 prev_uv = SspCalcPrevFrameUvFromWorldPos(ss_probe_pos_ws, cb_ngl_sceneview.cb_prev_view_mtx, cb_ngl_sceneview.cb_prev_proj_mtx, is_valid_prev_uv);
 
             const int2 full_res = int2(depth_size);
             const int tile_size = SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
@@ -544,7 +437,7 @@ void main_cs(
                 if(cas_old_value == observed_lock)
                 {
                     ss_side_cache_store_locked = 1u;
-                    ss_side_cache_store_tile_packed = PackTileId(candidate_tile);
+                    ss_side_cache_store_tile_packed = SspPackTileId(candidate_tile);
                     RWScreenSpaceProbeSideCacheMetaTex[candidate_tile] = float4(ss_probe_pos_ws, float(cb_srvs.frame_count));
                     break;
                 }
@@ -556,7 +449,7 @@ void main_cs(
     if((0 != ss_side_cache_store_enable) && (0 != ss_side_cache_store_locked) && (0xffffffff != ss_side_cache_store_tile_packed))
     {
         // lock獲得済みTileへ8x8出力を転写してPersistent cache化.
-        const int2 side_cache_store_tile = UnpackTileId(ss_side_cache_store_tile_packed);
+        const int2 side_cache_store_tile = SspUnpackTileId(ss_side_cache_store_tile_packed);
         const int2 side_cache_global_pos = clamp(side_cache_store_tile * SCREEN_SPACE_PROBE_OCT_RESOLUTION + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
         RWScreenSpaceProbeSideCacheTex[side_cache_global_pos] = out_probe_value;
     }
@@ -570,7 +463,7 @@ void main_cs(
         if((0xffffffff != ss_side_cache_best_tile_packed))
         {
             // HitしたSideCacheのmetaを現フレームで更新して寿命を延命(MRU相当).
-            const int2 side_cache_hit_tile = int2(int(ss_side_cache_best_tile_packed & 0xffffu), int((ss_side_cache_best_tile_packed >> 16) & 0xffffu));
+            const int2 side_cache_hit_tile = SspUnpackTileId(ss_side_cache_best_tile_packed);
             RWScreenSpaceProbeSideCacheMetaTex[side_cache_hit_tile] = float4(ss_probe_pos_ws, float(cb_srvs.frame_count));
         }
     }
@@ -580,7 +473,7 @@ void main_cs(
     if((0xffffffff != ss_side_cache_best_tile_packed))
     {
         // SideCacheで再利用したTileは最新の出力で上書きし, 次フレームの再利用品質を安定化.
-        const int2 side_cache_hit_tile = int2(int(ss_side_cache_best_tile_packed & 0xffffu), int((ss_side_cache_best_tile_packed >> 16) & 0xffffu));
+        const int2 side_cache_hit_tile = SspUnpackTileId(ss_side_cache_best_tile_packed);
         const int2 side_cache_hit_pos = clamp(side_cache_hit_tile * SCREEN_SPACE_PROBE_OCT_RESOLUTION + probe_atlas_local_pos, int2(0, 0), int2(depth_size) - 1);
         RWScreenSpaceProbeSideCacheTex[side_cache_hit_pos] = out_probe_value;
     }

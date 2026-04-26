@@ -45,22 +45,6 @@ groupshared uint   gs_best_prev_tile_packed;
 groupshared uint   gs_best_score;
 groupshared uint   gs_candidate_prev_tile_packed[SEARCH_THREAD_COUNT];
 
-float2 CalcPrevFrameUvFromWorldPos(float3 pos_ws, out bool is_valid)
-{
-    const float3 prev_pos_vs = mul(cb_ngl_sceneview.cb_prev_view_mtx, float4(pos_ws, 1.0));
-    const float4 prev_pos_cs = mul(cb_ngl_sceneview.cb_prev_proj_mtx, float4(prev_pos_vs, 1.0));
-    if(abs(prev_pos_cs.w) <= 1e-6)
-    {
-        is_valid = false;
-        return float2(0.0, 0.0);
-    }
-
-    const float2 prev_ndc_xy = prev_pos_cs.xy / prev_pos_cs.w;
-    const float2 prev_uv = float2(prev_ndc_xy.x * 0.5 + 0.5, -prev_ndc_xy.y * 0.5 + 0.5);
-    is_valid = all(prev_uv >= 0.0) && all(prev_uv <= 1.0);
-    return prev_uv;
-}
-
 bool TryEvaluateCandidateTile(
     int2 candidate_tile_id,
     float2 depth_size_inv,
@@ -220,7 +204,7 @@ void main_cs(
     if(0 != gs_probe_valid && 0 != cb_srvs.ss_probe_temporal_reprojection_enable)
     {
         bool is_valid_prev_uv = false;
-        const float2 prev_uv = CalcPrevFrameUvFromWorldPos(gs_probe_pos_ws, is_valid_prev_uv);
+        const float2 prev_uv = SspCalcPrevFrameUvFromWorldPos(gs_probe_pos_ws, cb_ngl_sceneview.cb_prev_view_mtx, cb_ngl_sceneview.cb_prev_proj_mtx, is_valid_prev_uv);
         if(is_valid_prev_uv)
         {
             const int tile_size = SCREEN_SPACE_PROBE_INFO_DOWNSCALE;

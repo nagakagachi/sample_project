@@ -24,7 +24,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 //   SHストレージ版は別のマクロでモード切替しているため注意.
 //   現状はSHストレージ版をメインで検証しているためリファレンスとして維持.
 #ifndef NGL_SSP_OCTAHEDRALMAP_STORAGE_HEMISPHERE_MODE
-#define NGL_SSP_OCTAHEDRALMAP_STORAGE_HEMISPHERE_MODE 0
+#define NGL_SSP_OCTAHEDRALMAP_STORAGE_HEMISPHERE_MODE 1
 #endif
 
 // BrickLocalAABB の比較用コンパイル時切り替え.

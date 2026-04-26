@@ -251,6 +251,8 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_tile_info_srv = "ScreenSpaceProbeTileInfoTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_history_tile_info_srv = "ScreenSpaceProbeHistoryTileInfoTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_tile_info_uav = "RWScreenSpaceProbeTileInfoTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_best_prev_tile_srv = "ScreenSpaceProbeBestPrevTileTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_best_prev_tile_uav = "RWScreenSpaceProbeBestPrevTileTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_filtered_uav = "RWScreenSpaceProbeFilteredTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_sh_srv = "ScreenSpaceProbeSHTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_sh_uav = "RWScreenSpaceProbeSHTex";
@@ -700,6 +702,22 @@ namespace ngl::render::app
 
             ss_probe_side_cache_lock_tex_.Initialize(p_device, desc, "Srvs_SsProbeSideCacheLockTex");
         }
+        // Screen Space Probe Temporal Best Prev Tile テクスチャ.
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R32_UINT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            ss_probe_best_prev_tile_tex_.Initialize(p_device, desc, "Srvs_SsProbeBestPrevTileTex");
+        }
         // DirectSH方式専用: Tile Info テクスチャ x2.
         for(int i = 0; i < 2; ++i)
         {
@@ -943,6 +961,7 @@ namespace ngl::render::app
                     p_command_list->ResourceBarrier(ss_probe_side_cache_lock_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 }
                 p_command_list->ResourceBarrier(ss_probe_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                p_command_list->ResourceBarrier(ss_probe_best_prev_tile_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
 
                 // DirectSH テクスチャの初期状態を Common → UnorderedAccess に遷移.
                 for(int i = 0; i < 2; ++i)
@@ -1276,13 +1295,16 @@ namespace ngl::render::app
                 pso_ss_probe_preupdate_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                 pso_ss_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].uav.Get());
                 pso_ss_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_history_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_history_index].srv.Get());
+                pso_ss_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_best_prev_tile_uav.Get(), ss_probe_best_prev_tile_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_ss_probe_preupdate_.Get());
                 p_command_list->SetDescriptorSet(pso_ss_probe_preupdate_.Get(), &desc_set);
-                // 1/8 解像度のProbe単位Texel更新.
-                pso_ss_probe_preupdate_->DispatchHelper(p_command_list, ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].texture->GetWidth(), ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].texture->GetHeight(), 1);
+                // PreUpdate は 1 スレッドグループ(3x3) = 1 ProbeTile.
+                p_command_list->Dispatch(ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].texture->GetWidth(),
+                    ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].texture->GetHeight(), 1);
 
                 p_command_list->ResourceUavBarrier(ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].texture.Get());
+                p_command_list->ResourceUavBarrier(ss_probe_best_prev_tile_tex_.texture.Get());
             }
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ScreenSpaceProbeUpdate");
@@ -1293,6 +1315,7 @@ namespace ngl::render::app
                 pso_ss_probe_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_ss_probe_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].uav.Get());
+                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_best_prev_tile_srv.Get(), ss_probe_best_prev_tile_tex_.srv.Get());
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_history_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_history_index].srv.Get());
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_history_srv.Get(), ss_probe_tex_[ss_probe_history_index].srv.Get());
                 pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_uav.Get(), ss_probe_tex_[ss_probe_update_write_index].uav.Get());
