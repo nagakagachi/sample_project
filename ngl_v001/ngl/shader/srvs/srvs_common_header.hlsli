@@ -165,10 +165,6 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     #define SCREEN_SPACE_PROBE_OCT_RESOLUTION 8
     #define SCREEN_SPACE_PROBE_OCT_RESOLUTION_INV (1.0 / float(SCREEN_SPACE_PROBE_OCT_RESOLUTION))
     #define SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT (SCREEN_SPACE_PROBE_OCT_RESOLUTION * SCREEN_SPACE_PROBE_OCT_RESOLUTION)
-    // DirectSH preupdate の temporal reprojection 探索用 ThreadGroup サイズ.
-    #define SCREEN_SPACE_PROBE_DIRECT_SH_PREUPDATE_SEARCH_GROUP_SIZE 5
-
-
     // Temporal Filterの棄却パラメータ.
     #define SCREEN_SPACE_PROBE_TEMPORAL_FILTER_NORMAL_COS_THRESHOLD 0.95
     #define SCREEN_SPACE_PROBE_TEMPORAL_FILTER_PLANE_DIST_THRESHOLD 0.25

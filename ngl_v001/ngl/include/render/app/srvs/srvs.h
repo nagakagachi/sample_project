@@ -137,8 +137,6 @@ namespace ngl::render::app
         rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_[ss_probe_latest_filtered_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbeTileInfoTex() const { return ss_probe_tile_info_tex_[ss_probe_tile_info_curr_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbeShTex() const { return ss_probe_sh_tex_.srv; }
-        rhi::RefSrvDep GetSsProbeDirectShTex() const { return ss_probe_direct_sh_tex_[ss_probe_direct_sh_curr_frame_tex_index_].srv; }
-        rhi::RefSrvDep GetSsProbeDirectShTileInfoTex() const { return ss_probe_direct_sh_tile_info_tex_[ss_probe_direct_sh_tile_info_curr_frame_tex_index_].srv; }
 
     private:
         bool is_first_dispatch_ = true;
@@ -154,11 +152,6 @@ namespace ngl::render::app
 
         ngl::u32 ss_probe_tile_info_prev_frame_tex_index_ = 0;
         ngl::u32 ss_probe_tile_info_curr_frame_tex_index_ = 0;
-
-        ngl::u32 ss_probe_direct_sh_prev_frame_tex_index_ = 0;
-        ngl::u32 ss_probe_direct_sh_curr_frame_tex_index_ = 0;
-        ngl::u32 ss_probe_direct_sh_tile_info_prev_frame_tex_index_ = 0;
-        ngl::u32 ss_probe_direct_sh_tile_info_curr_frame_tex_index_ = 0;
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_clear_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_begin_update_ = {};
@@ -195,11 +188,7 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_spatial_filter_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_sh_update_ = {};
-
-        // DirectSH方式: Probe TileInfo + SH を直接保持しOctMapを省く検証パス.
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_direct_sh_preupdate_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_direct_sh_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_direct_sh_spatial_filter_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_radiance_sh_update_ = {};
 
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
@@ -238,17 +227,13 @@ namespace ngl::render::app
         // ScreenSpaceProbe.
         ComputeTextureSet ss_probe_tile_info_tex_[2] = {}; //f16_rgba, 1/8解像度のProbeタイル用情報. x: depth, y: probe local pos(flat), zw: OctEncode WS normal.
         ComputeTextureSet ss_probe_tex_[2] = {};// 8x8 texel per probe.
-        ComputeTextureSet ss_probe_sh_tex_ = {}; //f16_rgba, 1/8解像度のL1 SH係数. rgba = l00, l1x, l1y, l1z.
+        ComputeTextureSet ss_probe_sh_tex_ = {}; //f16_rgba, 1/8解像度のSkyVisibility用L1 SH係数. rgba = l00, l1y, l1z, l1x.
+        ComputeTextureSet ss_probe_radiance_sh_tex_[3] = {}; //f16_rgba x3, 1/8解像度のRadiance用L1 SH係数. [0]=R, [1]=G, [2]=B.
         ComputeTextureSet ss_probe_best_prev_tile_tex_ = {}; //r32_uint, Preupdateで計算したBestPrevTile (packed tile id).
         // Persistent Side Cache (minimal): evicted probe octmap + world-space meta per probe tile.
         ComputeTextureSet ss_probe_side_cache_tex_ = {}; // 8x8 texel per cached probe.
         ComputeTextureSet ss_probe_side_cache_meta_tex_ = {}; // 1/8 resolution, xyz: world pos, w: last update frame.
         ComputeTextureSet ss_probe_side_cache_lock_tex_ = {}; // 1/8 resolution, uint lock tag per tile for frame-local CAS.
-        
-        // DirectSH方式専用テクスチャ.
-        ComputeTextureSet ss_probe_direct_sh_tile_info_tex_[2] = {}; //f16_rgba, 1/8解像度のProbeタイル用情報 (既存 ss_probe_tile_info_tex_ と同形式).
-        ComputeTextureSet ss_probe_direct_sh_tex_[2]= {}; //f16_rgba, OctMapではなくSHでサンプルを保持する検証, 1/8解像度のL1 SH係数. rgba = l00, l1x, l1y, l1z.
-        ComputeTextureSet ss_probe_direct_sh_best_prev_tile_tex_ = {}; //r32_uint, Preupdateで計算したBestPrevTile (packed tile id).
 
     };
 
@@ -268,7 +253,6 @@ namespace ngl::render::app
         static int dbg_ss_probe_temporal_reprojection_enable_;
         static int dbg_ss_probe_ray_guiding_enable_;
         static int dbg_ss_probe_side_cache_enable_;
-        static int dbg_ss_probe_direct_sh_enable_;
         static float dbg_ss_probe_preupdate_relocation_probability_;
         static float dbg_ss_probe_temporal_filter_normal_cos_threshold_;
         static float dbg_ss_probe_temporal_filter_plane_dist_threshold_;

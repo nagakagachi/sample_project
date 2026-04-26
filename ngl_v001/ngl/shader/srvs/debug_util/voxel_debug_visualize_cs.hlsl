@@ -445,77 +445,25 @@ void main_cs(
                 }
             }
         }
-    }
-    // Category 3: SSP_SH (DirectSH).
-    else if(3 == debug_category)
-    {
-        if(0 == debug_sub_mode)
+        else if(9 <= debug_sub_mode && debug_sub_mode <= 12)
         {
-            // [DirectSH] Screen Space Probe の Normalデバッグ.
-            const float4 dsh_tile_info = ScreenSpaceProbeDirectSHTileInfoTex.Load(int3(ss_probe_tile_id, 0));
-            if(!isValidDepth(dsh_tile_info.x))
-            {
-                RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
-            }
-            else
-            {
-                const float3 dsh_normal_ws = OctDecode(dsh_tile_info.zw);
-                RWTexWork[dtid.xy] = float4(dsh_normal_ws * 0.5 + 0.5, 1.0);
-            }
+            // Radiance SH係数を係数インデックスごとに可視化. RGB がそれぞれ R/G/B channel の同一 SH coefficient.
+            const uint coeff_index = uint(debug_sub_mode - 9);
+            const float4 ss_probe_sh_r = ScreenSpaceProbeRadianceSHTexR.Load(int3(ss_probe_tile_id, 0));
+            const float4 ss_probe_sh_g = ScreenSpaceProbeRadianceSHTexG.Load(int3(ss_probe_tile_id, 0));
+            const float4 ss_probe_sh_b = ScreenSpaceProbeRadianceSHTexB.Load(int3(ss_probe_tile_id, 0));
+            RWTexWork[dtid.xy] = float4(ss_probe_sh_r[coeff_index], ss_probe_sh_g[coeff_index], ss_probe_sh_b[coeff_index], 1.0);
         }
-        else if(1 == debug_sub_mode)
+        else if(13 == debug_sub_mode)
         {
-            // [DirectSH] Screen Space Probe の Tile内配置Positionデバッグ.
-            const float4 dsh_tile_info = ScreenSpaceProbeDirectSHTileInfoTex.Load(int3(ss_probe_tile_id, 0));
-            const float dsh_depth = dsh_tile_info.x;
-            const int2 dsh_pos_in_tile = SspTileInfoDecodeProbePosInTile(dsh_tile_info.y);
-            if(isValidDepth(dsh_depth) && all(ss_probe_screen_tile_base_pos + dsh_pos_in_tile == texel_pos))
-            {
-                const float debug_d = 0.01 / (dsh_depth + 1e-6);
-                RWTexWork[dtid.xy] = float4(cos(debug_d) * 0.5 + 0.5, cos(debug_d * 0.5)*0.5+0.5, cos(debug_d * 0.25)*0.5+0.5, 1.0);
-            }
-            else
-            {
-                RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
-            }
-        }
-        else if(2 == debug_sub_mode)
-        {
-            // [DirectSH] SH係数をそのままRGBAで可視化 (Y00=R, Y1_{-1}(y)=G, Y1_0(z)=B, Y1_{+1}(x)=A).
-            const float4 sh_coeff = ScreenSpaceProbeDirectSHTex.Load(int3(ss_probe_tile_id, 0));
-            RWTexWork[dtid.xy] = sh_coeff;
-        }
-        else if(3 == debug_sub_mode)
-        {
-            // [DirectSH] main_light方向で DirectSH を評価した結果を可視化.
-            const float4 dsh_tile_info = ScreenSpaceProbeDirectSHTileInfoTex.Load(int3(ss_probe_tile_id, 0));
-            if(!isValidDepth(dsh_tile_info.x))
-            {
-                RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
-            }
-            else
-            {
-                const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);
-                const float4 sh_basis   = EvaluateL1ShBasis(sample_dir);
-                const float4 sh_coeff   = ScreenSpaceProbeDirectSHTex.Load(int3(ss_probe_tile_id, 0));
-                const float  sky_vis    = max(0.0, dot(sh_coeff, sh_basis));
-                RWTexWork[dtid.xy] = sky_vis.xxxx;
-            }
-        }
-        else if(4 == debug_sub_mode)
-        {
-            // [DirectSH] Reprojection成功/失敗可視化. 緑=成功, 赤=失敗.
-            const float4 dsh_tile_info = ScreenSpaceProbeDirectSHTileInfoTex.Load(int3(ss_probe_tile_id, 0));
-            if(!isValidDepth(dsh_tile_info.x))
-            {
-                RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
-            }
-            else
-            {
-                const bool dsh_reprojection_succeeded = SspTileInfoIsReprojectionSucceeded(dsh_tile_info.y);
-                const float3 debug_color = dsh_reprojection_succeeded ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
-                RWTexWork[dtid.xy] = float4(debug_color, 1.0);
-            }
+            // main_light_dir_ws 方向の Radiance SH 再評価結果を表示.
+            const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);
+            const float4 sh_basis = EvaluateL1ShBasis(sample_dir);
+            const float4 ss_probe_sh_r = ScreenSpaceProbeRadianceSHTexR.Load(int3(ss_probe_tile_id, 0));
+            const float4 ss_probe_sh_g = ScreenSpaceProbeRadianceSHTexG.Load(int3(ss_probe_tile_id, 0));
+            const float4 ss_probe_sh_b = ScreenSpaceProbeRadianceSHTexB.Load(int3(ss_probe_tile_id, 0));
+            const float3 sh_sample = max(float3(0.0, 0.0, 0.0), float3(dot(ss_probe_sh_r, sh_basis), dot(ss_probe_sh_g, sh_basis), dot(ss_probe_sh_b, sh_basis)));
+            RWTexWork[dtid.xy] = float4(sh_sample, 1.0);
         }
     }
 }

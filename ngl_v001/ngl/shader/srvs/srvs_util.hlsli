@@ -77,9 +77,16 @@ RWTexture2D<float4>    RWScreenSpaceProbeTileInfoTex;
 Texture2D<uint>        ScreenSpaceProbeBestPrevTileTex;
 RWTexture2D<uint>      RWScreenSpaceProbeBestPrevTileTex;
 
-// L1 SH (SkyVisibility).
-Texture2D<float4>      ScreenSpaceProbeSHTex;
-RWTexture2D<float4>    RWScreenSpaceProbeSHTex;
+    // L1 SH (SkyVisibility).
+    Texture2D<float4>      ScreenSpaceProbeSHTex;
+    RWTexture2D<float4>    RWScreenSpaceProbeSHTex;
+    // L1 SH (Radiance). R/G/B それぞれ 4 係数を個別の float4 で保持.
+    Texture2D<float4>      ScreenSpaceProbeRadianceSHTexR;
+    RWTexture2D<float4>    RWScreenSpaceProbeRadianceSHTexR;
+    Texture2D<float4>      ScreenSpaceProbeRadianceSHTexG;
+    RWTexture2D<float4>    RWScreenSpaceProbeRadianceSHTexG;
+    Texture2D<float4>      ScreenSpaceProbeRadianceSHTexB;
+    RWTexture2D<float4>    RWScreenSpaceProbeRadianceSHTexB;
 
 // Persistent side cache for ScreenSpaceProbe.
 Texture2D<float4>      ScreenSpaceProbeSideCacheTex;
@@ -88,21 +95,6 @@ RWTexture2D<float4>    RWScreenSpaceProbeSideCacheTex;
 Texture2D<float4>      ScreenSpaceProbeSideCacheMetaTex;
 RWTexture2D<float4>    RWScreenSpaceProbeSideCacheMetaTex;
 RWTexture2D<uint>      RWScreenSpaceProbeSideCacheLockTex;
-
-// DirectSH方式専用リソース (OctMapを持たずSHで直接保持する検証パス).
-// 1/8解像度のProbeタイル情報 (既存 ScreenSpaceProbeTileInfoTex と同形式).
-Texture2D<float4>      ScreenSpaceProbeDirectSHTileInfoTex;
-Texture2D<float4>      ScreenSpaceProbeDirectSHHistoryTileInfoTex;
-RWTexture2D<float4>    RWScreenSpaceProbeDirectSHTileInfoTex;
-// 1/8解像度のL1 SH係数 (rgba = Y00, Y1_{-1}(y), Y1_0(z), Y1_{+1}(x)).
-Texture2D<float4>      ScreenSpaceProbeDirectSHTex;
-Texture2D<float4>      ScreenSpaceProbeDirectSHHistoryTex;
-RWTexture2D<float4>    RWScreenSpaceProbeDirectSHTex;
-RWTexture2D<float4>    RWScreenSpaceProbeDirectSHFilteredTex;
-// Preupdate で計算した Best Prev Tile (packed uint: upper16=y, lower16=x, 0xffffffff=無効).
-Texture2D<uint>        ScreenSpaceProbeDirectSHBestPrevTileTex;
-RWTexture2D<uint>      RWScreenSpaceProbeDirectSHBestPrevTileTex;
-
 
 // srvsのメインパラメータ.
 ConstantBuffer<SrvsParam> cb_srvs;
@@ -243,7 +235,7 @@ float3 OctahedralDecodeSphereDirWs(float2 oct_uv)
 
 
 // OctahedralMapストレージ向け.
-// 球面/半球切り替え用. ワールド空間方向->OctahedralMapエンコード. DirectSHモードでは半球OctahedralMap, それ以外のモードでは球面OctahedralMapを使用するため、モードに応じて切り替える.
+// 球面/半球切り替え用. ワールド空間方向->OctahedralMapエンコード.
 float2 SspEncodeDirByNormal(float3 dir_ws, float3 base_normal_ws)
 {
     #if NGL_SSP_OCTAHEDRALMAP_STORAGE_HEMISPHERE_MODE
@@ -253,7 +245,7 @@ float2 SspEncodeDirByNormal(float3 dir_ws, float3 base_normal_ws)
     #endif
 }
 // OctahedralMapストレージ向け.
-// 球面/半球切り替え用. UV空間方向->OctahedralMapエンコード. DirectSHモードでは半球OctahedralMap, それ以外のモードでは球面OctahedralMapを使用するため、モードに応じて切り替える. 内部で接空間構築するバージョン.
+// 球面/半球切り替え用. UV空間方向->OctahedralMapデコード. 内部で接空間構築するバージョン.
 float3 SspDecodeDirByNormal(float2 oct_uv, float3 base_normal_ws)
 {
     #if NGL_SSP_OCTAHEDRALMAP_STORAGE_HEMISPHERE_MODE
@@ -263,7 +255,7 @@ float3 SspDecodeDirByNormal(float2 oct_uv, float3 base_normal_ws)
     #endif
 }
 // OctahedralMapストレージ向け.
-// 球面/半球切り替え用. UV空間方向->OctahedralMapエンコード. DirectSHモードでは半球OctahedralMap, それ以外のモードでは球面OctahedralMapを使用するため、モードに応じて切り替える.
+// 球面/半球切り替え用. UV空間方向->OctahedralMapデコード.
 float3 SspDecodeDirByNormal(float2 oct_uv, float3 basis_t_ws, float3 basis_b_ws, float3 base_normal_ws)
 {
     #if NGL_SSP_OCTAHEDRALMAP_STORAGE_HEMISPHERE_MODE
