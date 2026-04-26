@@ -38,7 +38,8 @@ namespace ngl::test
     struct RenderFeatureGi
     {
         render::app::ScreenReconstructedVoxelStructure* p_srvs = {};
-        bool enable_gi_lighting   = false;
+        bool enable_sky_visibility = false;
+        bool enable_irradiance = false;
         float probe_sample_offset_view{0.0f};
         float probe_sample_offset_surface_normal{0.0f};
         float probe_sample_offset_bent_normal{0.0f};

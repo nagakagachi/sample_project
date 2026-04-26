@@ -137,6 +137,9 @@ namespace ngl::render::app
         rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_[ss_probe_latest_filtered_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbeTileInfoTex() const { return ss_probe_tile_info_tex_[ss_probe_tile_info_curr_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbeShTex() const { return ss_probe_sh_tex_.srv; }
+        rhi::RefSrvDep GetSsProbeRadianceShTexR() const { return ss_probe_radiance_sh_tex_[0].srv; }
+        rhi::RefSrvDep GetSsProbeRadianceShTexG() const { return ss_probe_radiance_sh_tex_[1].srv; }
+        rhi::RefSrvDep GetSsProbeRadianceShTexB() const { return ss_probe_radiance_sh_tex_[2].srv; }
 
     private:
         bool is_first_dispatch_ = true;

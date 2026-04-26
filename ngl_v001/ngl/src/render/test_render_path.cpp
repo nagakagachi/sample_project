@@ -428,7 +428,8 @@ namespace ngl::test
                         setup_desc.sky_lit_intensity = render_frame_desc.feature_config.lighting.sky_light_intensity;
 
                         setup_desc.p_srvs = render_frame_desc.feature_config.gi.p_srvs;
-                        setup_desc.is_enable_gi_lighting = render_frame_desc.feature_config.gi.enable_gi_lighting;
+                        setup_desc.is_enable_sky_visibility = render_frame_desc.feature_config.gi.enable_sky_visibility;
+                        setup_desc.is_enable_irradiance = render_frame_desc.feature_config.gi.enable_irradiance;
                         setup_desc.probe_sample_offset_view = render_frame_desc.feature_config.gi.probe_sample_offset_view;
                         setup_desc.probe_sample_offset_surface_normal = render_frame_desc.feature_config.gi.probe_sample_offset_surface_normal;
                         setup_desc.probe_sample_offset_bent_normal = render_frame_desc.feature_config.gi.probe_sample_offset_bent_normal;

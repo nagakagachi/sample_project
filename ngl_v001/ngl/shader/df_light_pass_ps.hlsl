@@ -26,11 +26,14 @@ struct CbLightingPass
     float d_lit_intensity;
     float sky_lit_intensity;
 
-    int is_enable_gi;
+    int is_enable_sky_visibility;
+    int is_enable_irradiance;
+    int dbg_view_srvs_sky_visibility;
     float probe_sample_offset_view;
     float probe_sample_offset_surface_normal;
     float probe_sample_offset_bent_normal;
-    int dbg_view_srvs_sky_visibility;
+    float _pad_cb_lighting_pass0;
+    float _pad_cb_lighting_pass1;
 };
 ConstantBuffer<CbLightingPass> cb_ngl_lighting_pass;
 
@@ -101,6 +104,63 @@ void EvalIblDiffuseStandard
 	// FresnelでDiffuseとSpecularに分配.
 	out_diffuse = brdf_diffuse * irradiance_diffuse;
 	out_specular = irradiance_specular * (F * specular_dfg.x + specular_dfg.y);
+}
+
+void CalcSsProbeShUpsampleInfo(
+    out int2 out_ss_probe_sh_base_texel,
+    out float4 out_upscale_gathered_weight,
+    out bool out_valid_upscale_sample,
+    float2 screen_uv,
+    float ld)
+{
+    uint2 ss_probe_sh_tex_size;
+    ScreenSpaceProbeSHTex.GetDimensions(ss_probe_sh_tex_size.x, ss_probe_sh_tex_size.y);
+    const float2 ss_probe_sh_tex_size_f = float2(ss_probe_sh_tex_size);
+
+    const float2 ss_probe_sh_texel_pos_f = screen_uv * ss_probe_sh_tex_size_f;
+    out_ss_probe_sh_base_texel = clamp(int2(floor(ss_probe_sh_texel_pos_f - 0.5)), int2(0, 0), int2(ss_probe_sh_tex_size) - int2(2, 2));
+
+    const float4 low_hw_depth4 = ScreenSpaceProbeTileInfoTex.GatherRed(samp, screen_uv);
+    out_upscale_gathered_weight = float4(0, 0, 0, 0);
+    const float upscale_limit_view_z = 0.01 + 0.25 * ld;
+    for(int ci = 0; ci < 4; ++ci)
+    {
+        const float low_view_z = calc_view_z_from_ndc_z(low_hw_depth4[ci], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
+        const float diff = abs(low_view_z - ld);
+        out_upscale_gathered_weight[ci] = (diff < upscale_limit_view_z)? 1.0 - diff / upscale_limit_view_z : 0.0;
+    }
+
+    const float upscale_weight_sum = out_upscale_gathered_weight.x + out_upscale_gathered_weight.y + out_upscale_gathered_weight.z + out_upscale_gathered_weight.w;
+    out_valid_upscale_sample = (upscale_weight_sum > 0.0);
+    if(out_valid_upscale_sample)
+    {
+        out_upscale_gathered_weight /= upscale_weight_sum;
+    }
+}
+
+float4 SampleSsProbeShL1(
+    Texture2D<float4> sh_tex,
+    float2 screen_uv,
+    int2 ss_probe_sh_base_texel,
+    float4 upscale_gathered_weight,
+    bool valid_upscale_sample)
+{
+    float4 gathered_sh[4];
+    gathered_sh[0] = sh_tex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(0), 0));
+    gathered_sh[1] = sh_tex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(1), 0));
+    gathered_sh[2] = sh_tex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(2), 0));
+    gathered_sh[3] = sh_tex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(3), 0));
+
+    if(valid_upscale_sample)
+    {
+        return
+            gathered_sh[0] * upscale_gathered_weight[0]
+            + gathered_sh[1] * upscale_gathered_weight[1]
+            + gathered_sh[2] * upscale_gathered_weight[2]
+            + gathered_sh[3] * upscale_gathered_weight[3];
+    }
+
+    return sh_tex.SampleLevel(samp, screen_uv, 0);
 }
 
 float EvalDirectionalShadow(Texture2D tex_cascade_shadowmap, SamplerComparisonState comp_samp, float3 L, float3 pixel_pos_ws, float3 normal, float3 view_origin, float3 camera_dir)
@@ -257,63 +317,28 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 
 	// GIのテスト(Dynamic Sky Visibility).
 	float sky_visibility = 1.0;
-	if(cb_ngl_lighting_pass.is_enable_gi)
+    float3 ss_probe_irradiance = float3(0.0, 0.0, 0.0);
+    if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.is_enable_irradiance || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
 	{
-        // ScreenSpaceProbe SHでSkyVisibility評価.
-        uint2 ss_probe_sh_tex_size;
-        ScreenSpaceProbeSHTex.GetDimensions(ss_probe_sh_tex_size.x, ss_probe_sh_tex_size.y);
-        const float2 ss_probe_sh_tex_size_f = float2(ss_probe_sh_tex_size);
-        
-        const float2 ss_probe_sh_texel_pos_f = screen_uv * ss_probe_sh_tex_size_f;
-        const int2 ss_probe_sh_base_texel = clamp(int2(floor(ss_probe_sh_texel_pos_f - 0.5)), int2(0, 0), int2(ss_probe_sh_tex_size) - int2(2, 2));
-
-        #if 1
-            // 深度ベースアップサンプリング.
-			const float4 low_hw_depth4 = ScreenSpaceProbeTileInfoTex.GatherRed(samp, screen_uv);
-            float4 upscale_gathered_weight = float4(0, 0, 0, 0);
-            const float upscale_limit_view_z = 0.01 + 0.25 * ld;// アップサンプリングの対象とする深度差の上限. ターゲットピクセルのViewZに比例. 係数は仮.
-            for(int ci = 0; ci < 4; ++ci)
-            {
-                // 空などの無効Depthはそのそもlimitを超えるとみなして重み0にする.
-                const float low_view_z = calc_view_z_from_ndc_z(low_hw_depth4[ci], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
-                const float diff = abs(low_view_z - ld);
-                upscale_gathered_weight[ci] = (diff < upscale_limit_view_z)? 1.0 - diff / upscale_limit_view_z : 0.0;
-            }
-            
-            float4 ss_probe_sh = float4(0.0, 0.0, 0.0, 0.0);
-            {
-                const float upscale_weight_sum = upscale_gathered_weight.x + upscale_gathered_weight.y + upscale_gathered_weight.z + upscale_gathered_weight.w;
-                const bool valid_upscale_sample = (upscale_weight_sum > 0.0);
-                
-                float4 upscale_gathered_sh[4];
-                upscale_gathered_sh[0] = ScreenSpaceProbeSHTex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(0), 0));
-                upscale_gathered_sh[1] = ScreenSpaceProbeSHTex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(1), 0));
-                upscale_gathered_sh[2] = ScreenSpaceProbeSHTex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(2), 0));
-                upscale_gathered_sh[3] = ScreenSpaceProbeSHTex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(3), 0));
-
-                if(valid_upscale_sample)
-                {
-                    ss_probe_sh = 
-                    (upscale_gathered_sh[0] * upscale_gathered_weight[0]
-                     + upscale_gathered_sh[1] * upscale_gathered_weight[1]
-                      + upscale_gathered_sh[2] * upscale_gathered_weight[2]
-                       + upscale_gathered_sh[3] * upscale_gathered_weight[3]) / upscale_weight_sum;
-                }
-                else
-                {
-                    // 有効なサンプルが見つからなかった. これはGI-1.0のMip探索を利用して回避できそう.
-                    // 現状はとりあえず単純にバイリニアサンプリングにフォールバック.
-                    ss_probe_sh = ScreenSpaceProbeSHTex.SampleLevel(samp, screen_uv, 0);
-                }
-            }
-        #else
-            // 単純バイリニアSampling
-            float4 ss_probe_sh = ScreenSpaceProbeSHTex.SampleLevel(samp, screen_uv, 0);
-        #endif
+        int2 ss_probe_sh_base_texel = int2(0, 0);
+        float4 upscale_gathered_weight = float4(0.0, 0.0, 0.0, 0.0);
+        bool valid_upscale_sample = false;
+        CalcSsProbeShUpsampleInfo(ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample, screen_uv, ld);
 
         const float4 sh_basis = EvaluateL1ShBasis(gb_normal_ws);
-        const float sh_sample = max(0.0, dot(ss_probe_sh, sh_basis));
-        sky_visibility = saturate(sh_sample);
+        if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
+        {
+            const float4 ss_probe_sh = SampleSsProbeShL1(ScreenSpaceProbeSHTex, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
+            const float sh_sample = max(0.0, dot(ss_probe_sh, sh_basis));
+            sky_visibility = saturate(sh_sample);
+        }
+        if(cb_ngl_lighting_pass.is_enable_irradiance)
+        {
+            const float4 ss_probe_sh_r = SampleSsProbeShL1(ScreenSpaceProbeRadianceSHTexR, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
+            const float4 ss_probe_sh_g = SampleSsProbeShL1(ScreenSpaceProbeRadianceSHTexG, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
+            const float4 ss_probe_sh_b = SampleSsProbeShL1(ScreenSpaceProbeRadianceSHTexB, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
+            ss_probe_irradiance = max(float3(0.0, 0.0, 0.0), float3(dot(ss_probe_sh_r, sh_basis), dot(ss_probe_sh_g, sh_basis), dot(ss_probe_sh_b, sh_basis)));
+        }
 	}
 	
 	// IBL.
@@ -322,6 +347,11 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		EvalIblDiffuseStandard(ibl_diffuse, ibl_specular, tex_ibl_diffuse, tex_ibl_specular, tex_ibl_dfg, samp, gb_normal_ws, V, gb_base_color, gb_roughness, gb_metalness);
 
 		lit_color += (ibl_diffuse + ibl_specular) * cb_ngl_lighting_pass.sky_lit_intensity * sky_visibility * ssao_sample.a;
+        if(cb_ngl_lighting_pass.is_enable_irradiance)
+        {
+            const float3 probe_diffuse_brdf = brdf_lambert(gb_base_color, gb_roughness, gb_metalness, gb_normal_ws, V, gb_normal_ws);
+            lit_color += probe_diffuse_brdf * ss_probe_irradiance * ssao_sample.a;
+        }
 	}
 
 

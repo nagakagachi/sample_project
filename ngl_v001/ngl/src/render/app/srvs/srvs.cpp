@@ -1790,6 +1790,9 @@ namespace ngl::render::app
         p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_srv.Get(), bbvgi_instance_->GetSsProbeTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), bbvgi_instance_->GetSsProbeTileInfoTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_sh_srv.Get(), bbvgi_instance_->GetSsProbeShTex().Get());
+        p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_radiance_sh_r_srv.Get(), bbvgi_instance_->GetSsProbeRadianceShTexR().Get());
+        p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_radiance_sh_g_srv.Get(), bbvgi_instance_->GetSsProbeRadianceShTexG().Get());
+        p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_radiance_sh_b_srv.Get(), bbvgi_instance_->GetSsProbeRadianceShTexB().Get());
         p_pso->SetView(p_desc_set, "cb_srvs", &bbvgi_instance_->GetDispatchCbh()->cbv);
     }
 
