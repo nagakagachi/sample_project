@@ -369,33 +369,29 @@ void main_cs(
         }
         else if(4 == debug_sub_mode)
         {
-            // Screen Space ProbeのSkyVisibility投影デバッグ.
-            const float3 sample_dir = -cb_srvs.main_light_dir_ws;
-        
-            // Octmapのテクセルが外側をBilinearSamplingしないようにクランプ.
-            float2 octmap_texel_pos = clamp(SspEncodeDirByNormal(sample_dir, ss_probe_tile_normal_ws) * SCREEN_SPACE_PROBE_OCT_RESOLUTION, 0.5, SCREEN_SPACE_PROBE_OCT_RESOLUTION-0.5);
-            float2 ss_probe_sample_texel_pos = ss_probe_atlas_tile_base_pos + octmap_texel_pos;
-
-            // BilinearSampling. 半球ではないOctahedralMapであるためボーダー部の処理スキップによるカクツキが目立つ..
-            float4 ss_probe_value = ScreenSpaceProbeTex.SampleLevel(SmpLinearClamp, ss_probe_sample_texel_pos / screen_size_f, 0);
-            RWTexWork[dtid.xy] = ss_probe_value.aaaa;
-        }
-        else if(5 == debug_sub_mode)
-        {
-            // SH係数をそのままRGBAで可視化 (Y00=R, Y1_{-1}(y)=G, Y1_0(z)=B, Y1_{+1}(x)=A).
+            // SkyVisibility SH係数をそのままRGBAで可視化 (Y00=R, Y1_{-1}(y)=G, Y1_0(z)=B, Y1_{+1}(x)=A).
             const float4 ss_probe_sh = ScreenSpaceProbeSHTex.Load(int3(ss_probe_tile_id, 0));
             RWTexWork[dtid.xy] = ss_probe_sh;
         }
-        else if(6 == debug_sub_mode)
+        else if(5 == debug_sub_mode)
         {
-            // main_light_dir_ws方向のSH再評価結果を表示.
+            // SkyVisibility SH の main_light_dir_ws 方向再評価結果を表示.
             const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);
             const float4 sh_basis = EvaluateL1ShBasis(sample_dir);
             const float4 ss_probe_sh = ScreenSpaceProbeSHTex.Load(int3(ss_probe_tile_id, 0));
             const float sh_sample = max(0.0, dot(ss_probe_sh, sh_basis));
             RWTexWork[dtid.xy] = sh_sample.xxxx;
         }
-        else if(7 == debug_sub_mode)
+        else if(6 <= debug_sub_mode && debug_sub_mode <= 9)
+        {
+            // Radiance SH係数を係数インデックスごとに可視化. RGB がそれぞれ R/G/B channel の同一 SH coefficient.
+            const uint coeff_index = uint(debug_sub_mode - 6);
+            const float4 ss_probe_sh_r = ScreenSpaceProbeRadianceSHTexR.Load(int3(ss_probe_tile_id, 0));
+            const float4 ss_probe_sh_g = ScreenSpaceProbeRadianceSHTexG.Load(int3(ss_probe_tile_id, 0));
+            const float4 ss_probe_sh_b = ScreenSpaceProbeRadianceSHTexB.Load(int3(ss_probe_tile_id, 0));
+            RWTexWork[dtid.xy] = float4(ss_probe_sh_r[coeff_index], ss_probe_sh_g[coeff_index], ss_probe_sh_b[coeff_index], 1.0);
+        }
+        else if(10 == debug_sub_mode)
         {
             // Screen Space Probe の Reprojection成功可視化.
             if(!isValidDepth(ss_probe_depth))
@@ -408,7 +404,7 @@ void main_cs(
                 RWTexWork[dtid.xy] = float4(debug_color, 1.0);
             }
         }
-        else if(8 == debug_sub_mode)
+        else if(11 == debug_sub_mode)
         {
             // Screen Space Probe SideCache の生存状態可視化.
             if(0 == cb_srvs.ss_probe_side_cache_enable)
@@ -444,26 +440,6 @@ void main_cs(
                     }
                 }
             }
-        }
-        else if(9 <= debug_sub_mode && debug_sub_mode <= 12)
-        {
-            // Radiance SH係数を係数インデックスごとに可視化. RGB がそれぞれ R/G/B channel の同一 SH coefficient.
-            const uint coeff_index = uint(debug_sub_mode - 9);
-            const float4 ss_probe_sh_r = ScreenSpaceProbeRadianceSHTexR.Load(int3(ss_probe_tile_id, 0));
-            const float4 ss_probe_sh_g = ScreenSpaceProbeRadianceSHTexG.Load(int3(ss_probe_tile_id, 0));
-            const float4 ss_probe_sh_b = ScreenSpaceProbeRadianceSHTexB.Load(int3(ss_probe_tile_id, 0));
-            RWTexWork[dtid.xy] = float4(ss_probe_sh_r[coeff_index], ss_probe_sh_g[coeff_index], ss_probe_sh_b[coeff_index], 1.0);
-        }
-        else if(13 == debug_sub_mode)
-        {
-            // main_light_dir_ws 方向の Radiance SH 再評価結果を表示.
-            const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);
-            const float4 sh_basis = EvaluateL1ShBasis(sample_dir);
-            const float4 ss_probe_sh_r = ScreenSpaceProbeRadianceSHTexR.Load(int3(ss_probe_tile_id, 0));
-            const float4 ss_probe_sh_g = ScreenSpaceProbeRadianceSHTexG.Load(int3(ss_probe_tile_id, 0));
-            const float4 ss_probe_sh_b = ScreenSpaceProbeRadianceSHTexB.Load(int3(ss_probe_tile_id, 0));
-            const float3 sh_sample = max(float3(0.0, 0.0, 0.0), float3(dot(ss_probe_sh_r, sh_basis), dot(ss_probe_sh_g, sh_basis), dot(ss_probe_sh_b, sh_basis)));
-            RWTexWork[dtid.xy] = float4(sh_sample, 1.0);
         }
     }
 }
