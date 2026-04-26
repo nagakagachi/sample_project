@@ -47,6 +47,12 @@ void main_cs(
         {
             // 移動によってシフトしてきた無効領域.
             RWBitmaskBrickVoxelOptionData[dtid.x] = (BbvOptionalData)0;
+            const uint accum_addr = bbv_radiance_accum_addr_base(dtid.x);
+            [unroll]
+            for(uint i = 0; i < k_bbv_radiance_accum_component_count; ++i)
+            {
+                RWBbvRadianceAccumBuffer[accum_addr + i] = 0;
+            }
             clear_voxel_data(RWBitmaskBrickVoxel, dtid.x);
         }
     }

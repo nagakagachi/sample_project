@@ -61,9 +61,12 @@ namespace ngl::render::app
 
         rtg::RtgResourceHandle h_depth{};// セットアップフェーズ用.
         rhi::RefSrvDep hw_depth_srv{};// レンダリングフェーズ用.
+        rtg::RtgResourceHandle h_color{};// radiance injection 用入力カラー.
+        rhi::RefSrvDep hw_color_srv{};// レンダリングフェーズ用.
 
         bool is_enable_injection_pass{true};// Voxel充填利用するか.
         bool is_enable_removal_pass{true};// Voxel除去に利用するか.
+        bool is_enable_radiance_injection_pass{false};// Brick radiance 注入に利用するか.
     };
     struct InjectionSourceDepthBufferInfo
     {
@@ -100,6 +103,10 @@ namespace ngl::render::app
         void Dispatch_Bbv_OccupancyUpdate_View(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
             const ngl::render::task::RenderPassViewInfo& main_view_info, const InjectionSourceDepthBufferInfo& depth_buffer_info
+            );
+        void Dispatch_Bbv_RadianceInjection_View(rhi::GraphicsCommandListDep* p_command_list,
+            rhi::ConstantBufferPooledHandle scene_cbv,
+            const ngl::render::task::RenderPassViewInfo& main_view_info, const InjectionSourceDepthBufferViewInfo& view_info
             );
             
         void Dispatch_Bbv_Main(rhi::GraphicsCommandListDep* p_command_list,
@@ -159,6 +166,8 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_removal_list_build_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_removal_apply_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_injection_apply_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_radiance_injection_apply_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_radiance_resolve_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_brick_count_aggregate_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_hibrick_count_aggregate_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_generate_visible_voxel_indirect_arg_ = {};
@@ -201,6 +210,7 @@ namespace ngl::render::app
 
         ComputeBufferSet bbv_buffer_ = {};
         ComputeBufferSet bbv_optional_data_buffer_ = {};
+        ComputeBufferSet bbv_radiance_accum_buffer_ = {};
 
         ngl::u32     bbv_hollow_voxel_list_count_max_ = {};
         // 可視Voxelのみ更新用.
@@ -289,6 +299,10 @@ namespace ngl::render::app
             const ngl::render::task::RenderPassViewInfo& main_view_info,
             
             const InjectionSourceDepthBufferInfo& depth_buffer_info);
+        void DispatchViewBbvRadianceInjection(rhi::GraphicsCommandListDep* p_command_list,
+            rhi::ConstantBufferPooledHandle scene_cbv,
+            const ngl::render::task::RenderPassViewInfo& main_view_info,
+            const InjectionSourceDepthBufferViewInfo& view_info);
             
         void DispatchUpdate(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
@@ -352,6 +366,55 @@ namespace ngl::render::app
 			);
 		}
 	};
+
+    class RenderTaskSrvsViewVoxelRadianceInjection : public ngl::rtg::IGraphicsTaskNode
+    {
+    public:
+		struct SetupDesc
+		{
+            int w{};
+            int h{};
+			
+            rhi::ConstantBufferPooledHandle scene_cbv{};
+            render::app::ScreenReconstructedVoxelStructure* p_srvs = {};
+
+            InjectionSourceDepthBufferViewInfo view_info{};
+		};
+		SetupDesc desc_{};
+		
+		void Setup(ngl::rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const ngl::render::task::RenderPassViewInfo& view_info,
+			const SetupDesc& desc)
+		{
+            if(!desc.p_srvs || desc.view_info.h_depth.IsInvalid() || desc.view_info.h_color.IsInvalid() || !desc.view_info.is_enable_radiance_injection_pass)
+                return;
+
+			desc_ = desc;
+			{
+                desc_.view_info.h_depth = builder.RecordResourceAccess(*this, desc_.view_info.h_depth, ngl::rtg::AccessType::SHADER_READ);
+                desc_.view_info.h_color = builder.RecordResourceAccess(*this, desc_.view_info.h_color, ngl::rtg::AccessType::SHADER_READ);
+			}
+			builder.RegisterTaskNodeRenderFunction(this,
+				[this, view_info](ngl::rtg::RenderTaskGraphBuilder& builder, ngl::rtg::TaskGraphicsCommandListAllocator command_list_allocator)
+				{
+					command_list_allocator.Alloc(1);
+					auto gfx_commandlist = command_list_allocator.GetOrCreate(0);
+					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RenderTaskSrvsViewVoxelRadianceInjection");
+
+                    InjectionSourceDepthBufferViewInfo injection_view_info = desc_.view_info;
+                    {
+                        auto res_depth = builder.GetAllocatedResource(this, desc_.view_info.h_depth);
+                        auto res_color = builder.GetAllocatedResource(this, desc_.view_info.h_color);
+                        assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
+                        assert(res_color.tex_.IsValid() && res_color.srv_.IsValid());
+                        injection_view_info.hw_depth_srv = res_depth.srv_;
+                        injection_view_info.hw_color_srv = res_color.srv_;
+                    }
+
+                    desc_.p_srvs->DispatchViewBbvRadianceInjection(gfx_commandlist, desc_.scene_cbv, view_info, injection_view_info);
+				}
+			);
+		}
+    };
     
 
     class RenderTaskSrvsViewVoxelInjection : public ngl::rtg::IGraphicsTaskNode

@@ -298,6 +298,27 @@ void main_cs(
             debug_color = lerp(debug_color, float3(transmittance, transmittance, transmittance), traced_brick_rate * 0.15);
             RWTexWork[dtid.xy] = float4(debug_color, 1.0);
         }
+        else if(14 == debug_sub_mode)
+        {
+            // Resolve 済み Brick radiance 可視化.
+            const float trace_distance = 10000.0;
+            int hit_voxel_index = -1;
+            float4 debug_ray_info;
+            float4 curr_ray_t_ws = trace_bbv_dev_hibrick(
+                hit_voxel_index, debug_ray_info,
+                view_origin, ray_dir_ws, trace_distance,
+                cb_srvs.bbv.grid_min_pos, cb_srvs.bbv.cell_size, cb_srvs.bbv.grid_resolution,
+                cb_srvs.bbv.grid_toroidal_offset, BitmaskBrickVoxel, false);
+
+            float3 debug_color = float3(0.0, 0.0, 0.0);
+            if(0.0 <= curr_ray_t_ws.x)
+            {
+                const BbvOptionalData voxel_optional_data = BitmaskBrickVoxelOptionData[hit_voxel_index];
+                debug_color = voxel_optional_data.resolved_radiance / (1.0 + voxel_optional_data.resolved_radiance);
+                debug_color = pow(max(debug_color, 0.0.xxx), 1.0 / 2.2);
+            }
+            RWTexWork[dtid.xy] = float4(debug_color, 1.0);
+        }
     }
     // Category 1: WCP.
     else if(1 == debug_category)

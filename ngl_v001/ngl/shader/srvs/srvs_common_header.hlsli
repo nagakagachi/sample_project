@@ -116,6 +116,21 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     // HiBrick data region の 1 HiBrick あたり要素数.
     // 初段階では cluster 内 occupied voxel 総数のみを持つ。
     #define k_bbv_hibrick_data_u32_count (1)
+    // Brick radiance accumulation buffer は RGB + sample count の 4 要素を 1 Brick ごとに持つ。
+    #define k_bbv_radiance_accum_component_count (4)
+    // HDR radiance の atomic 加算用 fixed-point スケール.
+    #define k_bbv_radiance_fixed_point_scale (256.0)
+    // 極端な HDR 値による uint overflow を避けるための入力 clamp.
+    #define k_bbv_radiance_input_clamp (64.0)
+    // BBV radiance injection は 2x2 スクリーンタイル group ごとに 1F で 1 tile を処理し、4F で全更新する。
+    // dispatch も group 単位に圧縮し、未選択 tile の threadgroup は起動しない前提の固定設定。
+    #define k_bbv_radiance_injection_tile_width (16)
+    #define k_bbv_radiance_injection_tile_group_resolution (2)
+    #define k_bbv_radiance_injection_phase_count (k_bbv_radiance_injection_tile_group_resolution * k_bbv_radiance_injection_tile_group_resolution)
+    // BBV radiance resolve は 2x2x2 Brick group ごとに 1F で 1 Brick を処理し、8F で全更新する。
+    // dispatch 自体も group 単位に圧縮し、未選択 Brick を起動しない前提の固定設定。
+    #define k_bbv_radiance_resolve_brick_group_resolution (2)
+    #define k_bbv_radiance_resolve_phase_count (k_bbv_radiance_resolve_brick_group_resolution * k_bbv_radiance_resolve_brick_group_resolution * k_bbv_radiance_resolve_brick_group_resolution)
 
 
     #define k_bbv_per_voxel_resolution_inv (1.0 / float(k_bbv_per_voxel_resolution))
@@ -177,8 +192,12 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     {
         // ジオメトリ表面を含むBrickまでの相対ベクトル. ジオメトリ表面を含むBrickは0, それ以外はマンハッタン距離.
         int3 to_surface_vector;
-        // 現在未使用.
-        uint dummy;
+        uint dummy0;
+
+        // Screen-space から Resolve した Brick radiance.
+        float3 resolved_radiance;
+        // Resolve に寄与した sample count.
+        uint resolved_sample_count;
     };
 
 

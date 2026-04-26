@@ -450,6 +450,27 @@ namespace ngl::test
 
 				// ----------------------------------------
 				// After Lighting Pass.
+                    auto* task_srvs_view_voxel_radiance_injection = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskSrvsViewVoxelRadianceInjection>();
+                    {
+                        ngl::render::app::RenderTaskSrvsViewVoxelRadianceInjection::SetupDesc setup_desc{};
+                        {
+                            setup_desc.w = screen_w;
+                            setup_desc.h = screen_h;
+
+                            setup_desc.scene_cbv = scene_cb_h;
+                            setup_desc.p_srvs = render_frame_desc.feature_config.gi.p_srvs;
+
+                            setup_desc.view_info.view_mat = view_info.view_mat;
+                            setup_desc.view_info.proj_mat = view_info.proj_mat;
+                            setup_desc.view_info.atlas_offset = math::Vec2i(0, 0);
+                            setup_desc.view_info.atlas_resolution = math::Vec2i(screen_w, screen_h);
+                            setup_desc.view_info.h_depth = task_depth->h_depth_;
+                            setup_desc.view_info.h_color = task_light->h_light_;
+                            setup_desc.view_info.is_enable_radiance_injection_pass = (render_frame_desc.feature_config.gi.enable_srvs_injection_pass) && true;
+                        }
+                        task_srvs_view_voxel_radiance_injection->Setup(rtg_builder, p_device, view_info, setup_desc);
+                    }
+
 				auto* task_after_light = rtg_builder.AppendTaskNode<ngl::render::task::TaskAfterLightPass>();
 				{
 					ngl::render::task::TaskAfterLightPass::SetupDesc setup_desc{};

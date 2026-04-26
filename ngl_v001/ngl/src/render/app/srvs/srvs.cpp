@@ -33,6 +33,30 @@ namespace ngl::render::app
     // 時間分散するScreenProbeグループのサイズ. 幅がこのサイズのProbeグループ毎に1Fに一つ更新をする. GI-1.0などは2を指定して 4フレームで2x2のグループが更新される.
     static const int k_ss_probe_update_skip_tile_group_width = 1;
 
+    static math::Vec2u CalcBbvRadianceInjectionDispatchResolution(const math::Vec2u& src_resolution)
+    {
+        const math::Vec2u tile_grid_resolution(
+            (src_resolution.x + (k_bbv_radiance_injection_tile_width - 1u)) / k_bbv_radiance_injection_tile_width,
+            (src_resolution.y + (k_bbv_radiance_injection_tile_width - 1u)) / k_bbv_radiance_injection_tile_width);
+        // radiance injection は全 screen tile を起動せず、2x2 group 数ぶんだけ threadgroup を起動する。
+        const math::Vec2u group_grid_resolution(
+            (tile_grid_resolution.x + (k_bbv_radiance_injection_tile_group_resolution - 1u)) / k_bbv_radiance_injection_tile_group_resolution,
+            (tile_grid_resolution.y + (k_bbv_radiance_injection_tile_group_resolution - 1u)) / k_bbv_radiance_injection_tile_group_resolution);
+        return math::Vec2u(
+            group_grid_resolution.x * k_bbv_radiance_injection_tile_width,
+            group_grid_resolution.y * k_bbv_radiance_injection_tile_width);
+    }
+
+    static u32 CalcBbvRadianceResolveDispatchCount(const math::Vec3u& grid_resolution)
+    {
+        // radiance resolve は Brick 全数 dispatch せず、2x2x2 group 数ぶんだけ起動する。
+        const math::Vec3u group_grid_resolution(
+            (grid_resolution.x + (k_bbv_radiance_resolve_brick_group_resolution - 1u)) / k_bbv_radiance_resolve_brick_group_resolution,
+            (grid_resolution.y + (k_bbv_radiance_resolve_brick_group_resolution - 1u)) / k_bbv_radiance_resolve_brick_group_resolution,
+            (grid_resolution.z + (k_bbv_radiance_resolve_brick_group_resolution - 1u)) / k_bbv_radiance_resolve_brick_group_resolution);
+        return group_grid_resolution.x * group_grid_resolution.y * group_grid_resolution.z;
+    }
+
 
     // デバッグ.
     int ScreenReconstructedVoxelStructure::dbg_view_category_ = -1;
@@ -197,7 +221,7 @@ namespace ngl::render::app
                 // カテゴリ別サブモードスライダ.
                 if (0 <= dbg_view_category_)
                 {
-                    const int k_sub_mode_max[] = { 13, 0, 7, 4 };
+                    const int k_sub_mode_max[] = { 14, 0, 7, 4 };
                     const int sub_max = k_sub_mode_max[dbg_view_category_];
                     // カテゴリ切替時にクランプ.
                     if (dbg_view_sub_mode_ > sub_max) dbg_view_sub_mode_ = sub_max;
@@ -367,6 +391,8 @@ namespace ngl::render::app
             pso_bbv_removal_list_build_ = CreateComputePSO("srvs/bbv/bbv_removal_list_build_cs.hlsl");
             pso_bbv_removal_apply_ = CreateComputePSO("srvs/bbv/bbv_removal_apply_cs.hlsl");
             pso_bbv_injection_apply_     = CreateComputePSO("srvs/bbv/bbv_injection_apply_cs.hlsl");
+            pso_bbv_radiance_injection_apply_ = CreateComputePSO("srvs/bbv/bbv_radiance_injection_apply_cs.hlsl");
+            pso_bbv_radiance_resolve_ = CreateComputePSO("srvs/bbv/bbv_radiance_resolve_cs.hlsl");
             pso_bbv_brick_count_aggregate_ = CreateComputePSO("srvs/bbv/bbv_brick_count_aggregate_cs.hlsl");
             pso_bbv_hibrick_count_aggregate_ = CreateComputePSO("srvs/bbv/bbv_hibrick_count_aggregate_cs.hlsl");
             pso_bbv_generate_visible_voxel_indirect_arg_ = CreateComputePSO("srvs/bbv/bbv_generate_visible_surface_list_indirect_arg_cs.hlsl");
@@ -478,6 +504,17 @@ namespace ngl::render::app
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default}
                                             ,   "Srvs_BbvOptionalDataBuffer");
+        }
+        {
+            bbv_radiance_accum_buffer_.InitializeAsTyped(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(uint32_t),
+                                               .element_count     = voxel_count * k_bbv_radiance_accum_component_count,
+
+                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default},
+                                           rhi::EResourceFormat::Format_R32_UINT
+                                        ,  "Srvs_BbvRadianceAccumBuffer");
         }
         {
             bbv_buffer_.InitializeAsTyped(p_device,
@@ -908,6 +945,7 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_bbv_clear_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
+                pso_bbv_clear_->SetView(&desc_set, "RWBbvRadianceAccumBuffer", bbv_radiance_accum_buffer_.uav.Get());
                 pso_bbv_clear_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_bbv_clear_.Get());
@@ -915,6 +953,7 @@ namespace ngl::render::app
                 pso_bbv_clear_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
 
                 p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(bbv_radiance_accum_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
             }
             {
@@ -980,6 +1019,7 @@ namespace ngl::render::app
             pso_bbv_begin_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_bbv_begin_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
             pso_bbv_begin_update_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
+            pso_bbv_begin_update_->SetView(&desc_set, "RWBbvRadianceAccumBuffer", bbv_radiance_accum_buffer_.uav.Get());
             pso_bbv_begin_update_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
 
             p_command_list->SetPipelineState(pso_bbv_begin_update_.Get());
@@ -987,6 +1027,7 @@ namespace ngl::render::app
             pso_bbv_begin_update_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
 
             p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
+            p_command_list->ResourceUavBarrier(bbv_radiance_accum_buffer_.buffer.Get());
             p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
         }
     }
@@ -1236,6 +1277,71 @@ namespace ngl::render::app
             p_command_list->DispatchIndirect(bbv_fine_update_voxel_indirect_arg_.buffer.Get());// こちらは可視VoxelのIndirect.
 
             p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_probe_buffer_.buffer.Get());
+        }
+    }
+
+    void BitmaskBrickVoxelGi::Dispatch_Bbv_RadianceInjection_View(rhi::GraphicsCommandListDep* p_command_list,
+        rhi::ConstantBufferPooledHandle scene_cbv,
+        const ngl::render::task::RenderPassViewInfo& main_view_info,
+        const InjectionSourceDepthBufferViewInfo& view_info)
+    {
+        if(!view_info.is_enable_radiance_injection_pass || !view_info.hw_depth_srv.IsValid() || !view_info.hw_color_srv.IsValid())
+            return;
+
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Dispatch_Bbv_RadianceInjection_View");
+
+        auto cbh_injection_view_info = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(BbvSurfaceInjectionViewInfo));
+        {
+            auto* p = cbh_injection_view_info->buffer.MapAs<BbvSurfaceInjectionViewInfo>();
+            p->cb_view_mtx = view_info.view_mat;
+            p->cb_proj_mtx = view_info.proj_mat;
+            p->cb_view_inv_mtx = ngl::math::Mat34::Inverse(view_info.view_mat);
+            p->cb_proj_inv_mtx = ngl::math::Mat44::Inverse(view_info.proj_mat);
+            p->cb_ndc_z_to_view_z_coef = CalcViewDepthReconstructCoefFromProjectionMatrix(view_info.proj_mat);
+            p->cb_view_depth_buffer_offset_size = math::Vec4i(
+                view_info.atlas_offset.x,
+                view_info.atlas_offset.y,
+                view_info.atlas_resolution.x,
+                view_info.atlas_resolution.y);
+            cbh_injection_view_info->buffer.Unmap();
+        }
+
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvRadianceInjection");
+            const auto injection_dispatch_resolution = CalcBbvRadianceInjectionDispatchResolution(math::Vec2u(
+                static_cast<u32>(view_info.atlas_resolution.x),
+                static_cast<u32>(view_info.atlas_resolution.y)));
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_bbv_radiance_injection_apply_->SetView(&desc_set, "TexHardwareDepth", view_info.hw_depth_srv.Get());
+            pso_bbv_radiance_injection_apply_->SetView(&desc_set, "TexInputRadiance", view_info.hw_color_srv.Get());
+            pso_bbv_radiance_injection_apply_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv);
+            pso_bbv_radiance_injection_apply_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+            pso_bbv_radiance_injection_apply_->SetView(&desc_set, "RWBbvRadianceAccumBuffer", bbv_radiance_accum_buffer_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_bbv_radiance_injection_apply_.Get());
+            p_command_list->SetDescriptorSet(pso_bbv_radiance_injection_apply_.Get(), &desc_set);
+            // 1F に各 2x2 screen tile group から 1 tile だけ更新する前提なので、dispatch も group 数に合わせる。
+            pso_bbv_radiance_injection_apply_->DispatchHelper(p_command_list, injection_dispatch_resolution.x, injection_dispatch_resolution.y, 1);
+
+            p_command_list->ResourceUavBarrier(bbv_radiance_accum_buffer_.buffer.Get());
+        }
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvRadianceResolve");
+            const auto resolve_dispatch_count = CalcBbvRadianceResolveDispatchCount(bbv_grid_updater_.Get().resolution);
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_bbv_radiance_resolve_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+            pso_bbv_radiance_resolve_->SetView(&desc_set, "RWBbvRadianceAccumBuffer", bbv_radiance_accum_buffer_.uav.Get());
+            pso_bbv_radiance_resolve_->SetView(&desc_set, "RWBitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_bbv_radiance_resolve_.Get());
+            p_command_list->SetDescriptorSet(pso_bbv_radiance_resolve_.Get(), &desc_set);
+            // 1F に各 2x2x2 group から 1 Brick だけ更新する前提なので、dispatch 数も group 数に合わせる。
+            pso_bbv_radiance_resolve_->DispatchHelper(p_command_list, resolve_dispatch_count, 1, 1);
+
+            p_command_list->ResourceUavBarrier(bbv_radiance_accum_buffer_.buffer.Get());
+            p_command_list->ResourceUavBarrier(bbv_optional_data_buffer_.buffer.Get());
         }
     }
     
@@ -1736,6 +1842,16 @@ namespace ngl::render::app
         if(bbvgi_instance_)
         {
             bbvgi_instance_->Dispatch_Bbv_OccupancyUpdate_View(p_command_list, scene_cbv, main_view_info, depth_buffer_info);
+        }
+    }
+    void ScreenReconstructedVoxelStructure::DispatchViewBbvRadianceInjection(rhi::GraphicsCommandListDep* p_command_list,
+        rhi::ConstantBufferPooledHandle scene_cbv,
+        const ngl::render::task::RenderPassViewInfo& main_view_info,
+        const InjectionSourceDepthBufferViewInfo& view_info)
+    {
+        if(bbvgi_instance_)
+        {
+            bbvgi_instance_->Dispatch_Bbv_RadianceInjection_View(p_command_list, scene_cbv, main_view_info, view_info);
         }
     }
     void ScreenReconstructedVoxelStructure::DispatchUpdate(rhi::GraphicsCommandListDep* p_command_list,

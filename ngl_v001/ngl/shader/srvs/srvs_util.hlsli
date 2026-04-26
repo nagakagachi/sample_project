@@ -35,6 +35,7 @@ RWBuffer<uint>		RWBitmaskBrickVoxel;
 // Bbv毎の追加データ.
 StructuredBuffer<BbvOptionalData>		BitmaskBrickVoxelOptionData;
 RWStructuredBuffer<BbvOptionalData>	RWBitmaskBrickVoxelOptionData;
+RWBuffer<uint>    RWBbvRadianceAccumBuffer;
 
 // ジオメトリ可視表面のBbvリスト. 0番要素はカウンタ.
 Buffer<uint>		VisibleVoxelList;
@@ -429,6 +430,80 @@ uint bbv_voxel_bitmask_data_addr(uint voxel_index)
 uint bbv_voxel_bitmask_uint_count()
 {
     return k_bbv_per_voxel_bitmask_u32_count;
+}
+
+uint bbv_radiance_accum_addr_base(uint voxel_index)
+{
+    return voxel_index * k_bbv_radiance_accum_component_count;
+}
+uint bbv_radiance_accum_r_addr(uint voxel_index)
+{
+    return bbv_radiance_accum_addr_base(voxel_index) + 0;
+}
+uint bbv_radiance_accum_g_addr(uint voxel_index)
+{
+    return bbv_radiance_accum_addr_base(voxel_index) + 1;
+}
+uint bbv_radiance_accum_b_addr(uint voxel_index)
+{
+    return bbv_radiance_accum_addr_base(voxel_index) + 2;
+}
+uint bbv_radiance_accum_count_addr(uint voxel_index)
+{
+    return bbv_radiance_accum_addr_base(voxel_index) + 3;
+}
+
+int2 bbv_radiance_injection_tile_grid_resolution(int2 src_resolution)
+{
+    return (src_resolution + (k_bbv_radiance_injection_tile_width - 1)) / k_bbv_radiance_injection_tile_width;
+}
+
+int2 bbv_radiance_injection_group_grid_resolution(int2 src_resolution)
+{
+    // odd tile 数端も取りこぼさないよう切り上げで group 数を求める。
+    return (bbv_radiance_injection_tile_grid_resolution(src_resolution) + (k_bbv_radiance_injection_tile_group_resolution - 1)) / k_bbv_radiance_injection_tile_group_resolution;
+}
+
+bool bbv_radiance_injection_group_coord_to_tile_coord(int2 group_coord, out int2 tile_coord, int2 src_resolution)
+{
+    // frame_count 下位 2bit を 2x2 tile group 内 local xy へ割り当てて、4F で group 内全 tile を巡回する。
+    const uint phase = cb_srvs.frame_count & (k_bbv_radiance_injection_phase_count - 1);
+    const int2 local_phase = int2(
+        phase & 1,
+        (phase >> 1) & 1);
+    tile_coord = group_coord * k_bbv_radiance_injection_tile_group_resolution + local_phase;
+
+    // 端の不完全 group だけ範囲外 tile が出るので、そこだけ無効化する。
+    return all(tile_coord < bbv_radiance_injection_tile_grid_resolution(src_resolution));
+}
+
+int3 bbv_radiance_resolve_group_grid_resolution()
+{
+    // odd 解像度端も取りこぼさないよう切り上げで group 数を求める。
+    return (cb_srvs.bbv.grid_resolution + (k_bbv_radiance_resolve_brick_group_resolution - 1)) / k_bbv_radiance_resolve_brick_group_resolution;
+}
+
+uint bbv_radiance_resolve_dispatch_count()
+{
+    // 1 dispatch = 1 group。2x2x2 内のどの Brick を処理するかは frame_count の下位 3bit で決める。
+    const int3 group_grid_resolution = bbv_radiance_resolve_group_grid_resolution();
+    return group_grid_resolution.x * group_grid_resolution.y * group_grid_resolution.z;
+}
+
+bool bbv_radiance_resolve_dispatch_index_to_voxel_coord(uint dispatch_index, out int3 voxel_coord)
+{
+    const int3 group_grid_resolution = bbv_radiance_resolve_group_grid_resolution();
+    const int3 group_coord = index_to_voxel_coord(dispatch_index, group_grid_resolution);
+    // frame_count 下位 3bit を 2x2x2 group 内 local xyz へ割り当てて、8F で group 内全 Brick を巡回する。
+    const uint phase = cb_srvs.frame_count & (k_bbv_radiance_resolve_phase_count - 1);
+    const int3 local_phase = int3(
+        phase & 1,
+        (phase >> 1) & 1,
+        (phase >> 2) & 1);
+    voxel_coord = group_coord * k_bbv_radiance_resolve_brick_group_resolution + local_phase;
+
+    // 端の不完全 group だけ範囲外が出るので、そこだけ無効化する。
+    return all(voxel_coord < cb_srvs.bbv.grid_resolution);
 }
 
 // Brick 内の occupied voxel count を、簡易 cone 積分で使う 0..1 の密度近似へ変換する。
