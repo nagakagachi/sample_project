@@ -136,10 +136,7 @@ namespace ngl::render::app
         rhi::RefSrvDep GetWcpProbeAtlasTex() const { return wcp_probe_atlas_tex_.srv; }
         rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_[ss_probe_latest_filtered_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbeTileInfoTex() const { return ss_probe_tile_info_tex_[ss_probe_tile_info_curr_frame_tex_index_].srv; }
-        rhi::RefSrvDep GetSsProbeShTex() const { return ss_probe_sh_tex_.srv; }
-        rhi::RefSrvDep GetSsProbeRadianceShTexR() const { return ss_probe_radiance_sh_tex_[0].srv; }
-        rhi::RefSrvDep GetSsProbeRadianceShTexG() const { return ss_probe_radiance_sh_tex_[1].srv; }
-        rhi::RefSrvDep GetSsProbeRadianceShTexB() const { return ss_probe_radiance_sh_tex_[2].srv; }
+        rhi::RefSrvDep GetSsProbePackedShTex() const { return ss_probe_packed_sh_tex_.srv; }
 
     private:
         bool is_first_dispatch_ = true;
@@ -191,7 +188,6 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_spatial_filter_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_sh_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_radiance_sh_update_ = {};
 
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
@@ -230,8 +226,7 @@ namespace ngl::render::app
         // ScreenSpaceProbe.
         ComputeTextureSet ss_probe_tile_info_tex_[2] = {}; //f16_rgba, 1/8解像度のProbeタイル用情報. x: depth, y: probe local pos(flat), zw: OctEncode WS normal.
         ComputeTextureSet ss_probe_tex_[2] = {};// 8x8 texel per probe.
-        ComputeTextureSet ss_probe_sh_tex_ = {}; //f16_rgba, 1/8解像度のSkyVisibility用L1 SH係数. rgba = l00, l1y, l1z, l1x.
-        ComputeTextureSet ss_probe_radiance_sh_tex_[3] = {}; //f16_rgba x3, 1/8解像度のRadiance用L1 SH係数. [0]=R, [1]=G, [2]=B.
+        ComputeTextureSet ss_probe_packed_sh_tex_ = {}; //f16_rgba, 係数優先2x2 atlas. RGBA = SkyVisibility + RadianceRGB.
         ComputeTextureSet ss_probe_best_prev_tile_tex_ = {}; //r32_uint, Preupdateで計算したBestPrevTile (packed tile id).
         // Persistent Side Cache (minimal): evicted probe octmap + world-space meta per probe tile.
         ComputeTextureSet ss_probe_side_cache_tex_ = {}; // 8x8 texel per cached probe.

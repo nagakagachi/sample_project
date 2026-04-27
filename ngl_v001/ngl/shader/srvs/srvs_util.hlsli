@@ -77,16 +77,9 @@ RWTexture2D<float4>    RWScreenSpaceProbeTileInfoTex;
 Texture2D<uint>        ScreenSpaceProbeBestPrevTileTex;
 RWTexture2D<uint>      RWScreenSpaceProbeBestPrevTileTex;
 
-    // L1 SH (SkyVisibility).
-    Texture2D<float4>      ScreenSpaceProbeSHTex;
-    RWTexture2D<float4>    RWScreenSpaceProbeSHTex;
-    // L1 SH (Radiance). R/G/B それぞれ 4 係数を個別の float4 で保持.
-    Texture2D<float4>      ScreenSpaceProbeRadianceSHTexR;
-    RWTexture2D<float4>    RWScreenSpaceProbeRadianceSHTexR;
-    Texture2D<float4>      ScreenSpaceProbeRadianceSHTexG;
-    RWTexture2D<float4>    RWScreenSpaceProbeRadianceSHTexG;
-    Texture2D<float4>      ScreenSpaceProbeRadianceSHTexB;
-    RWTexture2D<float4>    RWScreenSpaceProbeRadianceSHTexB;
+// Packed L1 SH atlas. 2x2 coeff-major atlas with RGBA = SkyVisibility + RadianceRGB.
+Texture2D<float4>      ScreenSpaceProbePackedSHTex;
+RWTexture2D<float4>    RWScreenSpaceProbePackedSHTex;
 
 // Persistent side cache for ScreenSpaceProbe.
 Texture2D<float4>      ScreenSpaceProbeSideCacheTex;
@@ -106,6 +99,36 @@ bool isValidDepth(float d)
 {
     // 深度が有効範囲内かどうかを判定.
     return (0.0 < d && d < 1.0);
+}
+
+int2 SspPackedShAtlasLogicalResolution()
+{
+    uint2 packed_sh_tex_size;
+    ScreenSpaceProbePackedSHTex.GetDimensions(packed_sh_tex_size.x, packed_sh_tex_size.y);
+    return int2(packed_sh_tex_size >> 1);
+}
+
+int2 SspPackedShAtlasCoeffOffset(uint coeff_index, int2 logical_resolution)
+{
+    switch(coeff_index)
+    {
+    default:
+    case 0: return int2(0, 0);
+    case 1: return int2(logical_resolution.x, 0);
+    case 2: return int2(0, logical_resolution.y);
+    case 3: return int2(logical_resolution.x, logical_resolution.y);
+    }
+}
+
+int2 SspPackedShAtlasTexelCoord(int2 probe_tile_id, uint coeff_index, int2 logical_resolution)
+{
+    return probe_tile_id + SspPackedShAtlasCoeffOffset(coeff_index, logical_resolution);
+}
+
+float4 SspPackedShAtlasLoadCoeff(int2 probe_tile_id, uint coeff_index)
+{
+    const int2 logical_resolution = SspPackedShAtlasLogicalResolution();
+    return ScreenSpaceProbePackedSHTex.Load(int3(SspPackedShAtlasTexelCoord(probe_tile_id, coeff_index, logical_resolution), 0));
 }
 
 // ScreenSpaceProbeTileInfo.y のビット割り当て.

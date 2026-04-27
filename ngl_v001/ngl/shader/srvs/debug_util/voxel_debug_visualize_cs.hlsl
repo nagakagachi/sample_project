@@ -370,7 +370,11 @@ void main_cs(
         else if(4 == debug_sub_mode)
         {
             // SkyVisibility SH係数をそのままRGBAで可視化 (Y00=R, Y1_{-1}(y)=G, Y1_0(z)=B, Y1_{+1}(x)=A).
-            const float4 ss_probe_sh = ScreenSpaceProbeSHTex.Load(int3(ss_probe_tile_id, 0));
+            const float4 ss_probe_sh = float4(
+                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 0).r,
+                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 1).r,
+                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 2).r,
+                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 3).r);
             RWTexWork[dtid.xy] = ss_probe_sh;
         }
         else if(5 == debug_sub_mode)
@@ -378,7 +382,11 @@ void main_cs(
             // SkyVisibility SH の main_light_dir_ws 方向再評価結果を表示.
             const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);
             const float4 sh_basis = EvaluateL1ShBasis(sample_dir);
-            const float4 ss_probe_sh = ScreenSpaceProbeSHTex.Load(int3(ss_probe_tile_id, 0));
+            const float4 ss_probe_sh = float4(
+                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 0).r,
+                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 1).r,
+                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 2).r,
+                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 3).r);
             const float sh_sample = max(0.0, dot(ss_probe_sh, sh_basis));
             RWTexWork[dtid.xy] = sh_sample.xxxx;
         }
@@ -386,10 +394,8 @@ void main_cs(
         {
             // Radiance SH係数を係数インデックスごとに可視化. RGB がそれぞれ R/G/B channel の同一 SH coefficient.
             const uint coeff_index = uint(debug_sub_mode - 6);
-            const float4 ss_probe_sh_r = ScreenSpaceProbeRadianceSHTexR.Load(int3(ss_probe_tile_id, 0));
-            const float4 ss_probe_sh_g = ScreenSpaceProbeRadianceSHTexG.Load(int3(ss_probe_tile_id, 0));
-            const float4 ss_probe_sh_b = ScreenSpaceProbeRadianceSHTexB.Load(int3(ss_probe_tile_id, 0));
-            RWTexWork[dtid.xy] = float4(ss_probe_sh_r[coeff_index], ss_probe_sh_g[coeff_index], ss_probe_sh_b[coeff_index], 1.0);
+            const float4 packed_sh_coeff = SspPackedShAtlasLoadCoeff(ss_probe_tile_id, coeff_index);
+            RWTexWork[dtid.xy] = float4(packed_sh_coeff.gba, 1.0);
         }
         else if(10 == debug_sub_mode)
         {

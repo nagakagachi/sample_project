@@ -113,8 +113,7 @@ void CalcSsProbeShUpsampleInfo(
     float2 screen_uv,
     float ld)
 {
-    uint2 ss_probe_sh_tex_size;
-    ScreenSpaceProbeSHTex.GetDimensions(ss_probe_sh_tex_size.x, ss_probe_sh_tex_size.y);
+    const int2 ss_probe_sh_tex_size = SspPackedShAtlasLogicalResolution();
     const float2 ss_probe_sh_tex_size_f = float2(ss_probe_sh_tex_size);
 
     const float2 ss_probe_sh_texel_pos_f = screen_uv * ss_probe_sh_tex_size_f;
@@ -138,18 +137,19 @@ void CalcSsProbeShUpsampleInfo(
     }
 }
 
-float4 SampleSsProbeShL1(
-    Texture2D<float4> sh_tex,
+float4 SampleSsProbePackedShCoeff(
+    uint coeff_index,
     float2 screen_uv,
     int2 ss_probe_sh_base_texel,
     float4 upscale_gathered_weight,
     bool valid_upscale_sample)
 {
+    const int2 logical_resolution = SspPackedShAtlasLogicalResolution();
     float4 gathered_sh[4];
-    gathered_sh[0] = sh_tex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(0), 0));
-    gathered_sh[1] = sh_tex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(1), 0));
-    gathered_sh[2] = sh_tex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(2), 0));
-    gathered_sh[3] = sh_tex.Load(int3(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(3), 0));
+    gathered_sh[0] = ScreenSpaceProbePackedSHTex.Load(int3(SspPackedShAtlasTexelCoord(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(0), coeff_index, logical_resolution), 0));
+    gathered_sh[1] = ScreenSpaceProbePackedSHTex.Load(int3(SspPackedShAtlasTexelCoord(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(1), coeff_index, logical_resolution), 0));
+    gathered_sh[2] = ScreenSpaceProbePackedSHTex.Load(int3(SspPackedShAtlasTexelCoord(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(2), coeff_index, logical_resolution), 0));
+    gathered_sh[3] = ScreenSpaceProbePackedSHTex.Load(int3(SspPackedShAtlasTexelCoord(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(3), coeff_index, logical_resolution), 0));
 
     if(valid_upscale_sample)
     {
@@ -160,7 +160,42 @@ float4 SampleSsProbeShL1(
             + gathered_sh[3] * upscale_gathered_weight[3];
     }
 
-    return sh_tex.SampleLevel(samp, screen_uv, 0);
+    uint2 packed_sh_tex_size;
+    ScreenSpaceProbePackedSHTex.GetDimensions(packed_sh_tex_size.x, packed_sh_tex_size.y);
+    const float2 logical_resolution_f = float2(logical_resolution);
+    const float2 packed_sh_tex_size_f = float2(packed_sh_tex_size);
+    const float2 coeff_offset = float2(SspPackedShAtlasCoeffOffset(coeff_index, logical_resolution));
+    const float2 coeff_uv = (clamp(screen_uv * logical_resolution_f, 0.5, logical_resolution_f - 0.5) + coeff_offset) / packed_sh_tex_size_f;
+    return ScreenSpaceProbePackedSHTex.SampleLevel(samp, coeff_uv, 0);
+}
+
+struct SsProbePackedShL1Sample
+{
+    float4 sky_visibility_sh;
+    float4 radiance_sh_r;
+    float4 radiance_sh_g;
+    float4 radiance_sh_b;
+};
+
+SsProbePackedShL1Sample SampleSsProbePackedShL1(
+    float2 screen_uv,
+    int2 ss_probe_sh_base_texel,
+    float4 upscale_gathered_weight,
+    bool valid_upscale_sample)
+{
+    SsProbePackedShL1Sample result;
+
+    const float4 coeff0 = SampleSsProbePackedShCoeff(0, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
+    const float4 coeff1 = SampleSsProbePackedShCoeff(1, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
+    const float4 coeff2 = SampleSsProbePackedShCoeff(2, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
+    const float4 coeff3 = SampleSsProbePackedShCoeff(3, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
+
+    result.sky_visibility_sh = float4(coeff0.r, coeff1.r, coeff2.r, coeff3.r);
+    result.radiance_sh_r = float4(coeff0.g, coeff1.g, coeff2.g, coeff3.g);
+    result.radiance_sh_g = float4(coeff0.b, coeff1.b, coeff2.b, coeff3.b);
+    result.radiance_sh_b = float4(coeff0.a, coeff1.a, coeff2.a, coeff3.a);
+
+    return result;
 }
 
 float EvalDirectionalShadow(Texture2D tex_cascade_shadowmap, SamplerComparisonState comp_samp, float3 L, float3 pixel_pos_ws, float3 normal, float3 view_origin, float3 camera_dir)
@@ -326,18 +361,24 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
         CalcSsProbeShUpsampleInfo(ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample, screen_uv, ld);
 
         const float4 sh_basis = EvaluateL1ShBasis(gb_normal_ws);
+        const SsProbePackedShL1Sample ss_probe_sh = SampleSsProbePackedShL1(
+            screen_uv,
+            ss_probe_sh_base_texel,
+            upscale_gathered_weight,
+            valid_upscale_sample);
         if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
         {
-            const float4 ss_probe_sh = SampleSsProbeShL1(ScreenSpaceProbeSHTex, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
-            const float sh_sample = max(0.0, dot(ss_probe_sh, sh_basis));
+            const float sh_sample = max(0.0, dot(ss_probe_sh.sky_visibility_sh, sh_basis));
             sky_visibility = saturate(sh_sample);
         }
         if(cb_ngl_lighting_pass.is_enable_irradiance)
         {
-            const float4 ss_probe_sh_r = SampleSsProbeShL1(ScreenSpaceProbeRadianceSHTexR, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
-            const float4 ss_probe_sh_g = SampleSsProbeShL1(ScreenSpaceProbeRadianceSHTexG, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
-            const float4 ss_probe_sh_b = SampleSsProbeShL1(ScreenSpaceProbeRadianceSHTexB, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
-            ss_probe_irradiance = max(float3(0.0, 0.0, 0.0), float3(dot(ss_probe_sh_r, sh_basis), dot(ss_probe_sh_g, sh_basis), dot(ss_probe_sh_b, sh_basis)));
+            ss_probe_irradiance = max(
+                float3(0.0, 0.0, 0.0),
+                float3(
+                    dot(ss_probe_sh.radiance_sh_r, sh_basis),
+                    dot(ss_probe_sh.radiance_sh_g, sh_basis),
+                    dot(ss_probe_sh.radiance_sh_b, sh_basis)));
         }
 	}
 	
