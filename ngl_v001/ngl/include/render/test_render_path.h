@@ -39,7 +39,7 @@ namespace ngl::test
     {
         render::app::ScreenReconstructedVoxelStructure* p_srvs = {};
         bool enable_sky_visibility = false;
-        bool enable_irradiance = false;
+        bool enable_radiance = false;
         float probe_sample_offset_view{0.0f};
         float probe_sample_offset_surface_normal{0.0f};
         float probe_sample_offset_bent_normal{0.0f};

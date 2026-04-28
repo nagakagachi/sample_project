@@ -379,7 +379,7 @@ void main_cs(
         }
         else if(5 == debug_sub_mode)
         {
-            // SkyVisibility SH の main_light_dir_ws 方向再評価結果を表示.
+            // Plain SkyVisibility SH の main_light_dir_ws 方向再評価結果を表示.
             const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);
             const float4 sh_basis = EvaluateL1ShBasis(sample_dir);
             const float4 ss_probe_sh = float4(
@@ -392,7 +392,7 @@ void main_cs(
         }
         else if(6 <= debug_sub_mode && debug_sub_mode <= 9)
         {
-            // Radiance SH係数を係数インデックスごとに可視化. RGB がそれぞれ R/G/B channel の同一 SH coefficient.
+            // Plain Radiance SH係数を係数インデックスごとに可視化. RGB がそれぞれ R/G/B channel の同一 SH coefficient.
             const uint coeff_index = uint(debug_sub_mode - 6);
             const float4 packed_sh_coeff = SspPackedShAtlasLoadCoeff(ss_probe_tile_id, coeff_index);
             RWTexWork[dtid.xy] = float4(packed_sh_coeff.gba, 1.0);

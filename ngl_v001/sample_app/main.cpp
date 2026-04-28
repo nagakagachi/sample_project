@@ -66,7 +66,7 @@ static float dbgw_view_general_debug_rate  = 0.5f;
 // Srvs. Screen Reconstructed Voxel Structure.
 static bool dbgw_view_srvs_sky_visibility               = false;
 static bool dbgw_enable_srvs_sky_visibility_lighting    = true;
-static bool dbgw_enable_srvs_irradiance_lighting        = true;
+static bool dbgw_enable_srvs_radiance_lighting          = true;
 static float dbgw_gi_probe_sample_offset_view           = 0.0f;
 static float dbgw_gi_probe_sample_offset_surface_normal = 0.0f;
 static float dbgw_gi_probe_sample_offset_bent_normal    = 0.5f;
@@ -803,7 +803,7 @@ bool AppGame::ExecuteApp()
             // SH から再評価した sky visibility デバッグ.
             ImGui::Checkbox("View Srvs Sky Visibility (SH)", &dbgw_view_srvs_sky_visibility);
             ImGui::Checkbox("Enable SkyVis", &dbgw_enable_srvs_sky_visibility_lighting);
-            ImGui::Checkbox("Enable Irradiance", &dbgw_enable_srvs_irradiance_lighting);
+            ImGui::Checkbox("Enable Radiance", &dbgw_enable_srvs_radiance_lighting);
             ImGui::SliderFloat("Probe Sample Offset View", &dbgw_gi_probe_sample_offset_view, 0.0f, 10.0f);
             ImGui::SliderFloat("Probe Sample Offset Surface Normal", &dbgw_gi_probe_sample_offset_surface_normal, 0.0f, 10.0f);
             ImGui::SliderFloat("Probe Sample Offset Bent Normal", &dbgw_gi_probe_sample_offset_bent_normal, 0.0f, 10.0f);
@@ -1153,7 +1153,7 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
                     {
                         render_frame_desc.feature_config.gi.p_srvs                             = &srvs_;
                         render_frame_desc.feature_config.gi.enable_sky_visibility              = dbgw_enable_srvs_sky_visibility_lighting;
-                        render_frame_desc.feature_config.gi.enable_irradiance                  = dbgw_enable_srvs_irradiance_lighting;
+                        render_frame_desc.feature_config.gi.enable_radiance                    = dbgw_enable_srvs_radiance_lighting;
                         render_frame_desc.feature_config.gi.probe_sample_offset_view           = dbgw_gi_probe_sample_offset_view;
                         render_frame_desc.feature_config.gi.probe_sample_offset_surface_normal = dbgw_gi_probe_sample_offset_surface_normal;
                         render_frame_desc.feature_config.gi.probe_sample_offset_bent_normal    = dbgw_gi_probe_sample_offset_bent_normal;

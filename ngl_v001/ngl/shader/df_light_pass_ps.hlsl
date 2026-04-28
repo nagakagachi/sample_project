@@ -27,7 +27,7 @@ struct CbLightingPass
     float sky_lit_intensity;
 
     int is_enable_sky_visibility;
-    int is_enable_irradiance;
+    int is_enable_radiance;
     int dbg_view_srvs_sky_visibility;
     float probe_sample_offset_view;
     float probe_sample_offset_surface_normal;
@@ -198,6 +198,37 @@ SsProbePackedShL1Sample SampleSsProbePackedShL1(
     return result;
 }
 
+float4 ConvolveSsProbeRadianceL1ToDiffuseIrradiance(float4 radiance_sh_coeff)
+{
+    return ConvolveL1ShByClampedCosine(radiance_sh_coeff);
+}
+
+float4 ConvolveSsProbeSkyVisibilityL1ToIblOcclusion(float4 sky_visibility_sh_coeff)
+{
+    return ConvolveL1ShByNormalizedClampedCosine(sky_visibility_sh_coeff);
+}
+
+float3 EvalSsProbeRadianceL1DiffuseIrradiance(SsProbePackedShL1Sample ss_probe_sh, float4 sh_basis)
+{
+    // Packed SH stores plain radiance. Apply cosine convolution here so the evaluated value is diffuse irradiance.
+    return float3(
+        dot(ConvolveSsProbeRadianceL1ToDiffuseIrradiance(ss_probe_sh.radiance_sh_r), sh_basis),
+        dot(ConvolveSsProbeRadianceL1ToDiffuseIrradiance(ss_probe_sh.radiance_sh_g), sh_basis),
+        dot(ConvolveSsProbeRadianceL1ToDiffuseIrradiance(ss_probe_sh.radiance_sh_b), sh_basis));
+}
+
+float EvalSsProbeSkyVisibilityL1IblOcclusion(float4 sky_visibility_sh_coeff, float4 sh_basis)
+{
+    // Sky visibility is stored as a plain directional function. Use normalized cosine convolution for diffuse-style IBL occlusion.
+    return dot(ConvolveSsProbeSkyVisibilityL1ToIblOcclusion(sky_visibility_sh_coeff), sh_basis);
+}
+
+float EvalSsProbeSkyVisibilityL1Directional(float4 sky_visibility_sh_coeff, float4 sh_basis)
+{
+    // Plain directional query used for specular-side visibility before roughness-based stabilization.
+    return dot(sky_visibility_sh_coeff, sh_basis);
+}
+
 float EvalDirectionalShadow(Texture2D tex_cascade_shadowmap, SamplerComparisonState comp_samp, float3 L, float3 pixel_pos_ws, float3 normal, float3 view_origin, float3 camera_dir)
 {
 	// Cascade Index.
@@ -351,16 +382,20 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	}
 
 	// GIのテスト(Dynamic Sky Visibility).
-	float sky_visibility = 1.0;
-    float3 ss_probe_irradiance = float3(0.0, 0.0, 0.0);
-    if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.is_enable_irradiance || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
+	float diffuse_sky_visibility = 1.0;
+    float specular_sky_visibility = 1.0;
+    float3 ss_probe_diffuse_irradiance = float3(0.0, 0.0, 0.0);
+    if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.is_enable_radiance || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
 	{
         int2 ss_probe_sh_base_texel = int2(0, 0);
         float4 upscale_gathered_weight = float4(0.0, 0.0, 0.0, 0.0);
         bool valid_upscale_sample = false;
         CalcSsProbeShUpsampleInfo(ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample, screen_uv, ld);
 
+        // Diffuse uses normal-oriented SH evaluation, while specular uses reflection-oriented evaluation.
         const float4 sh_basis = EvaluateL1ShBasis(gb_normal_ws);
+        const float3 reflected_view_dir = 2.0 * dot(V, gb_normal_ws) * gb_normal_ws - V;
+        const float4 reflection_sh_basis = EvaluateL1ShBasis(reflected_view_dir);
         const SsProbePackedShL1Sample ss_probe_sh = SampleSsProbePackedShL1(
             screen_uv,
             ss_probe_sh_base_texel,
@@ -368,17 +403,19 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
             valid_upscale_sample);
         if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
         {
-            const float sh_sample = max(0.0, dot(ss_probe_sh.sky_visibility_sh, sh_basis));
-            sky_visibility = saturate(sh_sample);
+            const float diffuse_sh_sample = max(0.0, EvalSsProbeSkyVisibilityL1IblOcclusion(ss_probe_sh.sky_visibility_sh, sh_basis));
+            diffuse_sky_visibility = saturate(diffuse_sh_sample);
+
+            const float directional_specular_sample = max(0.0, EvalSsProbeSkyVisibilityL1Directional(ss_probe_sh.sky_visibility_sh, reflection_sh_basis));
+            // Smooth surfaces follow the reflection direction more closely; rough surfaces fall back toward diffuse-style occlusion.
+            const float roughness_blend = saturate(gb_roughness * gb_roughness);
+            specular_sky_visibility = saturate(lerp(directional_specular_sample, diffuse_sky_visibility, roughness_blend));
         }
-        if(cb_ngl_lighting_pass.is_enable_irradiance)
+        if(cb_ngl_lighting_pass.is_enable_radiance)
         {
-            ss_probe_irradiance = max(
+            ss_probe_diffuse_irradiance = max(
                 float3(0.0, 0.0, 0.0),
-                float3(
-                    dot(ss_probe_sh.radiance_sh_r, sh_basis),
-                    dot(ss_probe_sh.radiance_sh_g, sh_basis),
-                    dot(ss_probe_sh.radiance_sh_b, sh_basis)));
+                EvalSsProbeRadianceL1DiffuseIrradiance(ss_probe_sh, sh_basis));
         }
 	}
 	
@@ -387,11 +424,13 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		float3 ibl_diffuse, ibl_specular;
 		EvalIblDiffuseStandard(ibl_diffuse, ibl_specular, tex_ibl_diffuse, tex_ibl_specular, tex_ibl_dfg, samp, gb_normal_ws, V, gb_base_color, gb_roughness, gb_metalness);
 
-		lit_color += (ibl_diffuse + ibl_specular) * cb_ngl_lighting_pass.sky_lit_intensity * sky_visibility * ssao_sample.a;
-        if(cb_ngl_lighting_pass.is_enable_irradiance)
+		lit_color += ibl_diffuse * cb_ngl_lighting_pass.sky_lit_intensity * diffuse_sky_visibility * ssao_sample.a;
+        // Approximate specular occlusion with reflection-direction visibility, then blend toward diffuse occlusion as roughness increases.
+		lit_color += ibl_specular * cb_ngl_lighting_pass.sky_lit_intensity * specular_sky_visibility * ssao_sample.a;
+        if(cb_ngl_lighting_pass.is_enable_radiance)
         {
             const float3 probe_diffuse_brdf = brdf_lambert(gb_base_color, gb_roughness, gb_metalness, gb_normal_ws, V, gb_normal_ws);
-            lit_color += probe_diffuse_brdf * ss_probe_irradiance * ssao_sample.a;
+            lit_color += probe_diffuse_brdf * ss_probe_diffuse_irradiance * ssao_sample.a;
         }
 	}
 
@@ -428,7 +467,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
         // sky_visibilityテスト.
         if(cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
         {
-            lit_color = sky_visibility;
+            lit_color = diffuse_sky_visibility;
         }
     // ------------------------------------------------------------------------------
 

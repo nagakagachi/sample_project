@@ -2,17 +2,20 @@
 
 ss_probe_sh_update_cs.hlsl
 
-ScreenSpaceProbe の最新フレーム OctMap から SkyVisibility + Radiance の packed L1 SH atlas を毎フレーム再構築する.
+ ScreenSpaceProbe の最新フレーム OctMap から SkyVisibility + Radiance の packed L1 SH atlas を毎フレーム再構築する.
 atlas coeff order:
   0 = Y00
   1 = Y1_{-1}(y)
   2 = Y1_0(z)
   3 = Y1_{+1}(x)
-packed RGBA:
+ packed RGBA:
   R = SkyVisibility coeff
   G = Radiance R coeff
   B = Radiance G coeff
   A = Radiance B coeff
+
+ packed SH には plain sky visibility / plain radiance を保存する。
+ cosine convolution は lighting 評価時に適用する。
 
 #endif
 
@@ -55,7 +58,7 @@ void main_cs(
     float4 packed_sh_coeff2 = float4(0.0, 0.0, 0.0, 0.0);
     float4 packed_sh_coeff3 = float4(0.0, 0.0, 0.0, 0.0);
 
-    // OctahedronMap to SH.
+    // OctahedronMap to SH. Store plain directional visibility / radiance coefficients.
     [unroll]
     for(int oy = 0; oy < SCREEN_SPACE_PROBE_OCT_RESOLUTION; ++oy)
     {

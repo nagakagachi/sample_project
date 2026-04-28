@@ -34,6 +34,24 @@ float4 EvaluateL1ShBasis(float3 dir_ws)
         k_sh_l1 * dir_ws.x);  // l=1, m=+1 : Y_1^{+1}
 }
 
+// L1 SH convolution for zonal kernels. l=0 keeps x, l=1 shares yzw scale.
+float4 ConvolveL1Sh(float4 sh_coeff, float l0_scale, float l1_scale)
+{
+    return sh_coeff * float4(l0_scale, l1_scale, l1_scale, l1_scale);
+}
+
+// Lambert clamped-cosine convolution. Applying this to radiance SH yields diffuse irradiance SH.
+float4 ConvolveL1ShByClampedCosine(float4 sh_coeff)
+{
+    return ConvolveL1Sh(sh_coeff, NGL_PI, 2.0 * NGL_PI / 3.0);
+}
+
+// Normalized clamped-cosine convolution for scalar visibility/occlusion terms.
+float4 ConvolveL1ShByNormalizedClampedCosine(float4 sh_coeff)
+{
+    return ConvolveL1Sh(sh_coeff, 1.0, 2.0 / 3.0);
+}
+
 
 
 float Max3(float3 v) { return max(v.x, max(v.y, v.z)); }

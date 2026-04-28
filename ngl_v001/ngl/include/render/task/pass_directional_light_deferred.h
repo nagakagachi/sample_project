@@ -49,7 +49,7 @@ namespace ngl::render::task
 			
             render::app::ScreenReconstructedVoxelStructure* p_srvs = {};
             bool is_enable_sky_visibility = false;
-            bool is_enable_irradiance = false;
+            bool is_enable_radiance = false;
             float probe_sample_offset_view{ 0.0f };// Probeサンプル位置をビュー方向にオフセットする量[距離単位].
             float probe_sample_offset_surface_normal{ 0.0f };// Probeサンプル位置を法線方向にオフセットする量[距離単位].
             float probe_sample_offset_bent_normal{ 0.0f };// Probeサンプル位置をベントノーマル方向にオフセットする量[距離単位].
@@ -217,7 +217,7 @@ namespace ngl::render::task
                         float sky_lit_intensity{1.0f};
 
                         int is_enable_sky_visibility{};
-                        int is_enable_irradiance{};
+                        int is_enable_radiance{};
                         int dbg_view_srvs_sky_visibility{};
                         float probe_sample_offset_view{ 0.0f };
 
@@ -236,7 +236,7 @@ namespace ngl::render::task
 						p_mapped->sky_lit_intensity = desc_.sky_lit_intensity;//skybox_proxy->sky_light_intensity
 
 						p_mapped->is_enable_sky_visibility = (desc_.p_srvs != nullptr && desc_.is_enable_sky_visibility) ? 1 : 0;
-						p_mapped->is_enable_irradiance = (desc_.p_srvs != nullptr && desc_.is_enable_irradiance) ? 1 : 0;
+						p_mapped->is_enable_radiance = (desc_.p_srvs != nullptr && desc_.is_enable_radiance) ? 1 : 0;
 						p_mapped->dbg_view_srvs_sky_visibility = desc_.dbg_view_srvs_sky_visibility ? 1 : 0;
 						p_mapped->probe_sample_offset_view = desc_.probe_sample_offset_view;
 						p_mapped->probe_sample_offset_surface_normal = desc_.probe_sample_offset_surface_normal;
