@@ -428,6 +428,7 @@ namespace ngl::test
                         setup_desc.sky_lit_intensity = render_frame_desc.feature_config.lighting.sky_light_intensity;
 
                         setup_desc.p_srvs = render_frame_desc.feature_config.gi.p_srvs;
+                        setup_desc.gi_sample_mode = render_frame_desc.feature_config.gi.sample_mode;
                         setup_desc.is_enable_sky_visibility = render_frame_desc.feature_config.gi.enable_sky_visibility;
                         setup_desc.is_enable_radiance = render_frame_desc.feature_config.gi.enable_radiance;
                         setup_desc.probe_sample_offset_view = render_frame_desc.feature_config.gi.probe_sample_offset_view;

@@ -7,41 +7,10 @@ SRVS の実装メモと参考文献をまとめる。
 
 ## 実装メモ
 
-### WCP OctahedralMap border copy
+### FSP OctahedralMap sampling
 
-`wcp_fill_probe_octmap_atlas_border_cs.hlsl` の境界コピーは、
-**OctahedralMap を単純なバイリニアサンプリングで扱えるようにするために、境界 texel に反対側の対応 texel をコピーする**処理。
-
-- 各 probe の OctahedralMap は atlas 上で **1 texel の border** を持つ
-- 内側の有効領域をそのまま `Sample` / `SampleLevel` したいので、
-  border には **対向辺 / 対向角**の値を複製して seam を埋める
-- こうしておくと、境界近傍でも atlas 内だけで bilinear 補間が閉じる
-
-#### 最小構成のサンプル
-
-以下は、**4 つの角 + 4 つの辺**だけを最小限で処理するサンプル。
-`W` は border 込みの 1 probe 幅 (`k_wcp_probe_octmap_width_with_border`) を想定する。
-
-```cpp
-// probe ごとの atlas 左上
-const int2 base = octmap_atlas_texel_pos_min;
-const int W = k_wcp_probe_octmap_width_with_border;
-
-// 4 corners
-dst[base + int2(0,     0    )] = dst[base + int2(W - 2, W - 2)];
-dst[base + int2(W - 1, 0    )] = dst[base + int2(1,     W - 2)];
-dst[base + int2(0,     W - 1)] = dst[base + int2(W - 2, 1    )];
-dst[base + int2(W - 1, W - 1)] = dst[base + int2(1,     1    )];
-
-// 4 edges
-for (int i = 1; i < W - 1; ++i)
-{
-    dst[base + int2(i,     0    )] = dst[base + int2(W - 1 - i, 1        )]; // top
-    dst[base + int2(0,     i    )] = dst[base + int2(1,         W - 1 - i)]; // left
-    dst[base + int2(W - 1, i    )] = dst[base + int2(W - 2,     W - 1 - i)]; // right
-    dst[base + int2(i,     W - 1)] = dst[base + int2(W - 1 - i, W - 2    )]; // bottom
-}
-```
+現在の FSP OctahedralMap atlas は **point sample / `Load` 前提**で使っており、
+border copy pass は削除済み。
 
 #### 対応の考え方
 
@@ -109,3 +78,13 @@ for (int i = 1; i < W - 1; ++i)
 ### Enshrouded
 
 - https://www.youtube.com/watch?v=57F1ezwH7Mk
+- slide memo:
+  - Spatial Cascaded Cache
+  - 32x32x32 world aligned grid
+  - centered around player
+  - 12 cascades
+  - Max 16k cells active (variable)
+  - 2 meter starting spacing, doubled each cascade (variable)
+  - Activating cells in screen space (depth buffer) or with a XYZ position buffer
+  - Garbage collecting inactive cells
+    - camera movement can reactivate old probes before they expire

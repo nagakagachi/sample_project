@@ -320,21 +320,33 @@ void main_cs(
             RWTexWork[dtid.xy] = float4(debug_color, 1.0);
         }
     }
-    // Category 1: WCP.
+    // Category 1: FSP.
     else if(1 == debug_category)
     {
         if(0 == debug_sub_mode)
         {
-            // Probe Atlas Textureの表示.
+            // FSP OctahedralMap atlas raw RGBA.
             const int2 texel_pos = dtid.xy * 0.1;
-            if(any(cb_srvs.wcp.flatten_2d_width * k_wcp_probe_octmap_width_with_border <= texel_pos))
+            uint tex_width, tex_height;
+            FspProbeAtlasTex.GetDimensions(tex_width, tex_height);
+            if(any(int2(tex_width, tex_height) <= texel_pos))
                 return;
 
-            const float4 probe_data = WcpProbeAtlasTex.Load(uint3(texel_pos, 0));
-            RWTexWork[dtid.xy] = probe_data.xxxx;
+            RWTexWork[dtid.xy] = FspProbeAtlasTex.Load(uint3(texel_pos, 0));
+        }
+        else if(1 == debug_sub_mode)
+        {
+            const int2 texel_pos = dtid.xy * 0.1;
+            uint tex_width, tex_height;
+            FspProbePackedSHTex.GetDimensions(tex_width, tex_height);
+            if(any(int2(tex_width, tex_height) <= texel_pos))
+                return;
+
+            // FSP packed SH texture raw RGBA.
+            RWTexWork[dtid.xy] = FspProbePackedSHTex.Load(uint3(texel_pos, 0));
         }
     }
-    // Category 2: SSP_Oct.
+    // Category 2: SSP.
     else if(2 == debug_category)
     {
         if(0 == debug_sub_mode)

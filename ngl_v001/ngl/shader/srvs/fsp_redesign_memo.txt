@@ -1,6 +1,6 @@
-# WCP Redesign Memo
+# FSP Redesign Memo
 
-WCP (World Cache Probe) を、Enshrouded スタイルの
+FSP (Frustum Surface Probe) を、Enshrouded スタイルの
 **WorldAlign / ClipMap グリッド + サーフェイス近傍 probe pool**
 として再設計するための設計メモ。
 
@@ -16,7 +16,7 @@ WCP (World Cache Probe) を、Enshrouded スタイルの
   - ローエンドでは負荷が高い
   - MotionVector がない環境では TemporalReprojection を活用した時間分散が難しい
 - そのため、ローエンド向けの補完手段として
-  **WorldAlign グリッド上でサーフェイス付近にだけ probe を配置して限定的に更新する WCP**
+  **WorldAlign グリッド上でサーフェイス付近にだけ probe を配置して限定的に更新する FSP**
   を再設計したい
 
 ### 狙い
@@ -33,6 +33,15 @@ WCP (World Cache Probe) を、Enshrouded スタイルの
 ### Enshrouded
 
 - グリッド管理
+- Spatial Cascaded Cache
+- 32x32x32 の world aligned grid
+- player centered
+- 12 cascades
+- active cells は最大 16k (variable)
+- 開始 spacing は 2m、cascade ごとに 2 倍 (variable)
+- screen space (depth buffer) または XYZ position buffer で cell を activate
+- inactive cell は garbage collect
+  - camera movement により、expire 前なら古い probe が再 activation されうる
 - セルがサーフェイス上なら probe pool から割り当て
 - サーフェイス上ではなくなった、または遠く離れたらセルから解放して pool へ返却
 
@@ -45,7 +54,7 @@ WCP (World Cache Probe) を、Enshrouded スタイルの
 
 この 2 つを合わせて、
 **surface cell lifecycle を持つ probe system**
-として WCP を組み直す。
+として FSP を組み直す。
 
 ---
 
@@ -66,7 +75,7 @@ WCP (World Cache Probe) を、Enshrouded スタイルの
 
 ### 1. WorldAlign ClipMap cell が主、probe は従
 
-WCP の主役は probe ではなく **cell** とする。
+FSP の主役は probe ではなく **cell** とする。
 
 - world 空間には clipmap cascade ごとの cell が存在する
 - 各 cell は
@@ -382,7 +391,7 @@ probe ごとの OctahedralMap は継続利用する。
 
 理由:
 
-- WCP でも方向性を残したい
+- FSP でも方向性を残したい
 - border copy 資産をそのまま使える
 - SSP と違って surface 専用 sparse probe なら probe 数を抑えやすい
 
@@ -407,7 +416,7 @@ allocation / lifecycle / update scheduling を安定させたあとで radiance 
 
 ## 時間分散
 
-WCP の利点は world aligned であることなので、
+FSP の利点は world aligned であることなので、
 時間分散を前提にする。
 
 - active probe 全数を毎フレーム更新しない
@@ -485,7 +494,7 @@ WCP の利点は world aligned であることなので、
 
 ### Phase 3: lighting integration
 
-- WCP atlas sample
+- FSP atlas sample
 - diffuse GI への反映
 - SSP との quality / platform 切り替え
 

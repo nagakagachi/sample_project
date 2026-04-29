@@ -50,23 +50,25 @@ RWBuffer<uint>		RWRemoveVoxelList;
 Buffer<float>		UpdateProbeWork;
 RWBuffer<float>		RWUpdateProbeWork;
 
-// World Cache Probe.
-StructuredBuffer<WcpProbeData>		WcpProbeBuffer;
-RWStructuredBuffer<WcpProbeData>	RWWcpProbeBuffer;
+// Frustum Surface Probe.
+StructuredBuffer<FspProbeData>		FspProbeBuffer;
+RWStructuredBuffer<FspProbeData>	RWFspProbeBuffer;
 
-Buffer<uint>                          WcpCellProbeIndexBuffer;
-RWBuffer<uint>                        RWWcpCellProbeIndexBuffer;
-StructuredBuffer<WcpProbePoolData>    WcpProbePoolBuffer;
-RWStructuredBuffer<WcpProbePoolData>  RWWcpProbePoolBuffer;
-Buffer<uint>                          WcpProbeFreeStack;
-RWBuffer<uint>                        RWWcpProbeFreeStack;
-Buffer<uint>                          WcpActiveProbeList;
-RWBuffer<uint>                        RWWcpActiveProbeList;
-Buffer<uint>                          WcpReleaseProbeList;
-RWBuffer<uint>                        RWWcpReleaseProbeList;
+Buffer<uint>                          FspCellProbeIndexBuffer;
+RWBuffer<uint>                        RWFspCellProbeIndexBuffer;
+StructuredBuffer<FspProbePoolData>    FspProbePoolBuffer;
+RWStructuredBuffer<FspProbePoolData>  RWFspProbePoolBuffer;
+Buffer<uint>                          FspProbeFreeStack;
+RWBuffer<uint>                        RWFspProbeFreeStack;
+Buffer<uint>                          FspActiveProbeList;
+RWBuffer<uint>                        RWFspActiveProbeList;
+Buffer<uint>                          FspReleaseProbeList;
+RWBuffer<uint>                        RWFspReleaseProbeList;
 
-Texture2D       		WcpProbeAtlasTex;
-RWTexture2D<float>		RWWcpProbeAtlasTex;
+Texture2D<float4>      FspProbeAtlasTex;
+RWTexture2D<float4>    RWFspProbeAtlasTex;
+Texture2D<float4>      FspProbePackedSHTex;
+RWTexture2D<float4>    RWFspProbePackedSHTex;
 
 // 0番目はアトミックカウンタ, それ以降をリスト利用.
 Buffer<uint>		SurfaceProbeCellList;
@@ -103,6 +105,120 @@ RWTexture2D<uint>      RWScreenSpaceProbeSideCacheLockTex;
 // srvsのメインパラメータ.
 ConstantBuffer<SrvsParam> cb_srvs;
 
+uint voxel_coord_to_index(int3 coord, int3 resolution);
+int3 index_to_voxel_coord(uint index, int3 resolution);
+int3 voxel_coord_toroidal_mapping(int3 voxel_coord, int3 toroidal_offset, int3 resolution);
+
+uint FspCascadeCount()
+{
+    return min((uint)cb_srvs.fsp_cascade_count, k_fsp_max_cascade_count);
+}
+
+FspCascadeGridParam FspGetCascadeParam(uint cascade_index)
+{
+    return cb_srvs.fsp_cascade[min(cascade_index, k_fsp_max_cascade_count - 1u)];
+}
+
+uint FspEncodeGlobalCellIndex(uint cascade_index, uint local_cell_index)
+{
+    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    return cascade.cell_offset + local_cell_index;
+}
+
+bool FspDecodeGlobalCellIndex(uint global_cell_index, out uint cascade_index, out uint local_cell_index)
+{
+    const uint cascade_count = FspCascadeCount();
+    [unroll]
+    for(uint ci = 0; ci < k_fsp_max_cascade_count; ++ci)
+    {
+        if(ci >= cascade_count)
+        {
+            break;
+        }
+
+        const FspCascadeGridParam cascade = cb_srvs.fsp_cascade[ci];
+        if(cascade.cell_offset <= global_cell_index && global_cell_index < (cascade.cell_offset + cascade.cell_count))
+        {
+            cascade_index = ci;
+            local_cell_index = global_cell_index - cascade.cell_offset;
+            return true;
+        }
+    }
+
+    cascade_index = 0;
+    local_cell_index = 0;
+    return false;
+}
+
+int3 FspLocalCellIndexToLinearCoord(uint local_cell_index, SrvsToroidalGridParam grid)
+{
+    const int3 voxel_coord_toroidal = index_to_voxel_coord(local_cell_index, grid.grid_resolution);
+    return voxel_coord_toroidal_mapping(voxel_coord_toroidal, grid.grid_resolution - grid.grid_toroidal_offset, grid.grid_resolution);
+}
+
+float3 FspCalcCellCenterWs(uint cascade_index, uint local_cell_index)
+{
+    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const int3 voxel_coord = FspLocalCellIndexToLinearCoord(local_cell_index, cascade.grid);
+    return (float3(voxel_coord) + 0.5) * cascade.grid.cell_size + cascade.grid.grid_min_pos;
+}
+
+bool FspTryGetGlobalCellIndexFromWorldPos(float3 pos_ws, uint cascade_index, out uint global_cell_index)
+{
+    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const float3 voxel_coordf = (pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv;
+    const int3 voxel_coord = floor(voxel_coordf);
+    if(all(voxel_coord >= 0) && all(voxel_coord < cascade.grid.grid_resolution))
+    {
+        const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cascade.grid.grid_toroidal_offset, cascade.grid.grid_resolution);
+        const uint local_cell_index = voxel_coord_to_index(voxel_coord_toroidal, cascade.grid.grid_resolution);
+        global_cell_index = cascade.cell_offset + local_cell_index;
+        return true;
+    }
+
+    global_cell_index = k_fsp_invalid_probe_index;
+    return false;
+}
+
+uint2 FspProbeAtlasMapPos(uint probe_index)
+{
+    return uint2(probe_index % cb_srvs.fsp_probe_atlas_tile_width, probe_index / cb_srvs.fsp_probe_atlas_tile_width);
+}
+
+uint2 FspProbeAtlasTexelCoord(uint probe_index, uint2 oct_cell_id)
+{
+    return FspProbeAtlasMapPos(probe_index) * k_fsp_probe_octmap_width + oct_cell_id;
+}
+
+int2 FspPackedShAtlasLogicalResolution()
+{
+    uint2 packed_sh_tex_size;
+    FspProbePackedSHTex.GetDimensions(packed_sh_tex_size.x, packed_sh_tex_size.y);
+    return int2(packed_sh_tex_size >> 1);
+}
+
+int2 FspPackedShAtlasCoeffOffset(uint coeff_index, int2 logical_resolution)
+{
+    switch(coeff_index)
+    {
+    default:
+    case 0: return int2(0, 0);
+    case 1: return int2(logical_resolution.x, 0);
+    case 2: return int2(0, logical_resolution.y);
+    case 3: return int2(logical_resolution.x, logical_resolution.y);
+    }
+}
+
+int2 FspPackedShAtlasTexelCoord(int2 probe_tile_id, uint coeff_index, int2 logical_resolution)
+{
+    return probe_tile_id + FspPackedShAtlasCoeffOffset(coeff_index, logical_resolution);
+}
+
+float4 FspPackedShAtlasLoadCoeff(int2 probe_tile_id, uint coeff_index)
+{
+    const int2 logical_resolution = FspPackedShAtlasLogicalResolution();
+    return FspProbePackedSHTex.Load(int3(FspPackedShAtlasTexelCoord(probe_tile_id, coeff_index, logical_resolution), 0));
+}
 
 
 // ------------------------------------------------------------------------------------------------------------------------
@@ -1729,7 +1845,7 @@ float4 trace_bbv_dev_hibrick_brick_transmittance(
     );
 }
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Wcp.
+// Fsp.
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // 符号付き, 要素が-1:+1範囲のベクトルをuintにエンコード.

@@ -45,11 +45,11 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 #ifndef NGL_SRVS_TRACE_USE_HIBRICK_SS_PROBE_UPDATE
 #define NGL_SRVS_TRACE_USE_HIBRICK_SS_PROBE_UPDATE 0
 #endif
-#ifndef NGL_SRVS_TRACE_USE_HIBRICK_WCP_ELEMENT_UPDATE
-#define NGL_SRVS_TRACE_USE_HIBRICK_WCP_ELEMENT_UPDATE 0
+#ifndef NGL_SRVS_TRACE_USE_HIBRICK_FSP_ELEMENT_UPDATE
+#define NGL_SRVS_TRACE_USE_HIBRICK_FSP_ELEMENT_UPDATE 0
 #endif
-#ifndef NGL_SRVS_TRACE_USE_HIBRICK_WCP_VISIBLE_SURFACE_ELEMENT_UPDATE
-#define NGL_SRVS_TRACE_USE_HIBRICK_WCP_VISIBLE_SURFACE_ELEMENT_UPDATE 0
+#ifndef NGL_SRVS_TRACE_USE_HIBRICK_FSP_VISIBLE_SURFACE_ELEMENT_UPDATE
+#define NGL_SRVS_TRACE_USE_HIBRICK_FSP_VISIBLE_SURFACE_ELEMENT_UPDATE 0
 #endif
 
 
@@ -67,6 +67,9 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
     using float3x4 = ngl::math::Mat34;
     using float4x4 = ngl::math::Mat44;
+    #define NGL_CPP_ALIGN_16 alignas(16)
+#else
+    #define NGL_CPP_ALIGN_16
 #endif
 
 
@@ -136,25 +139,25 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     #define k_bbv_per_voxel_resolution_inv (1.0 / float(k_bbv_per_voxel_resolution))
     #define k_bbv_per_voxel_resolution_vec3i int3(k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution)
 
-    // wcp probeあたりのOctahedralMapAtlas解像度.
-    #define k_wcp_probe_octmap_width (6)
-    // wcp それぞれのOctMapの+側境界に1テクセルボーダーを追加することで全方向に1テクセルのマージンを確保する.
-    #define k_wcp_probe_octmap_width_with_border (k_wcp_probe_octmap_width + 2)
-    // wcp 
-    #define k_wcp_probe_distance_max (50.0)
-    // wcp 
-    #define k_wcp_probe_distance_max_inv (1.0 / k_wcp_probe_distance_max)
+    // fsp probeあたりのOctahedralMapAtlas解像度.
+    #define k_fsp_probe_octmap_width (8)
+    // 旧 border 前提コード互換用エイリアス。現在は border なしの 8x8 をそのまま使う。
+    #define k_fsp_probe_octmap_width_with_border (k_fsp_probe_octmap_width)
+    // fsp
+    #define k_fsp_probe_distance_max (50.0)
+    // fsp
+    #define k_fsp_probe_distance_max_inv (1.0 / k_fsp_probe_distance_max)
 
     
     // Bbv 全体更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
     #define BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT 60
-    // Bbv 可視Wcp要素更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
+    // Bbv 可視Fsp要素更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
     #define BBV_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT 0
     
-    // Wcp 全体更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
-    #define WCP_ALL_ELEMENT_UPDATE_SKIP_COUNT 60
-    // Wcp 可視Wcp要素更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
-    #define WCP_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT 1
+    // Fsp 全体更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
+    #define FSP_ALL_ELEMENT_UPDATE_SKIP_COUNT 60
+    // Fsp 可視Fsp要素更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
+    #define FSP_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT 1
 
     // 非可視表面Voxel除去用スタックの1要素のコンポーネント数.
     #define k_component_count_RemoveVoxelList 4
@@ -197,8 +200,8 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     };
 
 
-    // WorldCacheProbeのデータ.
-    struct WcpProbeData
+    // FrustumSurfaceProbeのデータ.
+    struct FspProbeData
     {
         uint probe_offset_v3;//signed 10bit vector3 encode. Bbv上でのプローブ埋まり回避のためのオフセット.
         uint atomic_work;// 可視要素リスト作成時の重複除去用.
@@ -207,14 +210,15 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         uint probe_data_dummy;
     };
 
-    static const uint k_wcp_invalid_probe_index = ~uint(0);
-    static const uint k_wcp_probe_flag_allocated = 1u << 0;
-    static const uint k_wcp_probe_flag_visible_this_frame = 1u << 1;
-    static const uint k_wcp_probe_flag_pending_release = 1u << 2;
+    static const uint k_fsp_invalid_probe_index = ~uint(0);
+    static const uint k_fsp_probe_flag_allocated = 1u << 0;
+    static const uint k_fsp_probe_flag_visible_this_frame = 1u << 1;
+    static const uint k_fsp_probe_flag_pending_release = 1u << 2;
+    static const uint k_fsp_max_cascade_count = 8u;
 
-    // WCP V1 lifecycle 用の probe pool エントリ.
+    // FSP V1 lifecycle 用の probe pool エントリ.
     // cell 側は probe index だけを持ち、probe 側に状態を寄せる。
-    struct WcpProbePoolData
+    struct FspProbePoolData
     {
         uint owner_cell_index;
         uint probe_offset_v3;// signed 10bit vector3 encode.
@@ -226,7 +230,6 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         uint debug_last_released_frame;
         uint probe_pool_dummy;
     };
-
 
     // 可視サーフェイス情報Injection用のView情報.
     // DepthBuffer等からInjectionする際のそのBufferのView情報を格納.
@@ -267,9 +270,23 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int dummy2;
     };
 
+    struct NGL_CPP_ALIGN_16 FspCascadeGridParam
+    {
+        SrvsToroidalGridParam grid;
+        uint cell_offset;
+        uint cell_count;
+        uint dummy0;
+        uint dummy1;
+    };
+
     // Dispatchパラメータ.
-    // 16byte align でmenberレイアウトを調整すること.
-    struct SrvsParam
+    // ConstantBuffer は HLSL の cbuffer packing に合わせて 16-byte 単位で member レイアウトを調整すること。
+    // 特に次のルールを守る:
+    // - float3 / int3 の次には同一 16-byte レジスタを埋める scalar を置く
+    // - 16-byte をまたぐ位置に int2 / float2 / 構造体 / 配列を置かない
+    // - member 追加時は C++ / HLSL の両方で同じ並びになるよう明示的に padding を入れる
+    // - 「sizeof が 16 の倍数」だけでは不十分で、各 member の開始オフセットも HLSL 側と一致させる
+    struct NGL_CPP_ALIGN_16 SrvsParam
     {
         // bitmask brick voxel関連パラメータ.
         SrvsToroidalGridParam bbv NGL_CPP_MEMBER_INIT({});
@@ -316,17 +333,22 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int dummy3_2 NGL_CPP_MEMBER_INIT({0});
         int dummy3_3 NGL_CPP_MEMBER_INIT({0});
         int dummy3_4 NGL_CPP_MEMBER_INIT({0});
-        int2 dummy3_5_6 NGL_CPP_MEMBER_INIT({});// wcp開始を16byte alignに揃えるためのパディング.
+        int2 dummy3_5_6 NGL_CPP_MEMBER_INIT({});// fsp開始を16byte alignに揃えるためのパディング.
 
-        SrvsToroidalGridParam wcp NGL_CPP_MEMBER_INIT({});
+        // FSP ClipMap cascade情報.
+        FspCascadeGridParam fsp_cascade[k_fsp_max_cascade_count] NGL_CPP_MEMBER_INIT({});
         // IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
-        int3 wcp_indirect_cs_thread_group_size NGL_CPP_MEMBER_INIT({});
+        int3 fsp_indirect_cs_thread_group_size NGL_CPP_MEMBER_INIT({});
         // 更新プローブ用のワークサイズ.
-        int wcp_visible_voxel_buffer_size NGL_CPP_MEMBER_INIT({});
-        int wcp_probe_pool_size NGL_CPP_MEMBER_INIT({});
-        int wcp_active_probe_buffer_size NGL_CPP_MEMBER_INIT({});
-        int wcp_release_probe_buffer_size NGL_CPP_MEMBER_INIT({});
-        int dummy_wcp0 NGL_CPP_MEMBER_INIT({});
+        int fsp_visible_voxel_buffer_size NGL_CPP_MEMBER_INIT({});
+        int fsp_probe_pool_size NGL_CPP_MEMBER_INIT({});
+        int fsp_active_probe_buffer_size NGL_CPP_MEMBER_INIT({});
+        int fsp_release_probe_buffer_size NGL_CPP_MEMBER_INIT({});
+        int fsp_cascade_count NGL_CPP_MEMBER_INIT({1});
+        int fsp_total_cell_count NGL_CPP_MEMBER_INIT({0});
+        int fsp_probe_atlas_tile_width NGL_CPP_MEMBER_INIT({0});
+        int fsp_probe_atlas_tile_height NGL_CPP_MEMBER_INIT({0});
+        int debug_fsp_probe_cascade NGL_CPP_MEMBER_INIT({-1});
 
         // MainViewのDepthBuffer解像度.
         int2 tex_main_view_depth_size NGL_CPP_MEMBER_INIT({});
@@ -338,7 +360,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int debug_view_category NGL_CPP_MEMBER_INIT({-1});
         
         int debug_bbv_probe_mode NGL_CPP_MEMBER_INIT({-1});
-        int debug_wcp_probe_mode NGL_CPP_MEMBER_INIT({-1});
+        int debug_fsp_probe_mode NGL_CPP_MEMBER_INIT({-1});
 
         float debug_probe_radius NGL_CPP_MEMBER_INIT({0.0f});
         float debug_probe_near_geom_scale NGL_CPP_MEMBER_INIT({0.2f});
@@ -351,6 +373,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 #ifdef NGL_SHADER_CPP_INCLUDE
     static_assert((sizeof(SrvsToroidalGridParam) % 16) == 0, "SrvsToroidalGridParam size must be 16-byte aligned");
     static_assert((sizeof(SrvsParam) % 16) == 0, "SrvsParam size must be 16-byte aligned");
+    static_assert((offsetof(SrvsParam, tex_main_view_depth_size) % 16) == 0, "SrvsParam::tex_main_view_depth_size must start on a 16-byte boundary");
 #endif
 
 

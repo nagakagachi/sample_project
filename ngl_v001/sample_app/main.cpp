@@ -69,9 +69,10 @@ static float dbgw_view_general_debug_rate  = 0.5f;
 static bool dbgw_view_srvs_sky_visibility               = false;
 static bool dbgw_enable_srvs_sky_visibility_lighting    = true;
 static bool dbgw_enable_srvs_radiance_lighting          = true;
-static float dbgw_gi_probe_sample_offset_view           = 0.0f;
-static float dbgw_gi_probe_sample_offset_surface_normal = 0.0f;
-static float dbgw_gi_probe_sample_offset_bent_normal    = 0.5f;
+static int  dbgw_gi_sample_mode                         = ngl::test::EGiSampleMode_Ssp;
+static float dbgw_gi_probe_sample_offset_view           = 0.2f;
+static float dbgw_gi_probe_sample_offset_surface_normal = 0.2f;
+static float dbgw_gi_probe_sample_offset_bent_normal    = 0.0f;
 static bool dbgw_enable_srvs_injection_pass = true;
 static bool dbgw_enable_srvs_rejection_pass = true;
 
@@ -634,7 +635,7 @@ bool AppGame::Initialize()
 
 #if 1
     // Srvs.
-    srvs_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f);
+    srvs_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f, 5);
     ngl::render::app::ScreenReconstructedVoxelStructure::dbg_view_category_ = 2;
     ngl::render::app::ScreenReconstructedVoxelStructure::dbg_view_sub_mode_ = 0;
 #endif
@@ -805,12 +806,7 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("View Directional Shadow Atlas", &dbgw_view_dshadow);
             ImGui::Checkbox("View Half Dot Gray", &dbgw_view_half_dot_gray);
             // SH から再評価した sky visibility デバッグ.
-            ImGui::Checkbox("View Srvs Sky Visibility (SH)", &dbgw_view_srvs_sky_visibility);
-            ImGui::Checkbox("Enable SkyVis", &dbgw_enable_srvs_sky_visibility_lighting);
-            ImGui::Checkbox("Enable Radiance", &dbgw_enable_srvs_radiance_lighting);
-            ImGui::SliderFloat("Probe Sample Offset View", &dbgw_gi_probe_sample_offset_view, 0.0f, 10.0f);
-            ImGui::SliderFloat("Probe Sample Offset Surface Normal", &dbgw_gi_probe_sample_offset_surface_normal, 0.0f, 10.0f);
-            ImGui::SliderFloat("Probe Sample Offset Bent Normal", &dbgw_gi_probe_sample_offset_bent_normal, 0.0f, 10.0f);
+            ImGui::Checkbox("View GI Sky Visibility (SH)", &dbgw_view_srvs_sky_visibility);
 
             ImGui::Separator();
             ImGui::Text("Debug Buffer Visualize");
@@ -834,14 +830,37 @@ bool AppGame::ExecuteApp()
         if (ImGui::CollapsingHeader("Lighting"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
-            ImGui::SliderFloat("DirectionalLight Angle V", &dbgw_dlit_angle_v, 0.0f, ngl::math::k_pi_f * 2.0f);
-            ImGui::SliderFloat("DirectionalLight Angle H", &dbgw_dlit_angle_h, 0.0f, ngl::math::k_pi_f * 2.0f);
-            ImGui::SliderFloat("DirectionalLight Intensity", &dbgw_dlit_intensity, 0.0f, 50.0f);
-            ImGui::SliderFloat("Sky Light Intensity", &dbgw_skylight_intensity, 0.0f, 15.0f);
+            if (ImGui::CollapsingHeader("Directional Light", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                NGL_IMGUI_SCOPED_INDENT(10.0f);
+                ImGui::SliderFloat("Angle V", &dbgw_dlit_angle_v, 0.0f, ngl::math::k_pi_f * 2.0f);
+                ImGui::SliderFloat("Angle H", &dbgw_dlit_angle_h, 0.0f, ngl::math::k_pi_f * 2.0f);
+                ImGui::SliderFloat("Intensity", &dbgw_dlit_intensity, 0.0f, 50.0f);
+            }
+            if (ImGui::CollapsingHeader("IBL", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                NGL_IMGUI_SCOPED_INDENT(10.0f);
+                ImGui::SliderFloat("Sky Light Intensity", &dbgw_skylight_intensity, 0.0f, 15.0f);
+            }
+            if (ImGui::CollapsingHeader("GI##Lighting", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                NGL_IMGUI_SCOPED_INDENT(10.0f);
+                ImGui::Text("Sample Mode");
+                ImGui::RadioButton("None##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_None);
+                ImGui::SameLine();
+                ImGui::RadioButton("SSP##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Ssp);
+                ImGui::SameLine();
+                ImGui::RadioButton("FSP##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Fsp);
+                ImGui::Checkbox("Enable SkyVisibility", &dbgw_enable_srvs_sky_visibility_lighting);
+                ImGui::Checkbox("Enable Irradiance", &dbgw_enable_srvs_radiance_lighting);
+                ImGui::SliderFloat("Sample Offset View", &dbgw_gi_probe_sample_offset_view, 0.0f, 10.0f);
+                ImGui::SliderFloat("Sample Offset Surface Normal", &dbgw_gi_probe_sample_offset_surface_normal, 0.0f, 10.0f);
+                ImGui::SliderFloat("Sample Offset Bent Normal", &dbgw_gi_probe_sample_offset_bent_normal, 0.0f, 10.0f);
+            }
         }
 
         ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("GI"))
+        if (ImGui::CollapsingHeader("GI##Srvs"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::SetNextItemOpen(true, ImGuiCond_Once);
@@ -1156,6 +1175,7 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
                     if (srvs_.IsValid())
                     {
                         render_frame_desc.feature_config.gi.p_srvs                             = &srvs_;
+                        render_frame_desc.feature_config.gi.sample_mode                        = dbgw_gi_sample_mode;
                         render_frame_desc.feature_config.gi.enable_sky_visibility              = dbgw_enable_srvs_sky_visibility_lighting;
                         render_frame_desc.feature_config.gi.enable_radiance                    = dbgw_enable_srvs_radiance_lighting;
                         render_frame_desc.feature_config.gi.probe_sample_offset_view           = dbgw_gi_probe_sample_offset_view;

@@ -26,6 +26,7 @@ struct CbLightingPass
     float d_lit_intensity;
     float sky_lit_intensity;
 
+    int gi_sample_mode;
     int is_enable_sky_visibility;
     int is_enable_radiance;
     int dbg_view_srvs_sky_visibility;
@@ -33,9 +34,12 @@ struct CbLightingPass
     float probe_sample_offset_surface_normal;
     float probe_sample_offset_bent_normal;
     float _pad_cb_lighting_pass0;
-    float _pad_cb_lighting_pass1;
 };
 ConstantBuffer<CbLightingPass> cb_ngl_lighting_pass;
+
+static const int k_gi_sample_mode_none = 0;
+static const int k_gi_sample_mode_ssp = 1;
+static const int k_gi_sample_mode_fsp = 2;
 
 Texture2D tex_lineardepth;// Linear View Depth.
 Texture2D tex_gbuffer0;
@@ -229,6 +233,92 @@ float EvalSsProbeSkyVisibilityL1Directional(float4 sky_visibility_sh_coeff, floa
     return dot(sky_visibility_sh_coeff, sh_basis);
 }
 
+struct FspProbePackedShL1Sample
+{
+    float4 sky_visibility_sh;
+    float4 radiance_sh_r;
+    float4 radiance_sh_g;
+    float4 radiance_sh_b;
+};
+
+bool TrySampleFspPackedShL1(out FspProbePackedShL1Sample result, float3 sample_pos_ws)
+{
+    result.sky_visibility_sh = 0.0.xxxx;
+    result.radiance_sh_r = 0.0.xxxx;
+    result.radiance_sh_g = 0.0.xxxx;
+    result.radiance_sh_b = 0.0.xxxx;
+
+    const uint cascade_count = FspCascadeCount();
+    [loop]
+    for(uint cascade_index = 0; cascade_index < cascade_count; ++cascade_index)
+    {
+        uint global_cell_index = k_fsp_invalid_probe_index;
+        if(!FspTryGetGlobalCellIndexFromWorldPos(sample_pos_ws, cascade_index, global_cell_index))
+        {
+            continue;
+        }
+
+        const uint probe_index = FspCellProbeIndexBuffer[global_cell_index];
+        if(probe_index == k_fsp_invalid_probe_index || probe_index >= (uint)cb_srvs.fsp_probe_pool_size)
+        {
+            continue;
+        }
+
+        const FspProbePoolData probe_pool_data = FspProbePoolBuffer[probe_index];
+        if(0 == (probe_pool_data.flags & k_fsp_probe_flag_allocated) || probe_pool_data.owner_cell_index != global_cell_index)
+        {
+            continue;
+        }
+
+        const int2 probe_tile_id = int2(FspProbeAtlasMapPos(probe_index));
+        const float4 coeff0 = FspPackedShAtlasLoadCoeff(probe_tile_id, 0);
+        const float4 coeff1 = FspPackedShAtlasLoadCoeff(probe_tile_id, 1);
+        const float4 coeff2 = FspPackedShAtlasLoadCoeff(probe_tile_id, 2);
+        const float4 coeff3 = FspPackedShAtlasLoadCoeff(probe_tile_id, 3);
+        result.sky_visibility_sh = float4(
+            coeff0.r,
+            coeff1.r,
+            coeff2.r,
+            coeff3.r);
+        result.radiance_sh_r = float4(
+            coeff0.g,
+            coeff1.g,
+            coeff2.g,
+            coeff3.g);
+        result.radiance_sh_g = float4(
+            coeff0.b,
+            coeff1.b,
+            coeff2.b,
+            coeff3.b);
+        result.radiance_sh_b = float4(
+            coeff0.a,
+            coeff1.a,
+            coeff2.a,
+            coeff3.a);
+        return true;
+    }
+
+    return false;
+}
+
+float3 EvalFspRadianceL1DiffuseIrradiance(FspProbePackedShL1Sample fsp_probe_sh, float4 sh_basis)
+{
+    return float3(
+        dot(ConvolveL1ShByClampedCosine(fsp_probe_sh.radiance_sh_r), sh_basis),
+        dot(ConvolveL1ShByClampedCosine(fsp_probe_sh.radiance_sh_g), sh_basis),
+        dot(ConvolveL1ShByClampedCosine(fsp_probe_sh.radiance_sh_b), sh_basis));
+}
+
+float EvalFspSkyVisibilityL1IblOcclusion(float4 sky_visibility_sh_coeff, float4 sh_basis)
+{
+    return dot(ConvolveL1ShByNormalizedClampedCosine(sky_visibility_sh_coeff), sh_basis);
+}
+
+float EvalFspSkyVisibilityL1Directional(float4 sky_visibility_sh_coeff, float4 sh_basis)
+{
+    return dot(sky_visibility_sh_coeff, sh_basis);
+}
+
 float EvalDirectionalShadow(Texture2D tex_cascade_shadowmap, SamplerComparisonState comp_samp, float3 L, float3 pixel_pos_ws, float3 normal, float3 view_origin, float3 camera_dir)
 {
 	// Cascade Index.
@@ -319,8 +409,7 @@ uint2 calc_2d_position_from_index(uint index, uint tex_width)
 }
 uint2 calc_probe_octahedral_map_atlas_texel_base_pos(uint index, uint tex_width)
 {
-    // 境界部分の +1.
-    return calc_2d_position_from_index(index, tex_width) * k_wcp_probe_octmap_width_with_border + 1.0;
+    return calc_2d_position_from_index(index, tex_width) * k_fsp_probe_octmap_width;
 }
 
 float4 main_ps(VS_OUTPUT input) : SV_TARGET
@@ -384,38 +473,72 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 	// GIのテスト(Dynamic Sky Visibility).
 	float diffuse_sky_visibility = 1.0;
     float specular_sky_visibility = 1.0;
-    float3 ss_probe_diffuse_irradiance = float3(0.0, 0.0, 0.0);
-    if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.is_enable_radiance || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
+    float3 gi_probe_diffuse_irradiance = float3(0.0, 0.0, 0.0);
+    if(cb_ngl_lighting_pass.gi_sample_mode != k_gi_sample_mode_none
+        && (cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.is_enable_radiance || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility))
 	{
-        int2 ss_probe_sh_base_texel = int2(0, 0);
-        float4 upscale_gathered_weight = float4(0.0, 0.0, 0.0, 0.0);
-        bool valid_upscale_sample = false;
-        CalcSsProbeShUpsampleInfo(ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample, screen_uv, ld);
+        const float bent_normal_len_sq = dot(bent_normal_sample.xyz, bent_normal_sample.xyz);
+        const float3 bent_normal_ws = (bent_normal_len_sq > 1e-6) ? (bent_normal_sample.xyz * rsqrt(bent_normal_len_sq)) : gb_normal_ws;
+        const float3 gi_sample_pos_ws =
+            pixel_pos_ws
+            + (-to_pixel_ray_ws) * cb_ngl_lighting_pass.probe_sample_offset_view
+            + gb_normal_ws * cb_ngl_lighting_pass.probe_sample_offset_surface_normal
+            + bent_normal_ws * cb_ngl_lighting_pass.probe_sample_offset_bent_normal;
 
         // Diffuse uses normal-oriented SH evaluation, while specular uses reflection-oriented evaluation.
         const float4 sh_basis = EvaluateL1ShBasis(gb_normal_ws);
         const float3 reflected_view_dir = 2.0 * dot(V, gb_normal_ws) * gb_normal_ws - V;
         const float4 reflection_sh_basis = EvaluateL1ShBasis(reflected_view_dir);
-        const SsProbePackedShL1Sample ss_probe_sh = SampleSsProbePackedShL1(
-            screen_uv,
-            ss_probe_sh_base_texel,
-            upscale_gathered_weight,
-            valid_upscale_sample);
-        if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
-        {
-            const float diffuse_sh_sample = max(0.0, EvalSsProbeSkyVisibilityL1IblOcclusion(ss_probe_sh.sky_visibility_sh, sh_basis));
-            diffuse_sky_visibility = saturate(diffuse_sh_sample);
 
-            const float directional_specular_sample = max(0.0, EvalSsProbeSkyVisibilityL1Directional(ss_probe_sh.sky_visibility_sh, reflection_sh_basis));
-            // Smooth surfaces follow the reflection direction more closely; rough surfaces fall back toward diffuse-style occlusion.
-            const float roughness_blend = saturate(gb_roughness * gb_roughness);
-            specular_sky_visibility = saturate(lerp(directional_specular_sample, diffuse_sky_visibility, roughness_blend));
-        }
-        if(cb_ngl_lighting_pass.is_enable_radiance)
+        if(cb_ngl_lighting_pass.gi_sample_mode == k_gi_sample_mode_ssp)
         {
-            ss_probe_diffuse_irradiance = max(
-                float3(0.0, 0.0, 0.0),
-                EvalSsProbeRadianceL1DiffuseIrradiance(ss_probe_sh, sh_basis));
+            int2 ss_probe_sh_base_texel = int2(0, 0);
+            float4 upscale_gathered_weight = float4(0.0, 0.0, 0.0, 0.0);
+            bool valid_upscale_sample = false;
+            CalcSsProbeShUpsampleInfo(ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample, screen_uv, ld);
+
+            const SsProbePackedShL1Sample ss_probe_sh = SampleSsProbePackedShL1(
+                screen_uv,
+                ss_probe_sh_base_texel,
+                upscale_gathered_weight,
+                valid_upscale_sample);
+            if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
+            {
+                const float diffuse_sh_sample = max(0.0, EvalSsProbeSkyVisibilityL1IblOcclusion(ss_probe_sh.sky_visibility_sh, sh_basis));
+                diffuse_sky_visibility = saturate(diffuse_sh_sample);
+
+                const float directional_specular_sample = max(0.0, EvalSsProbeSkyVisibilityL1Directional(ss_probe_sh.sky_visibility_sh, reflection_sh_basis));
+                const float roughness_blend = saturate(gb_roughness * gb_roughness);
+                specular_sky_visibility = saturate(lerp(directional_specular_sample, diffuse_sky_visibility, roughness_blend));
+            }
+            if(cb_ngl_lighting_pass.is_enable_radiance)
+            {
+                gi_probe_diffuse_irradiance = max(
+                    float3(0.0, 0.0, 0.0),
+                    EvalSsProbeRadianceL1DiffuseIrradiance(ss_probe_sh, sh_basis));
+            }
+        }
+        else if(cb_ngl_lighting_pass.gi_sample_mode == k_gi_sample_mode_fsp)
+        {
+            FspProbePackedShL1Sample fsp_probe_sh;
+            if(TrySampleFspPackedShL1(fsp_probe_sh, gi_sample_pos_ws))
+            {
+                if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
+                {
+                    const float diffuse_sh_sample = max(0.0, EvalFspSkyVisibilityL1IblOcclusion(fsp_probe_sh.sky_visibility_sh, sh_basis));
+                    diffuse_sky_visibility = saturate(diffuse_sh_sample);
+
+                    const float directional_specular_sample = max(0.0, EvalFspSkyVisibilityL1Directional(fsp_probe_sh.sky_visibility_sh, reflection_sh_basis));
+                    const float roughness_blend = saturate(gb_roughness * gb_roughness);
+                    specular_sky_visibility = saturate(lerp(directional_specular_sample, diffuse_sky_visibility, roughness_blend));
+                }
+                if(cb_ngl_lighting_pass.is_enable_radiance)
+                {
+                    gi_probe_diffuse_irradiance = max(
+                        float3(0.0, 0.0, 0.0),
+                        EvalFspRadianceL1DiffuseIrradiance(fsp_probe_sh, sh_basis));
+                }
+            }
         }
 	}
 	
@@ -424,13 +547,13 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		float3 ibl_diffuse, ibl_specular;
 		EvalIblDiffuseStandard(ibl_diffuse, ibl_specular, tex_ibl_diffuse, tex_ibl_specular, tex_ibl_dfg, samp, gb_normal_ws, V, gb_base_color, gb_roughness, gb_metalness);
 
-		lit_color += ibl_diffuse * cb_ngl_lighting_pass.sky_lit_intensity * diffuse_sky_visibility * ssao_sample.a;
+        lit_color += ibl_diffuse * cb_ngl_lighting_pass.sky_lit_intensity * diffuse_sky_visibility * ssao_sample.a;
         // Approximate specular occlusion with reflection-direction visibility, then blend toward diffuse occlusion as roughness increases.
 		lit_color += ibl_specular * cb_ngl_lighting_pass.sky_lit_intensity * specular_sky_visibility * ssao_sample.a;
         if(cb_ngl_lighting_pass.is_enable_radiance)
         {
             const float3 probe_diffuse_brdf = brdf_lambert(gb_base_color, gb_roughness, gb_metalness, gb_normal_ws, V, gb_normal_ws);
-            lit_color += probe_diffuse_brdf * ss_probe_diffuse_irradiance * ssao_sample.a;
+            lit_color += probe_diffuse_brdf * gi_probe_diffuse_irradiance * ssao_sample.a;
         }
 	}
 

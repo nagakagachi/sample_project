@@ -25,6 +25,13 @@ namespace ngl
 
 namespace ngl::test
 {
+    enum EGiSampleMode
+    {
+        EGiSampleMode_None = 0,
+        EGiSampleMode_Ssp = 1,
+        EGiSampleMode_Fsp = 2,
+    };
+
     struct RenderFeatureLighting
     {
         math::Vec3 directional_light_dir  = -math::Vec3::UnitY();
@@ -38,6 +45,7 @@ namespace ngl::test
     struct RenderFeatureGi
     {
         render::app::ScreenReconstructedVoxelStructure* p_srvs = {};
+        int sample_mode = EGiSampleMode_Ssp;
         bool enable_sky_visibility = false;
         bool enable_radiance = false;
         float probe_sample_offset_view{0.0f};

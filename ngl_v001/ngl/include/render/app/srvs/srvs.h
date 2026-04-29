@@ -1,4 +1,4 @@
-﻿/*
+/*
     srvs.h
     screen-reconstructed voxel structure.
 */
@@ -91,6 +91,7 @@ namespace ngl::render::app
             
             math::Vec3u probe_resolution = math::Vec3u(32);
             float       probe_cell_size = 3.0f;
+            u32         probe_cascade_count = 5;
         };
         bool Initialize(ngl::rhi::DeviceDep* p_device, const InitArg& init_arg);
 
@@ -118,7 +119,7 @@ namespace ngl::render::app
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
             );
 
-        void Dispatch_Wcp(rhi::GraphicsCommandListDep* p_command_list,
+        void Dispatch_Fsp(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
             );
@@ -133,14 +134,17 @@ namespace ngl::render::app
             rhi::RefTextureDep hw_depth_tex, rhi::RefDsvDep hw_depth_dsv,
             rhi::RefTextureDep lighting_tex, rhi::RefRtvDep lighting_rtv);
 
-        void UpdateWcpDebugReadback();
+        void UpdateFspDebugReadback();
 
 
         void SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir);
 
 
         ngl::rhi::ConstantBufferPooledHandle GetDispatchCbh() const { return cbh_dispatch_; }
-        rhi::RefSrvDep GetWcpProbeAtlasTex() const { return wcp_probe_atlas_tex_.srv; }
+        rhi::RefSrvDep GetFspProbeAtlasTex() const { return fsp_probe_atlas_tex_.srv; }
+        rhi::RefSrvDep GetFspProbePackedShTex() const { return fsp_probe_packed_sh_tex_.srv; }
+        rhi::RefSrvDep GetFspCellProbeIndexBuffer() const { return fsp_cell_probe_index_buffer_.srv; }
+        rhi::RefSrvDep GetFspProbePoolBuffer() const { return fsp_probe_pool_buffer_.srv; }
         rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_[ss_probe_latest_filtered_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbeTileInfoTex() const { return ss_probe_tile_info_tex_[ss_probe_tile_info_curr_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbePackedShTex() const { return ss_probe_packed_sh_tex_.srv; }
@@ -176,18 +180,18 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_visible_surface_element_update_ = {};
 
 
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_clear_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_begin_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_visible_surface_proc_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_generate_visible_surface_list_indirect_arg_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_visible_surface_element_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_coarse_ray_sample_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_wcp_fill_probe_octmap_atlas_border_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_clear_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_begin_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_visible_surface_proc_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_generate_indirect_arg_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_pre_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_sh_update_ = {};
 
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_debug_visualize_ = {};
         ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_bbv_debug_probe_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_wcp_debug_probe_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_fsp_debug_probe_ = {};
 
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_clear_ = {};
@@ -219,25 +223,31 @@ namespace ngl::render::app
         ComputeBufferSet bbv_removal_indirect_arg_ = {};
 
 
-        // World Cache Probe. Wcp.
+        // Frustum Surface Probe. Fsp.
         // ----------------------------------------------------------------
-        ToroidalGridUpdater wcp_grid_updater_ = {};
+        std::vector<ToroidalGridUpdater> fsp_grid_updaters_ = {};
+        std::vector<u32> fsp_cascade_cell_offset_array_ = {};
 
-        ngl::u32     wcp_visible_surface_buffer_size_ = {};
-        ngl::u32     wcp_probe_pool_size_ = {};
-        ComputeBufferSet wcp_visible_surface_list_ = {};
-        ComputeBufferSet wcp_visible_surface_list_indirect_arg_ = {};
-        ComputeBufferSet wcp_cell_probe_index_buffer_ = {};
-        ComputeBufferSet wcp_probe_pool_buffer_ = {};
-        ComputeBufferSet wcp_probe_free_stack_buffer_ = {};
-        ComputeBufferSet wcp_active_probe_list_ = {};
-        ComputeBufferSet wcp_release_probe_list_ = {};
-        ComputeBufferSet wcp_buffer_ = {};
-        ComputeTextureSet wcp_probe_atlas_tex_ = {};
-        rhi::RefBufferDep wcp_visible_surface_list_readback_buffer_ = {};
-        rhi::RefBufferDep wcp_probe_free_stack_readback_buffer_ = {};
-        rhi::RefBufferDep wcp_active_probe_list_readback_buffer_ = {};
-        rhi::RefBufferDep wcp_release_probe_list_readback_buffer_ = {};
+        ngl::u32     fsp_visible_surface_buffer_size_ = {};
+        ngl::u32     fsp_probe_pool_size_ = {};
+        ngl::u32     fsp_cascade_count_ = {};
+        ngl::u32     fsp_total_cell_count_ = {};
+        ngl::u32     fsp_probe_atlas_tile_width_ = {};
+        ngl::u32     fsp_probe_atlas_tile_height_ = {};
+        ComputeBufferSet fsp_visible_surface_list_ = {};
+        ComputeBufferSet fsp_indirect_arg_ = {};
+        ComputeBufferSet fsp_cell_probe_index_buffer_ = {};
+        ComputeBufferSet fsp_probe_pool_buffer_ = {};
+        ComputeBufferSet fsp_probe_free_stack_buffer_ = {};
+        ComputeBufferSet fsp_active_probe_list_ = {};
+        ComputeBufferSet fsp_release_probe_list_ = {};
+        ComputeBufferSet fsp_buffer_ = {};
+        ComputeTextureSet fsp_probe_atlas_tex_ = {};
+        ComputeTextureSet fsp_probe_packed_sh_tex_ = {};
+        rhi::RefBufferDep fsp_visible_surface_list_readback_buffer_ = {};
+        rhi::RefBufferDep fsp_probe_free_stack_readback_buffer_ = {};
+        rhi::RefBufferDep fsp_active_probe_list_readback_buffer_ = {};
+        rhi::RefBufferDep fsp_release_probe_list_readback_buffer_ = {};
 
         
         // ScreenSpaceProbe.
@@ -261,7 +271,9 @@ namespace ngl::render::app
         
         
         static int dbg_bbv_probe_debug_mode_;
-        static int dbg_wcp_probe_debug_mode_;
+        static int dbg_fsp_probe_debug_mode_;
+        static int dbg_fsp_probe_debug_cascade_;
+        static int dbg_fsp_cascade_count_;
         static float dbg_probe_scale_;
         static float dbg_probe_near_geom_scale_;
         static int dbg_ss_probe_spatial_filter_enable_;
@@ -274,12 +286,12 @@ namespace ngl::render::app
         static float dbg_ss_probe_spatial_filter_normal_cos_threshold_;
         static float dbg_ss_probe_spatial_filter_depth_exp_scale_;
         static float dbg_ss_probe_side_cache_plane_dist_threshold_;
-        static int dbg_wcp_probe_pool_size_;
-        static int dbg_wcp_free_probe_count_;
-        static int dbg_wcp_allocated_probe_count_;
-        static int dbg_wcp_active_probe_count_;
-        static int dbg_wcp_release_probe_count_;
-        static int dbg_wcp_visible_surface_cell_count_;
+        static int dbg_fsp_probe_pool_size_;
+        static int dbg_fsp_free_probe_count_;
+        static int dbg_fsp_allocated_probe_count_;
+        static int dbg_fsp_active_probe_count_;
+        static int dbg_fsp_release_probe_count_;
+        static int dbg_fsp_visible_surface_cell_count_;
 
         // デバッグメニューを描画する. ImGuiウィンドウ内で呼び出すこと.
         static void DrawDebugMenu(bool* p_enable_injection, bool* p_enable_rejection);
@@ -289,7 +301,7 @@ namespace ngl::render::app
         ~ScreenReconstructedVoxelStructure();
 
         // 初期化
-        bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u bbv_resolution, float bbv_cell_size, math::Vec3u wcp_resolution, float wcp_cell_size);
+        bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u bbv_resolution, float bbv_cell_size, math::Vec3u fsp_resolution, float fsp_cell_size, u32 fsp_cascade_count = 5);
         bool IsValid() const { return is_initialized_; }
         // 破棄
         void Finalize();
