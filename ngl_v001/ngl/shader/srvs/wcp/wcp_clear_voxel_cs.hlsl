@@ -20,9 +20,20 @@ void main_cs(
 {
     // 全Voxelをクリア.
     uint probe_count = cb_srvs.wcp.grid_resolution.x * cb_srvs.wcp.grid_resolution.y * cb_srvs.wcp.grid_resolution.z;
+    const uint probe_pool_size = cb_srvs.wcp_probe_pool_size;
+
+    if(0 == dtid.x)
+    {
+        RWSurfaceProbeCellList[0] = 0;
+        RWWcpProbeFreeStack[0] = probe_pool_size;
+        RWWcpActiveProbeList[0] = 0;
+        RWWcpReleaseProbeList[0] = 0;
+    }
+
     if(dtid.x < probe_count)
     {
         RWWcpProbeBuffer[dtid.x] = (WcpProbeData)0;
+        RWWcpCellProbeIndexBuffer[dtid.x] = k_wcp_invalid_probe_index;
 
         {
             uint2 probe_2d_map_pos = uint2(dtid.x % cb_srvs.wcp.flatten_2d_width, dtid.x / cb_srvs.wcp.flatten_2d_width);
@@ -35,5 +46,13 @@ void main_cs(
                 }
             }
         }
+    }
+
+    if(dtid.x < probe_pool_size)
+    {
+        WcpProbePoolData probe_data = (WcpProbePoolData)0;
+        probe_data.owner_cell_index = k_wcp_invalid_probe_index;
+        RWWcpProbePoolBuffer[dtid.x] = probe_data;
+        RWWcpProbeFreeStack[dtid.x + 1] = dtid.x;
     }
 }

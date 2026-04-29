@@ -14,6 +14,25 @@ wcp_visible_surface_element_update_cs.hlsl
 #define RAY_SAMPLE_COUNT_PER_VOXEL 8
 #define PROBE_UPDATE_TEMPORAL_RATE (0.025)
 
+uint WcpPopFreeProbeIndex()
+{
+    for(;;)
+    {
+        const uint observed_count = RWWcpProbeFreeStack[0];
+        if(observed_count == 0)
+        {
+            return k_wcp_invalid_probe_index;
+        }
+
+        uint cas_old_value = 0;
+        InterlockedCompareExchange(RWWcpProbeFreeStack[0], observed_count, observed_count - 1, cas_old_value);
+        if(cas_old_value == observed_count)
+        {
+            return RWWcpProbeFreeStack[observed_count];
+        }
+    }
+}
+
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,
@@ -26,10 +45,27 @@ void main_cs(
     const uint visible_voxel_count = SurfaceProbeCellList[0]; // 0番目にアトミックカウンタが入っている.
     const uint update_element_index = (dtid.x * (WCP_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT+1) + (cb_srvs.frame_count%(WCP_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT+1)));
     
-    if(visible_voxel_count < update_element_index)
+    if(visible_voxel_count <= update_element_index)
         return;
 
     const uint voxel_index = SurfaceProbeCellList[update_element_index+1]; // 1番目以降に有効Voxelインデックスが入っている.
+    uint probe_index = RWWcpCellProbeIndexBuffer[voxel_index];
+    if(k_wcp_invalid_probe_index == probe_index)
+    {
+        probe_index = WcpPopFreeProbeIndex();
+        if(k_wcp_invalid_probe_index == probe_index)
+        {
+            return;
+        }
+        RWWcpCellProbeIndexBuffer[voxel_index] = probe_index;
+    }
+
+    WcpProbePoolData probe_pool_data = RWWcpProbePoolBuffer[probe_index];
+    probe_pool_data.owner_cell_index = voxel_index;
+    probe_pool_data.last_seen_frame = cb_srvs.frame_count;
+    probe_pool_data.debug_last_observed_frame = cb_srvs.frame_count;
+    probe_pool_data.flags |= (k_wcp_probe_flag_allocated | k_wcp_probe_flag_visible_this_frame);
+
     // voxel_indexからtoroidal考慮したVoxelIDを計算する.
     int3 voxel_coord_toroidal = index_to_voxel_coord(voxel_index, cb_srvs.wcp.grid_resolution);
     int3 voxel_coord = voxel_coord_toroidal_mapping(voxel_coord_toroidal, cb_srvs.wcp.grid_resolution -cb_srvs.wcp.grid_toroidal_offset, cb_srvs.wcp.grid_resolution);
@@ -40,7 +76,7 @@ void main_cs(
     #if 1
         // Probe埋まり回避.
         // RWWcpProbeBuffer[voxel_index].probe_offset_v3のuintからfloat3オフセット復元. Cellサイズの半分で正規化.
-        float3 prev_probe_offset = decode_uint_to_range1_vec3(RWWcpProbeBuffer[voxel_index].probe_offset_v3) * (cb_srvs.wcp.cell_size * 0.5);
+        float3 prev_probe_offset = decode_uint_to_range1_vec3(probe_pool_data.probe_offset_v3) * (cb_srvs.wcp.cell_size * 0.5);
         float3 probe_sample_pos_ws = probe_cell_center + prev_probe_offset;
 
         {
@@ -64,11 +100,16 @@ void main_cs(
             }
         }
         // Probe位置更新. Cellサイズの半分で正規化.
-        RWWcpProbeBuffer[voxel_index].probe_offset_v3 = encode_range1_vec3_to_uint(((probe_sample_pos_ws - probe_cell_center) / (cb_srvs.wcp.cell_size * 0.5)));
+        probe_pool_data.probe_offset_v3 = encode_range1_vec3_to_uint(((probe_sample_pos_ws - probe_cell_center) / (cb_srvs.wcp.cell_size * 0.5)));
     #else
         // 埋まり回避なし
         float3 probe_sample_pos_ws = probe_cell_center;
     #endif
+
+    // 既存 debug / scratch path 互換のため、セル側 legacy buffer にも最低限ミラーしておく。
+    RWWcpProbeBuffer[voxel_index].probe_offset_v3 = probe_pool_data.probe_offset_v3;
+    RWWcpProbeBuffer[voxel_index].avg_sky_visibility = probe_pool_data.avg_sky_visibility;
+    RWWcpProbePoolBuffer[probe_index] = probe_pool_data;
 
     #if 0
         // プローブデータの整理のため一旦ここでの書き込みは無効化. 全域更新のほうで検証中.

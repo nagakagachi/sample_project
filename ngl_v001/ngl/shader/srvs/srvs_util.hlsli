@@ -54,6 +54,17 @@ RWBuffer<float>		RWUpdateProbeWork;
 StructuredBuffer<WcpProbeData>		WcpProbeBuffer;
 RWStructuredBuffer<WcpProbeData>	RWWcpProbeBuffer;
 
+Buffer<uint>                          WcpCellProbeIndexBuffer;
+RWBuffer<uint>                        RWWcpCellProbeIndexBuffer;
+StructuredBuffer<WcpProbePoolData>    WcpProbePoolBuffer;
+RWStructuredBuffer<WcpProbePoolData>  RWWcpProbePoolBuffer;
+Buffer<uint>                          WcpProbeFreeStack;
+RWBuffer<uint>                        RWWcpProbeFreeStack;
+Buffer<uint>                          WcpActiveProbeList;
+RWBuffer<uint>                        RWWcpActiveProbeList;
+Buffer<uint>                          WcpReleaseProbeList;
+RWBuffer<uint>                        RWWcpReleaseProbeList;
+
 Texture2D       		WcpProbeAtlasTex;
 RWTexture2D<float>		RWWcpProbeAtlasTex;
 

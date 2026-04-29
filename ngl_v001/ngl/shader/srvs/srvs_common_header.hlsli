@@ -207,6 +207,26 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         uint probe_data_dummy;
     };
 
+    static const uint k_wcp_invalid_probe_index = ~uint(0);
+    static const uint k_wcp_probe_flag_allocated = 1u << 0;
+    static const uint k_wcp_probe_flag_visible_this_frame = 1u << 1;
+    static const uint k_wcp_probe_flag_pending_release = 1u << 2;
+
+    // WCP V1 lifecycle 用の probe pool エントリ.
+    // cell 側は probe index だけを持ち、probe 側に状態を寄せる。
+    struct WcpProbePoolData
+    {
+        uint owner_cell_index;
+        uint probe_offset_v3;// signed 10bit vector3 encode.
+        uint last_seen_frame;
+        uint flags;
+
+        float avg_sky_visibility;
+        uint debug_last_observed_frame;
+        uint debug_last_released_frame;
+        uint probe_pool_dummy;
+    };
+
 
     // 可視サーフェイス情報Injection用のView情報.
     // DepthBuffer等からInjectionする際のそのBufferのView情報を格納.
@@ -303,6 +323,10 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int3 wcp_indirect_cs_thread_group_size NGL_CPP_MEMBER_INIT({});
         // 更新プローブ用のワークサイズ.
         int wcp_visible_voxel_buffer_size NGL_CPP_MEMBER_INIT({});
+        int wcp_probe_pool_size NGL_CPP_MEMBER_INIT({});
+        int wcp_active_probe_buffer_size NGL_CPP_MEMBER_INIT({});
+        int wcp_release_probe_buffer_size NGL_CPP_MEMBER_INIT({});
+        int dummy_wcp0 NGL_CPP_MEMBER_INIT({});
 
         // MainViewのDepthBuffer解像度.
         int2 tex_main_view_depth_size NGL_CPP_MEMBER_INIT({});

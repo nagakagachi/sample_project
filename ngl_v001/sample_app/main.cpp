@@ -1,5 +1,7 @@
 ﻿
+#include <algorithm>
 #include <array>
+#include <cfloat>
 #include <iostream>
 #include <memory>
 #include <thread>
@@ -745,10 +747,12 @@ bool AppGame::ExecuteApp()
         // 初期位置とサイズ.
         const ImGuiViewport* main_viewport = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(ImVec2(main_viewport->WorkPos.x + 1500, main_viewport->WorkPos.y + 20), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(400, 400), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(520, 400), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSizeConstraints(ImVec2(520.0f, 400.0f), ImVec2(FLT_MAX, FLT_MAX));
 
         ImGui::Begin("Debug Window", &dbgw_test_window_enable, ImGuiWindowFlags_None);
-        ImGui::PushItemWidth(180.0f);
+        const float debug_window_item_width = std::clamp(ImGui::GetContentRegionAvail().x * 0.4f, 120.0f, 180.0f);
+        ImGui::PushItemWidth(debug_window_item_width);
 
         ImGui::TextColored(ImColor(1.0f, 0.2f, 0.2f), " ");
         ImGui::TextColored(ImColor(1.0f, 0.2f, 0.2f), "[Camera Control]");

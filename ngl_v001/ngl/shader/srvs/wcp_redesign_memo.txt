@@ -1,0 +1,537 @@
+# WCP Redesign Memo
+
+WCP (World Cache Probe) を、Enshrouded スタイルの
+**WorldAlign / ClipMap グリッド + サーフェイス近傍 probe pool**
+として再設計するための設計メモ。
+
+このファイルは `.txt` だが、見出しや箇条書きを使って markdown 風に読む前提で整形する。
+
+---
+
+## 背景
+
+- 不透明サーフェイスの LightLeak を抑えて高品質に計算する理想は SSP (ScreenSpaceProbe)
+- しかし SSP は
+  - プローブ数が多い
+  - ローエンドでは負荷が高い
+  - MotionVector がない環境では TemporalReprojection を活用した時間分散が難しい
+- そのため、ローエンド向けの補完手段として
+  **WorldAlign グリッド上でサーフェイス付近にだけ probe を配置して限定的に更新する WCP**
+  を再設計したい
+
+### 狙い
+
+- SSP より低負荷
+- world aligned / clipmap ベースで時間分散しても粗が目立ちにくい
+- screen-space のサーフェイス情報をガイドにして、必要な場所にだけ probe を持つ
+- Directional 情報は OctahedralMap で保持し、最低限の方向性を残す
+
+---
+
+## 参考方針
+
+### Enshrouded
+
+- グリッド管理
+- セルがサーフェイス上なら probe pool から割り当て
+- サーフェイス上ではなくなった、または遠く離れたらセルから解放して pool へ返却
+
+### Surfel Based GI
+
+- surfel lifecycle 管理
+- pool からの割り当て
+- 非アクティブ要素の返却
+- frame 単位でまとめる deferred release
+
+この 2 つを合わせて、
+**surface cell lifecycle を持つ probe system**
+として WCP を組み直す。
+
+---
+
+## 目標構成
+
+### 骨子
+
+1. **ClipMap カスケードグリッド**でセルを管理する
+2. **DepthBuffer などのサーフェイス情報**をガイドにしてサーフェイスセルを検出する
+3. サーフェイスセルに対して **probe pool から 1 probe を割り当てる**
+4. **割り当て済み probe リスト**を処理して、ray trace により probe ごとの OctahedralMap を更新する
+5. 一定期間サーフェイスセルとして再観測されなかったセルからは probe を返却する
+6. サーフェイス probe を debug 表示できるようにする
+
+---
+
+## 設計方針
+
+### 1. WorldAlign ClipMap cell が主、probe は従
+
+WCP の主役は probe ではなく **cell** とする。
+
+- world 空間には clipmap cascade ごとの cell が存在する
+- 各 cell は
+  - 未割り当て
+  - probe 割り当て済み
+  の状態を持つ
+- probe は pool から借りる一時的な実体であり、
+  cell が必要と判断されたときだけ結びつく
+
+この構造にすると、
+
+- cell 側は world aligned なので時間的に安定する
+- probe 側は pool で上限制御できる
+- 返却 / 再利用が明確になる
+
+### 2. 1 cell = 1 probe
+
+最初の版では **1 cell に 1 probe** とする。
+
+- 実装が単純
+- debug しやすい
+- lifecycle を追いやすい
+
+probe density のチューニングは
+
+- clipmap resolution
+- cascade ごとの cell size
+- サーフェイス判定しきい値
+
+で吸収する。
+
+### 3. Surface driven allocation
+
+probe を全 cell に常駐させず、
+**DepthBuffer 由来の visible surface 情報を入口**にする。
+
+- screen-space から world position を復元
+- それを clipmap cell に落とす
+- その cell を「surface observed」とマークする
+- 必要なら probe を割り当てる
+
+ここではまず **visible opaque surface** をガイドに使う。
+
+将来的には
+
+- GBuffer normal
+- material classification
+- bent normal / AO
+- multi-view injection
+
+などを拡張可能。
+
+---
+
+## 想定データ構造
+
+### Cell metadata
+
+各 clipmap cell に対して最低限ほしい情報:
+
+- `allocated_probe_index`
+  - 未割り当てなら invalid
+- `last_seen_frame`
+  - 最後に surface cell として観測されたフレーム
+- `state / flags`
+  - active
+  - pending allocate
+  - pending release
+  - debug flags
+- 必要なら
+  - `priority`
+  - `cascade_id`
+  - `surface_normal_accum`
+  - `surface_pos_accum`
+
+### Probe pool entry
+
+各 probe 実体に対して最低限ほしい情報:
+
+- `owner_cell_id`
+- `last_update_frame`
+- `probe_pos_ws`
+- `valid flag`
+- `octahedral atlas base`
+- 必要なら
+  - average visibility
+  - confidence / age
+  - normal hint
+
+### Global lists / queues
+
+- `free_probe_stack`
+  - atomic stack
+  - 即時割り当て用
+- `active_probe_list`
+  - 更新対象 probe 列挙
+- `release_probe_list`
+  - 今フレームで返却候補になった probe を積む
+- `surface_cell_list`
+  - 今フレーム観測された surface cell
+
+---
+
+## ライフサイクル
+
+### 1. 観測
+
+DepthBuffer から surface cell を観測する。
+
+- screen-space pass で visible surface を cell 化
+- 重複除去して `surface_cell_list` に積む
+- 観測された cell の `last_seen_frame` を更新
+
+### 2. 割り当て
+
+観測された cell のうち probe 未割り当てなら、
+`free_probe_stack` から probe を取得する。
+
+- 成功したら
+  - cell に probe index を書く
+  - probe 側に owner cell を書く
+  - 初期位置 / 初期 age を設定
+- 失敗したら
+  - 優先度の低い probe を奪うか
+  - 今フレームは見送る
+
+初版では、奪取は後回しにして
+**free がなければ見送り**でもよい。
+
+### 3. 更新
+
+割り当て済み probe のみを処理する。
+
+- active probe list を走査
+- 各 probe から ray trace
+- probe ごとの OctahedralMap を更新
+- temporal accumulation
+- 必要なら border copy
+
+更新頻度は
+
+- 全 probe 毎フレームではなく
+- frame modulo による時間分散
+
+を前提とする。
+
+### 4. 失効
+
+一定期間 `last_seen_frame` が更新されなかった cell は
+**surface cell ではなくなった**とみなす。
+
+- cell から owner probe を切り離す
+- probe index を `release_probe_list` に積む
+
+### 5. 返却
+
+`release_probe_list` を別 pass でまとめて処理し、
+`free_probe_stack` に戻す。
+
+この deferred release により、
+
+- その場で free stack を push しない
+- 更新 pass と返却 pass の競合を減らす
+- Surfel Based GI の lifecycle 管理に近い流れになる
+
+---
+
+## Pass 構成案
+
+### A. Begin / clear
+
+- frame counters
+- release list counter clear
+- 必要なら新規割り当て request list clear
+
+### B. Surface observation pass
+
+入力:
+
+- hardware depth
+- 必要なら normal / gbuffer
+
+出力:
+
+- `surface_cell_list`
+- cell `last_seen_frame`
+
+役割:
+
+- visible opaque surface を clipmap cell に落とす
+- tile/local shared で重複除去
+
+### C. Allocation pass
+
+入力:
+
+- `surface_cell_list`
+- cell metadata
+- `free_probe_stack`
+
+出力:
+
+- cell-probe association
+- new active probes
+
+役割:
+
+- 未割り当て cell へ probe を配る
+
+### D. Active probe list build / indirect arg
+
+入力:
+
+- cell metadata
+- probe metadata
+
+出力:
+
+- `active_probe_list`
+- indirect args
+
+役割:
+
+- 更新対象だけを compact する
+
+### E. Probe update pass
+
+入力:
+
+- `active_probe_list`
+- BBV / trace source
+- probe metadata
+- probe octa atlas
+
+出力:
+
+- probe octa atlas
+- probe metadata
+
+役割:
+
+- ray trace
+- temporal accumulation
+- average terms 更新
+
+### F. Border fill pass
+
+入力:
+
+- probe octa atlas
+
+出力:
+
+- border 埋め済み octa atlas
+
+### G. Release detect pass
+
+入力:
+
+- cell metadata
+- frame count
+
+出力:
+
+- `release_probe_list`
+
+役割:
+
+- `frame_count - last_seen_frame > threshold` の cell を失効
+
+### H. Release apply pass
+
+入力:
+
+- `release_probe_list`
+- cell metadata
+- probe metadata
+- `free_probe_stack`
+
+出力:
+
+- free probe 戻し
+
+---
+
+## Probe の位置
+
+surface cell に割り当てる probe は、
+cell center 固定ではなく **surface guided placement** にする。
+
+初版の候補:
+
+1. cell center
+2. observed surface position の平均 / 最新値
+3. BBV 埋まり回避付きのオフセット位置
+
+優先は 3 だが、
+allocation / lifecycle を先に安定させるために
+最初は 1 or 2 から始めてもよい。
+
+重要なのは、
+
+- probe がセルに属する
+- 位置はセル metadata / probe metadata から復元できる
+
+こと。
+
+---
+
+## OctahedralMap 更新方針
+
+probe ごとの OctahedralMap は継続利用する。
+
+理由:
+
+- WCP でも方向性を残したい
+- border copy 資産をそのまま使える
+- SSP と違って surface 専用 sparse probe なら probe 数を抑えやすい
+
+ただし初版では、
+
+- radiance まで一気に行くか
+- scalar visibility / distance から始めるか
+
+を切り分ける必要がある。
+
+### 推奨
+
+初版は **scalar directional visibility / distance** から入り、
+allocation / lifecycle / update scheduling を安定させたあとで radiance へ拡張する。
+
+理由:
+
+- まず leak / flicker / pool 管理の成立を見たい
+- radiance を先に入れると問題の切り分けが難しくなる
+
+---
+
+## 時間分散
+
+WCP の利点は world aligned であることなので、
+時間分散を前提にする。
+
+- active probe 全数を毎フレーム更新しない
+- frame modulo で probe update を分散
+- surfel/cell 観測は毎フレーム行ってもよい
+
+このとき、
+
+- cell は world aligned
+- probe も owner cell に固定
+
+なので、SSP より temporal 分散の粗が目立ちにくいことを期待する。
+
+---
+
+## デバッグ計画
+
+最低限ほしい表示:
+
+### 1. Surface cell debug
+
+- surface と判定された cell
+- cascade ごとの occupancy
+- last seen age
+
+### 2. Probe allocation debug
+
+- active probe 数
+- free probe 数
+- allocated cell-probe link
+- release 待ち probe
+
+### 3. Probe position debug
+
+- probe center
+- probe offset / relocated position
+- BBV 埋まり回避結果
+
+### 4. Probe octa debug
+
+- OctahedralMap raw
+- border fill 後 sample
+- average visibility / distance
+
+### 5. Lifecycle debug
+
+- newly allocated
+- active
+- stale
+- released this frame
+
+---
+
+## 段階実装案
+
+### Phase 1: lifecycle 骨格
+
+- clipmap cell metadata
+- probe pool
+- free stack
+- release list
+- depth 由来の `surface_cell_list`
+- allocation / release
+- debug 表示
+
+※ この段階では probe の lighting 値更新は最小限でもよい
+
+### Phase 2: sparse probe update
+
+- active probe list build
+- indirect dispatch
+- octa map update
+- border fill
+- time slicing
+
+### Phase 3: lighting integration
+
+- WCP atlas sample
+- diffuse GI への反映
+- SSP との quality / platform 切り替え
+
+### Phase 4: radiance 拡張
+
+- scalar directional visibility から radiance へ拡張
+- 必要なら SH 化
+- debug / quality tuning
+
+---
+
+## まず決めるべきこと
+
+再設計着手前に最低限決めるべき設計項目:
+
+1. clipmap cascade 数
+2. cascade ごとの cell size / resolution
+3. probe pool 上限数
+4. `surface stale threshold`
+5. 初版の probe 保持値
+   - scalar visibility / distance
+   - radiance octmap
+6. allocation 失敗時の方針
+   - 無視
+   - 最遠 / 最古 probe を reclaim
+
+---
+
+## 現時点の推奨
+
+まずは
+
+- **cell-probe lifecycle**
+- **surface driven allocation**
+- **active probe sparse update**
+- **release queue**
+
+を成立させることを優先する。
+
+その上で、
+
+- 初版は scalar directional visibility から開始
+- 破綻が少ないことを確認後、radiance octmap へ拡張
+
+が安全。
+
+SSP の代替として最初から同品質を狙うより、
+**ローエンド向けの stable / sparse / amortized GI**
+として役割を明確にする。

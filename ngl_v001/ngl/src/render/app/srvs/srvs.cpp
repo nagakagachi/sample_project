@@ -5,6 +5,7 @@
 
 #include "render/app/srvs/srvs.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -28,7 +29,9 @@ namespace ngl::render::app
 
     static constexpr size_t k_sizeof_BbvOptionalData = sizeof(BbvOptionalData);
     static constexpr size_t k_sizeof_WcpProbeData      = sizeof(WcpProbeData);
+    static constexpr size_t k_sizeof_WcpProbePoolData  = sizeof(WcpProbePoolData);
     static constexpr u32 k_max_update_probe_work_count = 1024;
+    static constexpr u32 k_wcp_probe_pool_size_v1 = 10000;
     
     // 時間分散するScreenProbeグループのサイズ. 幅がこのサイズのProbeグループ毎に1Fに一つ更新をする. GI-1.0などは2を指定して 4フレームで2x2のグループが更新される.
     static const int k_ss_probe_update_skip_tile_group_width = 1;
@@ -57,6 +60,16 @@ namespace ngl::render::app
         return group_grid_resolution.x * group_grid_resolution.y * group_grid_resolution.z;
     }
 
+    static bool InitializeReadbackBuffer(ngl::rhi::DeviceDep* p_device, ngl::rhi::RefBufferDep& out_buffer, const rhi::BufferDep::Desc& src_desc, const char* debug_name)
+    {
+        out_buffer.Reset(new rhi::BufferDep());
+        rhi::BufferDep::Desc desc = src_desc;
+        desc.bind_flag = rhi::ResourceBindFlag::None;
+        desc.heap_type = rhi::EResourceHeapType::Readback;
+        desc.initial_state = rhi::EResourceState::CopyDst;
+        return out_buffer->Initialize(p_device, desc, debug_name);
+    }
+
 
     // デバッグ.
     int ScreenReconstructedVoxelStructure::dbg_view_category_ = -1;
@@ -75,6 +88,12 @@ namespace ngl::render::app
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_ = k_default_srvs_param.ss_probe_spatial_filter_normal_cos_threshold;
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_ = k_default_srvs_param.ss_probe_spatial_filter_depth_exp_scale;
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_ = k_default_srvs_param.ss_probe_side_cache_plane_dist_threshold;
+    int ScreenReconstructedVoxelStructure::dbg_wcp_probe_pool_size_ = 0;
+    int ScreenReconstructedVoxelStructure::dbg_wcp_free_probe_count_ = 0;
+    int ScreenReconstructedVoxelStructure::dbg_wcp_allocated_probe_count_ = 0;
+    int ScreenReconstructedVoxelStructure::dbg_wcp_active_probe_count_ = 0;
+    int ScreenReconstructedVoxelStructure::dbg_wcp_release_probe_count_ = 0;
+    int ScreenReconstructedVoxelStructure::dbg_wcp_visible_surface_cell_count_ = 0;
 
     void ScreenReconstructedVoxelStructure::DrawDebugMenu(bool* p_enable_injection, bool* p_enable_rejection)
     {
@@ -230,29 +249,63 @@ namespace ngl::render::app
             if (ImGui::CollapsingHeader("Probe Debug"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
-                ImGui::SliderInt("Wcp Probe Mode", &dbg_wcp_probe_debug_mode_, -1, 10);
-                if (ImGui::BeginPopupContextItem()) {
-                    if (ImGui::MenuItem("Reset to Default"))
-                        dbg_wcp_probe_debug_mode_ = k_default_srvs_param.debug_wcp_probe_mode;
-                    ImGui::EndPopup();
+
+                if (ImGui::CollapsingHeader("Common", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    NGL_IMGUI_SCOPED_INDENT(10.0f);
+
+                    ImGui::SliderFloat("Probe Scale", &dbg_probe_scale_, 0.01f, 10.0f);
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_probe_scale_ = 1.0f;
+                        ImGui::EndPopup();
+                    }
+
+                    ImGui::SliderFloat("Probe Near Geometry Scale", &dbg_probe_near_geom_scale_, 0.01f, 10.0f);
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_probe_near_geom_scale_ = k_default_srvs_param.debug_probe_near_geom_scale;
+                        ImGui::EndPopup();
+                    }
                 }
-                ImGui::SliderInt("Bbv Probe Mode", &dbg_bbv_probe_debug_mode_, -1, 10);
-                if (ImGui::BeginPopupContextItem()) {
-                    if (ImGui::MenuItem("Reset to Default"))
-                        dbg_bbv_probe_debug_mode_ = k_default_srvs_param.debug_bbv_probe_mode;
-                    ImGui::EndPopup();
+
+                if (ImGui::CollapsingHeader("World Cache Probe", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    NGL_IMGUI_SCOPED_INDENT(10.0f);
+
+                    if (ImGui::CollapsingHeader("Stats", ImGuiTreeNodeFlags_DefaultOpen))
+                    {
+                        NGL_IMGUI_SCOPED_INDENT(10.0f);
+                        ImGui::Text("Probe Pool Size: %d", dbg_wcp_probe_pool_size_);
+                        ImGui::Text("Allocated Probes: %d", dbg_wcp_allocated_probe_count_);
+                        ImGui::Text("Free Probes: %d", dbg_wcp_free_probe_count_);
+                        ImGui::Text("Active Probes: %d", dbg_wcp_active_probe_count_);
+                        ImGui::Text("Released Probes: %d", dbg_wcp_release_probe_count_);
+                        ImGui::Text("Visible Surface Cells: %d", dbg_wcp_visible_surface_cell_count_);
+                        ImGui::TextDisabled("Stats are GPU readback values from the previous frame.");
+                    }
+
+                    if (ImGui::CollapsingHeader("Visualization", ImGuiTreeNodeFlags_DefaultOpen))
+                    {
+                        NGL_IMGUI_SCOPED_INDENT(10.0f);
+                        ImGui::SliderInt("Wcp Probe Mode", &dbg_wcp_probe_debug_mode_, -1, 10);
+                        if (ImGui::BeginPopupContextItem()) {
+                            if (ImGui::MenuItem("Reset to Default"))
+                                dbg_wcp_probe_debug_mode_ = k_default_srvs_param.debug_wcp_probe_mode;
+                            ImGui::EndPopup();
+                        }
+                    }
                 }
-                ImGui::SliderFloat("Probe Scale", &dbg_probe_scale_, 0.01f, 10.0f);
-                if (ImGui::BeginPopupContextItem()) {
-                    if (ImGui::MenuItem("Reset to Default"))
-                        dbg_probe_scale_ = 1.0f;
-                    ImGui::EndPopup();
-                }
-                ImGui::SliderFloat("Probe Near Geometry Scale", &dbg_probe_near_geom_scale_, 0.01f, 10.0f);
-                if (ImGui::BeginPopupContextItem()) {
-                    if (ImGui::MenuItem("Reset to Default"))
-                        dbg_probe_near_geom_scale_ = k_default_srvs_param.debug_probe_near_geom_scale;
-                    ImGui::EndPopup();
+
+                if (ImGui::CollapsingHeader("Bitmask Brick Voxel", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    NGL_IMGUI_SCOPED_INDENT(10.0f);
+                    ImGui::SliderInt("Bbv Probe Mode", &dbg_bbv_probe_debug_mode_, -1, 10);
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_bbv_probe_debug_mode_ = k_default_srvs_param.debug_bbv_probe_mode;
+                        ImGui::EndPopup();
+                    }
                 }
             }
         }
@@ -574,6 +627,62 @@ namespace ngl::render::app
                                             ,   "Srvs_WcpBuffer");
         }
         {
+            // V1 WCP lifecycle: cell -> probe index only.
+            wcp_cell_probe_index_buffer_.InitializeAsTyped(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(uint32_t),
+                                               .element_count     = wcp_probe_cell_count,
+
+                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default},
+                                           rhi::EResourceFormat::Format_R32_UINT
+                                        ,  "Srvs_WcpCellProbeIndexBuffer");
+        }
+        {
+            wcp_probe_pool_size_ = k_wcp_probe_pool_size_v1;
+            wcp_probe_pool_buffer_.InitializeAsStructured(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(WcpProbePoolData),
+                                               .element_count     = wcp_probe_pool_size_,
+
+                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default}
+                                            ,  "Srvs_WcpProbePoolBuffer");
+        }
+        {
+            wcp_probe_free_stack_buffer_.InitializeAsTyped(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(uint32_t),
+                                               .element_count     = wcp_probe_pool_size_ + 1, // 0番はstack counter/head用途.
+
+                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default},
+                                           rhi::EResourceFormat::Format_R32_UINT
+                                        ,  "Srvs_WcpProbeFreeStack");
+        }
+        {
+            wcp_active_probe_list_.InitializeAsTyped(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(uint32_t),
+                                               .element_count     = wcp_probe_pool_size_ + 1, // 0番はcounter.
+
+                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default},
+                                           rhi::EResourceFormat::Format_R32_UINT
+                                        ,  "Srvs_WcpActiveProbeList");
+        }
+        {
+            wcp_release_probe_list_.InitializeAsTyped(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(uint32_t),
+                                               .element_count     = wcp_probe_pool_size_ + 1, // 0番はcounter.
+
+                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default},
+                                           rhi::EResourceFormat::Format_R32_UINT
+                                        ,  "Srvs_WcpReleaseProbeList");
+        }
+        {
             wcp_visible_surface_list_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = sizeof(uint32_t),
@@ -583,6 +692,7 @@ namespace ngl::render::app
                                                .heap_type = rhi::EResourceHeapType::Default},
                                            rhi::EResourceFormat::Format_R32_UINT
                                         ,   "Srvs_WcpVisibleSurfaceList");
+            InitializeReadbackBuffer(p_device, wcp_visible_surface_list_readback_buffer_, wcp_visible_surface_list_.buffer->GetDesc(), "Srvs_WcpVisibleSurfaceListReadback");
         }
         {
             wcp_visible_surface_list_indirect_arg_.InitializeAsTyped(p_device,
@@ -595,6 +705,9 @@ namespace ngl::render::app
                                            rhi::EResourceFormat::Format_R32_UINT
                                         ,   "Srvs_WcpVisibleSurfaceListIndirectArg");
         }
+        InitializeReadbackBuffer(p_device, wcp_probe_free_stack_readback_buffer_, wcp_probe_free_stack_buffer_.buffer->GetDesc(), "Srvs_WcpProbeFreeStackReadback");
+        InitializeReadbackBuffer(p_device, wcp_active_probe_list_readback_buffer_, wcp_active_probe_list_.buffer->GetDesc(), "Srvs_WcpActiveProbeListReadback");
+        InitializeReadbackBuffer(p_device, wcp_release_probe_list_readback_buffer_, wcp_release_probe_list_.buffer->GetDesc(), "Srvs_WcpReleaseProbeListReadback");
 
         // WCP プローブアトラス.
         {
@@ -823,6 +936,9 @@ namespace ngl::render::app
 
                 param.wcp_indirect_cs_thread_group_size = math::Vec3i(pso_wcp_visible_surface_element_update_->GetThreadGroupSizeX(), pso_wcp_visible_surface_element_update_->GetThreadGroupSizeY(), pso_wcp_visible_surface_element_update_->GetThreadGroupSizeZ());
                 param.wcp_visible_voxel_buffer_size = wcp_visible_surface_buffer_size_;
+                param.wcp_probe_pool_size = static_cast<int>(wcp_probe_pool_size_);
+                param.wcp_active_probe_buffer_size = static_cast<int>(wcp_probe_pool_size_);
+                param.wcp_release_probe_buffer_size = static_cast<int>(wcp_probe_pool_size_);
             }
 
             param.tex_main_view_depth_size = hw_depth_size;
@@ -880,13 +996,25 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_wcp_clear_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_wcp_clear_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+                pso_wcp_clear_->SetView(&desc_set, "RWWcpCellProbeIndexBuffer", wcp_cell_probe_index_buffer_.uav.Get());
+                pso_wcp_clear_->SetView(&desc_set, "RWWcpProbePoolBuffer", wcp_probe_pool_buffer_.uav.Get());
+                pso_wcp_clear_->SetView(&desc_set, "RWWcpProbeFreeStack", wcp_probe_free_stack_buffer_.uav.Get());
+                pso_wcp_clear_->SetView(&desc_set, "RWWcpActiveProbeList", wcp_active_probe_list_.uav.Get());
+                pso_wcp_clear_->SetView(&desc_set, "RWWcpReleaseProbeList", wcp_release_probe_list_.uav.Get());
+                pso_wcp_clear_->SetView(&desc_set, "RWSurfaceProbeCellList", wcp_visible_surface_list_.uav.Get());
                 pso_wcp_clear_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_uav.Get(), wcp_probe_atlas_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_wcp_clear_.Get());
                 p_command_list->SetDescriptorSet(pso_wcp_clear_.Get(), &desc_set);
-                pso_wcp_clear_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
+                pso_wcp_clear_->DispatchHelper(p_command_list, std::max<u32>(wcp_grid_updater_.Get().total_count, wcp_probe_pool_size_ + 1), 1, 1);
 
                 p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_cell_probe_index_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_probe_pool_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_probe_free_stack_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_active_probe_list_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_release_probe_list_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_visible_surface_list_.buffer.Get());
                 p_command_list->ResourceBarrier(wcp_probe_atlas_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
             }
 
@@ -1282,12 +1410,12 @@ namespace ngl::render::app
         }
     }
     
-    void BitmaskBrickVoxelGi::Dispatch_Wcp(rhi::GraphicsCommandListDep* p_command_list,
+    void BitmaskBrickVoxelGi::Dispatch_SsProbe(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
                         const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
                         )
     {
-        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_Wcp");
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_SsProbe");
 
         auto& global_res = gfx::GlobalRenderResource::Instance();
 
@@ -1300,7 +1428,6 @@ namespace ngl::render::app
 
         ngl::u32 ss_probe_sh_input_index = ss_probe_update_write_index;
 
-        // ScreenSpaceProbe.
         {
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ScreenSpaceProbePreUpdate");
@@ -1409,6 +1536,16 @@ namespace ngl::render::app
                 p_command_list->ResourceUavBarrier(ss_probe_packed_sh_tex_.texture.Get());
             }
         }
+    }
+
+    void BitmaskBrickVoxelGi::Dispatch_Wcp(rhi::GraphicsCommandListDep* p_command_list,
+                        rhi::ConstantBufferPooledHandle scene_cbv,
+                        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
+                        )
+    {
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_Wcp");
+
+        const math::Vec2i hw_depth_size = math::Vec2i(static_cast<int>(hw_depth_tex->GetWidth()), static_cast<int>(hw_depth_tex->GetHeight()));
 
         // WCP.
         {
@@ -1420,14 +1557,24 @@ namespace ngl::render::app
                 pso_wcp_begin_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_wcp_begin_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
+                pso_wcp_begin_update_->SetView(&desc_set, "RWWcpCellProbeIndexBuffer", wcp_cell_probe_index_buffer_.uav.Get());
+                pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbePoolBuffer", wcp_probe_pool_buffer_.uav.Get());
+                pso_wcp_begin_update_->SetView(&desc_set, "RWWcpProbeFreeStack", wcp_probe_free_stack_buffer_.uav.Get());
+                pso_wcp_begin_update_->SetView(&desc_set, "RWWcpActiveProbeList", wcp_active_probe_list_.uav.Get());
+                pso_wcp_begin_update_->SetView(&desc_set, "RWWcpReleaseProbeList", wcp_release_probe_list_.uav.Get());
                 pso_wcp_begin_update_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_uav.Get(), wcp_probe_atlas_tex_.uav.Get());
                 pso_wcp_begin_update_->SetView(&desc_set, "RWSurfaceProbeCellList", wcp_visible_surface_list_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_wcp_begin_update_.Get());
                 p_command_list->SetDescriptorSet(pso_wcp_begin_update_.Get(), &desc_set);
-                pso_wcp_begin_update_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
+                pso_wcp_begin_update_->DispatchHelper(p_command_list, std::max<u32>(wcp_grid_updater_.Get().total_count, wcp_probe_pool_size_), 1, 1);
 
                 p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_cell_probe_index_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_probe_pool_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_probe_free_stack_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_active_probe_list_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_release_probe_list_.buffer.Get());
                 p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
                 p_command_list->ResourceUavBarrier(wcp_visible_surface_list_.buffer.Get());
             }
@@ -1477,6 +1624,9 @@ namespace ngl::render::app
                 pso_wcp_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
 
                 pso_wcp_visible_surface_element_update_->SetView(&desc_set, "SurfaceProbeCellList", wcp_visible_surface_list_.srv.Get());
+                pso_wcp_visible_surface_element_update_->SetView(&desc_set, "RWWcpCellProbeIndexBuffer", wcp_cell_probe_index_buffer_.uav.Get());
+                pso_wcp_visible_surface_element_update_->SetView(&desc_set, "RWWcpProbePoolBuffer", wcp_probe_pool_buffer_.uav.Get());
+                pso_wcp_visible_surface_element_update_->SetView(&desc_set, "RWWcpProbeFreeStack", wcp_probe_free_stack_buffer_.uav.Get());
                 pso_wcp_visible_surface_element_update_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
                 pso_wcp_visible_surface_element_update_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_uav.Get(), wcp_probe_atlas_tex_.uav.Get());
 
@@ -1488,6 +1638,9 @@ namespace ngl::render::app
 
 
                 p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_cell_probe_index_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_probe_pool_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_probe_free_stack_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
             }
             // Wcp Coarse Probe RaySample Pass.
@@ -1499,15 +1652,24 @@ namespace ngl::render::app
                 pso_wcp_coarse_ray_sample_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_wcp_coarse_ray_sample_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
 
+                pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpCellProbeIndexBuffer", wcp_cell_probe_index_buffer_.uav.Get());
+                pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbePoolBuffer", wcp_probe_pool_buffer_.uav.Get());
+                pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbeFreeStack", wcp_probe_free_stack_buffer_.uav.Get());
+                pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpActiveProbeList", wcp_active_probe_list_.uav.Get());
+                pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpReleaseProbeList", wcp_release_probe_list_.uav.Get());
                 pso_wcp_coarse_ray_sample_->SetView(&desc_set, "RWWcpProbeBuffer", wcp_buffer_.uav.Get());
                 pso_wcp_coarse_ray_sample_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_uav.Get(), wcp_probe_atlas_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_wcp_coarse_ray_sample_.Get());
                 p_command_list->SetDescriptorSet(pso_wcp_coarse_ray_sample_.Get(), &desc_set);
-                // 全Probe更新のスキップ要素分考慮したDispatch.
-                pso_wcp_coarse_ray_sample_->DispatchHelper(p_command_list, (wcp_grid_updater_.Get().total_count + (WCP_ALL_ELEMENT_UPDATE_SKIP_COUNT)) / (WCP_ALL_ELEMENT_UPDATE_SKIP_COUNT+1), 1, 1);
+                pso_wcp_coarse_ray_sample_->DispatchHelper(p_command_list, wcp_probe_pool_size_, 1, 1);
 
                 p_command_list->ResourceUavBarrier(wcp_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_cell_probe_index_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_probe_pool_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_probe_free_stack_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_active_probe_list_.buffer.Get());
+                p_command_list->ResourceUavBarrier(wcp_release_probe_list_.buffer.Get());
                 p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
             }
             // Wcp Octahedral Map Border Fill Pass.
@@ -1525,6 +1687,24 @@ namespace ngl::render::app
                 pso_wcp_fill_probe_octmap_atlas_border_->DispatchHelper(p_command_list, wcp_grid_updater_.Get().total_count, 1, 1);
 
                 p_command_list->ResourceUavBarrier(wcp_probe_atlas_tex_.texture.Get());
+            }
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "WcpDebugReadbackCopy");
+
+                p_command_list->ResourceBarrier(wcp_visible_surface_list_.buffer.Get(), rhi::EResourceState::UnorderedAccess, rhi::EResourceState::CopySrc);
+                p_command_list->ResourceBarrier(wcp_probe_free_stack_buffer_.buffer.Get(), rhi::EResourceState::UnorderedAccess, rhi::EResourceState::CopySrc);
+                p_command_list->ResourceBarrier(wcp_active_probe_list_.buffer.Get(), rhi::EResourceState::UnorderedAccess, rhi::EResourceState::CopySrc);
+                p_command_list->ResourceBarrier(wcp_release_probe_list_.buffer.Get(), rhi::EResourceState::UnorderedAccess, rhi::EResourceState::CopySrc);
+
+                p_command_list->CopyResource(wcp_visible_surface_list_readback_buffer_.Get(), wcp_visible_surface_list_.buffer.Get());
+                p_command_list->CopyResource(wcp_probe_free_stack_readback_buffer_.Get(), wcp_probe_free_stack_buffer_.buffer.Get());
+                p_command_list->CopyResource(wcp_active_probe_list_readback_buffer_.Get(), wcp_active_probe_list_.buffer.Get());
+                p_command_list->CopyResource(wcp_release_probe_list_readback_buffer_.Get(), wcp_release_probe_list_.buffer.Get());
+
+                p_command_list->ResourceBarrier(wcp_visible_surface_list_.buffer.Get(), rhi::EResourceState::CopySrc, rhi::EResourceState::UnorderedAccess);
+                p_command_list->ResourceBarrier(wcp_probe_free_stack_buffer_.buffer.Get(), rhi::EResourceState::CopySrc, rhi::EResourceState::UnorderedAccess);
+                p_command_list->ResourceBarrier(wcp_active_probe_list_.buffer.Get(), rhi::EResourceState::CopySrc, rhi::EResourceState::UnorderedAccess);
+                p_command_list->ResourceBarrier(wcp_release_probe_list_.buffer.Get(), rhi::EResourceState::CopySrc, rhi::EResourceState::UnorderedAccess);
             }
         }
     }
@@ -1613,6 +1793,8 @@ namespace ngl::render::app
             pso_wcp_debug_probe_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
 
             pso_wcp_debug_probe_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+            pso_wcp_debug_probe_->SetView(&desc_set, "WcpCellProbeIndexBuffer", wcp_cell_probe_index_buffer_.srv.Get());
+            pso_wcp_debug_probe_->SetView(&desc_set, "WcpProbePoolBuffer", wcp_probe_pool_buffer_.srv.Get());
             pso_wcp_debug_probe_->SetView(&desc_set, "WcpProbeBuffer", wcp_buffer_.srv.Get());
             pso_wcp_debug_probe_->SetView(&desc_set, k_shader_bind_name_wcp_atlas_srv.Get(), wcp_probe_atlas_tex_.srv.Get());
             pso_wcp_debug_probe_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
@@ -1668,12 +1850,39 @@ namespace ngl::render::app
         is_initialized_ = false;
     }
 
+    void BitmaskBrickVoxelGi::UpdateWcpDebugReadback()
+    {
+        auto read_counter = [](rhi::RefBufferDep buffer) -> int
+        {
+            if (buffer.Get() == nullptr)
+            {
+                return 0;
+            }
+            if (auto* mapped = buffer->MapAs<uint32_t>())
+            {
+                const int value = static_cast<int>(mapped[0]);
+                buffer->Unmap();
+                return value;
+            }
+            return 0;
+        };
+
+        ScreenReconstructedVoxelStructure::dbg_wcp_probe_pool_size_ = static_cast<int>(wcp_probe_pool_size_);
+        ScreenReconstructedVoxelStructure::dbg_wcp_free_probe_count_ = read_counter(wcp_probe_free_stack_readback_buffer_);
+        ScreenReconstructedVoxelStructure::dbg_wcp_active_probe_count_ = read_counter(wcp_active_probe_list_readback_buffer_);
+        ScreenReconstructedVoxelStructure::dbg_wcp_release_probe_count_ = read_counter(wcp_release_probe_list_readback_buffer_);
+        ScreenReconstructedVoxelStructure::dbg_wcp_visible_surface_cell_count_ = read_counter(wcp_visible_surface_list_readback_buffer_);
+        ScreenReconstructedVoxelStructure::dbg_wcp_allocated_probe_count_ =
+            std::max(0, ScreenReconstructedVoxelStructure::dbg_wcp_probe_pool_size_ - ScreenReconstructedVoxelStructure::dbg_wcp_free_probe_count_);
+    }
+
     void ScreenReconstructedVoxelStructure::DispatchBegin(rhi::GraphicsCommandListDep* p_command_list,
         rhi::ConstantBufferPooledHandle scene_cbv, 
         const ngl::render::task::RenderPassViewInfo& main_view_info, const math::Vec2i& render_resolution)
     {
         if(bbvgi_instance_)
         {
+            bbvgi_instance_->UpdateWcpDebugReadback();
             bbvgi_instance_->Dispatch_Begin(p_command_list, scene_cbv, main_view_info, render_resolution);
         }
     }
@@ -1705,6 +1914,7 @@ namespace ngl::render::app
         if(bbvgi_instance_)
         {
             bbvgi_instance_->Dispatch_Bbv_Main(p_command_list, scene_cbv);
+            bbvgi_instance_->Dispatch_SsProbe(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
             bbvgi_instance_->Dispatch_Wcp(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
             bbvgi_instance_->Dispatch_Debug(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv, work_tex, work_uav);
         }

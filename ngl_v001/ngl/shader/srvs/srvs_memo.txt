@@ -80,6 +80,11 @@ for (int i = 1; i < W - 1; ++i)
 - https://jcgt.org/published/0008/02/01/
 - https://morgan3d.github.io/articles/2019-04-01-ddgi/
 
+
+### Deferred voxel shading for real-time global illumination
+
+- https://jose-villegas.github.io/post/deferred_voxel_shading/
+
 ### Surfel Based GI
 
 - https://www.ea.com/seed/news/siggraph21-global-illumination-surfels

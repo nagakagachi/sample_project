@@ -25,6 +25,8 @@ struct VS_OUTPUT
     float3 pos_ws : POSITION_WS;
     float3 voxel_probe_pos_ws : VOXELPROBEPOSWS0;
     int voxel_index : VOXELINDEX0;
+    uint probe_index : PROBEINDEX0;
+    uint probe_flags : PROBEFLAGS0;
 };
 
 
@@ -65,12 +67,14 @@ VS_OUTPUT main_vs(VS_INPUT input)
 
     const int3 voxel_coord = index_to_voxel_coord(instance_id, cb_srvs.wcp.grid_resolution);
     const uint voxel_index = voxel_coord_to_index(voxel_coord_toroidal_mapping(voxel_coord, cb_srvs.wcp.grid_toroidal_offset, cb_srvs.wcp.grid_resolution), cb_srvs.wcp.grid_resolution);
-
-    #if 1
-        const float3 probe_offset = decode_uint_to_range1_vec3(WcpProbeBuffer[voxel_index].probe_offset_v3) * (cb_srvs.wcp.cell_size * 0.5);
-    #else
-        const float3 probe_offset = float3(0.0, 0.0, 0.0);
-    #endif
+    const uint probe_index = WcpCellProbeIndexBuffer[voxel_index];
+    const bool is_allocated = (probe_index != k_wcp_invalid_probe_index);
+    WcpProbePoolData probe_pool_data = (WcpProbePoolData)0;
+    if(is_allocated)
+    {
+        probe_pool_data = WcpProbePoolBuffer[probe_index];
+    }
+    const float3 probe_offset = is_allocated ? decode_uint_to_range1_vec3(probe_pool_data.probe_offset_v3) * (cb_srvs.wcp.cell_size * 0.5) : float3(0.0, 0.0, 0.0);
 
     const float3 probe_pos_ws = (float3(voxel_coord) + (0.5)) * cb_srvs.wcp.cell_size + cb_srvs.wcp.grid_min_pos + probe_offset;
 
@@ -79,7 +83,7 @@ VS_OUTPUT main_vs(VS_INPUT input)
 
     // 表示位置.
     const float3 instance_pos = probe_pos_ws;
-    float draw_scale = cb_srvs.debug_probe_radius;
+    float draw_scale = is_allocated ? cb_srvs.debug_probe_radius : 0.0;
 
     const int vtx_index = particle_quad_index[ instance_vtx_id ];
     float3 quad_vtx_pos = particle_quad_pos[vtx_index] * draw_scale;
@@ -97,6 +101,8 @@ VS_OUTPUT main_vs(VS_INPUT input)
 
     output.voxel_probe_pos_ws = instance_pos;
     output.voxel_index = int(voxel_index);
+    output.probe_index = probe_index;
+    output.probe_flags = probe_pool_data.flags;
 
 	return output;
 }
@@ -114,6 +120,11 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
         discard;
     }
     const int voxel_index = input.voxel_index;
+    if(input.probe_index == k_wcp_invalid_probe_index)
+    {
+        discard;
+    }
+    const WcpProbePoolData probe_pool_data = WcpProbePoolBuffer[input.probe_index];
 
     const float3 dir_to_camera = normalize(view_origin - input.voxel_probe_pos_ws);
     const float3 quad_pose_side = normalize(cross(camera_up, -dir_to_camera));
@@ -137,23 +148,23 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     // 可視化.
     if(0 == cb_srvs.debug_wcp_probe_mode)
     {
-        const WcpProbeData probe_data = WcpProbeBuffer[voxel_index];
-        color = probe_data.avg_sky_visibility.xxxx;
+        const bool is_visible = 0 != (probe_pool_data.flags & k_wcp_probe_flag_visible_this_frame);
+        color = is_visible ? float4(0.2, 1.0, 0.3, 1.0) : float4(1.0, 0.85, 0.2, 1.0);
     }
     else if(1 == cb_srvs.debug_wcp_probe_mode)
     {
-        // WcpProbeAtlasTex に格納されたOctmapを可視化.
-        const float4 probe_data = WcpProbeAtlasTex.Load(uint3(octmap_texel_pos, 0));
-
-        color = pow(probe_data.xxxx, 2.0);// 適当ガンマ
+        color = probe_pool_data.avg_sky_visibility.xxxx;
     }
     else if(2 == cb_srvs.debug_wcp_probe_mode)
     {
-        // WcpProbeAtlasTex に格納されたOctmapを可視化.
-        // Samplerで補間取得
-        const float4 probe_data = WcpProbeAtlasTex.SampleLevel(SmpLinearClamp, (octmap_texel_pos) / float2(tex_width, tex_height), 0);
-
-        color = pow(probe_data.xxxx, 2.0);// 適当ガンマ
+        const float hashed = frac(float(input.probe_index) * 0.61803398875);
+        color = float4(hashed, frac(hashed * 1.37), frac(hashed * 2.11), 1.0);
+    }
+    else if(3 == cb_srvs.debug_wcp_probe_mode)
+    {
+        const float age = float(cb_srvs.frame_count - probe_pool_data.last_seen_frame);
+        const float age_norm = saturate(age / 30.0);
+        color = lerp(float4(0.2, 1.0, 0.3, 1.0), float4(1.0, 0.2, 0.1, 1.0), age_norm);
     }
 
 	return color;

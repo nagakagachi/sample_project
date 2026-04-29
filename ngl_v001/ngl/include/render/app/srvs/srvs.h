@@ -113,6 +113,11 @@ namespace ngl::render::app
             rhi::ConstantBufferPooledHandle scene_cbv
             );
 
+        void Dispatch_SsProbe(rhi::GraphicsCommandListDep* p_command_list,
+            rhi::ConstantBufferPooledHandle scene_cbv,
+            const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
+            );
+
         void Dispatch_Wcp(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
@@ -127,6 +132,8 @@ namespace ngl::render::app
             rhi::ConstantBufferPooledHandle scene_cbv, 
             rhi::RefTextureDep hw_depth_tex, rhi::RefDsvDep hw_depth_dsv,
             rhi::RefTextureDep lighting_tex, rhi::RefRtvDep lighting_rtv);
+
+        void UpdateWcpDebugReadback();
 
 
         void SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir);
@@ -217,10 +224,20 @@ namespace ngl::render::app
         ToroidalGridUpdater wcp_grid_updater_ = {};
 
         ngl::u32     wcp_visible_surface_buffer_size_ = {};
+        ngl::u32     wcp_probe_pool_size_ = {};
         ComputeBufferSet wcp_visible_surface_list_ = {};
         ComputeBufferSet wcp_visible_surface_list_indirect_arg_ = {};
+        ComputeBufferSet wcp_cell_probe_index_buffer_ = {};
+        ComputeBufferSet wcp_probe_pool_buffer_ = {};
+        ComputeBufferSet wcp_probe_free_stack_buffer_ = {};
+        ComputeBufferSet wcp_active_probe_list_ = {};
+        ComputeBufferSet wcp_release_probe_list_ = {};
         ComputeBufferSet wcp_buffer_ = {};
         ComputeTextureSet wcp_probe_atlas_tex_ = {};
+        rhi::RefBufferDep wcp_visible_surface_list_readback_buffer_ = {};
+        rhi::RefBufferDep wcp_probe_free_stack_readback_buffer_ = {};
+        rhi::RefBufferDep wcp_active_probe_list_readback_buffer_ = {};
+        rhi::RefBufferDep wcp_release_probe_list_readback_buffer_ = {};
 
         
         // ScreenSpaceProbe.
@@ -257,6 +274,12 @@ namespace ngl::render::app
         static float dbg_ss_probe_spatial_filter_normal_cos_threshold_;
         static float dbg_ss_probe_spatial_filter_depth_exp_scale_;
         static float dbg_ss_probe_side_cache_plane_dist_threshold_;
+        static int dbg_wcp_probe_pool_size_;
+        static int dbg_wcp_free_probe_count_;
+        static int dbg_wcp_allocated_probe_count_;
+        static int dbg_wcp_active_probe_count_;
+        static int dbg_wcp_release_probe_count_;
+        static int dbg_wcp_visible_surface_cell_count_;
 
         // デバッグメニューを描画する. ImGuiウィンドウ内で呼び出すこと.
         static void DrawDebugMenu(bool* p_enable_injection, bool* p_enable_rejection);
