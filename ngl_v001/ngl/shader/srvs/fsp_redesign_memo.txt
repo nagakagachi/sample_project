@@ -1,8 +1,6 @@
 # FSP Redesign Memo
 
-FSP (Frustum Surface Probe) を、Enshrouded スタイルの
-**WorldAlign / ClipMap グリッド + サーフェイス近傍 probe pool**
-として再設計するための設計メモ。
+FSP (Frustum Surface Probe) の現行設計メモ。
 
 このファイルは `.txt` だが、見出しや箇条書きを使って markdown 風に読む前提で整形する。
 
@@ -10,537 +8,514 @@ FSP (Frustum Surface Probe) を、Enshrouded スタイルの
 
 ## 背景
 
-- 不透明サーフェイスの LightLeak を抑えて高品質に計算する理想は SSP (ScreenSpaceProbe)
-- しかし SSP は
-  - プローブ数が多い
-  - ローエンドでは負荷が高い
-  - MotionVector がない環境では TemporalReprojection を活用した時間分散が難しい
-- そのため、ローエンド向けの補完手段として
-  **WorldAlign グリッド上でサーフェイス付近にだけ probe を配置して限定的に更新する FSP**
-  を再設計したい
+FSP は、SSP より低負荷な補完 GI として、
 
-### 狙い
+- **world aligned / clipmap**
+- **surface driven allocation**
+- **probe pool 上限制御**
 
-- SSP より低負荷
-- world aligned / clipmap ベースで時間分散しても粗が目立ちにくい
-- screen-space のサーフェイス情報をガイドにして、必要な場所にだけ probe を持つ
-- Directional 情報は OctahedralMap で保持し、最低限の方向性を残す
+を組み合わせた probe system として構成する。
 
----
+旧案では
 
-## 参考方針
+- full scan の begin/update
+- release list ベースの deferred release
+- 一時 flag に依存した debug 状態
 
-### Enshrouded
-
-- グリッド管理
-- Spatial Cascaded Cache
-- 32x32x32 の world aligned grid
-- player centered
-- 12 cascades
-- active cells は最大 16k (variable)
-- 開始 spacing は 2m、cascade ごとに 2 倍 (variable)
-- screen space (depth buffer) または XYZ position buffer で cell を activate
-- inactive cell は garbage collect
-  - camera movement により、expire 前なら古い probe が再 activation されうる
-- セルがサーフェイス上なら probe pool から割り当て
-- サーフェイス上ではなくなった、または遠く離れたらセルから解放して pool へ返却
-
-### Surfel Based GI
-
-- surfel lifecycle 管理
-- pool からの割り当て
-- 非アクティブ要素の返却
-- frame 単位でまとめる deferred release
-
-この 2 つを合わせて、
-**surface cell lifecycle を持つ probe system**
-として FSP を組み直す。
+などが含まれていたが、現行方針ではそれらを整理し、
+**ActiveProbeList 駆動**を中心に再構成した。
 
 ---
 
-## 目標構成
+## 現行方針の要点
 
-### 骨子
+### 1. authoritative な動的集合は ActiveProbeList
 
-1. **ClipMap カスケードグリッド**でセルを管理する
-2. **DepthBuffer などのサーフェイス情報**をガイドにしてサーフェイスセルを検出する
-3. サーフェイスセルに対して **probe pool から 1 probe を割り当てる**
-4. **割り当て済み probe リスト**を処理して、ray trace により probe ごとの OctahedralMap を更新する
-5. 一定期間サーフェイスセルとして再観測されなかったセルからは probe を返却する
-6. サーフェイス probe を debug 表示できるようにする
+FSP で「今フレーム有効な probe 集合」は
+**`ActiveProbeListCurr` が唯一の正**とする。
 
----
+- 前フレームの active 集合: `ActiveProbeListPrev`
+- 今フレームの active 集合: `ActiveProbeListCurr`
 
-## 設計方針
+両者は ping-pong で切り替える。
 
-### 1. WorldAlign ClipMap cell が主、probe は従
+### 2. surface cell と probe は双方向リンク
 
-FSP の主役は probe ではなく **cell** とする。
+- cell -> probe:
+  - `FspCellProbeIndexBuffer[cell]`
+- probe -> cell:
+  - `FspProbePoolBuffer[probe].owner_cell_index`
 
-- world 空間には clipmap cascade ごとの cell が存在する
-- 各 cell は
-  - 未割り当て
-  - probe 割り当て済み
-  の状態を持つ
-- probe は pool から借りる一時的な実体であり、
-  cell が必要と判断されたときだけ結びつく
+この 2 つが揃って、はじめて割り当て済みとみなす。
 
-この構造にすると、
+### 3. screen-space pass は visible cell の dedup 専用
 
-- cell 側は world aligned なので時間的に安定する
-- probe 側は pool で上限制御できる
-- 返却 / 再利用が明確になる
+DepthBuffer を入口にするが、
+**screen pass で probe allocation まではやらない**。
 
-### 2. 1 cell = 1 probe
+screen pass の責務は:
 
-最初の版では **1 cell に 1 probe** とする。
+1. world pos を復元
+2. FSP cell を求める
+3. cell ごとの atomic stamp で dedup
+4. `SurfaceProbeCellList` に積む
 
-- 実装が単純
-- debug しやすい
-- lifecycle を追いやすい
+まで。
 
-probe density のチューニングは
+### 4. screen-space 以外は indirect dispatch
 
-- clipmap resolution
-- cascade ごとの cell size
-- サーフェイス判定しきい値
+full-screen / full-pool / full-cell のような広い dispatch を避け、
+screen-space pass 以外は次の list から indirect dispatch する。
 
-で吸収する。
+- `ActiveProbeListPrev`
+- `SurfaceProbeCellList`
+- `ActiveProbeListCurr`
 
-### 3. Surface driven allocation
+### 5. 初期実装では non-screen pass の間引きはしない
 
-probe を全 cell に常駐させず、
-**DepthBuffer 由来の visible surface 情報を入口**にする。
+複雑化を避けるため、初期段階では
 
-- screen-space から world position を復元
-- それを clipmap cell に落とす
-- その cell を「surface observed」とマークする
-- 必要なら probe を割り当てる
+- visible cell prepare は list 全件
+- active probe update は active 全件
+- packed SH update は active 全件
+- probe 内 octa texel も全件
 
-ここではまず **visible opaque surface** をガイドに使う。
-
-将来的には
-
-- GBuffer normal
-- material classification
-- bent normal / AO
-- multi-view injection
-
-などを拡張可能。
+の素直な実装を優先する。
 
 ---
 
-## 想定データ構造
+## データ契約
 
-### Cell metadata
+### Cell 側
 
-各 clipmap cell に対して最低限ほしい情報:
+#### `FspCellProbeIndexBuffer`
 
-- `allocated_probe_index`
-  - 未割り当てなら invalid
+- 型: `uint`
+- 内容:
+  - 割り当て probe index
+  - 未割り当てなら `k_fsp_invalid_probe_index`
+
+cell 側は **なるべく軽量**にし、
+本質的には probe index だけを持つ。
+
+#### `FspProbeBuffer`
+
+cell 側 scratch / debug / legacy mirror 用。
+
+主用途:
+
+- `atomic_work`
+  - visible surface cell dedup 用 stamp
+- `probe_offset_v3`
+  - debug/probe draw 互換の mirror
+- `avg_sky_visibility`
+  - debug/probe draw 互換の mirror
+
+### Probe 側
+
+#### `FspProbePoolBuffer`
+
+probe 実体の metadata。
+
+最低限必要な内容:
+
+- `owner_cell_index`
+- `probe_offset_v3`
 - `last_seen_frame`
-  - 最後に surface cell として観測されたフレーム
-- `state / flags`
-  - active
-  - pending allocate
-  - pending release
-  - debug flags
-- 必要なら
-  - `priority`
-  - `cascade_id`
-  - `surface_normal_accum`
-  - `surface_pos_accum`
-
-### Probe pool entry
-
-各 probe 実体に対して最低限ほしい情報:
-
-- `owner_cell_id`
 - `last_update_frame`
-- `probe_pos_ws`
-- `valid flag`
-- `octahedral atlas base`
-- 必要なら
-  - average visibility
-  - confidence / age
-  - normal hint
+- `avg_sky_visibility`
+- `debug_last_observed_frame`
+- `debug_last_released_frame`
+- `flags`
+  - 少なくとも allocated 判定用
 
-### Global lists / queues
+#### `FspProbeFreeStack`
 
-- `free_probe_stack`
-  - atomic stack
-  - 即時割り当て用
-- `active_probe_list`
-  - 更新対象 probe 列挙
-- `release_probe_list`
-  - 今フレームで返却候補になった probe を積む
-- `surface_cell_list`
-  - 今フレーム観測された surface cell
+- `0` 番: stack counter
+- `1..N`: free probe index
 
----
+atomic push/pop 前提。
 
-## ライフサイクル
+### Active / visible list
 
-### 1. 観測
+#### `FspActiveProbeListPrev`
 
-DepthBuffer から surface cell を観測する。
+- `0` 番: count
+- `1..N`: 前フレーム active probe index
 
-- screen-space pass で visible surface を cell 化
-- 重複除去して `surface_cell_list` に積む
-- 観測された cell の `last_seen_frame` を更新
+#### `FspActiveProbeListCurr`
 
-### 2. 割り当て
+- `0` 番: count
+- `1..N`: 今フレーム active probe index
 
-観測された cell のうち probe 未割り当てなら、
-`free_probe_stack` から probe を取得する。
+#### `SurfaceProbeCellList`
 
-- 成功したら
-  - cell に probe index を書く
-  - probe 側に owner cell を書く
-  - 初期位置 / 初期 age を設定
-- 失敗したら
-  - 優先度の低い probe を奪うか
-  - 今フレームは見送る
+- `0` 番: count
+- `1..N`: 今フレーム観測された surface cell の global index
 
-初版では、奪取は後回しにして
-**free がなければ見送り**でもよい。
+### テクスチャ
 
-### 3. 更新
+#### `FspProbeAtlasTex`
 
-割り当て済み probe のみを処理する。
+- probe ごとの OctahedralMap atlas
+- point sample / `Load` 前提
+- border copy pass は使わない
 
-- active probe list を走査
-- 各 probe から ray trace
-- probe ごとの OctahedralMap を更新
-- temporal accumulation
-- 必要なら border copy
+#### `FspProbePackedSHTex`
 
-更新頻度は
-
-- 全 probe 毎フレームではなく
-- frame modulo による時間分散
-
-を前提とする。
-
-### 4. 失効
-
-一定期間 `last_seen_frame` が更新されなかった cell は
-**surface cell ではなくなった**とみなす。
-
-- cell から owner probe を切り離す
-- probe index を `release_probe_list` に積む
-
-### 5. 返却
-
-`release_probe_list` を別 pass でまとめて処理し、
-`free_probe_stack` に戻す。
-
-この deferred release により、
-
-- その場で free stack を push しない
-- 更新 pass と返却 pass の競合を減らす
-- Surfel Based GI の lifecycle 管理に近い流れになる
+- packed L1 SH atlas
+- active probe 更新後に再構築する
 
 ---
 
-## Pass 構成案
+## 1 フレームの推奨処理順
 
-### A. Begin / clear
+### 0. 初期 clear
 
-- frame counters
-- release list counter clear
-- 必要なら新規割り当て request list clear
+初期化時のみ:
 
-### B. Surface observation pass
+- cell -> probe を invalid
+- probe owner を invalid
+- free stack を全 probe で埋める
+- active prev/curr count を 0
+- visible cell count を 0
+- octa atlas / packed SH を clear
+
+### 1. PrevActive indirect arg build
+
+入力:
+
+- `ActiveProbeListPrev`
+
+出力:
+
+- `IndirectArg`
+
+`ActiveProbeListPrev[0]` から
+`PrevActiveProcess` 用の indirect dispatch 数を作る。
+
+### 2. PrevActiveProcess
+
+入力:
+
+- `ActiveProbeListPrev`
+
+出力:
+
+- 生存 probe -> `ActiveProbeListCurr`
+- 返却 probe -> `FspProbeFreeStack`
+
+各 prev active probe について:
+
+1. `owner_cell_index` を取得
+2. owner cell が有効かを見る
+3. grid move で invalidate されたかを見る
+4. `last_seen_frame` と release grace で stale 判定
+5. **継続 active**
+   - `ActiveProbeListCurr` に push
+6. **release**
+   - `cell -> probe` を invalid
+   - `probe -> cell` を invalid
+   - probe metadata を reset
+   - atlas clear
+   - free stack に push
+
+現行方針では **release list は持たない**。
+release 判定された probe はその場で free stack に返す。
+
+### 3. ObserveVisibleSurfaceCell
 
 入力:
 
 - hardware depth
-- 必要なら normal / gbuffer
 
 出力:
 
-- `surface_cell_list`
-- cell `last_seen_frame`
+- `SurfaceProbeCellList`
 
-役割:
+screen-space dispatch で:
 
-- visible opaque surface を clipmap cell に落とす
-- tile/local shared で重複除去
+1. pixel world pos を復元
+2. world pos から対象 cascade の FSP cell を求める
+3. `FspProbeBuffer[cell].atomic_work` に `frame_count` を書く
+4. 同一 frame に初めて観測された cell のみ list に push
 
-### C. Allocation pass
+この pass は **visible cell dedup 専用**。
+ここでは allocation しない。
+
+### 4. VisibleCell indirect arg build
 
 入力:
 
-- `surface_cell_list`
-- cell metadata
-- `free_probe_stack`
+- `SurfaceProbeCellList`
 
 出力:
 
-- cell-probe association
-- new active probes
+- `IndirectArg`
 
-役割:
+`PrepareVisibleSurfaceCell` 用の dispatch 数を作る。
 
-- 未割り当て cell へ probe を配る
-
-### D. Active probe list build / indirect arg
+### 5. PrepareVisibleSurfaceCell
 
 入力:
 
-- cell metadata
+- `SurfaceProbeCellList`
+- `FspCellProbeIndexBuffer`
+- `FspProbePoolBuffer`
+- `FspProbeFreeStack`
+- `FspActiveProbeListCurr`
+
+役割:
+
+- visible cell に既存 probe があれば refresh
+- probe 未割り当てなら free から pop して新規割り当て
+
+各 visible cell について:
+
+#### probe あり
+
+- `last_seen_frame` 更新
+- `debug_last_observed_frame` 更新
+- `owner_cell_index` 整合維持
+- probe placement 更新
+- `Curr` へ push は不要
+  - surviving probe は PrevActiveProcess で積まれているため
+
+#### probe なし
+
+- free stack から pop
+- `cell -> probe` を設定
+- `probe -> cell` を設定
+- `last_seen_frame` 初期化
+- `last_update_frame` 初期化
+- debug カウンタ初期化
+- `Curr` に push
+
+### 6. Active indirect arg build
+
+入力:
+
+- `ActiveProbeListCurr`
+
+出力:
+
+- `IndirectArg`
+
+`UpdateActiveProbe` と `UpdateProbeSh` の両方で使う。
+
+### 7. UpdateActiveProbe
+
+入力:
+
+- `ActiveProbeListCurr`
+
+出力:
+
+- `FspProbeAtlasTex`
 - probe metadata
 
-出力:
+各 active probe について:
 
-- `active_probe_list`
-- indirect args
+1. `owner_cell_index` から cell center を求める
+2. `probe_offset_v3` から probe pos を復元
+3. octa texel 全件について ray trace
+4. radiance / sky visibility を atlas に反映
+5. `avg_sky_visibility` を更新
+6. `last_update_frame` を更新
 
-役割:
-
-- 更新対象だけを compact する
-
-### E. Probe update pass
-
-入力:
-
-- `active_probe_list`
-- BBV / trace source
-- probe metadata
-- probe octa atlas
-
-出力:
-
-- probe octa atlas
-- probe metadata
-
-役割:
-
-- ray trace
-- temporal accumulation
-- average terms 更新
-
-### F. Border fill pass
+### 8. UpdateProbeSh
 
 入力:
 
-- probe octa atlas
+- `ActiveProbeListCurr`
 
 出力:
 
-- border 埋め済み octa atlas
+- `FspProbePackedSHTex`
 
-### G. Release detect pass
+各 active probe について:
 
-入力:
+1. probe の octa atlas tile を読む
+2. L1 SH を積分
+3. packed SH atlas の 4 coeff に書く
 
-- cell metadata
-- frame count
+初期実装では **active probe 全件更新**でよい。
+後段で必要なら `DirtyProbeList` を追加する。
 
-出力:
+---
+
+## 排他 / atomic の整理
+
+必要な atomic は次だけに絞る。
+
+1. `FspProbeBuffer[cell].atomic_work`
+   - visible cell dedup
+2. `SurfaceProbeCellList[0]`
+   - visible cell list push
+3. `FspProbeFreeStack[0]`
+   - free push/pop
+4. `FspActiveProbeListCurr[0]`
+   - active list push
+
+この構造だと、
+`PrepareVisibleSurfaceCell` は dedup 済み cell list を処理するため、
+基本的に **1 thread / 1 cell** で扱いやすい。
+
+そのため screen-space pass に allocation を押し込むより、
+
+- screen-space: dedup
+- visible cell prepare: allocation / refresh
+
+の 2 段に分ける方が安全。
+
+---
+
+## Dispatch 方針
+
+### full-screen dispatch
+
+- `ObserveVisibleSurfaceCell` だけ
+
+### indirect dispatch
+
+- `PrevActiveProcess`
+  - 入力: `ActiveProbeListPrev`
+- `PrepareVisibleSurfaceCell`
+  - 入力: `SurfaceProbeCellList`
+- `UpdateActiveProbe`
+  - 入力: `ActiveProbeListCurr`
+- `UpdateProbeSh`
+  - 入力: `ActiveProbeListCurr`
+
+つまり FSP は、screen-space pass を 1 本だけ持ち、
+それ以外は **list-driven compute** として組む。
+
+---
+
+## 現行実装上の注意
+
+### 1. `visible_this_frame` のような一時 flag は不要
+
+debug で「今フレーム観測されたか」を見たいなら:
+
+- `last_seen_frame == frame_count`
+
+で導出する。
+
+### 2. release list は不要
+
+現行方針では
 
 - `release_probe_list`
+- `released probe count`
+- release 専用 readback
 
-役割:
+は本筋に不要。
 
-- `frame_count - last_seen_frame > threshold` の cell を失効
+release 判定された probe は
+その場で metadata reset + free push でよい。
 
-### H. Release apply pass
+### 3. debug 用 readback は本筋から切り離す
 
-入力:
+`free probe count` や `active probe count` などの readback は
+debug/stat 用であり、FSP 本筋の成立条件ではない。
 
-- `release_probe_list`
-- cell metadata
-- probe metadata
-- `free_probe_stack`
+### 4. `SrvsParam` の cbuffer packing に注意
 
-出力:
+member の追加・削除時は
+**16-byte 境界**を再確認すること。
 
-- free probe 戻し
+特に FSP 領域では:
 
----
+- int を 1 つ消しただけでも
+- 次の `int2` / `float3` / 構造体の位置がずれて
+- static_assert に引っかかる
 
-## Probe の位置
-
-surface cell に割り当てる probe は、
-cell center 固定ではなく **surface guided placement** にする。
-
-初版の候補:
-
-1. cell center
-2. observed surface position の平均 / 最新値
-3. BBV 埋まり回避付きのオフセット位置
-
-優先は 3 だが、
-allocation / lifecycle を先に安定させるために
-最初は 1 or 2 から始めてもよい。
-
-重要なのは、
-
-- probe がセルに属する
-- 位置はセル metadata / probe metadata から復元できる
-
-こと。
+ことがある。
 
 ---
 
-## OctahedralMap 更新方針
+## 初期実装の成立条件
 
-probe ごとの OctahedralMap は継続利用する。
+次が満たされていれば、
+ActiveProbe 駆動版の骨格として成立している。
 
-理由:
-
-- FSP でも方向性を残したい
-- border copy 資産をそのまま使える
-- SSP と違って surface 専用 sparse probe なら probe 数を抑えやすい
-
-ただし初版では、
-
-- radiance まで一気に行くか
-- scalar visibility / distance から始めるか
-
-を切り分ける必要がある。
-
-### 推奨
-
-初版は **scalar directional visibility / distance** から入り、
-allocation / lifecycle / update scheduling を安定させたあとで radiance へ拡張する。
-
-理由:
-
-- まず leak / flicker / pool 管理の成立を見たい
-- radiance を先に入れると問題の切り分けが難しくなる
+1. prev/curr active list でフレームを回せる
+2. grid move / stale release が prev active ベースで行える
+3. visible surface から probe 新規割り当てができる
+4. main update が `ActiveProbeListCurr` indirect で回る
+5. packed SH update が `ActiveProbeListCurr` indirect で回る
+6. screen-space pass 以外の full scan が除去されている
 
 ---
 
-## 時間分散
+## 将来の拡張候補
 
-FSP の利点は world aligned であることなので、
-時間分散を前提にする。
+- `DirtyProbeList` による SH 差分更新
+- newly allocated probe の優先更新
+- cascade ごとの予算制御
+- active probe の更新優先度付け
+- visible cell 観測入力の多様化
+  - GBuffer normal
+  - XYZ position buffer
+  - multi-view injection
 
-- active probe 全数を毎フレーム更新しない
-- frame modulo で probe update を分散
-- surfel/cell 観測は毎フレーム行ってもよい
-
-このとき、
-
-- cell は world aligned
-- probe も owner cell に固定
-
-なので、SSP より temporal 分散の粗が目立ちにくいことを期待する。
+最初から入れず、
+**素直な active-list 駆動版を成立させてから段階的に追加する**。
 
 ---
 
-## デバッグ計画
+## 要件説明プロンプト原文
 
-最低限ほしい表示:
+以下は、ActiveProbe リスト駆動化についての要件説明プロンプト原文。
+設計整理版ではなく、意図の確認や再読のためにそのまま保持する。
 
-### 1. Surface cell debug
+```text
+Fspに関するDispatchを最小化し、排他処理も効率化したいので処理フローを整理します。
+- データの関係
+サーフェイス上のグリッドセル(サーフェイスセル)にはプローブが割り当てられる
+グリッドセルにはプローブIndexが格納される
+同様にプローブには割り当て先のグリッドセルが格納される
+これでActiveプローブがそれぞれどのセルに割り当てられているかわかり
+逆にサーフェイスセルにどのプローブが割り当てられているかわかる
 
-- surface と判定された cell
-- cascade ごとの occupancy
-- last seen age
+Activeプローブリストをうまく構築更新することで、
+Activeプローブだけを処理したり、Activeプローブが所属するサーフェイスセルだけを処理するといったことを可能にしたい。
 
-### 2. Probe allocation debug
 
-- active probe 数
-- free probe 数
-- allocated cell-probe link
-- release 待ち probe
+Activeプローブリストは二重化し、効率的に次フレームのActiveプローブリストとFreeプローブリストを構築できるようにする。
 
-### 3. Probe position debug
 
-- probe center
-- probe offset / relocated position
-- BBV 埋まり回避結果
 
-### 4. Probe octa debug
+- Activeプローブリストの更新
+前フレームのActiveプローブリストに対して処理。
+Activeプローブの返却猶予フレームやグリッド移動による所属セルInvalidateをチェック。
+返却判定となった場合はいろいろリセットしてFreeプローブリストにPushする。
+そうでない場合は引き続きActiveなので現フレームのActiveプローブリストにPushする。
+これでFreeプローブ返却処理と前フレームからの継続Activeプローブリストができる。
+前フレームActiveプローブリストは空になる。
 
-- OctahedralMap raw
-- border fill 後 sample
-- average visibility / distance
 
-### 5. Lifecycle debug
+- DepthBufferをガイドにしてサーフェイスセルの準備。
+DepthBufferタイルなどのスクリーンスペースで処理。
+サーフェイス上のセルにまだプローブが無ければAtomicにプローブ割り当てする。
+FreeプローブからPopし、現フレームActiveプローブリストにPush。
+セルにActiveプローブインデックスを設定し、Activeプローブ側には所属セルインデックスを設定する。
+新規割り当てActiveプローブは返却猶予フレームなどのリセットもする。
 
-- newly allocated
-- active
-- stale
-- released this frame
+- Activeプローブ用のIndirectArg等を作成
 
----
 
-## 段階実装案
+- Activeプローブのメイン更新
+現フレームActiveプローブリストに対して処理。
+Activeプローブについてレイトレなどの更新し、対応するOctahedralMapAtlasを更新。。
+返却猶予フレームの更新をする。
 
-### Phase 1: lifecycle 骨格
+- SH更新
+現フレームActiveプローブリストに対して処理。
+Activeプローブに対応するSHテクスチャ要素を更新。
 
-- clipmap cell metadata
-- probe pool
-- free stack
-- release list
-- depth 由来の `surface_cell_list`
-- allocation / release
-- debug 表示
 
-※ この段階では probe の lighting 値更新は最小限でもよい
-
-### Phase 2: sparse probe update
-
-- active probe list build
-- indirect dispatch
-- octa map update
-- border fill
-- time slicing
-
-### Phase 3: lighting integration
-
-- FSP atlas sample
-- diffuse GI への反映
-- SSP との quality / platform 切り替え
-
-### Phase 4: radiance 拡張
-
-- scalar directional visibility から radiance へ拡張
-- 必要なら SH 化
-- debug / quality tuning
-
----
-
-## まず決めるべきこと
-
-再設計着手前に最低限決めるべき設計項目:
-
-1. clipmap cascade 数
-2. cascade ごとの cell size / resolution
-3. probe pool 上限数
-4. `surface stale threshold`
-5. 初版の probe 保持値
-   - scalar visibility / distance
-   - radiance octmap
-6. allocation 失敗時の方針
-   - 無視
-   - 最遠 / 最古 probe を reclaim
-
----
-
-## 現時点の推奨
-
-まずは
-
-- **cell-probe lifecycle**
-- **surface driven allocation**
-- **active probe sparse update**
-- **release queue**
-
-を成立させることを優先する。
-
-その上で、
-
-- 初版は scalar directional visibility から開始
-- 破綻が少ないことを確認後、radiance octmap へ拡張
-
-が安全。
-
-SSP の代替として最初から同品質を狙うより、
-**ローエンド向けの stable / sparse / amortized GI**
-として役割を明確にする。
+このようにすることで各シェーダDispatchはそれぞれ最小限のIndirectDispatchができるのではないか。
+設計の検討
+```

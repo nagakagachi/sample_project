@@ -36,6 +36,287 @@ border copy pass は削除済み。
   - 反転方向
   を再確認すること
 
+### FSP ActiveProbe 駆動設計
+
+FSP は **surface cell と probe の双方向リンク**を基本にし、
+フレームごとの動的集合は **ActiveProbeList** を正とする。
+
+この設計の狙いは次の通り。
+
+1. full scan を減らし、screen-space pass 以外は indirect dispatch に寄せる
+2. 「どの probe が今有効か」を active list で一意に表現する
+3. cell/probe の所属更新と寿命管理の責務を pass 単位で明確にする
+4. debug 用の一時 flag に依存せず、`last_seen_frame` / `last_update_frame` などの永続カウンタで状態を追う
+
+#### データ契約
+
+- **surface cell**
+  - `FspCellProbeIndexBuffer[cell]`
+  - 値は `probe index` または `k_fsp_invalid_probe_index`
+- **probe**
+  - `FspProbePoolBuffer[probe].owner_cell_index`
+  - 値は `global cell index` または `k_fsp_invalid_probe_index`
+- **free probe**
+  - `FspProbeFreeStack`
+  - `0` 番はカウンタ、`1..N` が stack 本体
+- **active probe**
+  - `FspActiveProbeListPrev`
+  - `FspActiveProbeListCurr`
+  - どちらも `0` 番はカウンタ、`1..N` が `probe index`
+- **visible surface cell**
+  - `SurfaceProbeCellList`
+  - `0` 番はカウンタ、`1..N` が `global cell index`
+- **cell 側 scratch / dedup**
+  - `FspProbeBuffer[cell].atomic_work`
+  - screen-space visible cell dedup 用の atomic stamp
+
+#### probe metadata の最小要件
+
+probe 側で最低限持つもの:
+
+- `owner_cell_index`
+- `probe_offset_v3`
+- `last_seen_frame`
+- `last_update_frame`
+- `avg_sky_visibility`
+- `debug_last_observed_frame`
+- `debug_last_released_frame`
+- `flags`
+  - 少なくとも `allocated` 判定用は必要
+
+`visible_this_frame` のような一時 flag は不要。
+その種の debug 表示は `last_seen_frame == frame_count` などで導出する。
+
+#### ActiveProbeList の意味
+
+- `ActiveProbeListPrev`
+  - 前フレーム終了時点で active だった probe 集合
+- `ActiveProbeListCurr`
+  - 今フレーム中に有効と判定された probe 集合
+
+フレーム開始時に prev/curr を切り替える。
+切り替え方法は `frame_count & 1` ベースの ping-pong でも、明示 swap でもよい。
+
+重要なのは:
+
+- **今フレームの authoritative な active 集合は `Curr`**
+- **次フレームの入力は `Curr` が `Prev` になったもの**
+
+ということ。
+
+#### 1 フレームの推奨処理順
+
+##### 0. 初期化時 clear
+
+- 全 cell の `FspCellProbeIndexBuffer` を invalid
+- 全 probe の `owner_cell_index` を invalid
+- free stack を全 probe で初期化
+- active list prev/curr の counter を 0
+- visible cell list の counter を 0
+- atlas / packed SH を clear
+
+##### 1. PrevActive indirect arg 生成
+
+- 入力: `ActiveProbeListPrev`
+- 出力: `IndirectArg`
+
+`ActiveProbeListPrev[0]` を見て、
+`PrevActiveProcess` 用の indirect dispatch 数を作る。
+
+##### 2. PrevActiveProcess
+
+- 入力: `ActiveProbeListPrev`
+- 出力:
+  - surviving probe -> `ActiveProbeListCurr`
+  - released probe -> `FreeProbeStack`
+
+各 prev active probe について:
+
+1. `owner_cell_index` を取得
+2. owner cell が有効か確認
+3. grid move により cell が invalidate されたか確認
+4. `last_seen_frame` と猶予フレームから stale 判定
+5. **継続 active**
+   - `ActiveProbeListCurr` に push
+6. **release**
+   - cell 側 `probe index` を invalid
+   - probe 側 metadata を reset
+   - atlas を clear
+   - free stack に push
+
+この pass では **前フレーム active だった probe だけ**を見る。
+全 cell / 全 probe scan はしない。
+
+##### 3. ObserveVisibleSurfaceCell
+
+- 入力: DepthBuffer
+- 出力: `SurfaceProbeCellList`
+
+screen-space dispatch で:
+
+1. pixel world pos を復元
+2. 該当 cascade の FSP cell を求める
+3. cell ごとの `atomic_work` に現在 frame を書き込む
+4. 同一 frame に初めて観測された cell だけ visible list に push
+
+この passの責務は **visible surface cell の dedup だけ**。
+ここで probe allocation までやらない。
+
+##### 4. VisibleSurface indirect arg 生成
+
+- 入力: `SurfaceProbeCellList`
+- 出力: `IndirectArg`
+
+visible cell list の count から `PrepareVisibleSurfaceCell` 用の indirect arg を生成する。
+
+##### 5. PrepareVisibleSurfaceCell
+
+- 入力:
+  - `SurfaceProbeCellList`
+  - `FspProbeFreeStack`
+  - `FspCellProbeIndexBuffer`
+  - `FspProbePoolBuffer`
+  - `ActiveProbeListCurr`
+- 出力:
+  - 既存 probe の refresh
+  - 新規 probe の allocation
+
+各 visible cell について:
+
+1. `cell -> probe` を見る
+2. **既存 probe あり**
+   - `last_seen_frame` 更新
+   - `debug_last_observed_frame` 更新
+   - probe placement 更新
+   - `owner_cell_index` が合っていることを維持
+   - `Curr` への push は不要
+     - surviving probe は PrevActiveProcess ですでに push 済み
+3. **probe なし**
+   - free stack から pop
+   - `cell -> probe` を設定
+   - `probe -> cell` を設定
+   - `last_seen_frame` 初期化
+   - `last_update_frame` 初期化
+   - debug カウンタ初期化
+   - `Curr` に push
+
+screen pass で allocation しない理由:
+
+- 同じ cell に複数 pixel/thread が来る
+- free pop rollback が必要になる
+- cell CAS 失敗時の取り消しが複雑になる
+
+dedup 済み visible cell list に対する別 pass に分ける方が安全。
+
+##### 6. ActiveProbe indirect arg 生成
+
+- 入力: `ActiveProbeListCurr`
+- 出力: `IndirectArg`
+
+main update / SH update 用。
+
+##### 7. UpdateActiveProbe
+
+- 入力: `ActiveProbeListCurr`
+- 出力: `FspProbeAtlasTex`
+
+active probe ごとに:
+
+1. `owner_cell_index` から cell center を取得
+2. `probe_offset_v3` を復元して probe world pos を決める
+3. octa texel 群について ray trace
+4. radiance / sky visibility を atlas に書く
+5. `avg_sky_visibility` を更新
+6. `last_update_frame` を更新
+
+初期実装では **non-screen pass の間引きはしない**。
+つまり:
+
+- visible cell prepare は list 全件
+- active update は active probe 全件
+- octa update は probe 内 texel 全件
+
+の素直な実装から始める。
+
+##### 8. UpdateProbeSh
+
+- 入力: `ActiveProbeListCurr`
+- 出力: `FspProbePackedSHTex`
+
+active probe ごとに:
+
+1. probe の octa atlas tile を読む
+2. L1 SH を積分
+3. packed SH atlas の 4 coeff へ書く
+
+初期実装では **active probe 全件更新**でよい。
+必要なら後段で `DirtyProbeList` を導入して縮小する。
+
+#### 排他 / atomic の整理
+
+必要な atomic は次だけに絞る。
+
+1. **visible cell dedup**
+   - `FspProbeBuffer[cell].atomic_work`
+2. **visible cell list push**
+   - `SurfaceProbeCellList[0]`
+3. **free stack pop/push**
+   - `FspProbeFreeStack[0]`
+4. **active list push**
+   - `FspActiveProbeListCurr[0]`
+
+この構造だと、
+`PrepareVisibleSurfaceCell` は **dedup 済み cell list** を食うため、
+cell 単位では基本的に 1 thread / 1 cell になる。
+そのため cell->probe 割り当てに重い CAS を持ち込みにくい。
+
+#### Dispatch 方針
+
+- **screen-space pass だけ** full-screen dispatch
+- それ以外は **すべて indirect dispatch**
+- indirect の入力は:
+  - `ActiveProbeListPrev`
+  - `SurfaceProbeCellList`
+  - `ActiveProbeListCurr`
+
+と段階的に切り替わる。
+
+つまり FSP は次の構造になる。
+
+1. prev active 駆動の lifecycle
+2. screen-space 駆動の visible cell 観測
+3. visible cell 駆動の allocation / refresh
+4. curr active 駆動の atlas 更新
+5. curr active 駆動の SH 更新
+
+#### 実装上の注意
+
+- `cell -> probe` と `probe -> cell` は常に対で更新する
+- release list は本筋に不要なら持たなくてよい
+- debug readback は本筋から切り離してよい
+- `SrvsParam` は cbuffer packing 制約があるため、member 削除時は 16-byte 境界を再確認する
+- debug 表示で lifetime を見たい場合は `last_seen_frame` / `last_update_frame` / `debug_last_released_frame` を使う
+
+#### 初期実装の完了条件
+
+最低限、次が成立していれば active-probe 駆動版として成立。
+
+1. prev/curr active list でフレームを回せる
+2. grid move / stale release が prev active ベースで行える
+3. visible surface から probe 新規割り当てができる
+4. main update が curr active indirect で回る
+5. packed SH update が curr active indirect で回る
+6. full scan が screen pass 以外から除去されている
+
+この条件を満たした後に、
+
+- DirtyProbeList
+- 新規 probe 優先更新
+- cascade ごとの予算制御
+- SH の差分更新
+
+などの最適化を段階的に追加する。
+
 ---
 
 ## 参考文献
