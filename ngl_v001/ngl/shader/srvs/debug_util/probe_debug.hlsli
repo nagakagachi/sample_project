@@ -185,8 +185,8 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     // 可視化.
     if(0 == cb_srvs.debug_fsp_probe_mode)
     {
-        const bool is_visible = 0 != (probe_pool_data.flags & k_fsp_probe_flag_visible_this_frame);
-        color = is_visible ? float4(0.2, 1.0, 0.3, 1.0) : float4(1.0, 0.85, 0.2, 1.0);
+        const bool observed_this_frame = (probe_pool_data.last_seen_frame == cb_srvs.frame_count);
+        color = observed_this_frame ? float4(0.2, 1.0, 0.3, 1.0) : float4(1.0, 0.85, 0.2, 1.0);
     }
     else if(1 == cb_srvs.debug_fsp_probe_mode)
     {

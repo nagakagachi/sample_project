@@ -212,8 +212,6 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
     static const uint k_fsp_invalid_probe_index = ~uint(0);
     static const uint k_fsp_probe_flag_allocated = 1u << 0;
-    static const uint k_fsp_probe_flag_visible_this_frame = 1u << 1;
-    static const uint k_fsp_probe_flag_pending_release = 1u << 2;
     static const uint k_fsp_max_cascade_count = 8u;
 
     // FSP V1 lifecycle 用の probe pool エントリ.
@@ -226,9 +224,9 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         uint flags;
 
         float avg_sky_visibility;
+        uint last_update_frame;
         uint debug_last_observed_frame;
         uint debug_last_released_frame;
-        uint probe_pool_dummy;
     };
 
     // 可視サーフェイス情報Injection用のView情報.

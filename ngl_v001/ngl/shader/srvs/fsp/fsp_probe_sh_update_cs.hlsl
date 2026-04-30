@@ -18,32 +18,29 @@ fsp_probe_sh_update_cs.hlsl
 
 #include "../srvs_util.hlsli"
 
-[numthreads(8, 8, 1)]
+[numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(
     uint3 dtid : SV_DispatchThreadID,
     uint3 gtid : SV_GroupThreadID,
     uint3 gid : SV_GroupID,
     uint gindex : SV_GroupIndex)
 {
-    uint2 packed_sh_tex_size;
-    RWFspProbePackedSHTex.GetDimensions(packed_sh_tex_size.x, packed_sh_tex_size.y);
-    const int2 logical_sh_tex_size = int2(packed_sh_tex_size >> 1);
-    if(any(dtid.xy >= logical_sh_tex_size))
+    const uint active_probe_count = FspActiveProbeListCurr[0];
+    if(dtid.x >= active_probe_count)
     {
         return;
     }
 
-    const uint probe_index = dtid.y * logical_sh_tex_size.x + dtid.x;
-    const int2 probe_tile_id = int2(dtid.xy);
+    const uint probe_index = FspActiveProbeListCurr[dtid.x + 1];
     if(probe_index >= cb_srvs.fsp_probe_pool_size)
     {
-        [unroll]
-        for(uint coeff_index = 0; coeff_index < 4; ++coeff_index)
-        {
-            RWFspProbePackedSHTex[FspPackedShAtlasTexelCoord(probe_tile_id, coeff_index, logical_sh_tex_size)] = 0.0.xxxx;
-        }
         return;
     }
+
+    uint2 packed_sh_tex_size;
+    RWFspProbePackedSHTex.GetDimensions(packed_sh_tex_size.x, packed_sh_tex_size.y);
+    const int2 logical_sh_tex_size = int2(packed_sh_tex_size >> 1);
+    const int2 probe_tile_id = int2(FspProbeAtlasMapPos(probe_index));
 
     const FspProbePoolData probe_pool_data = FspProbePoolBuffer[probe_index];
     if(0 == (probe_pool_data.flags & k_fsp_probe_flag_allocated))

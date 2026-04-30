@@ -26,7 +26,8 @@ void main_cs(
     {
         RWSurfaceProbeCellList[0] = 0;
         RWFspProbeFreeStack[0] = probe_pool_size;
-        RWFspActiveProbeList[0] = 0;
+        RWFspActiveProbeListPrev[0] = 0;
+        RWFspActiveProbeListCurr[0] = 0;
         RWFspReleaseProbeList[0] = 0;
     }
 

@@ -16,6 +16,8 @@ Dispatchは全域としているが, 最適化としてはInvalidate領域サイ
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
+#define FSP_STALE_FRAME_THRESHOLD (30u)
+
 void FspPushFreeProbeIndex(uint probe_index)
 {
     uint old_count = 0;
@@ -41,8 +43,17 @@ void FspClearProbeAtlas(uint probe_index)
     }
 }
 
-// DepthBufferに対してDispatch.
-[numthreads(96, 1, 1)]
+void FspPushCurrActiveProbeIndex(uint probe_index)
+{
+    uint active_list_index = 0;
+    InterlockedAdd(RWFspActiveProbeListCurr[0], 1, active_list_index);
+    if(active_list_index < cb_srvs.fsp_active_probe_buffer_size)
+    {
+        RWFspActiveProbeListCurr[active_list_index + 1] = probe_index;
+    }
+}
+
+[numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,
 	uint3 gtid : SV_GroupThreadID,
@@ -50,88 +61,81 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
-    const uint probe_count = cb_srvs.fsp_total_cell_count;
-    const uint probe_pool_size = cb_srvs.fsp_probe_pool_size;
-
     if(0 == dtid.x)
     {
         // アトミックカウンタをクリア. 0番目はアトミックカウンタ用に予約している.
         RWSurfaceProbeCellList[0] = 0;
-        RWFspActiveProbeList[0] = 0;
+        RWFspActiveProbeListCurr[0] = 0;
         RWFspReleaseProbeList[0] = 0;
     }
 
-    if(dtid.x < probe_pool_size)
+    const uint prev_active_probe_count = FspActiveProbeListPrev[0];
+    if(dtid.x >= prev_active_probe_count)
     {
-        RWFspProbePoolBuffer[dtid.x].flags &= ~k_fsp_probe_flag_visible_this_frame;
-    }
-
-    bool has_any_grid_move = false;
-    [unroll]
-    for(uint cascade_index = 0; cascade_index < k_fsp_max_cascade_count; ++cascade_index)
-    {
-        if(cascade_index >= FspCascadeCount())
-        {
-            break;
-        }
-
-        if(any(cb_srvs.fsp_cascade[cascade_index].grid.grid_move_cell_delta != int3(0,0,0)))
-        {
-            has_any_grid_move = true;
-            break;
-        }
-    }
-
-    if(!has_any_grid_move)
-    {
-        // 移動無しなら何もしない.
         return;
     }
 
-    if(dtid.x < probe_count)
+    const uint probe_index = FspActiveProbeListPrev[dtid.x + 1];
+    if(probe_index >= cb_srvs.fsp_probe_pool_size)
+    {
+        return;
+    }
+
+    FspProbePoolData probe_pool_data = RWFspProbePoolBuffer[probe_index];
+    if(0 == (probe_pool_data.flags & k_fsp_probe_flag_allocated))
+    {
+        return;
+    }
+
+    const uint owner_cell_index = probe_pool_data.owner_cell_index;
+    bool is_invalidate_area = (owner_cell_index == k_fsp_invalid_probe_index);
+    if(!is_invalidate_area)
     {
         uint cascade_index = 0;
         uint local_cell_index = 0;
-        if(!FspDecodeGlobalCellIndex(dtid.x, cascade_index, local_cell_index))
+        if(!FspDecodeGlobalCellIndex(owner_cell_index, cascade_index, local_cell_index))
         {
-            return;
+            is_invalidate_area = true;
         }
-
-        const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-        int3 voxel_coord = index_to_voxel_coord(local_cell_index, cascade.grid.grid_resolution);
-        // 移動によるInvalidateチェック..
-        // バッファ上のVoxelアドレスをToroidalマッピング前の座標に変換. 修正版.
-        int3 linear_voxel_coord = (voxel_coord - cascade.grid.grid_toroidal_offset_prev + cascade.grid.grid_resolution) % cascade.grid.grid_resolution;
-        int3 voxel_coord_toroidal_curr = linear_voxel_coord - cascade.grid.grid_move_cell_delta;
-        bool is_invalidate_area = any(voxel_coord_toroidal_curr < 0) || any(voxel_coord_toroidal_curr >= (cascade.grid.grid_resolution));// 範囲外の領域に進行した場合はその領域をInvalidate.
-
-        if(is_invalidate_area)
+        else
         {
-            const uint old_probe_index = RWFspCellProbeIndexBuffer[dtid.x];
-            if(old_probe_index != k_fsp_invalid_probe_index)
-            {
-                uint release_list_index = 0;
-                InterlockedAdd(RWFspReleaseProbeList[0], 1, release_list_index);
-                if(release_list_index < cb_srvs.fsp_release_probe_buffer_size)
-                {
-                    RWFspReleaseProbeList[release_list_index + 1] = old_probe_index;
-                }
-
-                FspProbePoolData probe_pool_data = RWFspProbePoolBuffer[old_probe_index];
-                probe_pool_data.owner_cell_index = k_fsp_invalid_probe_index;
-                probe_pool_data.flags = 0;
-                probe_pool_data.probe_offset_v3 = 0;
-                probe_pool_data.avg_sky_visibility = 0.0;
-                probe_pool_data.debug_last_released_frame = cb_srvs.frame_count;
-                RWFspProbePoolBuffer[old_probe_index] = probe_pool_data;
-                FspClearProbeAtlas(old_probe_index);
-
-                FspPushFreeProbeIndex(old_probe_index);
-            }
-
-            // 移動によってシフトしてきた無効領域.
-            RWFspProbeBuffer[dtid.x] = (FspProbeData)0;
-            RWFspCellProbeIndexBuffer[dtid.x] = k_fsp_invalid_probe_index;
+            const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+            int3 voxel_coord = index_to_voxel_coord(local_cell_index, cascade.grid.grid_resolution);
+            const int3 linear_voxel_coord = (voxel_coord - cascade.grid.grid_toroidal_offset_prev + cascade.grid.grid_resolution) % cascade.grid.grid_resolution;
+            const int3 voxel_coord_toroidal_curr = linear_voxel_coord - cascade.grid.grid_move_cell_delta;
+            is_invalidate_area = any(voxel_coord_toroidal_curr < 0) || any(voxel_coord_toroidal_curr >= cascade.grid.grid_resolution);
         }
     }
+
+    const uint frame_age = cb_srvs.frame_count - probe_pool_data.last_seen_frame;
+    const bool is_stale = !is_invalidate_area && (FSP_STALE_FRAME_THRESHOLD < frame_age);
+    if(!is_invalidate_area && !is_stale)
+    {
+        FspPushCurrActiveProbeIndex(probe_index);
+        return;
+    }
+
+    if(owner_cell_index != k_fsp_invalid_probe_index && RWFspCellProbeIndexBuffer[owner_cell_index] == probe_index)
+    {
+        RWFspCellProbeIndexBuffer[owner_cell_index] = k_fsp_invalid_probe_index;
+        RWFspProbeBuffer[owner_cell_index] = (FspProbeData)0;
+    }
+
+    uint release_list_index = 0;
+    InterlockedAdd(RWFspReleaseProbeList[0], 1, release_list_index);
+    if(release_list_index < cb_srvs.fsp_release_probe_buffer_size)
+    {
+        RWFspReleaseProbeList[release_list_index + 1] = probe_index;
+    }
+
+    probe_pool_data.owner_cell_index = k_fsp_invalid_probe_index;
+    probe_pool_data.flags = 0;
+    probe_pool_data.probe_offset_v3 = 0;
+    probe_pool_data.avg_sky_visibility = 0.0;
+    probe_pool_data.last_update_frame = 0;
+    probe_pool_data.debug_last_released_frame = cb_srvs.frame_count;
+    RWFspProbePoolBuffer[probe_index] = probe_pool_data;
+    FspClearProbeAtlas(probe_index);
+
+    FspPushFreeProbeIndex(probe_index);
 }

@@ -33,6 +33,16 @@ uint FspPopFreeProbeIndex()
     }
 }
 
+void FspPushCurrActiveProbeIndex(uint probe_index)
+{
+    uint active_list_index = 0;
+    InterlockedAdd(RWFspActiveProbeListCurr[0], 1, active_list_index);
+    if(active_list_index < cb_srvs.fsp_active_probe_buffer_size)
+    {
+        RWFspActiveProbeListCurr[active_list_index + 1] = probe_index;
+    }
+}
+
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(
 	uint3 dtid	: SV_DispatchThreadID,
@@ -43,7 +53,7 @@ void main_cs(
 {
     // SurfaceProbeCellListを利用するバージョン.
     const uint visible_voxel_count = SurfaceProbeCellList[0]; // 0番目にアトミックカウンタが入っている.
-    const uint update_element_index = (dtid.x * (FSP_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT+1) + (cb_srvs.frame_count%(FSP_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT+1)));
+    const uint update_element_index = dtid.x;
     
     if(visible_voxel_count <= update_element_index)
         return;
@@ -66,13 +76,14 @@ void main_cs(
             return;
         }
         RWFspCellProbeIndexBuffer[global_cell_index] = probe_index;
+        FspPushCurrActiveProbeIndex(probe_index);
     }
 
     FspProbePoolData probe_pool_data = RWFspProbePoolBuffer[probe_index];
     probe_pool_data.owner_cell_index = global_cell_index;
     probe_pool_data.last_seen_frame = cb_srvs.frame_count;
     probe_pool_data.debug_last_observed_frame = cb_srvs.frame_count;
-    probe_pool_data.flags |= (k_fsp_probe_flag_allocated | k_fsp_probe_flag_visible_this_frame);
+    probe_pool_data.flags |= k_fsp_probe_flag_allocated;
 
     // Cell中心.
     const float3 probe_cell_center = FspCalcCellCenterWs(cascade_index, local_cell_index);

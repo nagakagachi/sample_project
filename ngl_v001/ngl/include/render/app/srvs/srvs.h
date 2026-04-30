@@ -239,7 +239,7 @@ namespace ngl::render::app
         ComputeBufferSet fsp_cell_probe_index_buffer_ = {};
         ComputeBufferSet fsp_probe_pool_buffer_ = {};
         ComputeBufferSet fsp_probe_free_stack_buffer_ = {};
-        ComputeBufferSet fsp_active_probe_list_ = {};
+        ComputeBufferSet fsp_active_probe_list_[2] = {};
         ComputeBufferSet fsp_release_probe_list_ = {};
         ComputeBufferSet fsp_buffer_ = {};
         ComputeTextureSet fsp_probe_atlas_tex_ = {};

@@ -60,8 +60,10 @@ StructuredBuffer<FspProbePoolData>    FspProbePoolBuffer;
 RWStructuredBuffer<FspProbePoolData>  RWFspProbePoolBuffer;
 Buffer<uint>                          FspProbeFreeStack;
 RWBuffer<uint>                        RWFspProbeFreeStack;
-Buffer<uint>                          FspActiveProbeList;
-RWBuffer<uint>                        RWFspActiveProbeList;
+Buffer<uint>                          FspActiveProbeListPrev;
+RWBuffer<uint>                        RWFspActiveProbeListPrev;
+Buffer<uint>                          FspActiveProbeListCurr;
+RWBuffer<uint>                        RWFspActiveProbeListCurr;
 Buffer<uint>                          FspReleaseProbeList;
 RWBuffer<uint>                        RWFspReleaseProbeList;
 

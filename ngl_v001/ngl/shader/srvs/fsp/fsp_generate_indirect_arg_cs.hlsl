@@ -8,6 +8,7 @@ fsp_generate_indirect_arg_cs.hlsl
 
 #include "../srvs_util.hlsli"
 
+Buffer<uint>      ProbeIndexList;
 RWBuffer<uint>		RWFspIndirectArg;
 
 // IndirectArg を 1 回だけ生成する.
@@ -20,8 +21,9 @@ void main_cs(
 )
 {
 
-    const uint visible_surface_count = SurfaceProbeCellList[0];
-    RWFspIndirectArg[0] = (visible_surface_count + (cb_srvs.fsp_indirect_cs_thread_group_size.x - 1)) / cb_srvs.fsp_indirect_cs_thread_group_size.x;
+    const uint list_count = ProbeIndexList[0];
+    const uint dispatch_group_count = (list_count + (cb_srvs.fsp_indirect_cs_thread_group_size.x - 1)) / cb_srvs.fsp_indirect_cs_thread_group_size.x;
+    RWFspIndirectArg[0] = max(dispatch_group_count, 1u);
     RWFspIndirectArg[1] = 1;
     RWFspIndirectArg[2] = 1;
 
