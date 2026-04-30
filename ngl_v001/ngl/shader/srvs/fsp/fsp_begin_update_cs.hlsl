@@ -66,7 +66,6 @@ void main_cs(
         // アトミックカウンタをクリア. 0番目はアトミックカウンタ用に予約している.
         RWSurfaceProbeCellList[0] = 0;
         RWFspActiveProbeListCurr[0] = 0;
-        RWFspReleaseProbeList[0] = 0;
     }
 
     const uint prev_active_probe_count = FspActiveProbeListPrev[0];
@@ -119,13 +118,6 @@ void main_cs(
     {
         RWFspCellProbeIndexBuffer[owner_cell_index] = k_fsp_invalid_probe_index;
         RWFspProbeBuffer[owner_cell_index] = (FspProbeData)0;
-    }
-
-    uint release_list_index = 0;
-    InterlockedAdd(RWFspReleaseProbeList[0], 1, release_list_index);
-    if(release_list_index < cb_srvs.fsp_release_probe_buffer_size)
-    {
-        RWFspReleaseProbeList[release_list_index + 1] = probe_index;
     }
 
     probe_pool_data.owner_cell_index = k_fsp_invalid_probe_index;

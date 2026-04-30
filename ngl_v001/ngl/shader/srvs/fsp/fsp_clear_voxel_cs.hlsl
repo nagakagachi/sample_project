@@ -28,7 +28,6 @@ void main_cs(
         RWFspProbeFreeStack[0] = probe_pool_size;
         RWFspActiveProbeListPrev[0] = 0;
         RWFspActiveProbeListCurr[0] = 0;
-        RWFspReleaseProbeList[0] = 0;
     }
 
     if(dtid.x < cell_count)

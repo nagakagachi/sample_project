@@ -240,14 +240,12 @@ namespace ngl::render::app
         ComputeBufferSet fsp_probe_pool_buffer_ = {};
         ComputeBufferSet fsp_probe_free_stack_buffer_ = {};
         ComputeBufferSet fsp_active_probe_list_[2] = {};
-        ComputeBufferSet fsp_release_probe_list_ = {};
         ComputeBufferSet fsp_buffer_ = {};
         ComputeTextureSet fsp_probe_atlas_tex_ = {};
         ComputeTextureSet fsp_probe_packed_sh_tex_ = {};
         rhi::RefBufferDep fsp_visible_surface_list_readback_buffer_ = {};
         rhi::RefBufferDep fsp_probe_free_stack_readback_buffer_ = {};
         rhi::RefBufferDep fsp_active_probe_list_readback_buffer_ = {};
-        rhi::RefBufferDep fsp_release_probe_list_readback_buffer_ = {};
 
         
         // ScreenSpaceProbe.
@@ -290,7 +288,6 @@ namespace ngl::render::app
         static int dbg_fsp_free_probe_count_;
         static int dbg_fsp_allocated_probe_count_;
         static int dbg_fsp_active_probe_count_;
-        static int dbg_fsp_release_probe_count_;
         static int dbg_fsp_visible_surface_cell_count_;
 
         // デバッグメニューを描画する. ImGuiウィンドウ内で呼び出すこと.

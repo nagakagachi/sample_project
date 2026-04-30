@@ -341,7 +341,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int fsp_visible_voxel_buffer_size NGL_CPP_MEMBER_INIT({});
         int fsp_probe_pool_size NGL_CPP_MEMBER_INIT({});
         int fsp_active_probe_buffer_size NGL_CPP_MEMBER_INIT({});
-        int fsp_release_probe_buffer_size NGL_CPP_MEMBER_INIT({});
+        int fsp_dummy_padding0 NGL_CPP_MEMBER_INIT({});
         int fsp_cascade_count NGL_CPP_MEMBER_INIT({1});
         int fsp_total_cell_count NGL_CPP_MEMBER_INIT({0});
         int fsp_probe_atlas_tile_width NGL_CPP_MEMBER_INIT({0});
