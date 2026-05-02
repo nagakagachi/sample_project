@@ -21,6 +21,31 @@ Texture2D			TexHardwareDepth;
 // ThreadGroupタイル単位でスキップする最適化のグループタイル幅. 1より大きい数値で実行.
 #define THREAD_GROUP_SKIP_OPTIMIZE_GROUP_TILE_WIDTH 4
 
+// 同一フレーム内の重複を atomic_work で潰しながら visible cell list へ積む。
+void FspRegisterVisibleCell(uint global_cell_index)
+{
+    // Visible判定フレーム番号を書き込み.
+    uint old_atomic_work = 0;
+    InterlockedExchange(RWFspProbeBuffer[global_cell_index].atomic_work, cb_srvs.frame_count, old_atomic_work);
+
+    // 交換前の値でVisible判定フレーム番号が現在フレームと異なるならリストへ登録. 別スレッドで同じVoxelを処理している場合の重複を除去する.
+    if(cb_srvs.frame_count != old_atomic_work)
+    {
+        int current_visible_count = 0;
+        InterlockedAdd(RWSurfaceProbeCellList[0], 1, current_visible_count);
+        if(cb_srvs.fsp_visible_voxel_buffer_size > current_visible_count)
+        {
+            // 追加可能であれば登録. 登録位置はindex0のカウンタを除いた位置.
+            RWSurfaceProbeCellList[current_visible_count + 1] = global_cell_index;
+        }
+        else
+        {
+            // サイズオーバーの場合はカウンタを戻す.
+            InterlockedAdd(RWSurfaceProbeCellList[0], -1);
+        }
+    }
+}
+
 // DepthBufferに対してDispatch.
 [numthreads(TILE_WIDTH, TILE_WIDTH, 1)]
 void main_cs(
@@ -82,24 +107,21 @@ void main_cs(
             continue;
         }
 
-        // Visible判定フレーム番号を書き込み.
-        uint old_atomic_work = 0;
-        InterlockedExchange(RWFspProbeBuffer[global_cell_index].atomic_work, cb_srvs.frame_count, old_atomic_work);
+        FspRegisterVisibleCell(global_cell_index);
 
-        // 交換前の値でVisible判定フレーム番号が現在フレームと異なるならリストへ登録. 別スレッドで同じVoxelを処理している場合の重複を除去する.
-        if(cb_srvs.frame_count != old_atomic_work)
+        if(0 != cb_srvs.fsp_spawn_front_cell_enable)
         {
-            int current_visible_count = 0;
-            InterlockedAdd(RWSurfaceProbeCellList[0], 1, current_visible_count);
-            if(cb_srvs.fsp_visible_voxel_buffer_size > current_visible_count)
+            const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+            const float3 to_surface_vec_ws = pixel_pos_ws - view_origin;
+            const float to_surface_len_sq = dot(to_surface_vec_ws, to_surface_vec_ws);
+            if(to_surface_len_sq > 1e-6)
             {
-                // 追加可能であれば登録. 登録位置はindex0のカウンタを除いた位置.
-                RWSurfaceProbeCellList[current_visible_count + 1] = global_cell_index;
-            }
-            else
-            {
-                // サイズオーバーの場合はカウンタを戻す.
-                InterlockedAdd(RWSurfaceProbeCellList[0], -1);
+                const float3 front_probe_pos_ws = pixel_pos_ws - to_surface_vec_ws * rsqrt(to_surface_len_sq) * cascade.grid.cell_size;
+                uint front_global_cell_index = 0;
+                if(FspTryGetGlobalCellIndexFromWorldPos(front_probe_pos_ws, cascade_index, front_global_cell_index))
+                {
+                    FspRegisterVisibleCell(front_global_cell_index);
+                }
             }
         }
     }

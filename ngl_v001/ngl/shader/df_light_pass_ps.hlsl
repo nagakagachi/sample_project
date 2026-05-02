@@ -7,6 +7,7 @@
 
 #include "include/brdf.hlsli"
 #include "include/math_util.hlsli"
+#include "include/rand_util.hlsli"
 
 struct VS_OUTPUT
 {
@@ -37,6 +38,10 @@ struct CbLightingPass
 };
 ConstantBuffer<CbLightingPass> cb_ngl_lighting_pass;
 
+// GI source selection:
+//   none = probe GI を使わない
+//   ssp  = Screen Space Probe を使う
+//   fsp  = Frustum Space Probe を使う
 static const int k_gi_sample_mode_none = 0;
 static const int k_gi_sample_mode_ssp = 1;
 static const int k_gi_sample_mode_fsp = 2;
@@ -241,12 +246,136 @@ struct FspProbePackedShL1Sample
     float4 radiance_sh_b;
 };
 
-bool TrySampleFspPackedShL1(out FspProbePackedShL1Sample result, float3 sample_pos_ws)
+// FSP SH のゼロ値を返す簡易コンストラクタ。
+FspProbePackedShL1Sample MakeZeroFspProbePackedShL1Sample()
 {
+    FspProbePackedShL1Sample result;
     result.sky_visibility_sh = 0.0.xxxx;
     result.radiance_sh_r = 0.0.xxxx;
     result.radiance_sh_g = 0.0.xxxx;
     result.radiance_sh_b = 0.0.xxxx;
+    return result;
+}
+
+// SH パケットを重み付きで加算する。
+void AccumulateFspPackedShL1Sample(inout FspProbePackedShL1Sample accum, FspProbePackedShL1Sample sample_value, float weight)
+{
+    accum.sky_visibility_sh += sample_value.sky_visibility_sh * weight;
+    accum.radiance_sh_r += sample_value.radiance_sh_r * weight;
+    accum.radiance_sh_g += sample_value.radiance_sh_g * weight;
+    accum.radiance_sh_b += sample_value.radiance_sh_b * weight;
+}
+
+// SH パケット全体へ一様スケールを掛ける。
+void ScaleFspPackedShL1Sample(inout FspProbePackedShL1Sample sample_value, float scale)
+{
+    sample_value.sky_visibility_sh *= scale;
+    sample_value.radiance_sh_r *= scale;
+    sample_value.radiance_sh_g *= scale;
+    sample_value.radiance_sh_b *= scale;
+}
+
+// cell -> probe の対応から packed SH を 1 probe 分ロードする。
+bool FspTryLoadPackedShL1FromCellIndex(out FspProbePackedShL1Sample result, uint global_cell_index)
+{
+    result = MakeZeroFspProbePackedShL1Sample();
+
+    const uint probe_index = FspCellProbeIndexBuffer[global_cell_index];
+    if(probe_index == k_fsp_invalid_probe_index || probe_index >= (uint)cb_srvs.fsp_probe_pool_size)
+    {
+        return false;
+    }
+
+    const FspProbePoolData probe_pool_data = FspProbePoolBuffer[probe_index];
+    if(0 == (probe_pool_data.flags & k_fsp_probe_flag_allocated) || probe_pool_data.owner_cell_index != global_cell_index)
+    {
+        return false;
+    }
+
+    const int2 probe_tile_id = int2(FspProbeAtlasMapPos(probe_index));
+    const float4 coeff0 = FspPackedShAtlasLoadCoeff(probe_tile_id, 0);
+    const float4 coeff1 = FspPackedShAtlasLoadCoeff(probe_tile_id, 1);
+    const float4 coeff2 = FspPackedShAtlasLoadCoeff(probe_tile_id, 2);
+    const float4 coeff3 = FspPackedShAtlasLoadCoeff(probe_tile_id, 3);
+    result.sky_visibility_sh = float4(
+        coeff0.r,
+        coeff1.r,
+        coeff2.r,
+        coeff3.r);
+    result.radiance_sh_r = float4(
+        coeff0.g,
+        coeff1.g,
+        coeff2.g,
+        coeff3.g);
+    result.radiance_sh_g = float4(
+        coeff0.b,
+        coeff1.b,
+        coeff2.b,
+        coeff3.b);
+    result.radiance_sh_b = float4(
+        coeff0.a,
+        coeff1.a,
+        coeff2.a,
+        coeff3.a);
+    return true;
+}
+
+// fine/coarse cascade の境界帯で coarse へ逃がす確率を返す。
+float FspCalcCascadeBoundaryDitherRate(float3 sample_pos_ws, uint cascade_index)
+{
+    if((cascade_index + 1u) >= FspCascadeCount())
+    {
+        return 0.0;
+    }
+
+    uint coarse_global_cell_index = k_fsp_invalid_probe_index;
+    if(!FspTryGetGlobalCellIndexFromWorldPos(sample_pos_ws, cascade_index + 1u, coarse_global_cell_index))
+    {
+        return 0.0;
+    }
+
+    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const FspCascadeGridParam coarse_cascade = FspGetCascadeParam(cascade_index + 1u);
+    const float3 cascade_max_pos = cascade.grid.grid_min_pos + float3(cascade.grid.grid_resolution) * cascade.grid.cell_size;
+    const float3 dist_to_min = sample_pos_ws - cascade.grid.grid_min_pos;
+    const float3 dist_to_max = cascade_max_pos - sample_pos_ws;
+    const float boundary_dist = min(min(dist_to_min.x, dist_to_max.x), min(min(dist_to_min.y, dist_to_max.y), min(dist_to_min.z, dist_to_max.z)));
+    const float dither_width = max(coarse_cascade.grid.cell_size, cascade.grid.cell_size);
+    return 1.0 - saturate(boundary_dist / max(dither_width, 1e-5));
+}
+
+// ライティング時に使う cascade を 1 本だけ選ぶ。
+bool FspTrySelectLightingCascade(out uint cascade_index, float3 sample_pos_ws, float2 dither_seed)
+{
+    cascade_index = 0;
+
+    const uint cascade_count = FspCascadeCount();
+    [loop]
+    for(uint ci = 0; ci < cascade_count; ++ci)
+    {
+        uint global_cell_index = k_fsp_invalid_probe_index;
+        if(!FspTryGetGlobalCellIndexFromWorldPos(sample_pos_ws, ci, global_cell_index))
+        {
+            continue;
+        }
+
+        cascade_index = ci;
+        // 境界帯だけ coarse cascade へ確率的に逃がし、ブレンドではなくディザで切り替える。
+        const float coarse_select_rate = FspCalcCascadeBoundaryDitherRate(sample_pos_ws, ci);
+        if(coarse_select_rate > 0.0 && interleaved_gradient_noise(dither_seed) < coarse_select_rate)
+        {
+            cascade_index = min(ci + 1u, cascade_count - 1u);
+        }
+        return true;
+    }
+
+    return false;
+}
+
+// 最初に見つかった有効 probe をそのまま使う nearest 参照。
+bool TrySampleFspPackedShL1Nearest(out FspProbePackedShL1Sample result, float3 sample_pos_ws)
+{
+    result = MakeZeroFspProbePackedShL1Sample();
 
     const uint cascade_count = FspCascadeCount();
     [loop]
@@ -258,47 +387,172 @@ bool TrySampleFspPackedShL1(out FspProbePackedShL1Sample result, float3 sample_p
             continue;
         }
 
-        const uint probe_index = FspCellProbeIndexBuffer[global_cell_index];
-        if(probe_index == k_fsp_invalid_probe_index || probe_index >= (uint)cb_srvs.fsp_probe_pool_size)
+        if(!FspTryLoadPackedShL1FromCellIndex(result, global_cell_index))
         {
             continue;
         }
-
-        const FspProbePoolData probe_pool_data = FspProbePoolBuffer[probe_index];
-        if(0 == (probe_pool_data.flags & k_fsp_probe_flag_allocated) || probe_pool_data.owner_cell_index != global_cell_index)
-        {
-            continue;
-        }
-
-        const int2 probe_tile_id = int2(FspProbeAtlasMapPos(probe_index));
-        const float4 coeff0 = FspPackedShAtlasLoadCoeff(probe_tile_id, 0);
-        const float4 coeff1 = FspPackedShAtlasLoadCoeff(probe_tile_id, 1);
-        const float4 coeff2 = FspPackedShAtlasLoadCoeff(probe_tile_id, 2);
-        const float4 coeff3 = FspPackedShAtlasLoadCoeff(probe_tile_id, 3);
-        result.sky_visibility_sh = float4(
-            coeff0.r,
-            coeff1.r,
-            coeff2.r,
-            coeff3.r);
-        result.radiance_sh_r = float4(
-            coeff0.g,
-            coeff1.g,
-            coeff2.g,
-            coeff3.g);
-        result.radiance_sh_g = float4(
-            coeff0.b,
-            coeff1.b,
-            coeff2.b,
-            coeff3.b);
-        result.radiance_sh_b = float4(
-            coeff0.a,
-            coeff1.a,
-            coeff2.a,
-            coeff3.a);
         return true;
     }
 
     return false;
+}
+
+// use_stochastic_sampling は呼び出し側で UI/設定から決めて渡し、
+// 補間関数自体は sampling policy のみを切り替える。
+// 補間 ON 時は 8近傍の Trilinear 重みを求め、合成か stochastic 1-sample を選ぶ。
+bool TrySampleFspPackedShL1Interpolated(out FspProbePackedShL1Sample result, float3 sample_pos_ws, float2 dither_seed, bool use_stochastic_sampling)
+{
+    result = MakeZeroFspProbePackedShL1Sample();
+
+    uint cascade_index = 0;
+    if(!FspTrySelectLightingCascade(cascade_index, sample_pos_ws, dither_seed))
+    {
+        return false;
+    }
+
+    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const float3 grid_coordf = (sample_pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv - float3(0.5, 0.5, 0.5);
+    const int3 base_coord = int3(floor(grid_coordf));
+    const float3 lerp_rate = saturate(frac(grid_coordf));
+
+    float neighbor_weight[8];
+    uint neighbor_cell_index[8];
+    [unroll]
+    for(uint i = 0; i < 8; ++i)
+    {
+        neighbor_weight[i] = 0.0;
+        neighbor_cell_index[i] = k_fsp_invalid_probe_index;
+    }
+
+    float total_weight = 0.0;
+    [unroll]
+    for(int oz = 0; oz < 2; ++oz)
+    {
+        [unroll]
+        for(int oy = 0; oy < 2; ++oy)
+        {
+            [unroll]
+            for(int ox = 0; ox < 2; ++ox)
+            {
+                const int3 neighbor_coord = base_coord + int3(ox, oy, oz);
+                if(any(neighbor_coord < 0) || any(neighbor_coord >= cascade.grid.grid_resolution))
+                {
+                    continue;
+                }
+
+                const float wx = (ox == 0) ? (1.0 - lerp_rate.x) : lerp_rate.x;
+                const float wy = (oy == 0) ? (1.0 - lerp_rate.y) : lerp_rate.y;
+                const float wz = (oz == 0) ? (1.0 - lerp_rate.z) : lerp_rate.z;
+                const float base_weight = wx * wy * wz;
+                if(base_weight <= 0.0)
+                {
+                    continue;
+                }
+
+                // Trilinear 基本重みに、probe 未配置セルを 0 に落とす追加 weighting を掛ける。
+                const int3 neighbor_coord_toroidal = voxel_coord_toroidal_mapping(neighbor_coord, cascade.grid.grid_toroidal_offset, cascade.grid.grid_resolution);
+                const uint local_cell_index = voxel_coord_to_index(neighbor_coord_toroidal, cascade.grid.grid_resolution);
+                const uint global_cell_index = cascade.cell_offset + local_cell_index;
+
+                const uint neighbor_index = uint(ox + oy * 2 + oz * 4);
+                FspProbePackedShL1Sample probe_sh = MakeZeroFspProbePackedShL1Sample();
+                if(!FspTryLoadPackedShL1FromCellIndex(probe_sh, global_cell_index))
+                {
+                    continue;
+                }
+
+                neighbor_weight[neighbor_index] = base_weight;
+                neighbor_cell_index[neighbor_index] = global_cell_index;
+                total_weight += base_weight;
+            }
+        }
+    }
+
+    if(total_weight <= 0.0)
+    {
+        return false;
+    }
+
+    if(use_stochastic_sampling)
+    {
+        // RayGuiding と同様に CDF を作り、Trilinear 重みを PDF として 1 サンプルだけ選ぶ。
+        float neighbor_cdf[8];
+        float cdf_sum = 0.0;
+        [unroll]
+        for(uint i = 0; i < 8; ++i)
+        {
+            cdf_sum += neighbor_weight[i];
+            neighbor_cdf[i] = cdf_sum;
+        }
+
+        const float cdf_sum_inv = rcp(cdf_sum);
+        [unroll]
+        for(uint i = 0; i < 8; ++i)
+        {
+            neighbor_cdf[i] *= cdf_sum_inv;
+        }
+
+        RandomInstance rng;
+        rng.rngState = asuint(noise_float_to_float(float3(dither_seed + float2(17.0, 43.0), cb_srvs.frame_count)));
+        const float guiding_rand = rng.rand();
+        uint selected_index = 0;
+        [unroll]
+        for(uint i = 0; i < 8; ++i)
+        {
+            if(neighbor_weight[i] > 0.0)
+            {
+                selected_index = i;
+                break;
+            }
+        }
+        [unroll]
+        for(uint i = 0; i < 8; ++i)
+        {
+            if(guiding_rand <= neighbor_cdf[i])
+            {
+                selected_index = i;
+                break;
+            }
+        }
+
+        // 確率的モードでは 8近傍を合成せず、CDF で選ばれた 1 セルだけを使う。
+        return FspTryLoadPackedShL1FromCellIndex(result, neighbor_cell_index[selected_index]);
+    }
+
+    [unroll]
+    for(uint i = 0; i < 8; ++i)
+    {
+        if(neighbor_weight[i] <= 0.0)
+        {
+            continue;
+        }
+
+        FspProbePackedShL1Sample probe_sh = MakeZeroFspProbePackedShL1Sample();
+        if(!FspTryLoadPackedShL1FromCellIndex(probe_sh, neighbor_cell_index[i]))
+        {
+            continue;
+        }
+
+        AccumulateFspPackedShL1Sample(result, probe_sh, neighbor_weight[i]);
+    }
+
+    if(total_weight > 0.0)
+    {
+        ScaleFspPackedShL1Sample(result, rcp(total_weight));
+        return true;
+    }
+
+    return false;
+}
+
+// FSP ライティングの入口。nearest / interpolated をここで切り替える。
+bool TrySampleFspPackedShL1(out FspProbePackedShL1Sample result, float3 sample_pos_ws, float2 dither_seed, bool use_stochastic_sampling)
+{
+    if(0 != cb_srvs.fsp_lighting_interpolation_enable)
+    {
+        return TrySampleFspPackedShL1Interpolated(result, sample_pos_ws, dither_seed, use_stochastic_sampling);
+    }
+    return TrySampleFspPackedShL1Nearest(result, sample_pos_ws);
 }
 
 float3 EvalFspRadianceL1DiffuseIrradiance(FspProbePackedShL1Sample fsp_probe_sh, float4 sh_basis)
@@ -470,7 +724,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 		lit_color += (dlit_diffuse + dlit_specular) * light_visibility;
 	}
 
-	// GIのテスト(Dynamic Sky Visibility).
+	// GIのテスト.
 	float diffuse_sky_visibility = 1.0;
     float specular_sky_visibility = 1.0;
     float3 gi_probe_diffuse_irradiance = float3(0.0, 0.0, 0.0);
@@ -490,6 +744,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
         const float3 reflected_view_dir = 2.0 * dot(V, gb_normal_ws) * gb_normal_ws - V;
         const float4 reflection_sh_basis = EvaluateL1ShBasis(reflected_view_dir);
 
+        // gi_sample_mode に応じて、SSP か FSP のどちらを GI ソースに使うかを切り替える。
         if(cb_ngl_lighting_pass.gi_sample_mode == k_gi_sample_mode_ssp)
         {
             int2 ss_probe_sh_base_texel = int2(0, 0);
@@ -521,7 +776,9 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
         else if(cb_ngl_lighting_pass.gi_sample_mode == k_gi_sample_mode_fsp)
         {
             FspProbePackedShL1Sample fsp_probe_sh;
-            if(TrySampleFspPackedShL1(fsp_probe_sh, gi_sample_pos_ws))
+            // stochastic の有無はここで決め、sampling 関数には policy として渡すだけにする。
+            const bool use_fsp_stochastic_sampling = (0 != cb_srvs.fsp_lighting_stochastic_sampling_enable);
+            if(TrySampleFspPackedShL1(fsp_probe_sh, gi_sample_pos_ws, input.pos.xy, use_fsp_stochastic_sampling))
             {
                 if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
                 {
@@ -587,7 +844,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
 
     // デバッグ表示.
     // ------------------------------------------------------------------------------
-        // sky_visibilityテスト.
+        // sky_visibility のデバッグ表示. 最終ライティングを上書きして visibility のみを見る。
         if(cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
         {
             lit_color = diffuse_sky_visibility;

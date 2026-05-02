@@ -975,7 +975,14 @@ float4 trace_bbv_core(
 // 現状は運用実績のある旧挙動を優先し、境界判定の安定性を保つ。
 float3 calc_safe_trace_ray_dir_inv(float3 ray_dir)
 {
-    return 1.0 / ray_dir;
+    #if 0
+        return 1.0 / ray_dir;
+    #else
+        // 軸並行の問題の対処. OctahedralMapセル中心レイ等で発生しやすいため対処.
+        const float3 inv_ray_dir = 1.0 / ray_dir;
+        const float3 safe_inv_ray_dir = select(abs(ray_dir) < 1e-6, float3(1e6, 1e6, 1e6), inv_ray_dir);
+        return safe_inv_ray_dir;
+    #endif
 }
 
 // レイ上の現在 t 位置から、次のセル内側を確実にサンプルするための t を計算.

@@ -14,6 +14,7 @@ fsp_pre_update_cs.hlsl
 #define RAY_SAMPLE_COUNT_PER_VOXEL 8
 #define PROBE_UPDATE_TEMPORAL_RATE (0.025)
 
+// free stack から 1 probe index を pop する。
 uint FspPopFreeProbeIndex()
 {
     for(;;)
@@ -33,6 +34,7 @@ uint FspPopFreeProbeIndex()
     }
 }
 
+// 現フレーム active list へ probe を追加する。
 void FspPushCurrActiveProbeIndex(uint probe_index)
 {
     uint active_list_index = 0;
@@ -41,6 +43,79 @@ void FspPushCurrActiveProbeIndex(uint probe_index)
     {
         RWFspActiveProbeListCurr[active_list_index + 1] = probe_index;
     }
+}
+
+// probe atlas 1 tile を明示的にゼロ初期化する。
+void FspClearProbeAtlas(uint probe_index)
+{
+    const uint2 probe_2d_map_pos = FspProbeAtlasMapPos(probe_index);
+    [unroll]
+    for(int oct_j = 0; oct_j < k_fsp_probe_octmap_width; ++oct_j)
+    {
+        [unroll]
+        for(int oct_i = 0; oct_i < k_fsp_probe_octmap_width; ++oct_i)
+        {
+            RWFspProbeAtlasTex[probe_2d_map_pos * k_fsp_probe_octmap_width + uint2(oct_i, oct_j)] = 0.0.xxxx;
+        }
+    }
+}
+
+// 既存 probe の atlas 内容を新規 probe へコピーする。
+void FspCopyProbeAtlas(uint dst_probe_index, uint src_probe_index)
+{
+    const uint2 dst_probe_2d_map_pos = FspProbeAtlasMapPos(dst_probe_index);
+    const uint2 src_probe_2d_map_pos = FspProbeAtlasMapPos(src_probe_index);
+    [unroll]
+    for(int oct_j = 0; oct_j < k_fsp_probe_octmap_width; ++oct_j)
+    {
+        [unroll]
+        for(int oct_i = 0; oct_i < k_fsp_probe_octmap_width; ++oct_i)
+        {
+            RWFspProbeAtlasTex[dst_probe_2d_map_pos * k_fsp_probe_octmap_width + uint2(oct_i, oct_j)] =
+                RWFspProbeAtlasTex[src_probe_2d_map_pos * k_fsp_probe_octmap_width + uint2(oct_i, oct_j)];
+        }
+    }
+}
+
+bool FspTrySeedProbeFromUpperCascade(out FspProbePoolData src_probe_pool_data, float3 sample_pos_ws, uint dst_cascade_index, uint dst_probe_index)
+{
+    src_probe_pool_data = (FspProbePoolData)0;
+
+    // 新規 probe の黒初期値を避けるため、同じ world pos を含む上位 cascade の
+    // 安定済み probe atlas をそのまま seed として使う。
+    const uint cascade_count = FspCascadeCount();
+    [loop]
+    for(uint src_cascade_index = dst_cascade_index + 1; src_cascade_index < cascade_count; ++src_cascade_index)
+    {
+        uint src_global_cell_index = k_fsp_invalid_probe_index;
+        if(!FspTryGetGlobalCellIndexFromWorldPos(sample_pos_ws, src_cascade_index, src_global_cell_index))
+        {
+            continue;
+        }
+
+        const uint src_probe_index = RWFspCellProbeIndexBuffer[src_global_cell_index];
+        if(src_probe_index == k_fsp_invalid_probe_index || src_probe_index >= (uint)cb_srvs.fsp_probe_pool_size)
+        {
+            continue;
+        }
+
+        const FspProbePoolData curr_src_probe_pool_data = RWFspProbePoolBuffer[src_probe_index];
+        if(0 == (curr_src_probe_pool_data.flags & k_fsp_probe_flag_allocated) || curr_src_probe_pool_data.owner_cell_index != src_global_cell_index)
+        {
+            continue;
+        }
+        // 同フレームに新規割り当てされた source は atlas 初期化中の可能性があるため使わない。
+        if(curr_src_probe_pool_data.last_update_frame == 0)
+        {
+            continue;
+        }
+
+        FspCopyProbeAtlas(dst_probe_index, src_probe_index);
+        src_probe_pool_data = curr_src_probe_pool_data;
+        return true;
+    }
+
+    return false;
 }
 
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
@@ -68,6 +143,7 @@ void main_cs(
 
     const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
     uint probe_index = RWFspCellProbeIndexBuffer[global_cell_index];
+    bool is_new_probe = false;
     if(k_fsp_invalid_probe_index == probe_index)
     {
         probe_index = FspPopFreeProbeIndex();
@@ -77,9 +153,16 @@ void main_cs(
         }
         RWFspCellProbeIndexBuffer[global_cell_index] = probe_index;
         FspPushCurrActiveProbeIndex(probe_index);
+        is_new_probe = true;
     }
 
     FspProbePoolData probe_pool_data = RWFspProbePoolBuffer[probe_index];
+    if(is_new_probe)
+    {
+        probe_pool_data.probe_offset_v3 = 0;
+        probe_pool_data.avg_sky_visibility = 0.0;
+        probe_pool_data.last_update_frame = 0;
+    }
     probe_pool_data.owner_cell_index = global_cell_index;
     probe_pool_data.last_seen_frame = cb_srvs.frame_count;
     probe_pool_data.debug_last_observed_frame = cb_srvs.frame_count;
@@ -119,6 +202,21 @@ void main_cs(
         // 埋まり回避なし
         float3 probe_sample_pos_ws = probe_cell_center;
     #endif
+
+    if(is_new_probe)
+    {
+        FspProbePoolData src_probe_pool_data = (FspProbePoolData)0;
+        if(FspTrySeedProbeFromUpperCascade(src_probe_pool_data, probe_sample_pos_ws, cascade_index, probe_index))
+        {
+            probe_pool_data.avg_sky_visibility = src_probe_pool_data.avg_sky_visibility;
+        }
+        else
+        {
+            // source が見つからない場合だけ新規割り当て時に明示的に初期化する。
+            FspClearProbeAtlas(probe_index);
+            probe_pool_data.avg_sky_visibility = 0.0;
+        }
+    }
 
     // 既存 debug / scratch path 互換のため、セル側 legacy buffer にも最低限ミラーしておく。
     RWFspProbeBuffer[global_cell_index].probe_offset_v3 = probe_pool_data.probe_offset_v3;

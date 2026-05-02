@@ -29,20 +29,6 @@ void FspPushFreeProbeIndex(uint probe_index)
     }
 }
 
-void FspClearProbeAtlas(uint probe_index)
-{
-    const uint2 probe_2d_map_pos = FspProbeAtlasMapPos(probe_index);
-    [unroll]
-    for(int oct_j = 0; oct_j < k_fsp_probe_octmap_width; ++oct_j)
-    {
-        [unroll]
-        for(int oct_i = 0; oct_i < k_fsp_probe_octmap_width; ++oct_i)
-        {
-            RWFspProbeAtlasTex[probe_2d_map_pos * k_fsp_probe_octmap_width + uint2(oct_i, oct_j)] = 0.0.xxxx;
-        }
-    }
-}
-
 void FspPushCurrActiveProbeIndex(uint probe_index)
 {
     uint active_list_index = 0;
@@ -127,7 +113,6 @@ void main_cs(
     probe_pool_data.last_update_frame = 0;
     probe_pool_data.debug_last_released_frame = cb_srvs.frame_count;
     RWFspProbePoolBuffer[probe_index] = probe_pool_data;
-    FspClearProbeAtlas(probe_index);
 
     FspPushFreeProbeIndex(probe_index);
 }

@@ -79,7 +79,7 @@ static bool dbgw_enable_srvs_rejection_pass = true;
 static bool dbgw_enable_gtao_demo = false;
 
 // Camera.
-static float dbgw_camera_speed = 5.0f;  // 10.0f;
+static float dbgw_camera_speed = 15.0f;  // 10.0f;
 
 // DLight.
 static float dbgw_dlit_angle_v   = 0.4f;

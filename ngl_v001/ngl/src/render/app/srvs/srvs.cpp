@@ -90,6 +90,9 @@ namespace ngl::render::app
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_ = k_default_srvs_param.ss_probe_spatial_filter_normal_cos_threshold;
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_ = k_default_srvs_param.ss_probe_spatial_filter_depth_exp_scale;
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_ = k_default_srvs_param.ss_probe_side_cache_plane_dist_threshold;
+    int ScreenReconstructedVoxelStructure::dbg_fsp_lighting_interpolation_enable_ = k_default_srvs_param.fsp_lighting_interpolation_enable;
+    int ScreenReconstructedVoxelStructure::dbg_fsp_spawn_front_cell_enable_ = k_default_srvs_param.fsp_spawn_front_cell_enable;
+    int ScreenReconstructedVoxelStructure::dbg_fsp_lighting_stochastic_sampling_enable_ = k_default_srvs_param.fsp_lighting_stochastic_sampling_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_probe_pool_size_ = 0;
     int ScreenReconstructedVoxelStructure::dbg_fsp_free_probe_count_ = 0;
     int ScreenReconstructedVoxelStructure::dbg_fsp_allocated_probe_count_ = 0;
@@ -242,6 +245,43 @@ namespace ngl::render::app
                     if (ImGui::BeginPopupContextItem()) {
                         if (ImGui::MenuItem("Reset to Default"))
                             dbg_view_sub_mode_ = 0;
+                        ImGui::EndPopup();
+                    }
+                }
+            }
+
+            ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+            if (ImGui::CollapsingHeader("Frustum Space Probe"))
+            {
+                NGL_IMGUI_SCOPED_INDENT(10.0f);
+
+                {
+                    bool v = (0 != dbg_fsp_lighting_interpolation_enable_);
+                    if (ImGui::Checkbox("Lighting Interpolation", &v))
+                        dbg_fsp_lighting_interpolation_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_fsp_lighting_interpolation_enable_ = k_default_srvs_param.fsp_lighting_interpolation_enable;
+                        ImGui::EndPopup();
+                    }
+                }
+                {
+                    bool v = (0 != dbg_fsp_lighting_stochastic_sampling_enable_);
+                    if (ImGui::Checkbox("Stochastic Sampling", &v))
+                        dbg_fsp_lighting_stochastic_sampling_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_fsp_lighting_stochastic_sampling_enable_ = k_default_srvs_param.fsp_lighting_stochastic_sampling_enable;
+                        ImGui::EndPopup();
+                    }
+                }
+                {
+                    bool v = (0 != dbg_fsp_spawn_front_cell_enable_);
+                    if (ImGui::Checkbox("Spawn Front Cell", &v))
+                        dbg_fsp_spawn_front_cell_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_fsp_spawn_front_cell_enable_ = k_default_srvs_param.fsp_spawn_front_cell_enable;
                         ImGui::EndPopup();
                     }
                 }
@@ -967,6 +1007,9 @@ namespace ngl::render::app
                 param.fsp_visible_voxel_buffer_size = fsp_visible_surface_buffer_size_;
                 param.fsp_probe_pool_size = static_cast<int>(fsp_probe_pool_size_);
                 param.fsp_active_probe_buffer_size = static_cast<int>(fsp_probe_pool_size_);
+                param.fsp_lighting_interpolation_enable = ScreenReconstructedVoxelStructure::dbg_fsp_lighting_interpolation_enable_;
+                param.fsp_spawn_front_cell_enable = ScreenReconstructedVoxelStructure::dbg_fsp_spawn_front_cell_enable_;
+                param.fsp_lighting_stochastic_sampling_enable = ScreenReconstructedVoxelStructure::dbg_fsp_lighting_stochastic_sampling_enable_;
                 param.fsp_cascade_count = static_cast<int>(fsp_cascade_count_);
                 param.fsp_total_cell_count = static_cast<int>(fsp_total_cell_count_);
                 param.fsp_probe_atlas_tile_width = static_cast<int>(fsp_probe_atlas_tile_width_);
@@ -1634,7 +1677,6 @@ namespace ngl::render::app
                 pso_fsp_begin_update_->SetView(&desc_set, "RWFspProbeFreeStack", fsp_probe_free_stack_buffer_.uav.Get());
                 pso_fsp_begin_update_->SetView(&desc_set, "FspActiveProbeListPrev", fsp_active_probe_prev_list.srv.Get());
                 pso_fsp_begin_update_->SetView(&desc_set, "RWFspActiveProbeListCurr", fsp_active_probe_curr_list.uav.Get());
-                pso_fsp_begin_update_->SetView(&desc_set, k_shader_bind_name_fsp_atlas_uav.Get(), fsp_probe_atlas_tex_.uav.Get());
                 pso_fsp_begin_update_->SetView(&desc_set, "RWSurfaceProbeCellList", fsp_visible_surface_list_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_fsp_begin_update_.Get());
@@ -1646,7 +1688,6 @@ namespace ngl::render::app
                 p_command_list->ResourceUavBarrier(fsp_probe_pool_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(fsp_probe_free_stack_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(fsp_active_probe_curr_list.buffer.Get());
-                p_command_list->ResourceUavBarrier(fsp_probe_atlas_tex_.texture.Get());
                 p_command_list->ResourceUavBarrier(fsp_visible_surface_list_.buffer.Get());
             }
             
