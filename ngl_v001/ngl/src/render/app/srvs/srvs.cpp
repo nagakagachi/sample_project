@@ -31,7 +31,10 @@ namespace ngl::render::app
     static constexpr size_t k_sizeof_FspProbeData      = sizeof(FspProbeData);
     static constexpr size_t k_sizeof_FspProbePoolData  = sizeof(FspProbePoolData);
     static constexpr u32 k_max_update_probe_work_count = 1024;
-    static constexpr u32 k_fsp_probe_pool_size_v1 = 10000;
+
+    static constexpr u32 k_fsp_probe_pool_size = 1<<13;//10000;
+    static constexpr u32 k_fsp_probe_surface_cell_count_max = 1024*2;//1024;
+    
     
     // 時間分散するScreenProbeグループのサイズ. 幅がこのサイズのProbeグループ毎に1Fに一つ更新をする. GI-1.0などは2を指定して 4フレームで2x2のグループが更新される.
     static const int k_ss_probe_update_skip_tile_group_width = 1;
@@ -460,11 +463,10 @@ namespace ngl::render::app
         bbv_fine_update_voxel_count_max_= std::clamp(voxel_count / 50u, 64u, k_max_update_probe_work_count);
 
         // 中空Voxelのクリアキューサイズ. スクリーン上で中空判定された要素を詰め込む.
-        bbv_hollow_voxel_list_count_max_= 1024*2;//std::clamp(voxel_count / 50u, 64u, k_max_update_probe_work_count);
+        bbv_hollow_voxel_list_count_max_= 1024*2;
 
 
-        const u32 fsp_probe_cell_count = fsp_total_cell_count_;
-        fsp_visible_surface_buffer_size_ = k_max_update_probe_work_count;
+        fsp_visible_surface_buffer_size_ = k_fsp_probe_surface_cell_count_max;
 
         // Helper function to create compute shader PSO
         auto CreateComputePSO = [&](const char* shader_path) -> ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep>
@@ -685,7 +687,7 @@ namespace ngl::render::app
             fsp_buffer_.InitializeAsStructured(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = sizeof(FspProbeData),
-                                               .element_count     = fsp_probe_cell_count,
+                                               .element_count     = fsp_total_cell_count_,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default}
@@ -696,7 +698,7 @@ namespace ngl::render::app
             fsp_cell_probe_index_buffer_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = sizeof(uint32_t),
-                                               .element_count     = fsp_probe_cell_count,
+                                               .element_count     = fsp_total_cell_count_,
 
                                                .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
                                                .heap_type = rhi::EResourceHeapType::Default},
@@ -704,7 +706,7 @@ namespace ngl::render::app
                                         ,  "Srvs_FspCellProbeIndexBuffer");
         }
         {
-            fsp_probe_pool_size_ = k_fsp_probe_pool_size_v1;
+            fsp_probe_pool_size_ = k_fsp_probe_pool_size;
             const auto NextPow2 = [](u32 value) -> u32
             {
                 u32 result = 1;
