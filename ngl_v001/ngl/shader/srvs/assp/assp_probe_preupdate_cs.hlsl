@@ -3,16 +3,36 @@
 assp_probe_preupdate_cs.hlsl
 
 AdaptiveScreenSpaceProbe ProbeTile 用の前処理。
-ASSP hierarchy を参照せず、全 4x4 tile で独立に probe 深度/位置/法線を更新する。
+全 4x4 tile を軽く走査し、active representative だけ tile info を更新して list 化する。
 
 #endif
 
 #include "assp_probe_common.hlsli"
+#include "assp_buffer_util.hlsli"
 #include "../../include/scene_view_struct.hlsli"
 #include "../../include/depth_buffer_util.hlsli"
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 Texture2D TexHardwareDepth;
+
+void AsspStoreInvalidProbeTile(int2 probe_id)
+{
+    RWAdaptiveScreenSpaceProbeTileInfoTex[probe_id] = AsspTileInfoBuild(1.0, uint2(0, 0), float2(0.0, 0.0), false);
+    RWAdaptiveScreenSpaceProbeBestPrevTileTex[probe_id] = 0xffffffffu;
+}
+
+void AsspPushRepresentativeProbe(uint2 probe_id)
+{
+    uint list_element_count = 0u;
+    RWAsspRepresentativeProbeList.GetDimensions(list_element_count);
+
+    uint old_count = 0u;
+    InterlockedAdd(RWAsspRepresentativeProbeList[0], 1u, old_count);
+    if((old_count + 1u) < list_element_count)
+    {
+        RWAsspRepresentativeProbeList[old_count + 1u] = AsspPackProbeTileId(probe_id);
+    }
+}
 
 bool AsspTryLoadFrontDepthSample(
     int2 texel_pos,
@@ -46,7 +66,7 @@ float3 AsspCalcProbeNormalWs(int2 probe_texel_pos, float probe_depth, float2 dep
     return (normal_len_sq > 1e-8) ? (probe_normal_ws * rsqrt(normal_len_sq)) : float3(0.0, 0.0, 1.0);
 }
 
-[numthreads(1, 1, 1)]
+[numthreads(8, 8, 1)]
 void main_cs(uint3 dtid : SV_DispatchThreadID)
 {
     uint2 tile_info_size;
@@ -60,6 +80,12 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
 
     const int2 probe_id = int2(dtid.xy);
     const int2 tile_pixel_start = probe_id * ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+    const int2 representative_tile_id = AsspResolveRepresentativeTileId(tile_pixel_start);
+    if(any(representative_tile_id < 0) || any(representative_tile_id != probe_id))
+    {
+        AsspStoreInvalidProbeTile(probe_id);
+        return;
+    }
 
     uint2 probe_pos_in_tile = uint2(0, 0);
     int2 probe_texel_pos = tile_pixel_start;
@@ -96,8 +122,7 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
 
     if(!found_valid_probe)
     {
-        RWAdaptiveScreenSpaceProbeTileInfoTex[probe_id] = AsspTileInfoBuild(1.0, uint2(0, 0), float2(0.0, 0.0), false);
-        RWAdaptiveScreenSpaceProbeBestPrevTileTex[probe_id] = 0xffffffffu;
+        AsspStoreInvalidProbeTile(probe_id);
         return;
     }
 
@@ -105,4 +130,5 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
 
     RWAdaptiveScreenSpaceProbeTileInfoTex[probe_id] = AsspTileInfoBuild(probe_depth, probe_pos_in_tile, OctEncode(probe_normal_ws), false);
     RWAdaptiveScreenSpaceProbeBestPrevTileTex[probe_id] = 0xffffffffu;
+    AsspPushRepresentativeProbe(uint2(probe_id));
 }

@@ -17,6 +17,10 @@ RWTexture2D<uint>      RWAdaptiveScreenSpaceProbeBestPrevTileTex;
 Texture2D<float4>      AdaptiveScreenSpaceProbePackedSHTex;
 RWTexture2D<float4>    RWAdaptiveScreenSpaceProbePackedSHTex;
 
+Buffer<uint>           AsspRepresentativeProbeList;
+RWBuffer<uint>         RWAsspRepresentativeProbeList;
+RWBuffer<uint>         RWAsspProbeIndirectArg;
+
 static const uint k_assp_tile_info_probe_pos_mask = 0x3fu;
 static const uint k_assp_tile_info_reprojection_succeeded_shift = 6u;
 static const uint k_assp_tile_info_reprojection_succeeded_mask = (1u << k_assp_tile_info_reprojection_succeeded_shift);
@@ -60,6 +64,16 @@ float AsspTileInfoBuildY(uint2 probe_pos_in_tile, bool is_reprojection_succeeded
 float4 AsspTileInfoBuild(float depth, uint2 probe_pos_in_tile, float2 approx_normal_oct, bool is_reprojection_succeeded)
 {
     return float4(depth, AsspTileInfoBuildY(probe_pos_in_tile, is_reprojection_succeeded), approx_normal_oct.x, approx_normal_oct.y);
+}
+
+uint AsspPackProbeTileId(uint2 probe_tile_id)
+{
+    return (probe_tile_id.x & 0xffffu) | ((probe_tile_id.y & 0xffffu) << 16u);
+}
+
+int2 AsspUnpackProbeTileId(uint packed_probe_tile_id)
+{
+    return int2(packed_probe_tile_id & 0xffffu, packed_probe_tile_id >> 16u);
 }
 
 int2 AsspPackedShAtlasCoeffOffset(uint coeff_index, int2 logical_resolution)

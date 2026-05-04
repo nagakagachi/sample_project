@@ -9,22 +9,30 @@ raw RGBA = radiance.rgb / sky_visibility を直接書き込む。
 #endif
 
 #include "assp_probe_common.hlsli"
-#include "assp_buffer_util.hlsli"
 #include "../../include/scene_view_struct.hlsli"
 #include "../../include/rand_util.hlsli"
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
-[numthreads(ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION, ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION, 1)]
+[numthreads(ADAPTIVE_SCREEN_SPACE_PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(
     uint3 gtid : SV_GroupThreadID,
     uint3 gid : SV_GroupID)
 {
+    const uint representative_probe_count = AsspRepresentativeProbeList[0];
+    const uint probe_group_local_index = gtid.x / ADAPTIVE_SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT;
+    const uint probe_list_index = gid.x * ADAPTIVE_SCREEN_SPACE_PROBE_PROBE_PER_GROUP + probe_group_local_index;
+    if(probe_list_index >= representative_probe_count)
+    {
+        return;
+    }
+
     uint2 probe_tex_size;
     RWAdaptiveScreenSpaceProbeTex.GetDimensions(probe_tex_size.x, probe_tex_size.y);
 
-    const int2 probe_atlas_local_pos = gtid.xy;
-    const int2 probe_id = gid.xy;
+    const uint local_probe_texel_index = gtid.x % ADAPTIVE_SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT;
+    const int2 probe_atlas_local_pos = int2(local_probe_texel_index % ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION, local_probe_texel_index / ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION);
+    const int2 probe_id = AsspUnpackProbeTileId(AsspRepresentativeProbeList[probe_list_index + 1u]);
     const int2 global_pos = probe_id * ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION + probe_atlas_local_pos;
     if(any(global_pos >= int2(probe_tex_size)))
         return;
@@ -34,14 +42,6 @@ void main_cs(
     if(any(probe_id >= int2(tile_info_size)))
         return;
 
-    const int2 probe_tile_pixel_start = probe_id * ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-    const int2 representative_tile_id = AsspResolveRepresentativeTileId(probe_tile_pixel_start);
-    if(any(representative_tile_id < 0) || any(representative_tile_id != probe_id))
-    {
-        RWAdaptiveScreenSpaceProbeTex[global_pos] = float4(0.0, 0.0, 0.0, 1.0);
-        return;
-    }
-
     const float4 probe_tile_info = AdaptiveScreenSpaceProbeTileInfoTex.Load(int3(probe_id, 0));
     if(!isValidDepth(probe_tile_info.x))
     {
@@ -49,6 +49,7 @@ void main_cs(
         return;
     }
 
+    const int2 probe_tile_pixel_start = probe_id * ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
     const uint2 depth_size = cb_ngl_sceneview.cb_render_resolution;
     const float2 depth_size_inv = cb_ngl_sceneview.cb_render_resolution_inv;
 

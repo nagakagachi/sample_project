@@ -230,7 +230,9 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_spatial_filter_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_sh_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_clear_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_list_clear_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_preupdate_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_generate_indirect_arg_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_sh_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_depth_analysis_ = {};
@@ -303,6 +305,8 @@ namespace ngl::render::app
         ComputeTextureSet assp_probe_side_cache_meta_tex_ = {}; // 1/4 resolution, xyz: world pos, w: last update frame.
         ComputeTextureSet assp_probe_side_cache_lock_tex_ = {}; // 1/4 resolution, uint lock tag per tile for frame-local CAS.
         ComputeBufferSet assp_buffer_ = {}; // LOD0-LOD[MAX] unified scalar uint buffer.
+        ComputeBufferSet assp_representative_probe_list_ = {}; // 0番はcounter, 1番以降はpacked tile id.
+        ComputeBufferSet assp_probe_indirect_arg_ = {}; // DispatchIndirect 用 3 uint.
 
     };
 
