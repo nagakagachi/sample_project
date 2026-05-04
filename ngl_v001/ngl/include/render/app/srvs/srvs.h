@@ -166,6 +166,7 @@ namespace ngl::render::app
         rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_[ss_probe_latest_filtered_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbeTileInfoTex() const { return ss_probe_tile_info_tex_[ss_probe_tile_info_curr_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbePackedShTex() const { return ss_probe_packed_sh_tex_.srv; }
+        rhi::RefSrvDep GetAsspBuffer() const { return assp_buffer_.srv; }
         rhi::RefSrvDep GetAsspProbeTex() const { return assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv; }
         rhi::RefSrvDep GetAsspProbeTileInfoTex() const { return assp_probe_tile_info_tex_[assp_tile_info_curr_frame_tex_index_].srv; }
         rhi::RefSrvDep GetAsspProbePackedShTex() const { return assp_probe_packed_sh_tex_.srv; }

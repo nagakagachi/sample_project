@@ -2620,6 +2620,8 @@ namespace ngl::render::app
         p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_srv.Get(), bbvgi_instance_->GetSsProbeTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), bbvgi_instance_->GetSsProbeTileInfoTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_packed_sh_srv.Get(), bbvgi_instance_->GetSsProbePackedShTex().Get());
+        p_pso->SetView(p_desc_set, k_shader_bind_name_assp_buffer_srv.Get(), bbvgi_instance_->GetAsspBuffer().Get());
+        p_pso->SetView(p_desc_set, k_shader_bind_name_asspprobe_packed_sh_srv.Get(), bbvgi_instance_->GetAsspProbePackedShTex().Get());
         p_pso->SetView(p_desc_set, "cb_srvs", &bbvgi_instance_->GetDispatchCbh()->cbv);
     }
 

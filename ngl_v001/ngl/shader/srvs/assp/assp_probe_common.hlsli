@@ -93,4 +93,17 @@ int2 AsspPackedShAtlasTexelCoord(int2 probe_tile_id, uint coeff_index, int2 logi
     return probe_tile_id + AsspPackedShAtlasCoeffOffset(coeff_index, logical_resolution);
 }
 
+int2 AsspPackedShAtlasLogicalResolution()
+{
+    uint2 packed_sh_tex_size;
+    AdaptiveScreenSpaceProbePackedSHTex.GetDimensions(packed_sh_tex_size.x, packed_sh_tex_size.y);
+    return int2(packed_sh_tex_size >> 1);
+}
+
+float4 AsspPackedShAtlasLoadCoeff(int2 probe_tile_id, uint coeff_index)
+{
+    const int2 logical_resolution = AsspPackedShAtlasLogicalResolution();
+    return AdaptiveScreenSpaceProbePackedSHTex.Load(int3(AsspPackedShAtlasTexelCoord(probe_tile_id, coeff_index, logical_resolution), 0));
+}
+
 #endif

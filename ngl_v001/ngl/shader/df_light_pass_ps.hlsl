@@ -42,9 +42,11 @@ ConstantBuffer<CbLightingPass> cb_ngl_lighting_pass;
 //   none = probe GI を使わない
 //   ssp  = Screen Space Probe を使う
 //   fsp  = Frustum Space Probe を使う
+//   assp = Adaptive Screen Space Probe を使う
 static const int k_gi_sample_mode_none = 0;
 static const int k_gi_sample_mode_ssp = 1;
 static const int k_gi_sample_mode_fsp = 2;
+static const int k_gi_sample_mode_assp = 3;
 
 Texture2D tex_lineardepth;// Linear View Depth.
 Texture2D tex_gbuffer0;
@@ -65,6 +67,8 @@ Texture2D tex_ibl_dfg;
 
 // GI
 #include "srvs/srvs_util.hlsli"
+#include "srvs/assp/assp_probe_common.hlsli"
+#include "srvs/assp/assp_buffer_util.hlsli"
 
 
 // DirectionalLight評価. 標準.
@@ -573,6 +577,213 @@ float EvalFspSkyVisibilityL1Directional(float4 sky_visibility_sh_coeff, float4 s
     return dot(sky_visibility_sh_coeff, sh_basis);
 }
 
+struct AsspProbePackedShL1Sample
+{
+    float4 sky_visibility_sh;
+    float4 radiance_sh_r;
+    float4 radiance_sh_g;
+    float4 radiance_sh_b;
+};
+
+AsspProbePackedShL1Sample MakeZeroAsspProbePackedShL1Sample()
+{
+    AsspProbePackedShL1Sample result;
+    result.sky_visibility_sh = 0.0.xxxx;
+    result.radiance_sh_r = 0.0.xxxx;
+    result.radiance_sh_g = 0.0.xxxx;
+    result.radiance_sh_b = 0.0.xxxx;
+    return result;
+}
+
+void AccumulateAsspPackedShL1Sample(inout AsspProbePackedShL1Sample accum, AsspProbePackedShL1Sample sample_value, float weight)
+{
+    accum.sky_visibility_sh += sample_value.sky_visibility_sh * weight;
+    accum.radiance_sh_r += sample_value.radiance_sh_r * weight;
+    accum.radiance_sh_g += sample_value.radiance_sh_g * weight;
+    accum.radiance_sh_b += sample_value.radiance_sh_b * weight;
+}
+
+void ScaleAsspPackedShL1Sample(inout AsspProbePackedShL1Sample sample_value, float scale)
+{
+    sample_value.sky_visibility_sh *= scale;
+    sample_value.radiance_sh_r *= scale;
+    sample_value.radiance_sh_g *= scale;
+    sample_value.radiance_sh_b *= scale;
+}
+
+bool AsspTryLoadPackedShL1FromRepresentativeTileId(out AsspProbePackedShL1Sample result, int2 representative_tile_id)
+{
+    result = MakeZeroAsspProbePackedShL1Sample();
+
+    const int2 logical_resolution = AsspPackedShAtlasLogicalResolution();
+    if(any(representative_tile_id < 0) || any(representative_tile_id >= logical_resolution))
+    {
+        return false;
+    }
+
+    const float4 coeff0 = AsspPackedShAtlasLoadCoeff(representative_tile_id, 0);
+    const float4 coeff1 = AsspPackedShAtlasLoadCoeff(representative_tile_id, 1);
+    const float4 coeff2 = AsspPackedShAtlasLoadCoeff(representative_tile_id, 2);
+    const float4 coeff3 = AsspPackedShAtlasLoadCoeff(representative_tile_id, 3);
+    result.sky_visibility_sh = float4(
+        coeff0.r,
+        coeff1.r,
+        coeff2.r,
+        coeff3.r);
+    result.radiance_sh_r = float4(
+        coeff0.g,
+        coeff1.g,
+        coeff2.g,
+        coeff3.g);
+    result.radiance_sh_g = float4(
+        coeff0.b,
+        coeff1.b,
+        coeff2.b,
+        coeff3.b);
+    result.radiance_sh_b = float4(
+        coeff0.a,
+        coeff1.a,
+        coeff2.a,
+        coeff3.a);
+    return true;
+}
+
+bool AsspTrySamplePackedShL1FromScreenTexel(out AsspProbePackedShL1Sample result, out float reliability_weight, int2 screen_texel_pos, float linear_depth)
+{
+    result = MakeZeroAsspProbePackedShL1Sample();
+    reliability_weight = 0.0;
+
+    int selected_lod = 0;
+    int2 selected_node_origin = int2(0, 0);
+    int selected_node_size = 0;
+    int2 representative_texel_pos = int2(0, 0);
+    float representative_depth = 0.0;
+    float plane_error = 0.0;
+    float split_score = 0.0;
+    float3 representative_normal = 0.0.xxx;
+    AsspResolveLeafNode(
+        screen_texel_pos,
+        selected_lod,
+        selected_node_origin,
+        selected_node_size,
+        representative_texel_pos,
+        representative_depth,
+        plane_error,
+        split_score,
+        representative_normal);
+
+    if(any(representative_texel_pos < 0))
+    {
+        return false;
+    }
+
+    const int2 representative_tile_id = representative_texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+    if(!AsspTryLoadPackedShL1FromRepresentativeTileId(result, representative_tile_id))
+    {
+        return false;
+    }
+
+    const float plane_error_bias = max(representative_depth * 0.01, 0.01);
+    const float depth_error_bias = max(linear_depth * 0.05, 0.05);
+    const float depth_error = abs(representative_depth - linear_depth);
+    const float depth_weight = rcp(1.0 + depth_error / depth_error_bias);
+    reliability_weight = depth_weight * rcp(max(plane_error, plane_error_bias));
+    return true;
+}
+
+bool TrySampleAsspPackedShL1(out AsspProbePackedShL1Sample result, float2 screen_uv, float linear_depth)
+{
+    result = MakeZeroAsspProbePackedShL1Sample();
+
+    const int2 probe_grid_resolution = int2(AsspLodWidthFromCb(0u), AsspLodHeightFromCb(0u));
+    uint2 screen_size_u;
+    tex_lineardepth.GetDimensions(screen_size_u.x, screen_size_u.y);
+    const int2 screen_resolution = int2(screen_size_u);
+    const int2 screen_texel_pos = clamp(int2(screen_uv * float2(screen_resolution)), int2(0, 0), screen_resolution - int2(1, 1));
+
+    if(any(probe_grid_resolution <= 0))
+    {
+        float fallback_weight = 0.0;
+        return AsspTrySamplePackedShL1FromScreenTexel(result, fallback_weight, screen_texel_pos, linear_depth);
+    }
+
+    if(any(probe_grid_resolution <= 1))
+    {
+        float fallback_weight = 0.0;
+        return AsspTrySamplePackedShL1FromScreenTexel(result, fallback_weight, screen_texel_pos, linear_depth);
+    }
+
+    const float2 probe_grid_coord = screen_uv * float2(probe_grid_resolution) - 0.5;
+    const int2 probe_grid_base = clamp(
+        int2(floor(probe_grid_coord)),
+        int2(0, 0),
+        max(probe_grid_resolution - int2(2, 2), int2(0, 0)));
+    const float2 probe_grid_lerp_rate = saturate(frac(probe_grid_coord));
+
+    float total_weight = 0.0;
+    [unroll]
+    for(int gather_component_index = 0; gather_component_index < 4; ++gather_component_index)
+    {
+        const int2 gather_offset = GatherComponentIndexToTexelOffset(gather_component_index);
+        const int2 probe_tile_id = probe_grid_base + gather_offset;
+        const float bilinear_weight =
+            ((gather_offset.x == 0) ? (1.0 - probe_grid_lerp_rate.x) : probe_grid_lerp_rate.x)
+            * ((gather_offset.y == 0) ? (1.0 - probe_grid_lerp_rate.y) : probe_grid_lerp_rate.y);
+        if(bilinear_weight <= 0.0)
+        {
+            continue;
+        }
+
+        const int2 gather_screen_texel_pos = clamp(
+            probe_tile_id * ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE + int2(ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE / 2, ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE / 2),
+            int2(0, 0),
+            screen_resolution - int2(1, 1));
+
+        AsspProbePackedShL1Sample probe_sh = MakeZeroAsspProbePackedShL1Sample();
+        float reliability_weight = 0.0;
+        if(!AsspTrySamplePackedShL1FromScreenTexel(probe_sh, reliability_weight, gather_screen_texel_pos, linear_depth))
+        {
+            continue;
+        }
+
+        const float combined_weight = bilinear_weight * reliability_weight;
+        if(combined_weight <= 0.0)
+        {
+            continue;
+        }
+
+        AccumulateAsspPackedShL1Sample(result, probe_sh, combined_weight);
+        total_weight += combined_weight;
+    }
+
+    if(total_weight <= 0.0)
+    {
+        float fallback_weight = 0.0;
+        return AsspTrySamplePackedShL1FromScreenTexel(result, fallback_weight, screen_texel_pos, linear_depth);
+    }
+
+    ScaleAsspPackedShL1Sample(result, rcp(total_weight));
+    return true;
+}
+
+float3 EvalAsspRadianceL1DiffuseIrradiance(AsspProbePackedShL1Sample assp_probe_sh, float4 sh_basis)
+{
+    return float3(
+        dot(ConvolveL1ShByClampedCosine(assp_probe_sh.radiance_sh_r), sh_basis),
+        dot(ConvolveL1ShByClampedCosine(assp_probe_sh.radiance_sh_g), sh_basis),
+        dot(ConvolveL1ShByClampedCosine(assp_probe_sh.radiance_sh_b), sh_basis));
+}
+
+float EvalAsspSkyVisibilityL1IblOcclusion(float4 sky_visibility_sh_coeff, float4 sh_basis)
+{
+    return dot(ConvolveL1ShByNormalizedClampedCosine(sky_visibility_sh_coeff), sh_basis);
+}
+
+float EvalAsspSkyVisibilityL1Directional(float4 sky_visibility_sh_coeff, float4 sh_basis)
+{
+    return dot(sky_visibility_sh_coeff, sh_basis);
+}
+
 float EvalDirectionalShadow(Texture2D tex_cascade_shadowmap, SamplerComparisonState comp_samp, float3 L, float3 pixel_pos_ws, float3 normal, float3 view_origin, float3 camera_dir)
 {
 	// Cascade Index.
@@ -793,7 +1004,29 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
                 {
                     gi_probe_diffuse_irradiance = max(
                         float3(0.0, 0.0, 0.0),
-                        EvalFspRadianceL1DiffuseIrradiance(fsp_probe_sh, sh_basis));
+                    EvalFspRadianceL1DiffuseIrradiance(fsp_probe_sh, sh_basis));
+                }
+            }
+        }
+        else if(cb_ngl_lighting_pass.gi_sample_mode == k_gi_sample_mode_assp)
+        {
+            AsspProbePackedShL1Sample assp_probe_sh;
+            if(TrySampleAsspPackedShL1(assp_probe_sh, screen_uv, ld))
+            {
+                if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
+                {
+                    const float diffuse_sh_sample = max(0.0, EvalAsspSkyVisibilityL1IblOcclusion(assp_probe_sh.sky_visibility_sh, sh_basis));
+                    diffuse_sky_visibility = saturate(diffuse_sh_sample);
+
+                    const float directional_specular_sample = max(0.0, EvalAsspSkyVisibilityL1Directional(assp_probe_sh.sky_visibility_sh, reflection_sh_basis));
+                    const float roughness_blend = saturate(gb_roughness * gb_roughness);
+                    specular_sky_visibility = saturate(lerp(directional_specular_sample, diffuse_sky_visibility, roughness_blend));
+                }
+                if(cb_ngl_lighting_pass.is_enable_radiance)
+                {
+                    gi_probe_diffuse_irradiance = max(
+                        float3(0.0, 0.0, 0.0),
+                        EvalAsspRadianceL1DiffuseIrradiance(assp_probe_sh, sh_basis));
                 }
             }
         }
