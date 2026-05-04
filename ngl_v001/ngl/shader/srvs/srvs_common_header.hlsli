@@ -195,12 +195,22 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     // しやすくするのが目的。
     static const uint k_assp_tile_size = 4u;
     static const uint k_assp_max_lod_count = 5u;
-    // 初期段階は decode の単純さを優先し、全 LOD で同じ word 数にそろえる。
-    // 各 word の意味は assp_buffer_util.hlsli の AsspLoadNode/AsspStoreNode に集約する。
-    static const uint k_assp_words_per_node = 12u;
+    // LOD0 は詳細 plane 情報を保持し、LOD1+ は representative と active count 中心の軽量 record を持つ。
+    // k_assp_words_per_node は C++ 側の互換用に最大 word 数を残し、実際の LOD 別幅は AsspWordsPerNode() で引く。
+    static const uint k_assp_lod0_words_per_node = 9u;
+    static const uint k_assp_upper_words_per_node = 2u;
+    static const uint k_assp_words_per_node = k_assp_lod0_words_per_node;
     static const uint k_assp_state_invalid = 0u;
     static const uint k_assp_state_empty = 1u;
     static const uint k_assp_state_solid = 2u;
+    static const uint k_assp_state_split = 3u;
+    static const uint k_assp_hierarchy_state_bit_count = 2u;
+    static const uint k_assp_hierarchy_state_mask = (1u << k_assp_hierarchy_state_bit_count) - 1u;
+
+    inline uint AsspWordsPerNode(uint lod_index)
+    {
+        return (0u == lod_index) ? k_assp_lod0_words_per_node : k_assp_upper_words_per_node;
+    }
 
     inline uint AsspDivRoundUp(uint value, uint divisor)
     {
@@ -235,7 +245,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         uint base_word_offset = 0u;
         for(uint prev_lod = 0u; prev_lod < lod_index; ++prev_lod)
         {
-            base_word_offset += AsspLodNodeCount(screen_width, screen_height, prev_lod) * k_assp_words_per_node;
+            base_word_offset += AsspLodNodeCount(screen_width, screen_height, prev_lod) * AsspWordsPerNode(prev_lod);
         }
         return base_word_offset;
     }
@@ -247,7 +257,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         uint total_word_count = 0u;
         for(uint lod_index = 0u; lod_index < lod_count; ++lod_index)
         {
-            total_word_count += AsspLodNodeCount(screen_width, screen_height, lod_index) * k_assp_words_per_node;
+            total_word_count += AsspLodNodeCount(screen_width, screen_height, lod_index) * AsspWordsPerNode(lod_index);
         }
         return total_word_count;
     }

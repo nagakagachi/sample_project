@@ -94,12 +94,12 @@ void main_cs(
         }
     }
 
-    AsspNodeRecord out_node = AsspMakeEmptyNode();
+    AsspLod0NodeRecord out_node = AsspMakeEmptyLod0Node();
     if(0 == valid_count || front_sample_index == 0xffffffffu)
     {
         // 完全に空のタイルは explicit empty node として保持し、
         // 上位 LOD でも coarse な empty 領域として継続利用する。
-        AsspStoreNode(0u, dtid.xy, out_node);
+        AsspStoreLod0Node(dtid.xy, out_node);
         return;
     }
 
@@ -148,13 +148,11 @@ void main_cs(
     const float split_score = saturate(normalized_range * 6.0 + normalized_max_residual * 32.0 + normalized_mean_residual * 16.0 + (1.0 - valid_ratio) * 0.5);
 
     out_node.state = k_assp_state_solid;
-    out_node.representative_texel = uint2(front_sample_texel_pos);
+    out_node.representative_texel_packed = AsspPackRepresentativeTexel(uint2(front_sample_texel_pos));
     out_node.front_depth = front_depth;
     out_node.representative_normal = representative_normal_vs;
     out_node.representative_plane_dist = representative_plane_dist;
-    out_node.metric0 = mean_residual;
-    out_node.metric1 = max_residual;
-    out_node.metric2 = depth_range;
+    out_node.plane_error = max_residual;
     out_node.split_score = split_score;
-    AsspStoreNode(0u, dtid.xy, out_node);
+    AsspStoreLod0Node(dtid.xy, out_node);
 }

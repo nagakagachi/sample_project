@@ -28,12 +28,12 @@ float debug_count_to_rate(float count)
     return count / (count + 4.0);
 }
 
-AsspNodeRecord AsspLoadNodeFromScreenTexel(int2 screen_texel_pos, uint lod_index)
+AsspLod0NodeRecord AsspLoadLod0NodeFromScreenTexel(int2 screen_texel_pos)
 {
-    return AsspLoadNode(lod_index, AsspNodeCoordFromScreenTexel(screen_texel_pos, lod_index));
+    return AsspLoadLod0Node(AsspNodeCoordFromScreenTexel(screen_texel_pos, 0u));
 }
 
-AsspNodeRecord AsspLoadLod0NodeFromRepresentativeTexelOrEmpty(int2 representative_texel_pos)
+AsspLod0NodeRecord AsspLoadLod0NodeFromRepresentativeTexelOrEmpty(int2 representative_texel_pos)
 {
     return AsspLoadLod0NodeFromRepresentativeTexel(representative_texel_pos);
 }
@@ -526,10 +526,10 @@ void main_cs(
             float split_score = 0.0;
             float3 representative_normal = float3(0.0, 0.0, 1.0);
 
-            const AsspNodeRecord node = AsspLoadNodeFromScreenTexel(texel_pos, 0u);
+            const AsspLod0NodeRecord node = AsspLoadLod0NodeFromScreenTexel(texel_pos);
             representative_depth = node.front_depth;
-            representative_normal = AsspNodeIsSolid(node) ? AsspLoadLod0NodeFromRepresentativeTexelOrEmpty(int2(node.representative_texel)).representative_normal : float3(0.0, 0.0, 1.0);
-            plane_error = node.metric1;
+            representative_normal = AsspLod0NodeIsSolid(node) ? AsspLoadLod0NodeFromRepresentativeTexelOrEmpty(AsspUnpackRepresentativeTexelInt2(node.representative_texel_packed)).representative_normal : float3(0.0, 0.0, 1.0);
+            plane_error = node.plane_error;
             split_score = node.split_score;
 
             // depth は 20 view-space units 付近からゆるく圧縮して遠方差を見やすくする。
