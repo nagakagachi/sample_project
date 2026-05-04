@@ -55,7 +55,6 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
-	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 	const float3 view_origin = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
 	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
@@ -92,6 +91,11 @@ void main_cs(
     const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_ngl_sceneview.cb_proj_mtx);
     const float3 pixel_pos_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4((to_pixel_ray_vs/abs(to_pixel_ray_vs.z)) * view_z, 1.0));
 
+    const float3 to_surface_vec_ws = pixel_pos_ws - view_origin;
+    const float to_surface_len_sq = dot(to_surface_vec_ws, to_surface_vec_ws);
+    const bool has_surface_dir = (to_surface_len_sq > 1e-6);
+    const float3 surface_view_dir_ws = has_surface_dir ? (to_surface_vec_ws * rsqrt(to_surface_len_sq)) : 0.0.xxx;
+
     const uint cascade_count = FspCascadeCount();
     [unroll]
     for(uint cascade_index = 0; cascade_index < k_fsp_max_cascade_count; ++cascade_index)
@@ -101,27 +105,27 @@ void main_cs(
             break;
         }
 
+        const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+        const float half_cell_size = cascade.grid.cell_size * 0.5;
+        // 基準セルは depth 位置そのものではなく、表面からカメラ側へ半セルだけ寄せた位置で選ぶ。
+        const float3 base_probe_pos_ws = has_surface_dir ? (pixel_pos_ws - surface_view_dir_ws * half_cell_size) : pixel_pos_ws;
+
         uint global_cell_index = 0;
-        if(!FspTryGetGlobalCellIndexFromWorldPos(pixel_pos_ws, cascade_index, global_cell_index))
+        if(!FspTryGetGlobalCellIndexFromWorldPos(base_probe_pos_ws, cascade_index, global_cell_index))
         {
             continue;
         }
 
         FspRegisterVisibleCell(global_cell_index);
 
-        if(0 != cb_srvs.fsp_spawn_front_cell_enable)
+        if((0 != cb_srvs.fsp_spawn_far_cell_enable) && has_surface_dir)
         {
-            const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-            const float3 to_surface_vec_ws = pixel_pos_ws - view_origin;
-            const float to_surface_len_sq = dot(to_surface_vec_ws, to_surface_vec_ws);
-            if(to_surface_len_sq > 1e-6)
+            // 追加セルは depth 位置から奥側へ半セルだけ進めた位置で選ぶ。
+            const float3 far_probe_pos_ws = pixel_pos_ws + surface_view_dir_ws * half_cell_size;
+            uint far_global_cell_index = 0;
+            if(FspTryGetGlobalCellIndexFromWorldPos(far_probe_pos_ws, cascade_index, far_global_cell_index))
             {
-                const float3 front_probe_pos_ws = pixel_pos_ws - to_surface_vec_ws * rsqrt(to_surface_len_sq) * cascade.grid.cell_size;
-                uint front_global_cell_index = 0;
-                if(FspTryGetGlobalCellIndexFromWorldPos(front_probe_pos_ws, cascade_index, front_global_cell_index))
-                {
-                    FspRegisterVisibleCell(front_global_cell_index);
-                }
+                FspRegisterVisibleCell(far_global_cell_index);
             }
         }
     }

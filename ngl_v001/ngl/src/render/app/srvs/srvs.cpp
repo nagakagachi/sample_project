@@ -94,7 +94,7 @@ namespace ngl::render::app
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_ = k_default_srvs_param.ss_probe_spatial_filter_depth_exp_scale;
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_ = k_default_srvs_param.ss_probe_side_cache_plane_dist_threshold;
     int ScreenReconstructedVoxelStructure::dbg_fsp_lighting_interpolation_enable_ = k_default_srvs_param.fsp_lighting_interpolation_enable;
-    int ScreenReconstructedVoxelStructure::dbg_fsp_spawn_front_cell_enable_ = k_default_srvs_param.fsp_spawn_front_cell_enable;
+    int ScreenReconstructedVoxelStructure::dbg_fsp_spawn_far_cell_enable_ = k_default_srvs_param.fsp_spawn_far_cell_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_lighting_stochastic_sampling_enable_ = k_default_srvs_param.fsp_lighting_stochastic_sampling_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_probe_pool_size_ = 0;
     int ScreenReconstructedVoxelStructure::dbg_fsp_free_probe_count_ = 0;
@@ -279,12 +279,12 @@ namespace ngl::render::app
                     }
                 }
                 {
-                    bool v = (0 != dbg_fsp_spawn_front_cell_enable_);
-                    if (ImGui::Checkbox("Spawn Front Cell", &v))
-                        dbg_fsp_spawn_front_cell_enable_ = v ? 1 : 0;
+                    bool v = (0 != dbg_fsp_spawn_far_cell_enable_);
+                    if (ImGui::Checkbox("Spawn Far Cell", &v))
+                        dbg_fsp_spawn_far_cell_enable_ = v ? 1 : 0;
                     if (ImGui::BeginPopupContextItem()) {
                         if (ImGui::MenuItem("Reset to Default"))
-                            dbg_fsp_spawn_front_cell_enable_ = k_default_srvs_param.fsp_spawn_front_cell_enable;
+                            dbg_fsp_spawn_far_cell_enable_ = k_default_srvs_param.fsp_spawn_far_cell_enable;
                         ImGui::EndPopup();
                     }
                 }
@@ -1010,7 +1010,7 @@ namespace ngl::render::app
                 param.fsp_probe_pool_size = static_cast<int>(fsp_probe_pool_size_);
                 param.fsp_active_probe_buffer_size = static_cast<int>(fsp_probe_pool_size_);
                 param.fsp_lighting_interpolation_enable = ScreenReconstructedVoxelStructure::dbg_fsp_lighting_interpolation_enable_;
-                param.fsp_spawn_front_cell_enable = ScreenReconstructedVoxelStructure::dbg_fsp_spawn_front_cell_enable_;
+                param.fsp_spawn_far_cell_enable = ScreenReconstructedVoxelStructure::dbg_fsp_spawn_far_cell_enable_;
                 param.fsp_lighting_stochastic_sampling_enable = ScreenReconstructedVoxelStructure::dbg_fsp_lighting_stochastic_sampling_enable_;
                 param.fsp_cascade_count = static_cast<int>(fsp_cascade_count_);
                 param.fsp_total_cell_count = static_cast<int>(fsp_total_cell_count_);

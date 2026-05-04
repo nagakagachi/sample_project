@@ -285,7 +285,7 @@ namespace ngl::render::app
         static float dbg_ss_probe_spatial_filter_depth_exp_scale_;
         static float dbg_ss_probe_side_cache_plane_dist_threshold_;
         static int dbg_fsp_lighting_interpolation_enable_;
-        static int dbg_fsp_spawn_front_cell_enable_;
+        static int dbg_fsp_spawn_far_cell_enable_;
         static int dbg_fsp_lighting_stochastic_sampling_enable_;
         static int dbg_fsp_probe_pool_size_;
         static int dbg_fsp_free_probe_count_;
