@@ -183,6 +183,69 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     // SsProbe PreUpdateの再配置確率.
     #define SCREEN_SPACE_PROBE_PREUPDATE_RELOCATION_PROBABILITY 0.025
 
+    // Screen Analysis Pass.
+    // 4x4 screen texel を LOD0 node として扱い、LOD0..LOD[MAX] の node record を 1 本の scalar uint buffer へ
+    // LOD 順に連結格納する。texture atlas の要素配置都合から切り離し、後段で bit packing や record 再設計を
+    // しやすくするのが目的。
+    static const uint k_sap_tile_size = 4u;
+    static const uint k_sap_max_lod_count = 5u;
+    // 初期段階は decode の単純さを優先し、全 LOD で同じ word 数にそろえる。
+    // 各 word の意味は sap_buffer_util.hlsli の SapLoadNode/SapStoreNode に集約する。
+    static const uint k_sap_words_per_node = 12u;
+    static const uint k_sap_state_invalid = 0u;
+    static const uint k_sap_state_empty = 1u;
+    static const uint k_sap_state_solid = 2u;
+
+    inline uint SapDivRoundUp(uint value, uint divisor)
+    {
+        return (value + divisor - 1u) / divisor;
+    }
+
+    inline uint SapNodeSizeInPixels(uint lod_index)
+    {
+        // LOD ごとに node の screen-space 担当範囲を 2 倍に広げる。
+        return k_sap_tile_size << lod_index;
+    }
+
+    inline uint SapLodWidth(uint screen_width, uint lod_index)
+    {
+        return SapDivRoundUp(screen_width, SapNodeSizeInPixels(lod_index));
+    }
+
+    inline uint SapLodHeight(uint screen_height, uint lod_index)
+    {
+        return SapDivRoundUp(screen_height, SapNodeSizeInPixels(lod_index));
+    }
+
+    inline uint SapLodNodeCount(uint screen_width, uint screen_height, uint lod_index)
+    {
+        return SapLodWidth(screen_width, lod_index) * SapLodHeight(screen_height, lod_index);
+    }
+
+    inline uint SapLodBaseWordOffset(uint screen_width, uint screen_height, uint lod_index)
+    {
+        // buffer は [LOD0][LOD1][LOD2]... の順に詰める。
+        // そのため任意 LOD の base は、それより細かい全 LOD の node 数 * words_per_node の累積で求まる。
+        uint base_word_offset = 0u;
+        for(uint prev_lod = 0u; prev_lod < lod_index; ++prev_lod)
+        {
+            base_word_offset += SapLodNodeCount(screen_width, screen_height, prev_lod) * k_sap_words_per_node;
+        }
+        return base_word_offset;
+    }
+
+    inline uint SapTotalWordCount(uint screen_width, uint screen_height, uint lod_count)
+    {
+        // CPU の resource 確保量と shader の index 計算を同じ式にそろえるため、
+        // total word 数も共有 helper で求める。
+        uint total_word_count = 0u;
+        for(uint lod_index = 0u; lod_index < lod_count; ++lod_index)
+        {
+            total_word_count += SapLodNodeCount(screen_width, screen_height, lod_index) * k_sap_words_per_node;
+        }
+        return total_word_count;
+    }
+
 
     // シェーダとCppで一致させる.
     // Voxel追加データバッファ. Bbv一つ毎の外部データ.
@@ -365,6 +428,15 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
         float debug_probe_radius NGL_CPP_MEMBER_INIT({0.0f});
         float debug_probe_near_geom_scale NGL_CPP_MEMBER_INIT({0.2f});
+        float sap_debug_split_threshold NGL_CPP_MEMBER_INIT({0.2f});
+        int sap_debug_leaf_border_enable NGL_CPP_MEMBER_INIT({1});
+        int sap_lod_count NGL_CPP_MEMBER_INIT({int(k_sap_max_lod_count)});
+        int sap_words_per_node NGL_CPP_MEMBER_INIT({int(k_sap_words_per_node)});
+        int sap_total_word_count NGL_CPP_MEMBER_INIT({0});
+        int sap_tile_size NGL_CPP_MEMBER_INIT({int(k_sap_tile_size)});
+        int sap_build_lod NGL_CPP_MEMBER_INIT({0});
+        int sap_dummy_padding0 NGL_CPP_MEMBER_INIT({0});
+        int sap_dummy_padding1 NGL_CPP_MEMBER_INIT({0});
     };
 #ifdef NGL_SHADER_CPP_INCLUDE
     // C++用のコンパイル時定数デフォルト構造体.

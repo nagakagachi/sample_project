@@ -11,6 +11,16 @@
 #include "render/task/pass_common.h"
 #include "gfx/rtg/graph_builder.h"
 
+#ifndef NGL_SHADER_CPP_INCLUDE
+#define NGL_SHADER_CPP_INCLUDE
+#define NGL_SRVS_H_UNDEF_SHADER_CPP_INCLUDE
+#endif
+#include "../../../../shader/srvs/srvs_common_header.hlsli"
+#ifdef NGL_SRVS_H_UNDEF_SHADER_CPP_INCLUDE
+#undef NGL_SRVS_H_UNDEF_SHADER_CPP_INCLUDE
+#undef NGL_SHADER_CPP_INCLUDE
+#endif
+
 namespace ngl::render::app
 {
 
@@ -118,6 +128,10 @@ namespace ngl::render::app
             rhi::ConstantBufferPooledHandle scene_cbv,
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
             );
+        void Dispatch_Sap(rhi::GraphicsCommandListDep* p_command_list,
+            rhi::ConstantBufferPooledHandle scene_cbv,
+            const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
+            );
 
         void Dispatch_Fsp(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
@@ -127,7 +141,7 @@ namespace ngl::render::app
         void Dispatch_Debug(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
-            rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
+            rhi::RefSrvDep lit_color_srv, rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
 
         void DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
@@ -199,9 +213,13 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_spatial_filter_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_sh_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_sap_depth_analysis_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_sap_lod1_build_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_sap_hierarchy_build_ = {};
 
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
+        SrvsParam dispatch_param_cache_ = {};
 
         // Bitmask Brick Voxel. Bbv.
         // ----------------------------------------------------------------
@@ -257,6 +275,7 @@ namespace ngl::render::app
         ComputeTextureSet ss_probe_side_cache_tex_ = {}; // 8x8 texel per cached probe.
         ComputeTextureSet ss_probe_side_cache_meta_tex_ = {}; // 1/8 resolution, xyz: world pos, w: last update frame.
         ComputeTextureSet ss_probe_side_cache_lock_tex_ = {}; // 1/8 resolution, uint lock tag per tile for frame-local CAS.
+        ComputeBufferSet sap_buffer_ = {}; // LOD0-LOD[MAX] unified scalar uint buffer.
 
     };
 
@@ -284,6 +303,8 @@ namespace ngl::render::app
         static float dbg_ss_probe_spatial_filter_normal_cos_threshold_;
         static float dbg_ss_probe_spatial_filter_depth_exp_scale_;
         static float dbg_ss_probe_side_cache_plane_dist_threshold_;
+        static float dbg_sap_split_threshold_;
+        static int dbg_sap_leaf_border_enable_;
         static int dbg_fsp_lighting_interpolation_enable_;
         static int dbg_fsp_spawn_far_cell_enable_;
         static int dbg_fsp_lighting_stochastic_sampling_enable_;
@@ -323,8 +344,11 @@ namespace ngl::render::app
             
         void DispatchUpdate(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
+            const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv);
+        void DispatchDebug(rhi::GraphicsCommandListDep* p_command_list,
+            rhi::ConstantBufferPooledHandle scene_cbv, 
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
-            rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
+            rhi::RefSrvDep lit_color_srv, rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
 
         void DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
@@ -511,7 +535,6 @@ namespace ngl::render::app
     {
     public:
 		ngl::rtg::RtgResourceHandle h_depth_{};
-		ngl::rtg::RtgResourceHandle h_work_{};
 
 		struct SetupDesc
 		{
@@ -537,11 +560,8 @@ namespace ngl::render::app
 			// Rtgリソースセットアップ.
 			{
 				// リソース定義.
-                ngl::rtg::RtgResourceDesc2D work_desc = ngl::rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R32G32B32A32_FLOAT);
-
 				// リソースアクセス定義.
                 h_depth_ = builder.RecordResourceAccess(*this, desc.h_depth, rtg::AccessType::SHADER_READ);
-                h_work_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_desc), rtg::AccessType::UAV);
 			}
 
 			// Render処理のLambdaをRTGに登録.
@@ -554,16 +574,70 @@ namespace ngl::render::app
 
 					// ハンドルからリソース取得. 必要なBarrierコマンドは外部で発行済である.
 					auto res_depth = builder.GetAllocatedResource(this, h_depth_);
-                    auto res_work = builder.GetAllocatedResource(this, h_work_);
 					assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
-                    assert(res_work.tex_.IsValid() && res_work.uav_.IsValid());
 
                     desc_.p_srvs->DispatchUpdate(gfx_commandlist, desc_.scene_cbv, 
-                        view_info, res_depth.tex_, res_depth.srv_,
-                        res_work.tex_, res_work.uav_);
+                        view_info, res_depth.tex_, res_depth.srv_);
 				}
 			);
 		}
 	};
+
+    class RenderTaskSrvsDebug : public ngl::rtg::IGraphicsTaskNode
+    {
+    public:
+		ngl::rtg::RtgResourceHandle h_depth_{};
+		ngl::rtg::RtgResourceHandle h_color_{};
+		ngl::rtg::RtgResourceHandle h_work_{};
+
+		struct SetupDesc
+		{
+            int w{};
+            int h{};
+
+            rhi::ConstantBufferPooledHandle scene_cbv{};
+            render::app::ScreenReconstructedVoxelStructure* p_srvs = {};
+
+            ngl::rtg::RtgResourceHandle h_depth{};
+            ngl::rtg::RtgResourceHandle h_color{};
+		};
+		SetupDesc desc_{};
+
+		void Setup(ngl::rtg::RenderTaskGraphBuilder& builder, rhi::DeviceDep* p_device, const ngl::render::task::RenderPassViewInfo& view_info,
+			const SetupDesc& desc)
+		{
+            if(!desc.p_srvs || desc.h_depth.IsInvalid() || desc.h_color.IsInvalid())
+                return;
+
+			desc_ = desc;
+
+			{
+                ngl::rtg::RtgResourceDesc2D work_desc = ngl::rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R32G32B32A32_FLOAT);
+                h_depth_ = builder.RecordResourceAccess(*this, desc.h_depth, rtg::AccessType::SHADER_READ);
+                h_color_ = builder.RecordResourceAccess(*this, desc.h_color, rtg::AccessType::SHADER_READ);
+                h_work_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_desc), rtg::AccessType::UAV);
+			}
+
+			builder.RegisterTaskNodeRenderFunction(this,
+				[this, view_info](rtg::RenderTaskGraphBuilder& builder, rtg::TaskGraphicsCommandListAllocator command_list_allocator)
+				{
+					command_list_allocator.Alloc(1);
+					auto gfx_commandlist = command_list_allocator.GetOrCreate(0);
+					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RenderTaskSrvsDebug");
+
+					auto res_depth = builder.GetAllocatedResource(this, h_depth_);
+                    auto res_color = builder.GetAllocatedResource(this, h_color_);
+                    auto res_work = builder.GetAllocatedResource(this, h_work_);
+					assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
+                    assert(res_color.srv_.IsValid());
+                    assert(res_work.tex_.IsValid() && res_work.uav_.IsValid());
+
+                    desc_.p_srvs->DispatchDebug(gfx_commandlist, desc_.scene_cbv,
+                        view_info, res_depth.tex_, res_depth.srv_,
+                        res_color.srv_, res_work.tex_, res_work.uav_);
+				}
+			);
+		}
+    };
 
 }  // namespace ngl::render::app

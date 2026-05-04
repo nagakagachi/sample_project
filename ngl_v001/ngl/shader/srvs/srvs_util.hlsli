@@ -102,6 +102,10 @@ Texture2D<float4>      ScreenSpaceProbeSideCacheMetaTex;
 RWTexture2D<float4>    RWScreenSpaceProbeSideCacheMetaTex;
 RWTexture2D<uint>      RWScreenSpaceProbeSideCacheLockTex;
 
+// Screen Analysis Pass unified storage.
+Buffer<uint>           SapBuffer;
+RWBuffer<uint>         RWSapBuffer;
+
 // srvsのメインパラメータ.
 ConstantBuffer<SrvsParam> cb_srvs;
 

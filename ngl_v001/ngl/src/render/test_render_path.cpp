@@ -406,6 +406,7 @@ namespace ngl::test
                         }
                         task_srvs_update->Setup(rtg_builder, p_device, view_info, setup_desc);
                     }
+                    ngl::render::app::RenderTaskSrvsDebug* task_srvs_debug = nullptr;
 
 
 
@@ -449,6 +450,21 @@ namespace ngl::test
 					// Renderをスキップテスト.
 					task_light->is_render_skip_debug_ = k_force_skip_all_pass_render;
 				}
+
+                    task_srvs_debug = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskSrvsDebug>();
+                    {
+                        ngl::render::app::RenderTaskSrvsDebug::SetupDesc setup_desc{};
+                        {
+                            setup_desc.w = screen_w;
+                            setup_desc.h = screen_h;
+
+                            setup_desc.scene_cbv = scene_cb_h;
+                            setup_desc.p_srvs = render_frame_desc.feature_config.gi.p_srvs;
+                            setup_desc.h_depth = task_depth->h_depth_;
+                            setup_desc.h_color = task_light->h_light_;
+                        }
+                        task_srvs_debug->Setup(rtg_builder, p_device, view_info, setup_desc);
+                    }
 
 				// ----------------------------------------
 				// After Lighting Pass.
@@ -567,7 +583,8 @@ namespace ngl::test
 								general_debug_tex = task_ss_depth_technique->h_bent_normal_;
                                 break;
                             case EDebugBufferMode::SrvsDebugTexture:
-                                general_debug_tex = task_srvs_update->h_work_;
+                                if(task_srvs_debug)
+                                    general_debug_tex = task_srvs_debug->h_work_;
                                 break;
                             default:
                                 break;

@@ -9,6 +9,7 @@ ss_voxel_debug_visualize_cs.hlsl
 
 
 #include "../srvs_util.hlsli"
+#include "../sap/sap_buffer_util.hlsli"
 
 // SceneView定数バッファ構造定義.
 #include "../../include/scene_view_struct.hlsli"
@@ -17,10 +18,78 @@ ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 RWTexture2D<float4>	RWTexWork;
 SamplerState		SmpLinearClamp;
+Texture2D            TexMainLitColor;
 
 float debug_count_to_rate(float count)
 {
     return count / (count + 4.0);
+}
+
+SapNodeRecord SapLoadNodeFromScreenTexel(int2 screen_texel_pos, uint lod_index)
+{
+    return SapLoadNode(lod_index, SapNodeCoordFromScreenTexel(screen_texel_pos, lod_index));
+}
+
+SapNodeRecord SapLoadLod0NodeFromRepresentativeTexelOrEmpty(int2 representative_texel_pos)
+{
+    return SapLoadLod0NodeFromRepresentativeTexel(representative_texel_pos);
+}
+
+float3 SapSelectedLodColor(int sap_lod)
+{
+    // selected LOD map 用の見分けやすい固定色。
+    if(0 == sap_lod) return float3(1.0, 0.25, 0.25);
+    if(1 == sap_lod) return float3(1.0, 0.7, 0.15);
+    if(2 == sap_lod) return float3(0.25, 1.0, 0.35);
+    if(3 == sap_lod) return float3(0.2, 0.7, 1.0);
+    return float3(0.85, 0.3, 1.0);
+}
+
+void SapResolveLeafNode(
+    int2 screen_texel_pos,
+    out int selected_lod,
+    out int2 selected_node_origin,
+    out int selected_node_size,
+    out int2 representative_texel_pos,
+    out float representative_depth,
+    out float plane_error,
+    out float split_score,
+    out float3 representative_normal)
+{
+    selected_lod = 0;
+    const SapNodeRecord lod0_node = SapLoadNodeFromScreenTexel(screen_texel_pos, 0u);
+    selected_node_origin = SapNodeOriginFromCoord(SapNodeCoordFromScreenTexel(screen_texel_pos, 0u), 0u);
+    selected_node_size = k_sap_tile_size;
+    representative_texel_pos = int2(lod0_node.representative_texel);
+    representative_depth = lod0_node.front_depth;
+    plane_error = lod0_node.metric1;
+    split_score = lod0_node.split_score;
+    representative_normal = lod0_node.representative_normal;
+
+    const float threshold = cb_srvs.sap_debug_split_threshold;
+    for(int hierarchy_lod = cb_srvs.sap_lod_count - 1; hierarchy_lod >= 1; --hierarchy_lod)
+    {
+        const uint lod_index = (uint)hierarchy_lod;
+        const uint2 hierarchy_texel_pos = SapNodeCoordFromScreenTexel(screen_texel_pos, lod_index);
+        const SapNodeRecord node = SapLoadNode(lod_index, hierarchy_texel_pos);
+        if(!SapNodeIsValid(node))
+        {
+            continue;
+        }
+
+        if(node.split_score <= threshold)
+        {
+            selected_lod = hierarchy_lod;
+            selected_node_origin = SapNodeOriginFromCoord(hierarchy_texel_pos, lod_index);
+            selected_node_size = SapNodeSizeInPixels(lod_index);
+            representative_texel_pos = int2(node.representative_texel);
+            representative_depth = node.front_depth;
+            plane_error = max(node.metric0, node.metric1);
+            split_score = node.split_score;
+            representative_normal = SapNodeIsSolid(node) ? SapLoadLod0NodeFromRepresentativeTexelOrEmpty(int2(node.representative_texel)).representative_normal : float3(0.0, 0.0, 1.0);
+            return;
+        }
+    }
 }
 
 
@@ -457,6 +526,114 @@ void main_cs(
                         RWTexWork[dtid.xy] = float4(debug_color, 1.0);
                     }
                 }
+            }
+        }
+    }
+    // Category 3: SAP.
+    else if(3 == debug_category)
+    {
+        // 0..24 は raw hierarchy metric 表示, 25..28 は top-down leaf selection 表示。
+        if(debug_sub_mode <= 24)
+        {
+            const int sap_lod = debug_sub_mode / 5;
+            const int sap_metric = debug_sub_mode % 5;
+
+            float representative_depth = 0.0;
+            float plane_error = 0.0;
+            float split_score = 0.0;
+            float3 representative_normal = float3(0.0, 0.0, 1.0);
+
+            const SapNodeRecord node = SapLoadNodeFromScreenTexel(texel_pos, (uint)sap_lod);
+            representative_depth = node.front_depth;
+            representative_normal = SapNodeIsSolid(node) ? SapLoadLod0NodeFromRepresentativeTexelOrEmpty(int2(node.representative_texel)).representative_normal : float3(0.0, 0.0, 1.0);
+            plane_error = (0 == sap_lod) ? node.metric1 : max(node.metric0, node.metric1);
+            split_score = node.split_score;
+
+            // depth は 20 view-space units 付近からゆるく圧縮して遠方差を見やすくする。
+            const float depth_vis = max(representative_depth, 0.0) / (max(representative_depth, 0.0) + 20.0);
+            // error は depth に比例する許容量を基本にしつつ、近距離でも 0.005 の下限を持たせる。
+            const float error_vis = saturate(plane_error / max(max(representative_depth, 0.0) * 0.02, 0.005));
+            if(0 == sap_metric)
+            {
+                RWTexWork[dtid.xy] = float4(depth_vis, error_vis, split_score, 1.0);
+            }
+            else if(1 == sap_metric)
+            {
+                RWTexWork[dtid.xy] = float4(depth_vis, depth_vis, depth_vis, 1.0);
+            }
+            else if(2 == sap_metric)
+            {
+                // 暗色スタートにして、低 error 域でもゼロ潰れしにくくする。
+                const float3 debug_color = lerp(float3(0.02, 0.02, 0.05), float3(1.0, 0.6, 0.15), error_vis);
+                RWTexWork[dtid.xy] = float4(debug_color, 1.0);
+            }
+            else if(3 == sap_metric)
+            {
+                const float3 debug_color = lerp(float3(0.02, 0.02, 0.02), float3(1.0, 0.15, 0.95), split_score);
+                RWTexWork[dtid.xy] = float4(debug_color, 1.0);
+            }
+            else if(4 == sap_metric)
+            {
+                RWTexWork[dtid.xy] = float4(representative_normal * 0.5 + 0.5, 1.0);
+            }
+        }
+        else
+        {
+            int selected_lod = 0;
+            int2 selected_node_origin = int2(0, 0);
+            int selected_node_size = 4;
+            int2 representative_texel_pos = int2(-1, -1);
+            float representative_depth = 0.0;
+            float plane_error = 0.0;
+            float split_score = 0.0;
+            float3 representative_normal = float3(0.0, 0.0, 1.0);
+            SapResolveLeafNode(
+                texel_pos,
+                selected_lod,
+                selected_node_origin,
+                selected_node_size,
+                representative_texel_pos,
+                representative_depth,
+                plane_error,
+                split_score,
+                representative_normal);
+
+            const int2 local_pos = texel_pos - selected_node_origin;
+            const bool is_border =
+                (0 == local_pos.x) ||
+                (0 == local_pos.y) ||
+                ((selected_node_size - 1) == local_pos.x) ||
+                ((selected_node_size - 1) == local_pos.y);
+            const float3 lod_color = SapSelectedLodColor(selected_lod);
+            // leaf 単位で色が揃うよう node origin を seed に使う。
+            // 加算オフセットは RGB 間の相関を崩すための固定値。
+            const float3 leaf_noise = float3(
+                noise_float_to_float(float2(selected_node_origin.x, selected_node_origin.y)),
+                noise_float_to_float(float2(selected_node_origin.x + 31, selected_node_origin.y + 17)),
+                noise_float_to_float(float2(selected_node_origin.x + 59, selected_node_origin.y + 101)));
+
+            if(25 == debug_sub_mode)
+            {
+                RWTexWork[dtid.xy] = float4(lod_color, 1.0);
+            }
+            else if(26 == debug_sub_mode)
+            {
+                RWTexWork[dtid.xy] = float4(leaf_noise, 1.0);
+            }
+            else if(27 == debug_sub_mode)
+            {
+                float3 debug_color = lod_color;
+                if((0 != cb_srvs.sap_debug_leaf_border_enable) && is_border)
+                {
+                    debug_color = float3(1.0, 1.0, 1.0);
+                }
+                RWTexWork[dtid.xy] = float4(debug_color, 1.0);
+            }
+            else if(28 == debug_sub_mode)
+            {
+                const bool is_valid_rep = all(representative_texel_pos >= 0) && (representative_depth > 0.0);
+                const float3 debug_color = is_valid_rep ? TexMainLitColor.Load(int3(representative_texel_pos, 0)).rgb : float3(0.02, 0.02, 0.02);
+                RWTexWork[dtid.xy] = float4(debug_color, 1.0);
             }
         }
     }

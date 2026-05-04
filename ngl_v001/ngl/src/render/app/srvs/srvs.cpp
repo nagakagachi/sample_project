@@ -93,6 +93,8 @@ namespace ngl::render::app
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_ = k_default_srvs_param.ss_probe_spatial_filter_normal_cos_threshold;
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_ = k_default_srvs_param.ss_probe_spatial_filter_depth_exp_scale;
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_ = k_default_srvs_param.ss_probe_side_cache_plane_dist_threshold;
+    float ScreenReconstructedVoxelStructure::dbg_sap_split_threshold_ = k_default_srvs_param.sap_debug_split_threshold;
+    int ScreenReconstructedVoxelStructure::dbg_sap_leaf_border_enable_ = k_default_srvs_param.sap_debug_leaf_border_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_lighting_interpolation_enable_ = k_default_srvs_param.fsp_lighting_interpolation_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_spawn_far_cell_enable_ = k_default_srvs_param.fsp_spawn_far_cell_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_lighting_stochastic_sampling_enable_ = k_default_srvs_param.fsp_lighting_stochastic_sampling_enable;
@@ -235,11 +237,13 @@ namespace ngl::render::app
                 if (ImGui::RadioButton("FSP", dbg_view_category_ == 1)) { dbg_view_category_ = 1; }
                 ImGui::SameLine();
                 if (ImGui::RadioButton("SSP", dbg_view_category_ == 2)) { dbg_view_category_ = 2; }
+                ImGui::SameLine();
+                if (ImGui::RadioButton("SAP", dbg_view_category_ == 3)) { dbg_view_category_ = 3; }
 
                 // カテゴリ別サブモードスライダ.
                 if (0 <= dbg_view_category_)
                 {
-                    const int k_sub_mode_max[] = { 14, 1, 11 };
+                    const int k_sub_mode_max[] = { 14, 1, 11, 28 };
                     const int sub_max = k_sub_mode_max[dbg_view_category_];
                     // カテゴリ切替時にクランプ.
                     if (dbg_view_sub_mode_ > sub_max) dbg_view_sub_mode_ = sub_max;
@@ -248,6 +252,25 @@ namespace ngl::render::app
                     if (ImGui::BeginPopupContextItem()) {
                         if (ImGui::MenuItem("Reset to Default"))
                             dbg_view_sub_mode_ = 0;
+                        ImGui::EndPopup();
+                    }
+                }
+
+                if (3 == dbg_view_category_)
+                {
+                    ImGui::SliderFloat("SAP Split Threshold", &dbg_sap_split_threshold_, 0.0f, 1.0f, "%.4f");
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_sap_split_threshold_ = k_default_srvs_param.sap_debug_split_threshold;
+                        ImGui::EndPopup();
+                    }
+
+                    bool v = (0 != dbg_sap_leaf_border_enable_);
+                    if (ImGui::Checkbox("SAP Leaf Border", &v))
+                        dbg_sap_leaf_border_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_sap_leaf_border_enable_ = k_default_srvs_param.sap_debug_leaf_border_enable;
                         ImGui::EndPopup();
                     }
                 }
@@ -384,6 +407,37 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_meta_srv = "ScreenSpaceProbeSideCacheMetaTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_meta_uav = "RWScreenSpaceProbeSideCacheMetaTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_lock_uav = "RWScreenSpaceProbeSideCacheLockTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_sap_buffer_srv = "SapBuffer";
+    constexpr SrvsShaderBindName k_shader_bind_name_sap_buffer_uav = "RWSapBuffer";
+    constexpr SrvsShaderBindName k_shader_bind_name_main_lit_color_srv = "TexMainLitColor";
+
+    struct SapBufferLayout
+    {
+        u32 lod_count = 0;
+        u32 total_word_count = 0;
+    };
+
+    SapBufferLayout BuildSapBufferLayout(u32 screen_width, u32 screen_height)
+    {
+        SapBufferLayout layout = {};
+        // 現在は固定 LOD 段数・固定 record 幅で運用し、
+        // 実解像度に応じて「各 LOD に何 node 必要か」だけを計算して総 word 数を決める。
+        // shader 側も同じ helper を使うため、CPU/GPU の layout ずれを避けられる。
+        layout.lod_count = k_sap_max_lod_count;
+        layout.total_word_count = SapTotalWordCount(screen_width, screen_height, layout.lod_count);
+        return layout;
+    }
+
+    ngl::rhi::ConstantBufferPooledHandle AllocSrvsParamCbh(
+        ngl::rhi::GraphicsCommandListDep* p_command_list,
+        const SrvsParam& param)
+    {
+        auto cbh = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(SrvsParam));
+        auto* p_mapped = cbh->buffer.MapAs<SrvsParam>();
+        std::memcpy(p_mapped, &param, sizeof(SrvsParam));
+        cbh->buffer.Unmap();
+        return cbh;
+    }
     void ToroidalGridUpdater::Initialize(const math::Vec3u& grid_resolution, float bbv_cell_size)
     {
         grid_.resolution = grid_resolution;
@@ -514,6 +568,9 @@ namespace ngl::render::app
             pso_ss_probe_update_ = CreateComputePSO("srvs/ssp/ss_probe_update_cs.hlsl");
             pso_ss_probe_spatial_filter_ = CreateComputePSO("srvs/ssp/ss_probe_spatial_filter_cs.hlsl");
             pso_ss_probe_sh_update_ = CreateComputePSO("srvs/ssp/ss_probe_sh_update_cs.hlsl");
+            pso_sap_depth_analysis_ = CreateComputePSO("srvs/sap/sap_depth_analysis_cs.hlsl");
+            pso_sap_lod1_build_ = CreateComputePSO("srvs/sap/sap_lod1_build_cs.hlsl");
+            pso_sap_hierarchy_build_ = CreateComputePSO("srvs/sap/sap_hierarchy_build_cs.hlsl");
 
             // デバッグ用PSO.
             {
@@ -926,6 +983,20 @@ namespace ngl::render::app
 
             ss_probe_best_prev_tile_tex_.Initialize(p_device, desc, "Srvs_SsProbeBestPrevTileTex");
         }
+        {
+            const SapBufferLayout sap_layout = BuildSapBufferLayout(ss_probe_base_resolution_x, ss_probe_base_resolution_y);
+            // SAP は texture 群ではなく unified scalar uint buffer 1 本で確保する。
+            // 初期実装では少し冗長でも record 幅を固定にし、後で圧縮しても bind 形状を変えずに済むようにしている。
+            sap_buffer_.InitializeAsTyped(
+                p_device,
+                rhi::BufferDep::Desc{
+                    .element_byte_size = sizeof(uint32_t),
+                    .element_count     = sap_layout.total_word_count,
+                    .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                    .heap_type = rhi::EResourceHeapType::Default},
+                rhi::EResourceFormat::Format_R32_UINT,
+                "Srvs_SapBuffer");
+        }
         return true;
     }
 
@@ -1037,6 +1108,12 @@ namespace ngl::render::app
 
             param.tex_main_view_depth_size = hw_depth_size;
             param.frame_count = frame_count_;
+            const SapBufferLayout sap_layout = BuildSapBufferLayout(static_cast<u32>(hw_depth_size.x), static_cast<u32>(hw_depth_size.y));
+            param.sap_lod_count = static_cast<int>(sap_layout.lod_count);
+            param.sap_words_per_node = static_cast<int>(k_sap_words_per_node);
+            param.sap_total_word_count = static_cast<int>(sap_layout.total_word_count);
+            param.sap_tile_size = static_cast<int>(k_sap_tile_size);
+            param.sap_build_lod = 0;
 
             // dbg_系: ランタイム変更可能なパラメータ.
             param.ss_probe_spatial_filter_normal_cos_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_;
@@ -1059,10 +1136,13 @@ namespace ngl::render::app
 
             param.debug_probe_radius = ScreenReconstructedVoxelStructure::dbg_probe_scale_ * 0.5f * bbv_grid_updater_.Get().cell_size / k_bbv_per_voxel_resolution;
             param.debug_probe_near_geom_scale = ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_;
+            param.sap_debug_split_threshold = ScreenReconstructedVoxelStructure::dbg_sap_split_threshold_;
+            param.sap_debug_leaf_border_enable = ScreenReconstructedVoxelStructure::dbg_sap_leaf_border_enable_;
 
+            dispatch_param_cache_ = param;
             // ローカル変数からマップ先バッファへコピー.
             auto* p_mapped = cbh_dispatch_->buffer.MapAs<SrvsParam>();
-            std::memcpy(p_mapped, &param, sizeof(SrvsParam));
+            std::memcpy(p_mapped, &dispatch_param_cache_, sizeof(SrvsParam));
             cbh_dispatch_->buffer.Unmap();
         }
         // 初回クリア.
@@ -1143,6 +1223,7 @@ namespace ngl::render::app
                 p_command_list->ResourceBarrier(fsp_probe_packed_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 p_command_list->ResourceBarrier(ss_probe_packed_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 p_command_list->ResourceBarrier(ss_probe_best_prev_tile_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                p_command_list->ResourceBarrier(sap_buffer_.buffer.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
 
             }
         }
@@ -1634,6 +1715,76 @@ namespace ngl::render::app
         }
     }
 
+    void BitmaskBrickVoxelGi::Dispatch_Sap(rhi::GraphicsCommandListDep* p_command_list,
+                        rhi::ConstantBufferPooledHandle scene_cbv,
+                        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
+                        )
+    {
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_Sap");
+
+        const u32 sap_lod0_width = SapLodWidth(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.x), 0u);
+        const u32 sap_lod0_height = SapLodHeight(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.y), 0u);
+
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "SapLod0Build");
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_sap_depth_analysis_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
+            pso_sap_depth_analysis_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
+            pso_sap_depth_analysis_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+            pso_sap_depth_analysis_->SetView(&desc_set, k_shader_bind_name_sap_buffer_uav.Get(), sap_buffer_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_sap_depth_analysis_.Get());
+            p_command_list->SetDescriptorSet(pso_sap_depth_analysis_.Get(), &desc_set);
+            pso_sap_depth_analysis_->DispatchHelper(p_command_list, sap_lod0_width, sap_lod0_height, 1);
+
+            p_command_list->ResourceUavBarrier(sap_buffer_.buffer.Get());
+        }
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "SapLod1Build");
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_sap_lod1_build_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+            pso_sap_lod1_build_->SetView(&desc_set, k_shader_bind_name_sap_buffer_srv.Get(), sap_buffer_.srv.Get());
+            pso_sap_lod1_build_->SetView(&desc_set, k_shader_bind_name_sap_buffer_uav.Get(), sap_buffer_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_sap_lod1_build_.Get());
+            p_command_list->SetDescriptorSet(pso_sap_lod1_build_.Get(), &desc_set);
+            pso_sap_lod1_build_->DispatchHelper(
+                p_command_list,
+                SapLodWidth(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.x), 1u),
+                SapLodHeight(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.y), 1u),
+                1);
+
+            p_command_list->ResourceUavBarrier(sap_buffer_.buffer.Get());
+        }
+        for(u32 output_lod = 2u; output_lod < k_sap_max_lod_count; ++output_lod)
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "SapHierarchyBuild");
+
+            SrvsParam hierarchy_param = dispatch_param_cache_;
+            // 同じ shader を全 higher LOD で使い回すため、per-dispatch で output LOD だけ差し替えた
+            // 一時 constant buffer を積む。resource 自体は常に同じ unified SapBuffer を読み書きする。
+            hierarchy_param.sap_build_lod = static_cast<int>(output_lod);
+            auto hierarchy_cbh = AllocSrvsParamCbh(p_command_list, hierarchy_param);
+
+            ngl::rhi::DescriptorSetDep desc_set = {};
+            pso_sap_hierarchy_build_->SetView(&desc_set, "cb_srvs", &hierarchy_cbh->cbv);
+            pso_sap_hierarchy_build_->SetView(&desc_set, k_shader_bind_name_sap_buffer_srv.Get(), sap_buffer_.srv.Get());
+            pso_sap_hierarchy_build_->SetView(&desc_set, k_shader_bind_name_sap_buffer_uav.Get(), sap_buffer_.uav.Get());
+
+            p_command_list->SetPipelineState(pso_sap_hierarchy_build_.Get());
+            p_command_list->SetDescriptorSet(pso_sap_hierarchy_build_.Get(), &desc_set);
+            pso_sap_hierarchy_build_->DispatchHelper(
+                p_command_list,
+                SapLodWidth(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.x), output_lod),
+                SapLodHeight(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.y), output_lod),
+                1);
+
+            p_command_list->ResourceUavBarrier(sap_buffer_.buffer.Get());
+        }
+    }
+
     void BitmaskBrickVoxelGi::Dispatch_Fsp(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
                         const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
@@ -1840,7 +1991,7 @@ namespace ngl::render::app
     void BitmaskBrickVoxelGi::Dispatch_Debug(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
                         const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
-                        rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav)
+                        rhi::RefSrvDep lit_color_srv, rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav)
     {
         NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_Debug");
 
@@ -1864,6 +2015,8 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_packed_sh_srv.Get(), ss_probe_packed_sh_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_srv.Get(), ss_probe_side_cache_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_meta_srv.Get(), ss_probe_side_cache_meta_tex_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_sap_buffer_srv.Get(), sap_buffer_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_main_lit_color_srv.Get(), lit_color_srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
             
             pso_bbv_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
@@ -2040,15 +2193,25 @@ namespace ngl::render::app
     }
     void ScreenReconstructedVoxelStructure::DispatchUpdate(rhi::GraphicsCommandListDep* p_command_list,
         rhi::ConstantBufferPooledHandle scene_cbv, 
-        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
-        rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav)
+        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv)
     {
         if(bbvgi_instance_)
         {
             bbvgi_instance_->Dispatch_Bbv_Main(p_command_list, scene_cbv);
+            bbvgi_instance_->Dispatch_Sap(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
             bbvgi_instance_->Dispatch_SsProbe(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
             bbvgi_instance_->Dispatch_Fsp(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
-            bbvgi_instance_->Dispatch_Debug(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv, work_tex, work_uav);
+        }
+    }
+
+    void ScreenReconstructedVoxelStructure::DispatchDebug(rhi::GraphicsCommandListDep* p_command_list,
+        rhi::ConstantBufferPooledHandle scene_cbv, 
+        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
+        rhi::RefSrvDep lit_color_srv, rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav)
+    {
+        if(bbvgi_instance_)
+        {
+            bbvgi_instance_->Dispatch_Debug(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv, lit_color_srv, work_tex, work_uav);
         }
     }
 
