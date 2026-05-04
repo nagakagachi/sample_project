@@ -128,7 +128,11 @@ namespace ngl::render::app
             rhi::ConstantBufferPooledHandle scene_cbv,
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
             );
-        void Dispatch_Sap(rhi::GraphicsCommandListDep* p_command_list,
+        void Dispatch_AsspHierarchy(rhi::GraphicsCommandListDep* p_command_list,
+            rhi::ConstantBufferPooledHandle scene_cbv,
+            const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
+            );
+        void Dispatch_AsspProbe(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv,
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
             );
@@ -162,8 +166,13 @@ namespace ngl::render::app
         rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_[ss_probe_latest_filtered_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbeTileInfoTex() const { return ss_probe_tile_info_tex_[ss_probe_tile_info_curr_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbePackedShTex() const { return ss_probe_packed_sh_tex_.srv; }
+        rhi::RefSrvDep GetAsspProbeTex() const { return assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv; }
+        rhi::RefSrvDep GetAsspProbeTileInfoTex() const { return assp_probe_tile_info_tex_[assp_tile_info_curr_frame_tex_index_].srv; }
+        rhi::RefSrvDep GetAsspProbePackedShTex() const { return assp_probe_packed_sh_tex_.srv; }
 
     private:
+        bool ResizeScreenProbeResources(ngl::rhi::DeviceDep* p_device, const math::Vec2i& render_resolution);
+
         bool is_first_dispatch_ = true;
 
         u32 frame_count_{};
@@ -177,6 +186,13 @@ namespace ngl::render::app
 
         ngl::u32 ss_probe_tile_info_prev_frame_tex_index_ = 0;
         ngl::u32 ss_probe_tile_info_curr_frame_tex_index_ = 0;
+
+        ngl::u32 assp_prev_frame_tex_index_ = 0;
+        ngl::u32 assp_curr_frame_tex_index_ = 0;
+        ngl::u32 assp_latest_filtered_frame_tex_index_ = 0;
+
+        ngl::u32 assp_tile_info_prev_frame_tex_index_ = 0;
+        ngl::u32 assp_tile_info_curr_frame_tex_index_ = 0;
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_clear_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_begin_update_ = {};
@@ -213,9 +229,13 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_spatial_filter_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_sh_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_sap_depth_analysis_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_sap_lod1_build_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_sap_hierarchy_build_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_clear_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_preupdate_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_sh_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_depth_analysis_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_lod1_build_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_hierarchy_build_ = {};
 
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
@@ -275,7 +295,14 @@ namespace ngl::render::app
         ComputeTextureSet ss_probe_side_cache_tex_ = {}; // 8x8 texel per cached probe.
         ComputeTextureSet ss_probe_side_cache_meta_tex_ = {}; // 1/8 resolution, xyz: world pos, w: last update frame.
         ComputeTextureSet ss_probe_side_cache_lock_tex_ = {}; // 1/8 resolution, uint lock tag per tile for frame-local CAS.
-        ComputeBufferSet sap_buffer_ = {}; // LOD0-LOD[MAX] unified scalar uint buffer.
+        ComputeTextureSet assp_probe_tile_info_tex_[2] = {}; // f16_rgba, 1/4解像度のASSPタイル情報.
+        ComputeTextureSet assp_probe_tex_[2] = {}; // 4x4 texel per probe.
+        ComputeTextureSet assp_probe_packed_sh_tex_ = {}; // f16_rgba, 係数優先2x2 atlas.
+        ComputeTextureSet assp_probe_best_prev_tile_tex_ = {}; // r32_uint, Preupdateで計算したBestPrevTile.
+        ComputeTextureSet assp_probe_side_cache_tex_ = {}; // 4x4 texel per cached probe.
+        ComputeTextureSet assp_probe_side_cache_meta_tex_ = {}; // 1/4 resolution, xyz: world pos, w: last update frame.
+        ComputeTextureSet assp_probe_side_cache_lock_tex_ = {}; // 1/4 resolution, uint lock tag per tile for frame-local CAS.
+        ComputeBufferSet assp_buffer_ = {}; // LOD0-LOD[MAX] unified scalar uint buffer.
 
     };
 
@@ -303,8 +330,8 @@ namespace ngl::render::app
         static float dbg_ss_probe_spatial_filter_normal_cos_threshold_;
         static float dbg_ss_probe_spatial_filter_depth_exp_scale_;
         static float dbg_ss_probe_side_cache_plane_dist_threshold_;
-        static float dbg_sap_split_threshold_;
-        static int dbg_sap_leaf_border_enable_;
+        static float dbg_assp_split_threshold_;
+        static int dbg_assp_leaf_border_enable_;
         static int dbg_fsp_lighting_interpolation_enable_;
         static int dbg_fsp_spawn_far_cell_enable_;
         static int dbg_fsp_lighting_stochastic_sampling_enable_;

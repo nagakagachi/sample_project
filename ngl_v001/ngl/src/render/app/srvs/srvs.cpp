@@ -6,6 +6,7 @@
 #include "render/app/srvs/srvs.h"
 
 #include <algorithm>
+#include <cassert>
 #include <cmath>
 #include <cstring>
 #include <string>
@@ -93,8 +94,8 @@ namespace ngl::render::app
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_ = k_default_srvs_param.ss_probe_spatial_filter_normal_cos_threshold;
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_ = k_default_srvs_param.ss_probe_spatial_filter_depth_exp_scale;
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_ = k_default_srvs_param.ss_probe_side_cache_plane_dist_threshold;
-    float ScreenReconstructedVoxelStructure::dbg_sap_split_threshold_ = k_default_srvs_param.sap_debug_split_threshold;
-    int ScreenReconstructedVoxelStructure::dbg_sap_leaf_border_enable_ = k_default_srvs_param.sap_debug_leaf_border_enable;
+    float ScreenReconstructedVoxelStructure::dbg_assp_split_threshold_ = k_default_srvs_param.assp_debug_split_threshold;
+    int ScreenReconstructedVoxelStructure::dbg_assp_leaf_border_enable_ = k_default_srvs_param.assp_debug_leaf_border_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_lighting_interpolation_enable_ = k_default_srvs_param.fsp_lighting_interpolation_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_spawn_far_cell_enable_ = k_default_srvs_param.fsp_spawn_far_cell_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_lighting_stochastic_sampling_enable_ = k_default_srvs_param.fsp_lighting_stochastic_sampling_enable;
@@ -225,6 +226,19 @@ namespace ngl::render::app
             }
 
             ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+            if (ImGui::CollapsingHeader("Adaptive Screen Space Probe"))
+            {
+                NGL_IMGUI_SCOPED_INDENT(10.0f);
+
+                ImGui::SliderFloat("Split Threshold", &dbg_assp_split_threshold_, 0.0f, 1.0f, "%.4f");
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        dbg_assp_split_threshold_ = k_default_srvs_param.assp_debug_split_threshold;
+                    ImGui::EndPopup();
+                }
+            }
+
+            ImGui::SetNextItemOpen(true, ImGuiCond_Once);
             if (ImGui::CollapsingHeader("Voxel Debug"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
@@ -238,12 +252,12 @@ namespace ngl::render::app
                 ImGui::SameLine();
                 if (ImGui::RadioButton("SSP", dbg_view_category_ == 2)) { dbg_view_category_ = 2; }
                 ImGui::SameLine();
-                if (ImGui::RadioButton("SAP", dbg_view_category_ == 3)) { dbg_view_category_ = 3; }
+                if (ImGui::RadioButton("ASSP", dbg_view_category_ == 3)) { dbg_view_category_ = 3; }
 
                 // カテゴリ別サブモードスライダ.
                 if (0 <= dbg_view_category_)
                 {
-                    const int k_sub_mode_max[] = { 14, 1, 11, 28 };
+            const int k_sub_mode_max[] = { 14, 1, 11, 12 };
                     const int sub_max = k_sub_mode_max[dbg_view_category_];
                     // カテゴリ切替時にクランプ.
                     if (dbg_view_sub_mode_ > sub_max) dbg_view_sub_mode_ = sub_max;
@@ -258,19 +272,12 @@ namespace ngl::render::app
 
                 if (3 == dbg_view_category_)
                 {
-                    ImGui::SliderFloat("SAP Split Threshold", &dbg_sap_split_threshold_, 0.0f, 1.0f, "%.4f");
+                    bool v = (0 != dbg_assp_leaf_border_enable_);
+                    if (ImGui::Checkbox("ASSP Leaf Border", &v))
+                        dbg_assp_leaf_border_enable_ = v ? 1 : 0;
                     if (ImGui::BeginPopupContextItem()) {
                         if (ImGui::MenuItem("Reset to Default"))
-                            dbg_sap_split_threshold_ = k_default_srvs_param.sap_debug_split_threshold;
-                        ImGui::EndPopup();
-                    }
-
-                    bool v = (0 != dbg_sap_leaf_border_enable_);
-                    if (ImGui::Checkbox("SAP Leaf Border", &v))
-                        dbg_sap_leaf_border_enable_ = v ? 1 : 0;
-                    if (ImGui::BeginPopupContextItem()) {
-                        if (ImGui::MenuItem("Reset to Default"))
-                            dbg_sap_leaf_border_enable_ = k_default_srvs_param.sap_debug_leaf_border_enable;
+                            dbg_assp_leaf_border_enable_ = k_default_srvs_param.assp_debug_leaf_border_enable;
                         ImGui::EndPopup();
                     }
                 }
@@ -407,24 +414,40 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_meta_srv = "ScreenSpaceProbeSideCacheMetaTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_meta_uav = "RWScreenSpaceProbeSideCacheMetaTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_lock_uav = "RWScreenSpaceProbeSideCacheLockTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_sap_buffer_srv = "SapBuffer";
-    constexpr SrvsShaderBindName k_shader_bind_name_sap_buffer_uav = "RWSapBuffer";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_srv = "AdaptiveScreenSpaceProbeTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_history_srv = "AdaptiveScreenSpaceProbeHistoryTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_uav = "RWAdaptiveScreenSpaceProbeTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_tile_info_srv = "AdaptiveScreenSpaceProbeTileInfoTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_history_tile_info_srv = "AdaptiveScreenSpaceProbeHistoryTileInfoTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_tile_info_uav = "RWAdaptiveScreenSpaceProbeTileInfoTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_best_prev_tile_srv = "AdaptiveScreenSpaceProbeBestPrevTileTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_best_prev_tile_uav = "RWAdaptiveScreenSpaceProbeBestPrevTileTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_filtered_uav = "RWAdaptiveScreenSpaceProbeFilteredTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_packed_sh_srv = "AdaptiveScreenSpaceProbePackedSHTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_packed_sh_uav = "RWAdaptiveScreenSpaceProbePackedSHTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_side_cache_srv = "AdaptiveScreenSpaceProbeSideCacheTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_side_cache_uav = "RWAdaptiveScreenSpaceProbeSideCacheTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_side_cache_meta_srv = "AdaptiveScreenSpaceProbeSideCacheMetaTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_side_cache_meta_uav = "RWAdaptiveScreenSpaceProbeSideCacheMetaTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_side_cache_lock_uav = "RWAdaptiveScreenSpaceProbeSideCacheLockTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_assp_buffer_srv = "AsspBuffer";
+    constexpr SrvsShaderBindName k_shader_bind_name_assp_buffer_uav = "RWAsspBuffer";
     constexpr SrvsShaderBindName k_shader_bind_name_main_lit_color_srv = "TexMainLitColor";
 
-    struct SapBufferLayout
+    struct AsspBufferLayout
     {
         u32 lod_count = 0;
         u32 total_word_count = 0;
     };
 
-    SapBufferLayout BuildSapBufferLayout(u32 screen_width, u32 screen_height)
+    AsspBufferLayout BuildAsspBufferLayout(u32 screen_width, u32 screen_height)
     {
-        SapBufferLayout layout = {};
+        AsspBufferLayout layout = {};
         // 現在は固定 LOD 段数・固定 record 幅で運用し、
         // 実解像度に応じて「各 LOD に何 node 必要か」だけを計算して総 word 数を決める。
         // shader 側も同じ helper を使うため、CPU/GPU の layout ずれを避けられる。
-        layout.lod_count = k_sap_max_lod_count;
-        layout.total_word_count = SapTotalWordCount(screen_width, screen_height, layout.lod_count);
+        layout.lod_count = k_assp_max_lod_count;
+        layout.total_word_count = AsspTotalWordCount(screen_width, screen_height, layout.lod_count);
         return layout;
     }
 
@@ -475,6 +498,278 @@ namespace ngl::render::app
 
     BitmaskBrickVoxelGi::~BitmaskBrickVoxelGi()
     {
+    }
+
+    bool BitmaskBrickVoxelGi::ResizeScreenProbeResources(ngl::rhi::DeviceDep* p_device, const math::Vec2i& render_resolution)
+    {
+        const int ss_probe_base_resolution_x = std::max(render_resolution.x, 1);
+        const int ss_probe_base_resolution_y = std::max(render_resolution.y, 1);
+
+        for(auto& tex : ss_probe_tex_) { tex = {}; }
+        for(auto& tex : ss_probe_tile_info_tex_) { tex = {}; }
+        ss_probe_packed_sh_tex_ = {};
+        ss_probe_best_prev_tile_tex_ = {};
+        ss_probe_side_cache_tex_ = {};
+        ss_probe_side_cache_meta_tex_ = {};
+        ss_probe_side_cache_lock_tex_ = {};
+
+        for(auto& tex : assp_probe_tex_) { tex = {}; }
+        for(auto& tex : assp_probe_tile_info_tex_) { tex = {}; }
+        assp_probe_packed_sh_tex_ = {};
+        assp_probe_best_prev_tile_tex_ = {};
+        assp_probe_side_cache_tex_ = {};
+        assp_probe_side_cache_meta_tex_ = {};
+        assp_probe_side_cache_lock_tex_ = {};
+        assp_buffer_ = {};
+
+        for(int i = 0; i < 2; ++i)
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width = ss_probe_base_resolution_x;
+            desc.height = ss_probe_base_resolution_y;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!ss_probe_tex_[i].Initialize(p_device, desc, (0 == i)? "Srvs_SsProbeTexA" : "Srvs_SsProbeTexB"))
+                return false;
+        }
+        for(int i = 0; i < 2; ++i)
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!ss_probe_tile_info_tex_[i].Initialize(p_device, desc, (0 == i)? "Srvs_SsProbeTileInfoTexA" : "Srvs_SsProbeTileInfoTexB"))
+                return false;
+        }
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width =  ((ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE) * 2;
+            desc.height = ((ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE) * 2;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!ss_probe_packed_sh_tex_.Initialize(p_device, desc, "Srvs_SsProbePackedShTex"))
+                return false;
+        }
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width =  ss_probe_base_resolution_x;
+            desc.height = ss_probe_base_resolution_y;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!ss_probe_side_cache_tex_.Initialize(p_device, desc, "Srvs_SsProbeSideCacheTex"))
+                return false;
+        }
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R32G32B32A32_FLOAT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!ss_probe_side_cache_meta_tex_.Initialize(p_device, desc, "Srvs_SsProbeSideCacheMetaTex"))
+                return false;
+        }
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R32_UINT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!ss_probe_side_cache_lock_tex_.Initialize(p_device, desc, "Srvs_SsProbeSideCacheLockTex"))
+                return false;
+        }
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R32_UINT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!ss_probe_best_prev_tile_tex_.Initialize(p_device, desc, "Srvs_SsProbeBestPrevTileTex"))
+                return false;
+        }
+
+        const int assp_probe_base_resolution_x = ss_probe_base_resolution_x;
+        const int assp_probe_base_resolution_y = ss_probe_base_resolution_y;
+        for(int i = 0; i < 2; ++i)
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width = assp_probe_base_resolution_x;
+            desc.height = assp_probe_base_resolution_y;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!assp_probe_tex_[i].Initialize(p_device, desc, (0 == i) ? "Srvs_AsspProbeTexA" : "Srvs_AsspProbeTexB"))
+                return false;
+        }
+        for(int i = 0; i < 2; ++i)
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width = (assp_probe_base_resolution_x + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (assp_probe_base_resolution_y + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!assp_probe_tile_info_tex_[i].Initialize(p_device, desc, (0 == i) ? "Srvs_AsspProbeTileInfoTexA" : "Srvs_AsspProbeTileInfoTexB"))
+                return false;
+        }
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width = ((assp_probe_base_resolution_x + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE) * 2;
+            desc.height = ((assp_probe_base_resolution_y + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE) * 2;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!assp_probe_packed_sh_tex_.Initialize(p_device, desc, "Srvs_AsspProbePackedShTex"))
+                return false;
+        }
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width = assp_probe_base_resolution_x;
+            desc.height = assp_probe_base_resolution_y;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!assp_probe_side_cache_tex_.Initialize(p_device, desc, "Srvs_AsspProbeSideCacheTex"))
+                return false;
+        }
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width = (assp_probe_base_resolution_x + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (assp_probe_base_resolution_y + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R32G32B32A32_FLOAT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!assp_probe_side_cache_meta_tex_.Initialize(p_device, desc, "Srvs_AsspProbeSideCacheMetaTex"))
+                return false;
+        }
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width = (assp_probe_base_resolution_x + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (assp_probe_base_resolution_y + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R32_UINT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!assp_probe_side_cache_lock_tex_.Initialize(p_device, desc, "Srvs_AsspProbeSideCacheLockTex"))
+                return false;
+        }
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width = (assp_probe_base_resolution_x + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (assp_probe_base_resolution_y + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R32_UINT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!assp_probe_best_prev_tile_tex_.Initialize(p_device, desc, "Srvs_AsspProbeBestPrevTileTex"))
+                return false;
+        }
+        {
+            const AsspBufferLayout assp_layout = BuildAsspBufferLayout(assp_probe_base_resolution_x, assp_probe_base_resolution_y);
+            if(!assp_buffer_.InitializeAsTyped(
+                p_device,
+                rhi::BufferDep::Desc{
+                    .element_byte_size = sizeof(uint32_t),
+                    .element_count     = assp_layout.total_word_count,
+                    .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                    .heap_type = rhi::EResourceHeapType::Default},
+                rhi::EResourceFormat::Format_R32_UINT,
+                "Srvs_AsspBuffer"))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // 初期化
@@ -568,9 +863,13 @@ namespace ngl::render::app
             pso_ss_probe_update_ = CreateComputePSO("srvs/ssp/ss_probe_update_cs.hlsl");
             pso_ss_probe_spatial_filter_ = CreateComputePSO("srvs/ssp/ss_probe_spatial_filter_cs.hlsl");
             pso_ss_probe_sh_update_ = CreateComputePSO("srvs/ssp/ss_probe_sh_update_cs.hlsl");
-            pso_sap_depth_analysis_ = CreateComputePSO("srvs/sap/sap_depth_analysis_cs.hlsl");
-            pso_sap_lod1_build_ = CreateComputePSO("srvs/sap/sap_lod1_build_cs.hlsl");
-            pso_sap_hierarchy_build_ = CreateComputePSO("srvs/sap/sap_hierarchy_build_cs.hlsl");
+            pso_assp_probe_clear_ = CreateComputePSO("srvs/assp/assp_probe_clear_cs.hlsl");
+            pso_assp_probe_preupdate_ = CreateComputePSO("srvs/assp/assp_probe_preupdate_cs.hlsl");
+            pso_assp_probe_update_ = CreateComputePSO("srvs/assp/assp_probe_update_cs.hlsl");
+            pso_assp_probe_sh_update_ = CreateComputePSO("srvs/assp/assp_probe_sh_update_cs.hlsl");
+            pso_assp_depth_analysis_ = CreateComputePSO("srvs/assp/assp_depth_analysis_cs.hlsl");
+            pso_assp_lod1_build_ = CreateComputePSO("srvs/assp/assp_lod1_build_cs.hlsl");
+            pso_assp_hierarchy_build_ = CreateComputePSO("srvs/assp/assp_hierarchy_build_cs.hlsl");
 
             // デバッグ用PSO.
             {
@@ -867,135 +1166,9 @@ namespace ngl::render::app
             fsp_probe_packed_sh_tex_.Initialize(p_device, desc, "Srvs_FspProbePackedShTex");
         }
 
-        // ScreenSpaceProbeテクスチャ. 解像度固定かつシングルビュー用のテスト.
-        const int ss_probe_base_resolution_x = 1920;
-        const int ss_probe_base_resolution_y = 1080;
-        for(int i = 0; i < 2; ++i)
+        if(!ResizeScreenProbeResources(p_device, math::Vec2i(1920, 1080)))
         {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  ss_probe_base_resolution_x;
-            desc.height = ss_probe_base_resolution_y;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;// Enhanced Barrier移行時はCommonのみ許可.
-
-            ss_probe_tex_[i].Initialize(p_device, desc, (0 == i)? "Srvs_SsProbeTexA" : "Srvs_SsProbeTexB");
-        }
-        // Screen Space Probe Tile Info テクスチャ.
-        for(int i = 0; i < 2; ++i)
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;// Enhanced Barrier移行時はCommonのみ許可.
-
-            ss_probe_tile_info_tex_[i].Initialize(p_device, desc, (0 == i)? "Srvs_SsProbeTileInfoTexA" : "Srvs_SsProbeTileInfoTexB");
-        }
-        // Screen Space Probe Packed SH テクスチャ.
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  ((ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE) * 2;
-            desc.height = ((ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE) * 2;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            ss_probe_packed_sh_tex_.Initialize(p_device, desc, "Srvs_SsProbePackedShTex");
-        }
-        // Screen Space Probe Side Cache テクスチャ.
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  ss_probe_base_resolution_x;
-            desc.height = ss_probe_base_resolution_y;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            ss_probe_side_cache_tex_.Initialize(p_device, desc, "Srvs_SsProbeSideCacheTex");
-        }
-        // Screen Space Probe Side Cache メタ情報テクスチャ.
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R32G32B32A32_FLOAT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            ss_probe_side_cache_meta_tex_.Initialize(p_device, desc, "Srvs_SsProbeSideCacheMetaTex");
-        }
-        // Screen Space Probe Side Cache Tile Lock テクスチャ.
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R32_UINT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            ss_probe_side_cache_lock_tex_.Initialize(p_device, desc, "Srvs_SsProbeSideCacheLockTex");
-        }
-        // Screen Space Probe Temporal Best Prev Tile テクスチャ.
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R32_UINT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            ss_probe_best_prev_tile_tex_.Initialize(p_device, desc, "Srvs_SsProbeBestPrevTileTex");
-        }
-        {
-            const SapBufferLayout sap_layout = BuildSapBufferLayout(ss_probe_base_resolution_x, ss_probe_base_resolution_y);
-            // SAP は texture 群ではなく unified scalar uint buffer 1 本で確保する。
-            // 初期実装では少し冗長でも record 幅を固定にし、後で圧縮しても bind 形状を変えずに済むようにしている。
-            sap_buffer_.InitializeAsTyped(
-                p_device,
-                rhi::BufferDep::Desc{
-                    .element_byte_size = sizeof(uint32_t),
-                    .element_count     = sap_layout.total_word_count,
-                    .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
-                    .heap_type = rhi::EResourceHeapType::Default},
-                rhi::EResourceFormat::Format_R32_UINT,
-                "Srvs_SapBuffer");
+            return false;
         }
         return true;
     }
@@ -1016,6 +1189,33 @@ namespace ngl::render::app
 
         auto& global_res = gfx::GlobalRenderResource::Instance();
 
+        const math::Vec2i desired_probe_resolution(std::max(render_resolution.x, 1), std::max(render_resolution.y, 1));
+        const bool needs_screen_probe_resize =
+            (nullptr == ss_probe_tex_[0].texture.Get()) ||
+            (static_cast<int>(ss_probe_tex_[0].texture->GetWidth()) != desired_probe_resolution.x) ||
+            (static_cast<int>(ss_probe_tex_[0].texture->GetHeight()) != desired_probe_resolution.y);
+        if(needs_screen_probe_resize)
+        {
+            const bool resize_success = ResizeScreenProbeResources(p_command_list->GetDevice(), desired_probe_resolution);
+            assert(resize_success);
+            if(!resize_success)
+            {
+                return;
+            }
+
+            is_first_dispatch_ = true;
+            ss_probe_prev_frame_tex_index_ = 0;
+            ss_probe_curr_frame_tex_index_ = 0;
+            ss_probe_latest_filtered_frame_tex_index_ = 0;
+            ss_probe_tile_info_prev_frame_tex_index_ = 0;
+            ss_probe_tile_info_curr_frame_tex_index_ = 0;
+            assp_prev_frame_tex_index_ = 0;
+            assp_curr_frame_tex_index_ = 0;
+            assp_latest_filtered_frame_tex_index_ = 0;
+            assp_tile_info_prev_frame_tex_index_ = 0;
+            assp_tile_info_curr_frame_tex_index_ = 0;
+        }
+
         const bool is_first_dispatch = is_first_dispatch_;
         is_first_dispatch_           = false;
         ++frame_count_;
@@ -1026,6 +1226,13 @@ namespace ngl::render::app
 
         ss_probe_tile_info_prev_frame_tex_index_ = ss_probe_tile_info_curr_frame_tex_index_;
         ss_probe_tile_info_curr_frame_tex_index_ = 1 - ss_probe_tile_info_prev_frame_tex_index_;
+
+        assp_prev_frame_tex_index_ = assp_curr_frame_tex_index_;
+        assp_curr_frame_tex_index_ = 1 - assp_prev_frame_tex_index_;
+        assp_latest_filtered_frame_tex_index_ = assp_prev_frame_tex_index_;
+
+        assp_tile_info_prev_frame_tex_index_ = assp_tile_info_curr_frame_tex_index_;
+        assp_tile_info_curr_frame_tex_index_ = 1 - assp_tile_info_prev_frame_tex_index_;
 
         // 重視位置を若干補正.
         #if 0
@@ -1108,12 +1315,12 @@ namespace ngl::render::app
 
             param.tex_main_view_depth_size = hw_depth_size;
             param.frame_count = frame_count_;
-            const SapBufferLayout sap_layout = BuildSapBufferLayout(static_cast<u32>(hw_depth_size.x), static_cast<u32>(hw_depth_size.y));
-            param.sap_lod_count = static_cast<int>(sap_layout.lod_count);
-            param.sap_words_per_node = static_cast<int>(k_sap_words_per_node);
-            param.sap_total_word_count = static_cast<int>(sap_layout.total_word_count);
-            param.sap_tile_size = static_cast<int>(k_sap_tile_size);
-            param.sap_build_lod = 0;
+            const AsspBufferLayout assp_layout = BuildAsspBufferLayout(static_cast<u32>(hw_depth_size.x), static_cast<u32>(hw_depth_size.y));
+            param.assp_lod_count = static_cast<int>(assp_layout.lod_count);
+            param.assp_words_per_node = static_cast<int>(k_assp_words_per_node);
+            param.assp_total_word_count = static_cast<int>(assp_layout.total_word_count);
+            param.assp_tile_size = static_cast<int>(k_assp_tile_size);
+            param.assp_build_lod = 0;
 
             // dbg_系: ランタイム変更可能なパラメータ.
             param.ss_probe_spatial_filter_normal_cos_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_;
@@ -1136,8 +1343,8 @@ namespace ngl::render::app
 
             param.debug_probe_radius = ScreenReconstructedVoxelStructure::dbg_probe_scale_ * 0.5f * bbv_grid_updater_.Get().cell_size / k_bbv_per_voxel_resolution;
             param.debug_probe_near_geom_scale = ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_;
-            param.sap_debug_split_threshold = ScreenReconstructedVoxelStructure::dbg_sap_split_threshold_;
-            param.sap_debug_leaf_border_enable = ScreenReconstructedVoxelStructure::dbg_sap_leaf_border_enable_;
+            param.assp_debug_split_threshold = ScreenReconstructedVoxelStructure::dbg_assp_split_threshold_;
+            param.assp_debug_leaf_border_enable = ScreenReconstructedVoxelStructure::dbg_assp_leaf_border_enable_;
 
             dispatch_param_cache_ = param;
             // ローカル変数からマップ先バッファへコピー.
@@ -1220,10 +1427,35 @@ namespace ngl::render::app
                     p_command_list->ResourceBarrier(ss_probe_side_cache_meta_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                     p_command_list->ResourceBarrier(ss_probe_side_cache_lock_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 }
+                p_command_list->SetPipelineState(pso_assp_probe_clear_.Get());
+                for(int i = 0; i < 2; ++i)
+                {
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    pso_assp_probe_clear_->SetView(&desc_set, k_shader_bind_name_asspprobe_uav.Get(), assp_probe_tex_[i].uav.Get());
+                    pso_assp_probe_clear_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_uav.Get(), assp_probe_tile_info_tex_[i].uav.Get());
+                    p_command_list->SetDescriptorSet(pso_assp_probe_clear_.Get(), &desc_set);
+                    pso_assp_probe_clear_->DispatchHelper(p_command_list, assp_probe_tex_[i].texture->GetWidth(), assp_probe_tex_[i].texture->GetHeight(), 1);
+
+                    p_command_list->ResourceBarrier(assp_probe_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                    p_command_list->ResourceBarrier(assp_probe_tile_info_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                }
+                {
+                    ngl::rhi::DescriptorSetDep desc_set = {};
+                    pso_assp_probe_clear_->SetView(&desc_set, k_shader_bind_name_asspprobe_uav.Get(), assp_probe_side_cache_tex_.uav.Get());
+                    pso_assp_probe_clear_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_uav.Get(), assp_probe_side_cache_meta_tex_.uav.Get());
+                    p_command_list->SetDescriptorSet(pso_assp_probe_clear_.Get(), &desc_set);
+                    pso_assp_probe_clear_->DispatchHelper(p_command_list, assp_probe_side_cache_tex_.texture->GetWidth(), assp_probe_side_cache_tex_.texture->GetHeight(), 1);
+
+                    p_command_list->ResourceBarrier(assp_probe_side_cache_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                    p_command_list->ResourceBarrier(assp_probe_side_cache_meta_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                    p_command_list->ResourceBarrier(assp_probe_side_cache_lock_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                }
                 p_command_list->ResourceBarrier(fsp_probe_packed_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 p_command_list->ResourceBarrier(ss_probe_packed_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                p_command_list->ResourceBarrier(assp_probe_packed_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 p_command_list->ResourceBarrier(ss_probe_best_prev_tile_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                p_command_list->ResourceBarrier(sap_buffer_.buffer.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                p_command_list->ResourceBarrier(assp_probe_best_prev_tile_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                p_command_list->ResourceBarrier(assp_buffer_.buffer.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
 
             }
         }
@@ -1715,73 +1947,152 @@ namespace ngl::render::app
         }
     }
 
-    void BitmaskBrickVoxelGi::Dispatch_Sap(rhi::GraphicsCommandListDep* p_command_list,
+    void BitmaskBrickVoxelGi::Dispatch_AsspProbe(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
                         const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
                         )
     {
-        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_Sap");
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_AsspProbe");
 
-        const u32 sap_lod0_width = SapLodWidth(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.x), 0u);
-        const u32 sap_lod0_height = SapLodHeight(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.y), 0u);
+        const ngl::u32 assp_probe_update_write_index = assp_curr_frame_tex_index_;
+        const ngl::u32 assp_probe_tile_info_curr_index = assp_tile_info_curr_frame_tex_index_;
 
         {
-            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "SapLod0Build");
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AdaptiveScreenSpaceProbePreUpdate");
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_assp_probe_preupdate_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
+                pso_assp_probe_preupdate_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
+                pso_assp_probe_preupdate_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+                pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_assp_buffer_srv.Get(), assp_buffer_.srv.Get());
+                pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_uav.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].uav.Get());
+                pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_asspprobe_best_prev_tile_uav.Get(), assp_probe_best_prev_tile_tex_.uav.Get());
+
+                p_command_list->SetPipelineState(pso_assp_probe_preupdate_.Get());
+                p_command_list->SetDescriptorSet(pso_assp_probe_preupdate_.Get(), &desc_set);
+                p_command_list->Dispatch(
+                    assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].texture->GetWidth(),
+                    assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].texture->GetHeight(),
+                    1);
+
+                p_command_list->ResourceUavBarrier(assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].texture.Get());
+                p_command_list->ResourceUavBarrier(assp_probe_best_prev_tile_tex_.texture.Get());
+            }
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AdaptiveScreenSpaceProbeUpdate");
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_assp_probe_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
+                pso_assp_probe_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+                pso_assp_probe_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+                pso_assp_probe_update_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
+                pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_assp_buffer_srv.Get(), assp_buffer_.srv.Get());
+                pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].srv.Get());
+                pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_uav.Get(), assp_probe_tex_[assp_probe_update_write_index].uav.Get());
+
+                p_command_list->SetPipelineState(pso_assp_probe_update_.Get());
+                p_command_list->SetDescriptorSet(pso_assp_probe_update_.Get(), &desc_set);
+
+                pso_assp_probe_update_->DispatchHelper(
+                    p_command_list,
+                    assp_probe_tex_[assp_probe_update_write_index].texture->GetWidth() / k_ss_probe_update_skip_tile_group_width,
+                    assp_probe_tex_[assp_probe_update_write_index].texture->GetHeight() / k_ss_probe_update_skip_tile_group_width,
+                    1);
+
+                p_command_list->ResourceUavBarrier(assp_probe_tex_[assp_probe_update_write_index].texture.Get());
+                assp_latest_filtered_frame_tex_index_ = assp_probe_update_write_index;
+            }
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AdaptiveScreenSpaceProbeShUpdate");
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_assp_probe_sh_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+                pso_assp_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_assp_buffer_srv.Get(), assp_buffer_.srv.Get());
+                pso_assp_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_srv.Get(), assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv.Get());
+                pso_assp_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].srv.Get());
+                pso_assp_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_packed_sh_uav.Get(), assp_probe_packed_sh_tex_.uav.Get());
+
+                p_command_list->SetPipelineState(pso_assp_probe_sh_update_.Get());
+                p_command_list->SetDescriptorSet(pso_assp_probe_sh_update_.Get(), &desc_set);
+                pso_assp_probe_sh_update_->DispatchHelper(
+                    p_command_list,
+                    assp_probe_packed_sh_tex_.texture->GetWidth() / 2,
+                    assp_probe_packed_sh_tex_.texture->GetHeight() / 2,
+                    1);
+
+                p_command_list->ResourceUavBarrier(assp_probe_packed_sh_tex_.texture.Get());
+            }
+        }
+    }
+
+    void BitmaskBrickVoxelGi::Dispatch_AsspHierarchy(rhi::GraphicsCommandListDep* p_command_list,
+                        rhi::ConstantBufferPooledHandle scene_cbv,
+                        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
+                        )
+    {
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_AsspHierarchy");
+
+        const u32 assp_lod0_width = AsspLodWidth(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.x), 0u);
+        const u32 assp_lod0_height = AsspLodHeight(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.y), 0u);
+
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AsspLod0Build");
 
             ngl::rhi::DescriptorSetDep desc_set = {};
-            pso_sap_depth_analysis_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
-            pso_sap_depth_analysis_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-            pso_sap_depth_analysis_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-            pso_sap_depth_analysis_->SetView(&desc_set, k_shader_bind_name_sap_buffer_uav.Get(), sap_buffer_.uav.Get());
+            pso_assp_depth_analysis_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
+            pso_assp_depth_analysis_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
+            pso_assp_depth_analysis_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+            pso_assp_depth_analysis_->SetView(&desc_set, k_shader_bind_name_assp_buffer_uav.Get(), assp_buffer_.uav.Get());
 
-            p_command_list->SetPipelineState(pso_sap_depth_analysis_.Get());
-            p_command_list->SetDescriptorSet(pso_sap_depth_analysis_.Get(), &desc_set);
-            pso_sap_depth_analysis_->DispatchHelper(p_command_list, sap_lod0_width, sap_lod0_height, 1);
+            p_command_list->SetPipelineState(pso_assp_depth_analysis_.Get());
+            p_command_list->SetDescriptorSet(pso_assp_depth_analysis_.Get(), &desc_set);
+            pso_assp_depth_analysis_->DispatchHelper(p_command_list, assp_lod0_width, assp_lod0_height, 1);
 
-            p_command_list->ResourceUavBarrier(sap_buffer_.buffer.Get());
+            p_command_list->ResourceUavBarrier(assp_buffer_.buffer.Get());
         }
         {
-            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "SapLod1Build");
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AsspLod1Build");
 
             ngl::rhi::DescriptorSetDep desc_set = {};
-            pso_sap_lod1_build_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-            pso_sap_lod1_build_->SetView(&desc_set, k_shader_bind_name_sap_buffer_srv.Get(), sap_buffer_.srv.Get());
-            pso_sap_lod1_build_->SetView(&desc_set, k_shader_bind_name_sap_buffer_uav.Get(), sap_buffer_.uav.Get());
+            pso_assp_lod1_build_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+            pso_assp_lod1_build_->SetView(&desc_set, k_shader_bind_name_assp_buffer_srv.Get(), assp_buffer_.srv.Get());
+            pso_assp_lod1_build_->SetView(&desc_set, k_shader_bind_name_assp_buffer_uav.Get(), assp_buffer_.uav.Get());
 
-            p_command_list->SetPipelineState(pso_sap_lod1_build_.Get());
-            p_command_list->SetDescriptorSet(pso_sap_lod1_build_.Get(), &desc_set);
-            pso_sap_lod1_build_->DispatchHelper(
+            p_command_list->SetPipelineState(pso_assp_lod1_build_.Get());
+            p_command_list->SetDescriptorSet(pso_assp_lod1_build_.Get(), &desc_set);
+            pso_assp_lod1_build_->DispatchHelper(
                 p_command_list,
-                SapLodWidth(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.x), 1u),
-                SapLodHeight(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.y), 1u),
+                AsspLodWidth(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.x), 1u),
+                AsspLodHeight(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.y), 1u),
                 1);
 
-            p_command_list->ResourceUavBarrier(sap_buffer_.buffer.Get());
+            p_command_list->ResourceUavBarrier(assp_buffer_.buffer.Get());
         }
-        for(u32 output_lod = 2u; output_lod < k_sap_max_lod_count; ++output_lod)
+        for(u32 output_lod = 2u; output_lod < k_assp_max_lod_count; ++output_lod)
         {
-            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "SapHierarchyBuild");
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AsspHierarchyBuild");
 
             SrvsParam hierarchy_param = dispatch_param_cache_;
             // 同じ shader を全 higher LOD で使い回すため、per-dispatch で output LOD だけ差し替えた
-            // 一時 constant buffer を積む。resource 自体は常に同じ unified SapBuffer を読み書きする。
-            hierarchy_param.sap_build_lod = static_cast<int>(output_lod);
+            // 一時 constant buffer を積む。resource 自体は常に同じ unified AsspBuffer を読み書きする。
+            hierarchy_param.assp_build_lod = static_cast<int>(output_lod);
             auto hierarchy_cbh = AllocSrvsParamCbh(p_command_list, hierarchy_param);
 
             ngl::rhi::DescriptorSetDep desc_set = {};
-            pso_sap_hierarchy_build_->SetView(&desc_set, "cb_srvs", &hierarchy_cbh->cbv);
-            pso_sap_hierarchy_build_->SetView(&desc_set, k_shader_bind_name_sap_buffer_srv.Get(), sap_buffer_.srv.Get());
-            pso_sap_hierarchy_build_->SetView(&desc_set, k_shader_bind_name_sap_buffer_uav.Get(), sap_buffer_.uav.Get());
+            pso_assp_hierarchy_build_->SetView(&desc_set, "cb_srvs", &hierarchy_cbh->cbv);
+            pso_assp_hierarchy_build_->SetView(&desc_set, k_shader_bind_name_assp_buffer_srv.Get(), assp_buffer_.srv.Get());
+            pso_assp_hierarchy_build_->SetView(&desc_set, k_shader_bind_name_assp_buffer_uav.Get(), assp_buffer_.uav.Get());
 
-            p_command_list->SetPipelineState(pso_sap_hierarchy_build_.Get());
-            p_command_list->SetDescriptorSet(pso_sap_hierarchy_build_.Get(), &desc_set);
-            pso_sap_hierarchy_build_->DispatchHelper(
+            p_command_list->SetPipelineState(pso_assp_hierarchy_build_.Get());
+            p_command_list->SetDescriptorSet(pso_assp_hierarchy_build_.Get(), &desc_set);
+            pso_assp_hierarchy_build_->DispatchHelper(
                 p_command_list,
-                SapLodWidth(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.x), output_lod),
-                SapLodHeight(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.y), output_lod),
+                AsspLodWidth(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.x), output_lod),
+                AsspLodHeight(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.y), output_lod),
                 1);
 
-            p_command_list->ResourceUavBarrier(sap_buffer_.buffer.Get());
+            p_command_list->ResourceUavBarrier(assp_buffer_.buffer.Get());
         }
     }
 
@@ -2015,7 +2326,10 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_packed_sh_srv.Get(), ss_probe_packed_sh_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_srv.Get(), ss_probe_side_cache_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_meta_srv.Get(), ss_probe_side_cache_meta_tex_.srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_sap_buffer_srv.Get(), sap_buffer_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_srv.Get(), assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_tile_info_curr_frame_tex_index_].srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_packed_sh_srv.Get(), assp_probe_packed_sh_tex_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_assp_buffer_srv.Get(), assp_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_main_lit_color_srv.Get(), lit_color_srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
             
@@ -2198,7 +2512,8 @@ namespace ngl::render::app
         if(bbvgi_instance_)
         {
             bbvgi_instance_->Dispatch_Bbv_Main(p_command_list, scene_cbv);
-            bbvgi_instance_->Dispatch_Sap(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
+            bbvgi_instance_->Dispatch_AsspHierarchy(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
+            bbvgi_instance_->Dispatch_AsspProbe(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
             bbvgi_instance_->Dispatch_SsProbe(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
             bbvgi_instance_->Dispatch_Fsp(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
         }

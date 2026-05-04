@@ -9,7 +9,7 @@ ss_voxel_debug_visualize_cs.hlsl
 
 
 #include "../srvs_util.hlsli"
-#include "../sap/sap_buffer_util.hlsli"
+#include "../assp/assp_buffer_util.hlsli"
 
 // SceneView定数バッファ構造定義.
 #include "../../include/scene_view_struct.hlsli"
@@ -19,77 +19,58 @@ ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 RWTexture2D<float4>	RWTexWork;
 SamplerState		SmpLinearClamp;
 Texture2D            TexMainLitColor;
+Texture2D<float4>    AdaptiveScreenSpaceProbeTex;
+Texture2D<float4>    AdaptiveScreenSpaceProbeTileInfoTex;
+Texture2D<float4>    AdaptiveScreenSpaceProbePackedSHTex;
 
 float debug_count_to_rate(float count)
 {
     return count / (count + 4.0);
 }
 
-SapNodeRecord SapLoadNodeFromScreenTexel(int2 screen_texel_pos, uint lod_index)
+AsspNodeRecord AsspLoadNodeFromScreenTexel(int2 screen_texel_pos, uint lod_index)
 {
-    return SapLoadNode(lod_index, SapNodeCoordFromScreenTexel(screen_texel_pos, lod_index));
+    return AsspLoadNode(lod_index, AsspNodeCoordFromScreenTexel(screen_texel_pos, lod_index));
 }
 
-SapNodeRecord SapLoadLod0NodeFromRepresentativeTexelOrEmpty(int2 representative_texel_pos)
+AsspNodeRecord AsspLoadLod0NodeFromRepresentativeTexelOrEmpty(int2 representative_texel_pos)
 {
-    return SapLoadLod0NodeFromRepresentativeTexel(representative_texel_pos);
+    return AsspLoadLod0NodeFromRepresentativeTexel(representative_texel_pos);
 }
 
-float3 SapSelectedLodColor(int sap_lod)
+float3 AsspSelectedLodColor(int assp_lod)
 {
     // selected LOD map 用の見分けやすい固定色。
-    if(0 == sap_lod) return float3(1.0, 0.25, 0.25);
-    if(1 == sap_lod) return float3(1.0, 0.7, 0.15);
-    if(2 == sap_lod) return float3(0.25, 1.0, 0.35);
-    if(3 == sap_lod) return float3(0.2, 0.7, 1.0);
+    if(0 == assp_lod) return float3(1.0, 0.25, 0.25);
+    if(1 == assp_lod) return float3(1.0, 0.7, 0.15);
+    if(2 == assp_lod) return float3(0.25, 1.0, 0.35);
+    if(3 == assp_lod) return float3(0.2, 0.7, 1.0);
     return float3(0.85, 0.3, 1.0);
 }
 
-void SapResolveLeafNode(
-    int2 screen_texel_pos,
-    out int selected_lod,
-    out int2 selected_node_origin,
-    out int selected_node_size,
-    out int2 representative_texel_pos,
-    out float representative_depth,
-    out float plane_error,
-    out float split_score,
-    out float3 representative_normal)
+int2 AsspPackedShAtlasCoeffOffset(uint coeff_index, int2 logical_resolution)
 {
-    selected_lod = 0;
-    const SapNodeRecord lod0_node = SapLoadNodeFromScreenTexel(screen_texel_pos, 0u);
-    selected_node_origin = SapNodeOriginFromCoord(SapNodeCoordFromScreenTexel(screen_texel_pos, 0u), 0u);
-    selected_node_size = k_sap_tile_size;
-    representative_texel_pos = int2(lod0_node.representative_texel);
-    representative_depth = lod0_node.front_depth;
-    plane_error = lod0_node.metric1;
-    split_score = lod0_node.split_score;
-    representative_normal = lod0_node.representative_normal;
-
-    const float threshold = cb_srvs.sap_debug_split_threshold;
-    for(int hierarchy_lod = cb_srvs.sap_lod_count - 1; hierarchy_lod >= 1; --hierarchy_lod)
+    switch(coeff_index)
     {
-        const uint lod_index = (uint)hierarchy_lod;
-        const uint2 hierarchy_texel_pos = SapNodeCoordFromScreenTexel(screen_texel_pos, lod_index);
-        const SapNodeRecord node = SapLoadNode(lod_index, hierarchy_texel_pos);
-        if(!SapNodeIsValid(node))
-        {
-            continue;
-        }
-
-        if(node.split_score <= threshold)
-        {
-            selected_lod = hierarchy_lod;
-            selected_node_origin = SapNodeOriginFromCoord(hierarchy_texel_pos, lod_index);
-            selected_node_size = SapNodeSizeInPixels(lod_index);
-            representative_texel_pos = int2(node.representative_texel);
-            representative_depth = node.front_depth;
-            plane_error = max(node.metric0, node.metric1);
-            split_score = node.split_score;
-            representative_normal = SapNodeIsSolid(node) ? SapLoadLod0NodeFromRepresentativeTexelOrEmpty(int2(node.representative_texel)).representative_normal : float3(0.0, 0.0, 1.0);
-            return;
-        }
+    default:
+    case 0: return int2(0, 0);
+    case 1: return int2(logical_resolution.x, 0);
+    case 2: return int2(0, logical_resolution.y);
+    case 3: return int2(logical_resolution.x, logical_resolution.y);
     }
+}
+
+int2 AsspPackedShAtlasTexelCoord(int2 probe_tile_id, uint coeff_index, int2 logical_resolution)
+{
+    return probe_tile_id + AsspPackedShAtlasCoeffOffset(coeff_index, logical_resolution);
+}
+
+float4 AsspPackedShAtlasLoadCoeff(int2 probe_tile_id, uint coeff_index)
+{
+    uint2 packed_sh_tex_size;
+    AdaptiveScreenSpaceProbePackedSHTex.GetDimensions(packed_sh_tex_size.x, packed_sh_tex_size.y);
+    const int2 logical_resolution = int2(packed_sh_tex_size >> 1);
+    return AdaptiveScreenSpaceProbePackedSHTex.Load(int3(AsspPackedShAtlasTexelCoord(probe_tile_id, coeff_index, logical_resolution), 0));
 }
 
 
@@ -102,10 +83,13 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
+    uint2 work_tex_size_u;
+    RWTexWork.GetDimensions(work_tex_size_u.x, work_tex_size_u.y);
 	const float2 screen_pos_f = float2(dtid.xy) + float2(0.5, 0.5);// ピクセル中心への半ピクセルオフセット考慮.
+	const float2 work_tex_size_f = float2(work_tex_size_u);
 	const float2 screen_size_f = float2(cb_srvs.tex_main_view_depth_size.xy);
-	const float2 screen_uv = (screen_pos_f / screen_size_f);
-    const int2 texel_pos = dtid.xy;
+	const float2 screen_uv = (screen_pos_f / work_tex_size_f);
+    const int2 texel_pos = clamp(int2(screen_uv * screen_size_f), int2(0, 0), int2(cb_srvs.tex_main_view_depth_size.xy) - 1);
     
 	const float3 camera_dir = GetViewDirFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 	const float3 view_origin = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
@@ -529,50 +513,49 @@ void main_cs(
             }
         }
     }
-    // Category 3: SAP.
+    // Category 3: ASSP.
     else if(3 == debug_category)
     {
-        // 0..24 は raw hierarchy metric 表示, 25..28 は top-down leaf selection 表示。
-        if(debug_sub_mode <= 24)
+        // 0..4 は LOD0 固有表示, 5..12 は ASSP hierarchy / probe / SH 表示。
+        if(debug_sub_mode <= 4)
         {
-            const int sap_lod = debug_sub_mode / 5;
-            const int sap_metric = debug_sub_mode % 5;
+            const int assp_metric = debug_sub_mode;
 
             float representative_depth = 0.0;
             float plane_error = 0.0;
             float split_score = 0.0;
             float3 representative_normal = float3(0.0, 0.0, 1.0);
 
-            const SapNodeRecord node = SapLoadNodeFromScreenTexel(texel_pos, (uint)sap_lod);
+            const AsspNodeRecord node = AsspLoadNodeFromScreenTexel(texel_pos, 0u);
             representative_depth = node.front_depth;
-            representative_normal = SapNodeIsSolid(node) ? SapLoadLod0NodeFromRepresentativeTexelOrEmpty(int2(node.representative_texel)).representative_normal : float3(0.0, 0.0, 1.0);
-            plane_error = (0 == sap_lod) ? node.metric1 : max(node.metric0, node.metric1);
+            representative_normal = AsspNodeIsSolid(node) ? AsspLoadLod0NodeFromRepresentativeTexelOrEmpty(int2(node.representative_texel)).representative_normal : float3(0.0, 0.0, 1.0);
+            plane_error = node.metric1;
             split_score = node.split_score;
 
             // depth は 20 view-space units 付近からゆるく圧縮して遠方差を見やすくする。
             const float depth_vis = max(representative_depth, 0.0) / (max(representative_depth, 0.0) + 20.0);
             // error は depth に比例する許容量を基本にしつつ、近距離でも 0.005 の下限を持たせる。
             const float error_vis = saturate(plane_error / max(max(representative_depth, 0.0) * 0.02, 0.005));
-            if(0 == sap_metric)
+            if(0 == assp_metric)
             {
                 RWTexWork[dtid.xy] = float4(depth_vis, error_vis, split_score, 1.0);
             }
-            else if(1 == sap_metric)
+            else if(1 == assp_metric)
             {
                 RWTexWork[dtid.xy] = float4(depth_vis, depth_vis, depth_vis, 1.0);
             }
-            else if(2 == sap_metric)
+            else if(2 == assp_metric)
             {
                 // 暗色スタートにして、低 error 域でもゼロ潰れしにくくする。
                 const float3 debug_color = lerp(float3(0.02, 0.02, 0.05), float3(1.0, 0.6, 0.15), error_vis);
                 RWTexWork[dtid.xy] = float4(debug_color, 1.0);
             }
-            else if(3 == sap_metric)
+            else if(3 == assp_metric)
             {
                 const float3 debug_color = lerp(float3(0.02, 0.02, 0.02), float3(1.0, 0.15, 0.95), split_score);
                 RWTexWork[dtid.xy] = float4(debug_color, 1.0);
             }
-            else if(4 == sap_metric)
+            else if(4 == assp_metric)
             {
                 RWTexWork[dtid.xy] = float4(representative_normal * 0.5 + 0.5, 1.0);
             }
@@ -587,7 +570,7 @@ void main_cs(
             float plane_error = 0.0;
             float split_score = 0.0;
             float3 representative_normal = float3(0.0, 0.0, 1.0);
-            SapResolveLeafNode(
+            AsspResolveLeafNode(
                 texel_pos,
                 selected_lod,
                 selected_node_origin,
@@ -604,7 +587,7 @@ void main_cs(
                 (0 == local_pos.y) ||
                 ((selected_node_size - 1) == local_pos.x) ||
                 ((selected_node_size - 1) == local_pos.y);
-            const float3 lod_color = SapSelectedLodColor(selected_lod);
+            const float3 lod_color = AsspSelectedLodColor(selected_lod);
             // leaf 単位で色が揃うよう node origin を seed に使う。
             // 加算オフセットは RGB 間の相関を崩すための固定値。
             const float3 leaf_noise = float3(
@@ -612,28 +595,95 @@ void main_cs(
                 noise_float_to_float(float2(selected_node_origin.x + 31, selected_node_origin.y + 17)),
                 noise_float_to_float(float2(selected_node_origin.x + 59, selected_node_origin.y + 101)));
 
-            if(25 == debug_sub_mode)
+            if(5 == debug_sub_mode)
             {
                 RWTexWork[dtid.xy] = float4(lod_color, 1.0);
             }
-            else if(26 == debug_sub_mode)
+            else if(6 == debug_sub_mode)
             {
                 RWTexWork[dtid.xy] = float4(leaf_noise, 1.0);
             }
-            else if(27 == debug_sub_mode)
+            else if(7 == debug_sub_mode)
             {
                 float3 debug_color = lod_color;
-                if((0 != cb_srvs.sap_debug_leaf_border_enable) && is_border)
+                if((0 != cb_srvs.assp_debug_leaf_border_enable) && is_border)
                 {
                     debug_color = float3(1.0, 1.0, 1.0);
                 }
                 RWTexWork[dtid.xy] = float4(debug_color, 1.0);
             }
-            else if(28 == debug_sub_mode)
+            else if(8 == debug_sub_mode)
             {
                 const bool is_valid_rep = all(representative_texel_pos >= 0) && (representative_depth > 0.0);
                 const float3 debug_color = is_valid_rep ? TexMainLitColor.Load(int3(representative_texel_pos, 0)).rgb : float3(0.02, 0.02, 0.02);
                 RWTexWork[dtid.xy] = float4(debug_color, 1.0);
+            }
+            else if(9 == debug_sub_mode)
+            {
+                const int2 current_tile_id = texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+                const float4 current_tile_info = AdaptiveScreenSpaceProbeTileInfoTex.Load(int3(current_tile_id, 0));
+                if(!isValidDepth(current_tile_info.x))
+                {
+                    RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
+                }
+                else
+                {
+                    RWTexWork[dtid.xy] = AdaptiveScreenSpaceProbeTex.Load(int3(texel_pos, 0));
+                }
+            }
+            else if(10 == debug_sub_mode)
+            {
+                const bool is_valid_rep = all(representative_texel_pos >= 0) && (representative_depth > 0.0);
+                if(!is_valid_rep)
+                {
+                    RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
+                }
+                else
+                {
+                    const int2 representative_tile_id = representative_texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+                    const int2 representative_tile_origin = representative_tile_id * ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION;
+                    const int2 representative_local_texel = clamp(
+                        (local_pos * ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION) / max(selected_node_size, 1),
+                        int2(0, 0),
+                        int2(ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION - 1, ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION - 1));
+                    RWTexWork[dtid.xy] = AdaptiveScreenSpaceProbeTex.Load(int3(representative_tile_origin + representative_local_texel, 0));
+                }
+            }
+            else if(11 == debug_sub_mode)
+            {
+                uint2 packed_sh_tex_size;
+                AdaptiveScreenSpaceProbePackedSHTex.GetDimensions(packed_sh_tex_size.x, packed_sh_tex_size.y);
+                const int2 packed_sh_texel_pos = texel_pos / 2;
+                if(any(packed_sh_texel_pos >= int2(packed_sh_tex_size)))
+                {
+                    RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
+                }
+                else
+                {
+                    RWTexWork[dtid.xy] = AdaptiveScreenSpaceProbePackedSHTex.Load(int3(packed_sh_texel_pos, 0));
+                }
+            }
+            else if(12 == debug_sub_mode)
+            {
+                const bool is_valid_rep = all(representative_texel_pos >= 0) && (representative_depth > 0.0);
+                if(!is_valid_rep)
+                {
+                    RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
+                }
+                else
+                {
+                    const int2 representative_tile_id = representative_texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+                    const float4 sh_basis = EvaluateL1ShBasis(normalize(-cb_srvs.main_light_dir_ws));
+                    const float4 coeff0 = AsspPackedShAtlasLoadCoeff(representative_tile_id, 0);
+                    const float4 coeff1 = AsspPackedShAtlasLoadCoeff(representative_tile_id, 1);
+                    const float4 coeff2 = AsspPackedShAtlasLoadCoeff(representative_tile_id, 2);
+                    const float4 coeff3 = AsspPackedShAtlasLoadCoeff(representative_tile_id, 3);
+                    const float3 radiance = max(float3(
+                        dot(float4(coeff0.g, coeff1.g, coeff2.g, coeff3.g), sh_basis),
+                        dot(float4(coeff0.b, coeff1.b, coeff2.b, coeff3.b), sh_basis),
+                        dot(float4(coeff0.a, coeff1.a, coeff2.a, coeff3.a), sh_basis)), 0.0.xxx);
+                    RWTexWork[dtid.xy] = float4(radiance / (1.0 + radiance), 1.0);
+                }
             }
         }
     }

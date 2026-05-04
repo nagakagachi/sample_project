@@ -1,22 +1,22 @@
 #if 0
 
-sap_depth_analysis_cs.hlsl
+assp_depth_analysis_cs.hlsl
 
-ScreenAnalysisPass LOD0.
+Adaptive Screen Space Probe hierarchy LOD0.
 4x4 tile ごとの representative plane / representative texel / split metrics を
 unified uint buffer の LOD0 範囲へそのまま encode する。
 
 #endif
 
 #include "../srvs_util.hlsli"
-#include "sap_buffer_util.hlsli"
+#include "assp_buffer_util.hlsli"
 #include "../../include/scene_view_struct.hlsli"
 #include "../../include/depth_buffer_util.hlsli"
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 Texture2D                     TexHardwareDepth;
 
-bool SapTryLoadViewSpaceSample(
+bool AsspTryLoadViewSpaceSample(
     int2 texel_pos,
     uint2 depth_size,
     out float linear_depth,
@@ -43,14 +43,14 @@ bool SapTryLoadViewSpaceSample(
 void main_cs(
     uint3 dtid : SV_DispatchThreadID)
 {
-    const uint2 lod0_size = uint2(SapLodWidthFromCb(0u), SapLodHeightFromCb(0u));
+    const uint2 lod0_size = uint2(AsspLodWidthFromCb(0u), AsspLodHeightFromCb(0u));
     if(any(dtid.xy >= lod0_size))
         return;
 
     uint2 depth_size;
     TexHardwareDepth.GetDimensions(depth_size.x, depth_size.y);
 
-    const int2 tile_origin = int2(dtid.xy * k_sap_tile_size);
+    const int2 tile_origin = int2(dtid.xy * k_assp_tile_size);
 
     float3 sample_pos_vs[16];
     bool sample_valid[16];
@@ -68,17 +68,17 @@ void main_cs(
     }
 
     [unroll]
-    for(int sy = 0; sy < k_sap_tile_size; ++sy)
+    for(int sy = 0; sy < k_assp_tile_size; ++sy)
     {
         [unroll]
-        for(int sx = 0; sx < k_sap_tile_size; ++sx)
+        for(int sx = 0; sx < k_assp_tile_size; ++sx)
         {
-            const int sample_index = sy * k_sap_tile_size + sx;
+            const int sample_index = sy * k_assp_tile_size + sx;
             const int2 sample_texel_pos = tile_origin + int2(sx, sy);
 
             float linear_depth = 0.0;
             float3 pos_vs = 0.0.xxx;
-            if(SapTryLoadViewSpaceSample(sample_texel_pos, depth_size, linear_depth, pos_vs))
+            if(AsspTryLoadViewSpaceSample(sample_texel_pos, depth_size, linear_depth, pos_vs))
             {
                 sample_valid[sample_index] = true;
                 sample_pos_vs[sample_index] = pos_vs;
@@ -94,16 +94,16 @@ void main_cs(
         }
     }
 
-    SapNodeRecord out_node = SapMakeEmptyNode();
+    AsspNodeRecord out_node = AsspMakeEmptyNode();
     if(0 == valid_count || front_sample_index == 0xffffffffu)
     {
         // 完全に空のタイルは explicit empty node として保持し、
         // 上位 LOD でも coarse な empty 領域として継続利用する。
-        SapStoreNode(0u, dtid.xy, out_node);
+        AsspStoreNode(0u, dtid.xy, out_node);
         return;
     }
 
-    const int2 front_sample_pos_in_tile = int2(front_sample_index % k_sap_tile_size, front_sample_index / k_sap_tile_size);
+    const int2 front_sample_pos_in_tile = int2(front_sample_index % k_assp_tile_size, front_sample_index / k_assp_tile_size);
     const int2 front_sample_texel_pos = tile_origin + front_sample_pos_in_tile;
     const float front_depth_ndc = TexHardwareDepth.Load(int3(front_sample_texel_pos, 0)).r;
     const float2 depth_size_inv = 1.0 / float2(depth_size);
@@ -132,7 +132,7 @@ void main_cs(
     }
 
     // LOD0 は 4x4 固定タイルなので、valid ratio も 16 samples 基準で正規化する。
-    const float valid_ratio = float(valid_count) / float(k_sap_tile_size * k_sap_tile_size);
+    const float valid_ratio = float(valid_count) / float(k_assp_tile_size * k_assp_tile_size);
     const float mean_residual = residual_sum / float(valid_count);
     const float depth_range = max_depth - min_depth;
     // 極端に浅い面でも過大評価になりすぎないよう、depth 正規化の下限を持たせる。
@@ -147,7 +147,7 @@ void main_cs(
     // - valid ratio penalty は欠損タイルを少しだけ押し上げる補助項
     const float split_score = saturate(normalized_range * 6.0 + normalized_max_residual * 32.0 + normalized_mean_residual * 16.0 + (1.0 - valid_ratio) * 0.5);
 
-    out_node.state = k_sap_state_solid;
+    out_node.state = k_assp_state_solid;
     out_node.representative_texel = uint2(front_sample_texel_pos);
     out_node.front_depth = front_depth;
     out_node.representative_normal = representative_normal_vs;
@@ -156,5 +156,5 @@ void main_cs(
     out_node.metric1 = max_residual;
     out_node.metric2 = depth_range;
     out_node.split_score = split_score;
-    SapStoreNode(0u, dtid.xy, out_node);
+    AsspStoreNode(0u, dtid.xy, out_node);
 }
