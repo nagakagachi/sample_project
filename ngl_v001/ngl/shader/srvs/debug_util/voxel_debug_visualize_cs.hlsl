@@ -40,10 +40,7 @@ float3 AsspSelectedLodColor(int assp_lod)
 {
     // selected LOD map 用の見分けやすい固定色。
     if(0 == assp_lod) return float3(1.0, 0.25, 0.25);
-    if(1 == assp_lod) return float3(1.0, 0.7, 0.15);
-    if(2 == assp_lod) return float3(0.25, 1.0, 0.35);
-    if(3 == assp_lod) return float3(0.2, 0.7, 1.0);
-    return float3(0.85, 0.3, 1.0);
+    return float3(1.0, 0.7, 0.15);
 }
 
 // デバッグテクスチャに対してDispatch.

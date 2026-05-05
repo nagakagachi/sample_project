@@ -305,9 +305,6 @@ namespace ngl::render::app
         ComputeTextureSet assp_probe_variance_tex_[2] = {}; // f16_rgba, x: filtered mean, y: filtered second moment, z: raw mean, w: raw variance.
         ComputeTextureSet assp_probe_packed_sh_tex_ = {}; // f16_rgba, 係数優先2x2 atlas.
         ComputeTextureSet assp_probe_best_prev_tile_tex_ = {}; // r32_uint, Preupdateで計算したBestPrevTile.
-        ComputeTextureSet assp_probe_side_cache_tex_ = {}; // 4x4 texel per cached probe.
-        ComputeTextureSet assp_probe_side_cache_meta_tex_ = {}; // 1/4 resolution, xyz: world pos, w: last update frame.
-        ComputeTextureSet assp_probe_side_cache_lock_tex_ = {}; // 1/4 resolution, uint lock tag per tile for frame-local CAS.
         ComputeBufferSet assp_buffer_ = {}; // LOD0-LOD[MAX] unified scalar uint buffer.
         ComputeBufferSet assp_representative_probe_list_ = {}; // 0番はcounter, 1番以降はpacked tile id.
         ComputeBufferSet assp_probe_indirect_arg_ = {}; // DispatchIndirect 用 3 uint.

@@ -442,14 +442,8 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_variance_srv = "AdaptiveScreenSpaceProbeVarianceTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_history_variance_srv = "AdaptiveScreenSpaceProbeHistoryVarianceTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_variance_uav = "RWAdaptiveScreenSpaceProbeVarianceTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_filtered_uav = "RWAdaptiveScreenSpaceProbeFilteredTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_packed_sh_srv = "AdaptiveScreenSpaceProbePackedSHTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_packed_sh_uav = "RWAdaptiveScreenSpaceProbePackedSHTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_side_cache_srv = "AdaptiveScreenSpaceProbeSideCacheTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_side_cache_uav = "RWAdaptiveScreenSpaceProbeSideCacheTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_side_cache_meta_srv = "AdaptiveScreenSpaceProbeSideCacheMetaTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_side_cache_meta_uav = "RWAdaptiveScreenSpaceProbeSideCacheMetaTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_side_cache_lock_uav = "RWAdaptiveScreenSpaceProbeSideCacheLockTex";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_buffer_srv = "AsspBuffer";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_buffer_uav = "RWAsspBuffer";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_representative_probe_list_srv = "AsspRepresentativeProbeList";
@@ -459,16 +453,13 @@ namespace ngl::render::app
 
     struct AsspBufferLayout
     {
-        u32 lod_count = 0;
         u32 total_word_count = 0;
     };
 
     AsspBufferLayout BuildAsspBufferLayout(u32 screen_width, u32 screen_height)
     {
         AsspBufferLayout layout = {};
-        // ASSP は two-level 固定 (LOD0 fine + LOD1 coarse) として buffer layout を確定する。
-        layout.lod_count = k_assp_max_lod_count;
-        layout.total_word_count = AsspTotalWordCount(screen_width, screen_height, layout.lod_count);
+        layout.total_word_count = AsspTotalWordCount(screen_width, screen_height);
         return layout;
     }
 
@@ -538,9 +529,6 @@ namespace ngl::render::app
         for(auto& tex : assp_probe_tile_info_tex_) { tex = {}; }
         assp_probe_packed_sh_tex_ = {};
         assp_probe_best_prev_tile_tex_ = {};
-        assp_probe_side_cache_tex_ = {};
-        assp_probe_side_cache_meta_tex_ = {};
-        assp_probe_side_cache_lock_tex_ = {};
         assp_buffer_ = {};
         assp_representative_probe_list_ = {};
         assp_probe_indirect_arg_ = {};
@@ -744,54 +732,6 @@ namespace ngl::render::app
             desc.initial_state = rhi::EResourceState::Common;
 
             if(!assp_probe_packed_sh_tex_.Initialize(p_device, desc, "Srvs_AsspProbePackedShTex"))
-                return false;
-        }
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width = assp_probe_base_resolution_x;
-            desc.height = assp_probe_base_resolution_y;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            if(!assp_probe_side_cache_tex_.Initialize(p_device, desc, "Srvs_AsspProbeSideCacheTex"))
-                return false;
-        }
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width = (assp_probe_base_resolution_x + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.height = (assp_probe_base_resolution_y + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R32G32B32A32_FLOAT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            if(!assp_probe_side_cache_meta_tex_.Initialize(p_device, desc, "Srvs_AsspProbeSideCacheMetaTex"))
-                return false;
-        }
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width = (assp_probe_base_resolution_x + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.height = (assp_probe_base_resolution_y + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R32_UINT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            if(!assp_probe_side_cache_lock_tex_.Initialize(p_device, desc, "Srvs_AsspProbeSideCacheLockTex"))
                 return false;
         }
         {
@@ -1530,17 +1470,6 @@ namespace ngl::render::app
                     p_command_list->ResourceBarrier(assp_probe_variance_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                     p_command_list->ResourceBarrier(assp_probe_tile_info_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                     p_command_list->ResourceBarrier(assp_probe_representative_tile_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                }
-                {
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_assp_probe_clear_->SetView(&desc_set, k_shader_bind_name_asspprobe_uav.Get(), assp_probe_side_cache_tex_.uav.Get());
-                    pso_assp_probe_clear_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_uav.Get(), assp_probe_side_cache_meta_tex_.uav.Get());
-                    p_command_list->SetDescriptorSet(pso_assp_probe_clear_.Get(), &desc_set);
-                    pso_assp_probe_clear_->DispatchHelper(p_command_list, assp_probe_side_cache_tex_.texture->GetWidth(), assp_probe_side_cache_tex_.texture->GetHeight(), 1);
-
-                    p_command_list->ResourceBarrier(assp_probe_side_cache_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                    p_command_list->ResourceBarrier(assp_probe_side_cache_meta_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                    p_command_list->ResourceBarrier(assp_probe_side_cache_lock_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 }
                 p_command_list->ResourceBarrier(fsp_probe_packed_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 p_command_list->ResourceBarrier(ss_probe_packed_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);

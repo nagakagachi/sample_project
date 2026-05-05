@@ -243,26 +243,15 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
     inline uint AsspLodBaseWordOffset(uint screen_width, uint screen_height, uint lod_index)
     {
-        // buffer は [LOD0][LOD1][LOD2]... の順に詰める。
-        // そのため任意 LOD の base は、それより細かい全 LOD の node 数 * words_per_node の累積で求まる。
-        uint base_word_offset = 0u;
-        for(uint prev_lod = 0u; prev_lod < lod_index; ++prev_lod)
-        {
-            base_word_offset += AsspLodNodeCount(screen_width, screen_height, prev_lod) * AsspWordsPerNode(prev_lod);
-        }
-        return base_word_offset;
+        // two-level 固定なので [LOD0][LOD1] のみ。
+        return (0u == lod_index) ? 0u : (AsspLodNodeCount(screen_width, screen_height, 0u) * k_assp_lod0_words_per_node);
     }
 
-    inline uint AsspTotalWordCount(uint screen_width, uint screen_height, uint lod_count)
+    inline uint AsspTotalWordCount(uint screen_width, uint screen_height)
     {
-        // CPU の resource 確保量と shader の index 計算を同じ式にそろえるため、
-        // total word 数も共有 helper で求める。
-        uint total_word_count = 0u;
-        for(uint lod_index = 0u; lod_index < lod_count; ++lod_index)
-        {
-            total_word_count += AsspLodNodeCount(screen_width, screen_height, lod_index) * AsspWordsPerNode(lod_index);
-        }
-        return total_word_count;
+        return
+            AsspLodNodeCount(screen_width, screen_height, 0u) * k_assp_lod0_words_per_node +
+            AsspLodNodeCount(screen_width, screen_height, 1u) * k_assp_upper_words_per_node;
     }
 
 
