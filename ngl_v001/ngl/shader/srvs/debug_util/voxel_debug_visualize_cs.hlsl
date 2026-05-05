@@ -9,6 +9,7 @@ ss_voxel_debug_visualize_cs.hlsl
 
 
 #include "../srvs_util.hlsli"
+#include "../assp/assp_probe_common.hlsli"
 #include "../assp/assp_buffer_util.hlsli"
 
 // SceneView定数バッファ構造定義.
@@ -19,9 +20,6 @@ ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 RWTexture2D<float4>	RWTexWork;
 SamplerState		SmpLinearClamp;
 Texture2D            TexMainLitColor;
-Texture2D<float4>    AdaptiveScreenSpaceProbeTex;
-Texture2D<float4>    AdaptiveScreenSpaceProbeTileInfoTex;
-Texture2D<float4>    AdaptiveScreenSpaceProbePackedSHTex;
 
 float debug_count_to_rate(float count)
 {
@@ -47,32 +45,6 @@ float3 AsspSelectedLodColor(int assp_lod)
     if(3 == assp_lod) return float3(0.2, 0.7, 1.0);
     return float3(0.85, 0.3, 1.0);
 }
-
-int2 AsspPackedShAtlasCoeffOffset(uint coeff_index, int2 logical_resolution)
-{
-    switch(coeff_index)
-    {
-    default:
-    case 0: return int2(0, 0);
-    case 1: return int2(logical_resolution.x, 0);
-    case 2: return int2(0, logical_resolution.y);
-    case 3: return int2(logical_resolution.x, logical_resolution.y);
-    }
-}
-
-int2 AsspPackedShAtlasTexelCoord(int2 probe_tile_id, uint coeff_index, int2 logical_resolution)
-{
-    return probe_tile_id + AsspPackedShAtlasCoeffOffset(coeff_index, logical_resolution);
-}
-
-float4 AsspPackedShAtlasLoadCoeff(int2 probe_tile_id, uint coeff_index)
-{
-    uint2 packed_sh_tex_size;
-    AdaptiveScreenSpaceProbePackedSHTex.GetDimensions(packed_sh_tex_size.x, packed_sh_tex_size.y);
-    const int2 logical_resolution = int2(packed_sh_tex_size >> 1);
-    return AdaptiveScreenSpaceProbePackedSHTex.Load(int3(AsspPackedShAtlasTexelCoord(probe_tile_id, coeff_index, logical_resolution), 0));
-}
-
 
 // デバッグテクスチャに対してDispatch.
 [numthreads(16, 16, 1)]
@@ -517,6 +489,7 @@ void main_cs(
     else if(3 == debug_category)
     {
         // 0..4 は LOD0 固有表示, 5..12 は ASSP hierarchy / probe / SH 表示。
+        // 13..16 は ASSP variance signal 表示。
         if(debug_sub_mode <= 4)
         {
             const int assp_metric = debug_sub_mode;
@@ -570,7 +543,7 @@ void main_cs(
             float plane_error = 0.0;
             float split_score = 0.0;
             float3 representative_normal = float3(0.0, 0.0, 1.0);
-            AsspResolveLeafNode(
+            AsspResolveLeafNodeFromCurrentRepresentativeTileMap(
                 texel_pos,
                 selected_lod,
                 selected_node_origin,
@@ -683,6 +656,47 @@ void main_cs(
                         dot(float4(coeff0.b, coeff1.b, coeff2.b, coeff3.b), sh_basis),
                         dot(float4(coeff0.a, coeff1.a, coeff2.a, coeff3.a), sh_basis)), 0.0.xxx);
                     RWTexWork[dtid.xy] = float4(radiance / (1.0 + radiance), 1.0);
+                }
+            }
+            else if(13 <= debug_sub_mode && debug_sub_mode <= 16)
+            {
+                const bool is_valid_rep = all(representative_texel_pos >= 0) && (representative_depth > 0.0);
+                if(!is_valid_rep)
+                {
+                    RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
+                }
+                else
+                {
+                    const int2 representative_tile_id = representative_texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+                    const float4 variance_signal = AdaptiveScreenSpaceProbeVarianceTex.Load(int3(representative_tile_id, 0));
+                    const float filtered_mean = max(variance_signal.x, 0.0);
+                    const float filtered_second_moment = max(variance_signal.y, 0.0);
+                    const float filtered_variance = max(filtered_second_moment - filtered_mean * filtered_mean, 0.0);
+                    const float raw_mean = max(variance_signal.z, 0.0);
+                    const float raw_variance = max(variance_signal.w, 0.0);
+
+                    if(13 == debug_sub_mode)
+                    {
+                        const float mean_vis = filtered_mean / (1.0 + filtered_mean);
+                        RWTexWork[dtid.xy] = float4(mean_vis, mean_vis, mean_vis, 1.0);
+                    }
+                    else if(14 == debug_sub_mode)
+                    {
+                        const float variance_vis = filtered_variance / (0.1 + filtered_variance);
+                        const float3 debug_color = lerp(float3(0.02, 0.02, 0.05), float3(1.0, 0.35, 0.1), variance_vis);
+                        RWTexWork[dtid.xy] = float4(debug_color, 1.0);
+                    }
+                    else if(15 == debug_sub_mode)
+                    {
+                        const float mean_vis = raw_mean / (1.0 + raw_mean);
+                        RWTexWork[dtid.xy] = float4(mean_vis, mean_vis, mean_vis, 1.0);
+                    }
+                    else
+                    {
+                        const float variance_vis = raw_variance / (0.1 + raw_variance);
+                        const float3 debug_color = lerp(float3(0.02, 0.02, 0.05), float3(1.0, 0.35, 0.1), variance_vis);
+                        RWTexWork[dtid.xy] = float4(debug_color, 1.0);
+                    }
                 }
             }
         }

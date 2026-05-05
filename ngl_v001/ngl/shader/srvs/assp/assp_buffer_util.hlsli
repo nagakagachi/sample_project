@@ -328,29 +328,21 @@ void AsspResolveLeafNode(
     split_score = lod0_node.split_score;
     representative_normal = AsspLod0NodeIsSolid(lod0_node) ? lod0_node.representative_normal : float3(0.0, 0.0, 1.0);
 
-    for(int hierarchy_lod = cb_srvs.assp_lod_count - 1; hierarchy_lod >= 1; --hierarchy_lod)
+    // two-level 固定なので coarse LOD1 だけを見ればよい。
+    const uint lod_index = 1u;
+    const uint2 hierarchy_texel_pos = AsspNodeCoordFromScreenTexel(screen_texel_pos, lod_index);
+    const AsspHierarchyNodeRecord node = AsspLoadHierarchyNode(lod_index, hierarchy_texel_pos);
+    if(AsspHierarchyNodeIsSolid(node))
     {
-        const uint lod_index = (uint)hierarchy_lod;
-        const uint2 hierarchy_texel_pos = AsspNodeCoordFromScreenTexel(screen_texel_pos, lod_index);
-        const AsspHierarchyNodeRecord node = AsspLoadHierarchyNode(lod_index, hierarchy_texel_pos);
-        if(AsspHierarchyNodeIsSplit(node))
-        {
-            continue;
-        }
-
-        if(AsspHierarchyNodeIsSolid(node))
-        {
-            const AsspLod0NodeRecord representative_lod0_node = AsspLoadRepresentativeLod0Node(node);
-            selected_lod = hierarchy_lod;
-            selected_node_origin = AsspNodeOriginFromCoord(hierarchy_texel_pos, lod_index);
-            selected_node_size = AsspNodeSizeInPixels(lod_index);
-            representative_texel_pos = AsspUnpackRepresentativeTexelInt2(node.representative_texel_packed);
-            representative_depth = representative_lod0_node.front_depth;
-            plane_error = representative_lod0_node.plane_error;
-            split_score = representative_lod0_node.split_score;
-            representative_normal = representative_lod0_node.representative_normal;
-            return;
-        }
+        const AsspLod0NodeRecord representative_lod0_node = AsspLoadRepresentativeLod0Node(node);
+        selected_lod = 1;
+        selected_node_origin = AsspNodeOriginFromCoord(hierarchy_texel_pos, lod_index);
+        selected_node_size = AsspNodeSizeInPixels(lod_index);
+        representative_texel_pos = AsspUnpackRepresentativeTexelInt2(node.representative_texel_packed);
+        representative_depth = representative_lod0_node.front_depth;
+        plane_error = representative_lod0_node.plane_error;
+        split_score = representative_lod0_node.split_score;
+        representative_normal = representative_lod0_node.representative_normal;
     }
 }
 

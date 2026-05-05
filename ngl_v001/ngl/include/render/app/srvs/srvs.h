@@ -169,6 +169,7 @@ namespace ngl::render::app
         rhi::RefSrvDep GetAsspBuffer() const { return assp_buffer_.srv; }
         rhi::RefSrvDep GetAsspProbeTex() const { return assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv; }
         rhi::RefSrvDep GetAsspProbeTileInfoTex() const { return assp_probe_tile_info_tex_[assp_tile_info_curr_frame_tex_index_].srv; }
+        rhi::RefSrvDep GetAsspProbeRepresentativeTileTex() const { return assp_probe_representative_tile_tex_[assp_tile_info_curr_frame_tex_index_].srv; }
         rhi::RefSrvDep GetAsspProbePackedShTex() const { return assp_probe_packed_sh_tex_.srv; }
 
     private:
@@ -235,10 +236,10 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_preupdate_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_generate_indirect_arg_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_variance_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_sh_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_depth_analysis_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_lod1_build_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_hierarchy_build_ = {};
 
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
@@ -301,6 +302,7 @@ namespace ngl::render::app
         ComputeTextureSet assp_probe_tile_info_tex_[2] = {}; // f16_rgba, 1/4解像度のASSPタイル情報.
         ComputeTextureSet assp_probe_representative_tile_tex_[2] = {}; // r32_uint, 各タイルが参照する representative tile id.
         ComputeTextureSet assp_probe_tex_[2] = {}; // 4x4 texel per probe.
+        ComputeTextureSet assp_probe_variance_tex_[2] = {}; // f16_rgba, x: filtered mean, y: filtered second moment, z: raw mean, w: raw variance.
         ComputeTextureSet assp_probe_packed_sh_tex_ = {}; // f16_rgba, 係数優先2x2 atlas.
         ComputeTextureSet assp_probe_best_prev_tile_tex_ = {}; // r32_uint, Preupdateで計算したBestPrevTile.
         ComputeTextureSet assp_probe_side_cache_tex_ = {}; // 4x4 texel per cached probe.
@@ -336,7 +338,9 @@ namespace ngl::render::app
         static float dbg_ss_probe_spatial_filter_normal_cos_threshold_;
         static float dbg_ss_probe_spatial_filter_depth_exp_scale_;
         static float dbg_ss_probe_side_cache_plane_dist_threshold_;
-        static float dbg_assp_split_threshold_;
+        static float assp_lod_geometry_weight_;
+        static float assp_lod_radiance_variance_weight_;
+        static float assp_lod_split_score_threshold_;
         static int dbg_assp_leaf_border_enable_;
         static int dbg_fsp_lighting_interpolation_enable_;
         static int dbg_fsp_spawn_far_cell_enable_;

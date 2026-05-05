@@ -2,10 +2,15 @@
 #define NGL_SHADER_SRVS_ASSP_PROBE_COMMON_H
 
 #include "../srvs_util.hlsli"
+#include "assp_buffer_util.hlsli"
 
 Texture2D<float4>      AdaptiveScreenSpaceProbeTex;
 Texture2D<float4>      AdaptiveScreenSpaceProbeHistoryTex;
 RWTexture2D<float4>    RWAdaptiveScreenSpaceProbeTex;
+
+Texture2D<float4>      AdaptiveScreenSpaceProbeVarianceTex;
+Texture2D<float4>      AdaptiveScreenSpaceProbeHistoryVarianceTex;
+RWTexture2D<float4>    RWAdaptiveScreenSpaceProbeVarianceTex;
 
 Texture2D<float4>      AdaptiveScreenSpaceProbeTileInfoTex;
 Texture2D<float4>      AdaptiveScreenSpaceProbeHistoryTileInfoTex;
@@ -78,6 +83,79 @@ uint AsspPackProbeTileId(uint2 probe_tile_id)
 int2 AsspUnpackProbeTileId(uint packed_probe_tile_id)
 {
     return int2(packed_probe_tile_id & 0xffffu, packed_probe_tile_id >> 16u);
+}
+
+void AsspResolveLeafNodeFromCurrentRepresentativeTileMap(
+    int2 screen_texel_pos,
+    out int selected_lod,
+    out int2 selected_node_origin,
+    out int selected_node_size,
+    out int2 representative_texel_pos,
+    out float representative_depth,
+    out float plane_error,
+    out float split_score,
+    out float3 representative_normal)
+{
+    selected_lod = 0;
+    selected_node_origin = int2(0, 0);
+    selected_node_size = int(k_assp_tile_size);
+    representative_texel_pos = int2(-1, -1);
+    representative_depth = 0.0;
+    plane_error = 0.0;
+    split_score = 0.0;
+    representative_normal = float3(0.0, 0.0, 1.0);
+
+    uint2 representative_tile_tex_size;
+    AdaptiveScreenSpaceProbeRepresentativeTileTex.GetDimensions(representative_tile_tex_size.x, representative_tile_tex_size.y);
+    const int2 current_tile_id = screen_texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+    if(any(current_tile_id < 0) || any(current_tile_id >= int2(representative_tile_tex_size)))
+    {
+        return;
+    }
+
+    const uint representative_tile_packed = AdaptiveScreenSpaceProbeRepresentativeTileTex.Load(int3(current_tile_id, 0)).x;
+    if(0xffffffffu == representative_tile_packed)
+    {
+        return;
+    }
+
+    const int2 representative_tile_id = AsspUnpackProbeTileId(representative_tile_packed);
+    const AsspLod0NodeRecord representative_lod0_node = AsspLoadLod0Node(uint2(representative_tile_id));
+    representative_texel_pos = AsspUnpackRepresentativeTexelInt2(representative_lod0_node.representative_texel_packed);
+    representative_depth = representative_lod0_node.front_depth;
+    plane_error = representative_lod0_node.plane_error;
+    split_score = representative_lod0_node.split_score;
+    representative_normal = AsspLod0NodeIsSolid(representative_lod0_node) ? representative_lod0_node.representative_normal : float3(0.0, 0.0, 1.0);
+    selected_node_origin = representative_tile_id * int(ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE);
+
+    const int2 coarse_tile_origin = (current_tile_id / 2) * 2;
+    bool is_same_representative_in_coarse_block = true;
+    [unroll]
+    for(int oy = 0; oy < 2; ++oy)
+    {
+        [unroll]
+        for(int ox = 0; ox < 2; ++ox)
+        {
+            const int2 block_tile_id = coarse_tile_origin + int2(ox, oy);
+            if(any(block_tile_id >= int2(representative_tile_tex_size)))
+            {
+                continue;
+            }
+
+            const uint block_representative_tile_packed = AdaptiveScreenSpaceProbeRepresentativeTileTex.Load(int3(block_tile_id, 0)).x;
+            if(block_representative_tile_packed != representative_tile_packed)
+            {
+                is_same_representative_in_coarse_block = false;
+            }
+        }
+    }
+
+    if(is_same_representative_in_coarse_block)
+    {
+        selected_lod = 1;
+        selected_node_origin = coarse_tile_origin * int(ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE);
+        selected_node_size = int(AsspNodeSizeInPixels(1u));
+    }
 }
 
 int2 AsspPackedShAtlasCoeffOffset(uint coeff_index, int2 logical_resolution)

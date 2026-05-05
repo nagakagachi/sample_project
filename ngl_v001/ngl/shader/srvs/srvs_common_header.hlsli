@@ -192,12 +192,13 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     #define SCREEN_SPACE_PROBE_PREUPDATE_RELOCATION_PROBABILITY 0.025
 
     // Adaptive Screen Space Probe tile hierarchy.
-    // 4x4 screen texel を LOD0 node として扱い、LOD0..LOD[MAX] の node record を 1 本の scalar uint buffer へ
-    // LOD 順に連結格納する。texture atlas の要素配置都合から切り離し、後段で bit packing や record 再設計を
-    // しやすくするのが目的。
+    // 現在は two-level 固定:
+    //   LOD0 = 4x4 fine tile
+    //   LOD1 = 8x8 coarse tile
+    // のみを 1 本の scalar uint buffer へ [LOD0][LOD1] の順で連結格納する。
     static const uint k_assp_tile_size = 4u;
-    static const uint k_assp_max_lod_count = 5u;
-    // LOD0 は詳細 plane 情報を保持し、LOD1+ は representative と active count 中心の軽量 record を持つ。
+    static const uint k_assp_max_lod_count = 2u;
+    // LOD0 は詳細 plane 情報を保持し、LOD1 は representative と active count 中心の軽量 record を持つ。
     // k_assp_words_per_node は C++ 側の互換用に最大 word 数を残し、実際の LOD 別幅は AsspWordsPerNode() で引く。
     static const uint k_assp_lod0_words_per_node = 9u;
     static const uint k_assp_upper_words_per_node = 2u;
@@ -221,7 +222,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
     inline uint AsspNodeSizeInPixels(uint lod_index)
     {
-        // LOD ごとに node の screen-space 担当範囲を 2 倍に広げる。
+        // two-level 固定なので 0 -> 4x4, 1 -> 8x8。
         return k_assp_tile_size << lod_index;
     }
 
@@ -446,13 +447,13 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
         float debug_probe_radius NGL_CPP_MEMBER_INIT({0.0f});
         float debug_probe_near_geom_scale NGL_CPP_MEMBER_INIT({0.2f});
-        float assp_debug_split_threshold NGL_CPP_MEMBER_INIT({0.2f});
+        float assp_lod_geometry_weight NGL_CPP_MEMBER_INIT({1.0f});
+        float assp_lod_radiance_variance_weight NGL_CPP_MEMBER_INIT({1.0f});
+        float assp_lod_split_score_threshold NGL_CPP_MEMBER_INIT({0.5f});
         int assp_debug_leaf_border_enable NGL_CPP_MEMBER_INIT({1});
-        int assp_lod_count NGL_CPP_MEMBER_INIT({int(k_assp_max_lod_count)});
         int assp_words_per_node NGL_CPP_MEMBER_INIT({int(k_assp_words_per_node)});
         int assp_total_word_count NGL_CPP_MEMBER_INIT({0});
         int assp_tile_size NGL_CPP_MEMBER_INIT({int(k_assp_tile_size)});
-        int assp_build_lod NGL_CPP_MEMBER_INIT({0});
         int assp_dummy_padding0 NGL_CPP_MEMBER_INIT({0});
         int assp_dummy_padding1 NGL_CPP_MEMBER_INIT({0});
     };

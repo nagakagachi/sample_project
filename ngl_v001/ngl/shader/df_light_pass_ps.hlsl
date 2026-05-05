@@ -661,7 +661,7 @@ bool AsspTrySamplePackedShL1FromScreenTexel(out AsspProbePackedShL1Sample result
     float plane_error = 0.0;
     float split_score = 0.0;
     float3 representative_normal = 0.0.xxx;
-    AsspResolveLeafNode(
+    AsspResolveLeafNodeFromCurrentRepresentativeTileMap(
         screen_texel_pos,
         selected_lod,
         selected_node_origin,
