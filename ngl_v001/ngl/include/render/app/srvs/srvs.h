@@ -236,6 +236,7 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_preupdate_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_generate_indirect_arg_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_spatial_filter_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_variance_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_sh_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_depth_analysis_ = {};
@@ -338,6 +339,11 @@ namespace ngl::render::app
         static float assp_lod_geometry_weight_;
         static float assp_lod_radiance_variance_weight_;
         static float assp_lod_split_score_threshold_;
+        static int assp_spatial_filter_enable_;
+        static float assp_spatial_filter_normal_cos_threshold_;
+        static float assp_spatial_filter_depth_exp_scale_;
+        static int assp_temporal_reprojection_enable_;
+        static int assp_ray_guiding_enable_;
         static int dbg_assp_leaf_border_enable_;
         static int dbg_fsp_lighting_interpolation_enable_;
         static int dbg_fsp_spawn_far_cell_enable_;

@@ -83,7 +83,7 @@ void main_cs(
     float filtered_mean = raw_mean;
     float filtered_second_moment = raw_second_moment;
 
-    if(0 != cb_srvs.ss_probe_temporal_reprojection_enable)
+    if(0 != cb_srvs.assp_temporal_reprojection_enable)
     {
         const uint best_prev_tile_packed = AdaptiveScreenSpaceProbeBestPrevTileTex.Load(int3(probe_tile_id, 0)).x;
         if(0xffffffffu != best_prev_tile_packed)

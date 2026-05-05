@@ -193,7 +193,7 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
     const float3 probe_pos_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(probe_pos_vs, 1.0));
 
     uint best_prev_tile_packed = 0xffffffffu;
-    if((0 != cb_srvs.ss_probe_temporal_reprojection_enable) && (cb_srvs.frame_count > 1))
+    if((0 != cb_srvs.assp_temporal_reprojection_enable) && (cb_srvs.frame_count > 1))
     {
         bool is_valid_prev_uv = false;
         const float2 prev_uv = SspCalcPrevFrameUvFromWorldPos(probe_pos_ws, cb_ngl_sceneview.cb_prev_view_mtx, cb_ngl_sceneview.cb_prev_proj_mtx, is_valid_prev_uv);
