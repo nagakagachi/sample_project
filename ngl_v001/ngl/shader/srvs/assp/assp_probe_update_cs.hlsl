@@ -14,6 +14,16 @@ raw RGBA = radiance.rgb / sky_visibility を直接書き込む。
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
+float AsspBiasedShadowPreservingTemporalFilterWeight(float curr_value, float prev_value)
+{
+    const float l1 = curr_value;
+    const float l2 = prev_value;
+    float alpha = max(l1 - l2 - min(l1, l2), 0.0) / max(max(l1, l2), 1e-4);
+    //alpha = CalcSquare(clamp(alpha, 0.0, 0.95));
+    alpha = CalcSquare(clamp(alpha, 0.0, 0.98));
+    return alpha;
+}
+
 [numthreads(ADAPTIVE_SCREEN_SPACE_PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(
     uint3 gtid : SV_GroupThreadID,
@@ -90,5 +100,26 @@ void main_cs(
     const bool is_sky_visible = (curr_ray_t_ws.x < 0.0);
     const float sky_visibility = is_sky_visible ? 1.0 : 0.0;
     const float3 hit_radiance = is_sky_visible ? 0.0.xxx : max(BitmaskBrickVoxelOptionData[hit_voxel_index].resolved_radiance, 0.0.xxx);
-    RWAdaptiveScreenSpaceProbeTex[global_pos] = float4(hit_radiance, sky_visibility);
+
+    float3 new_radiance = hit_radiance;
+    float new_sky_visibility = sky_visibility;
+    if(0 != cb_srvs.ss_probe_temporal_reprojection_enable)
+    {
+        const uint best_prev_tile_packed = AdaptiveScreenSpaceProbeBestPrevTileTex.Load(int3(probe_id, 0)).x;
+        if(0xffffffffu != best_prev_tile_packed)
+        {
+            const int2 prev_global_pos = clamp(
+                AsspUnpackProbeTileId(best_prev_tile_packed) * ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION + probe_atlas_local_pos,
+                int2(0, 0),
+                int2(probe_tex_size) - 1);
+            const float4 prev_reprojected_probe_value = AdaptiveScreenSpaceProbeHistoryTex.Load(int3(prev_global_pos, 0));
+            float temporal_rate = AsspBiasedShadowPreservingTemporalFilterWeight(sky_visibility, prev_reprojected_probe_value.a);
+            temporal_rate = clamp(temporal_rate, cb_srvs.ss_probe_temporal_min_hysteresis, cb_srvs.ss_probe_temporal_max_hysteresis);
+
+            new_radiance = lerp(new_radiance, prev_reprojected_probe_value.rgb, temporal_rate);
+            new_sky_visibility = lerp(new_sky_visibility, prev_reprojected_probe_value.a, temporal_rate);
+        }
+    }
+
+    RWAdaptiveScreenSpaceProbeTex[global_pos] = float4(new_radiance, new_sky_visibility);
 }

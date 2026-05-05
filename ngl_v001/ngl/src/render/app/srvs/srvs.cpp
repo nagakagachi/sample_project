@@ -420,6 +420,9 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_tile_info_srv = "AdaptiveScreenSpaceProbeTileInfoTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_history_tile_info_srv = "AdaptiveScreenSpaceProbeHistoryTileInfoTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_tile_info_uav = "RWAdaptiveScreenSpaceProbeTileInfoTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_representative_tile_srv = "AdaptiveScreenSpaceProbeRepresentativeTileTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_history_representative_tile_srv = "AdaptiveScreenSpaceProbeHistoryRepresentativeTileTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_representative_tile_uav = "RWAdaptiveScreenSpaceProbeRepresentativeTileTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_best_prev_tile_srv = "AdaptiveScreenSpaceProbeBestPrevTileTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_best_prev_tile_uav = "RWAdaptiveScreenSpaceProbeBestPrevTileTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_filtered_uav = "RWAdaptiveScreenSpaceProbeFilteredTex";
@@ -676,6 +679,23 @@ namespace ngl::render::app
             desc.initial_state = rhi::EResourceState::Common;
 
             if(!assp_probe_tile_info_tex_[i].Initialize(p_device, desc, (0 == i) ? "Srvs_AsspProbeTileInfoTexA" : "Srvs_AsspProbeTileInfoTexB"))
+                return false;
+        }
+        for(int i = 0; i < 2; ++i)
+        {
+            rhi::TextureDep::Desc desc = {};
+            desc.type = rhi::ETextureType::Texture2D;
+            desc.width = (assp_probe_base_resolution_x + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.height = (assp_probe_base_resolution_y + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+            desc.depth = 1;
+            desc.mip_count = 1;
+            desc.array_size = 1;
+            desc.format = rhi::EResourceFormat::Format_R32_UINT;
+            desc.sample_count = 1;
+            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
+            desc.initial_state = rhi::EResourceState::Common;
+
+            if(!assp_probe_representative_tile_tex_[i].Initialize(p_device, desc, (0 == i) ? "Srvs_AsspProbeRepresentativeTileTexA" : "Srvs_AsspProbeRepresentativeTileTexB"))
                 return false;
         }
         {
@@ -1476,6 +1496,7 @@ namespace ngl::render::app
 
                     p_command_list->ResourceBarrier(assp_probe_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                     p_command_list->ResourceBarrier(assp_probe_tile_info_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+                    p_command_list->ResourceBarrier(assp_probe_representative_tile_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 }
                 {
                     ngl::rhi::DescriptorSetDep desc_set = {};
@@ -1995,6 +2016,8 @@ namespace ngl::render::app
 
         const ngl::u32 assp_probe_update_write_index = assp_curr_frame_tex_index_;
         const ngl::u32 assp_probe_tile_info_curr_index = assp_tile_info_curr_frame_tex_index_;
+        const ngl::u32 assp_probe_history_index = assp_prev_frame_tex_index_;
+        const ngl::u32 assp_probe_tile_info_history_index = assp_tile_info_prev_frame_tex_index_;
 
         {
             {
@@ -2017,8 +2040,11 @@ namespace ngl::render::app
                 pso_assp_probe_preupdate_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_assp_probe_preupdate_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_assp_buffer_srv.Get(), assp_buffer_.srv.Get());
+                pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_asspprobe_history_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_history_index].srv.Get());
+                pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_asspprobe_history_representative_tile_srv.Get(), assp_probe_representative_tile_tex_[assp_probe_tile_info_history_index].srv.Get());
                 pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_assp_representative_probe_list_uav.Get(), assp_representative_probe_list_.uav.Get());
                 pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_uav.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].uav.Get());
+                pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_asspprobe_representative_tile_uav.Get(), assp_probe_representative_tile_tex_[assp_probe_tile_info_curr_index].uav.Get());
                 pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_asspprobe_best_prev_tile_uav.Get(), assp_probe_best_prev_tile_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_assp_probe_preupdate_.Get());
@@ -2030,6 +2056,7 @@ namespace ngl::render::app
                     1);
 
                 p_command_list->ResourceUavBarrier(assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].texture.Get());
+                p_command_list->ResourceUavBarrier(assp_probe_representative_tile_tex_[assp_probe_tile_info_curr_index].texture.Get());
                 p_command_list->ResourceUavBarrier(assp_probe_best_prev_tile_tex_.texture.Get());
                 p_command_list->ResourceUavBarrier(assp_representative_probe_list_.buffer.Get());
             }
@@ -2056,8 +2083,10 @@ namespace ngl::render::app
                 pso_assp_probe_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_assp_probe_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
                 pso_assp_probe_update_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
+                pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_history_srv.Get(), assp_probe_tex_[assp_probe_history_index].srv.Get());
                 pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_assp_representative_probe_list_srv.Get(), assp_representative_probe_list_.srv.Get());
                 pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].srv.Get());
+                pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_best_prev_tile_srv.Get(), assp_probe_best_prev_tile_tex_.srv.Get());
                 pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_uav.Get(), assp_probe_tex_[assp_probe_update_write_index].uav.Get());
 
                 p_command_list->SetPipelineState(pso_assp_probe_update_.Get());

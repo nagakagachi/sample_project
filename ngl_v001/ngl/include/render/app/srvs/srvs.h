@@ -299,6 +299,7 @@ namespace ngl::render::app
         ComputeTextureSet ss_probe_side_cache_meta_tex_ = {}; // 1/8 resolution, xyz: world pos, w: last update frame.
         ComputeTextureSet ss_probe_side_cache_lock_tex_ = {}; // 1/8 resolution, uint lock tag per tile for frame-local CAS.
         ComputeTextureSet assp_probe_tile_info_tex_[2] = {}; // f16_rgba, 1/4解像度のASSPタイル情報.
+        ComputeTextureSet assp_probe_representative_tile_tex_[2] = {}; // r32_uint, 各タイルが参照する representative tile id.
         ComputeTextureSet assp_probe_tex_[2] = {}; // 4x4 texel per probe.
         ComputeTextureSet assp_probe_packed_sh_tex_ = {}; // f16_rgba, 係数優先2x2 atlas.
         ComputeTextureSet assp_probe_best_prev_tile_tex_ = {}; // r32_uint, Preupdateで計算したBestPrevTile.
