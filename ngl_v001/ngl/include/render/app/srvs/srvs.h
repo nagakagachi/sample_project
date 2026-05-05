@@ -192,6 +192,8 @@ namespace ngl::render::app
         ngl::u32 assp_prev_frame_tex_index_ = 0;
         ngl::u32 assp_curr_frame_tex_index_ = 0;
         ngl::u32 assp_latest_filtered_frame_tex_index_ = 0;
+        ngl::u32 assp_variance_prev_frame_tex_index_ = 0;
+        ngl::u32 assp_variance_curr_frame_tex_index_ = 0;
 
         ngl::u32 assp_tile_info_prev_frame_tex_index_ = 0;
         ngl::u32 assp_tile_info_curr_frame_tex_index_ = 0;

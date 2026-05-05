@@ -367,7 +367,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int dummy2 NGL_CPP_MEMBER_INIT({});
 
         // Temporal再利用重みの最小値.
-        float ss_probe_temporal_min_hysteresis NGL_CPP_MEMBER_INIT({0.8f});
+        float ss_probe_temporal_min_hysteresis NGL_CPP_MEMBER_INIT({0.5f});
         // Temporal再利用重みの最大値.
         float ss_probe_temporal_max_hysteresis NGL_CPP_MEMBER_INIT({0.98f});
         // Temporal再投影有効化フラグ.

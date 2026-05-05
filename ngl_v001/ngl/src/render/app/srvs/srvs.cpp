@@ -1292,6 +1292,8 @@ namespace ngl::render::app
             assp_prev_frame_tex_index_ = 0;
             assp_curr_frame_tex_index_ = 0;
             assp_latest_filtered_frame_tex_index_ = 0;
+            assp_variance_prev_frame_tex_index_ = 0;
+            assp_variance_curr_frame_tex_index_ = 0;
             assp_tile_info_prev_frame_tex_index_ = 0;
             assp_tile_info_curr_frame_tex_index_ = 0;
         }
@@ -1310,6 +1312,8 @@ namespace ngl::render::app
         assp_prev_frame_tex_index_ = assp_curr_frame_tex_index_;
         assp_curr_frame_tex_index_ = 1 - assp_prev_frame_tex_index_;
         assp_latest_filtered_frame_tex_index_ = assp_prev_frame_tex_index_;
+        assp_variance_prev_frame_tex_index_ = assp_variance_curr_frame_tex_index_;
+        assp_variance_curr_frame_tex_index_ = 1 - assp_variance_prev_frame_tex_index_;
 
         assp_tile_info_prev_frame_tex_index_ = assp_tile_info_curr_frame_tex_index_;
         assp_tile_info_curr_frame_tex_index_ = 1 - assp_tile_info_prev_frame_tex_index_;
@@ -2035,8 +2039,8 @@ namespace ngl::render::app
         const ngl::u32 assp_probe_tile_info_curr_index = assp_tile_info_curr_frame_tex_index_;
         const ngl::u32 assp_probe_history_index = assp_prev_frame_tex_index_;
         const ngl::u32 assp_probe_tile_info_history_index = assp_tile_info_prev_frame_tex_index_;
-        const ngl::u32 assp_probe_variance_write_index = assp_curr_frame_tex_index_;
-        const ngl::u32 assp_probe_variance_history_index = assp_prev_frame_tex_index_;
+        const ngl::u32 assp_probe_variance_write_index = assp_variance_curr_frame_tex_index_;
+        const ngl::u32 assp_probe_variance_history_index = assp_variance_prev_frame_tex_index_;
         const bool is_assp_spatial_filter_enable = (0 != ScreenReconstructedVoxelStructure::assp_spatial_filter_enable_);
 
         {
@@ -2151,7 +2155,8 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_assp_probe_variance_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_assp_probe_variance_->SetView(&desc_set, k_shader_bind_name_assp_representative_probe_list_srv.Get(), assp_representative_probe_list_.srv.Get());
-                pso_assp_probe_variance_->SetView(&desc_set, k_shader_bind_name_asspprobe_srv.Get(), assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv.Get());
+                // LOD split/merge は spatial filter 後ではなく、生の update 出力に対する分散を見て判定する。
+                pso_assp_probe_variance_->SetView(&desc_set, k_shader_bind_name_asspprobe_srv.Get(), assp_probe_tex_[assp_probe_update_write_index].srv.Get());
                 pso_assp_probe_variance_->SetView(&desc_set, k_shader_bind_name_asspprobe_history_variance_srv.Get(), assp_probe_variance_tex_[assp_probe_variance_history_index].srv.Get());
                 pso_assp_probe_variance_->SetView(&desc_set, k_shader_bind_name_asspprobe_best_prev_tile_srv.Get(), assp_probe_best_prev_tile_tex_.srv.Get());
                 pso_assp_probe_variance_->SetView(&desc_set, k_shader_bind_name_asspprobe_variance_uav.Get(), assp_probe_variance_tex_[assp_probe_variance_write_index].uav.Get());
@@ -2190,7 +2195,7 @@ namespace ngl::render::app
 
         const u32 assp_lod0_width = AsspLodWidth(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.x), 0u);
         const u32 assp_lod0_height = AsspLodHeight(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.y), 0u);
-        const ngl::u32 assp_probe_variance_history_index = assp_prev_frame_tex_index_;
+        const ngl::u32 assp_probe_variance_history_index = assp_variance_prev_frame_tex_index_;
 
         {
             NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AsspLod0Build");
@@ -2460,7 +2465,7 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_srv.Get(), ss_probe_side_cache_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_meta_srv.Get(), ss_probe_side_cache_meta_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_srv.Get(), assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_variance_srv.Get(), assp_probe_variance_tex_[assp_curr_frame_tex_index_].srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_variance_srv.Get(), assp_probe_variance_tex_[assp_variance_curr_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_tile_info_curr_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_representative_tile_srv.Get(), assp_probe_representative_tile_tex_[assp_tile_info_curr_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_packed_sh_srv.Get(), assp_probe_packed_sh_tex_.srv.Get());
