@@ -444,11 +444,13 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         float assp_spatial_filter_depth_exp_scale NGL_CPP_MEMBER_INIT({float(SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE)});
         int assp_temporal_reprojection_enable NGL_CPP_MEMBER_INIT({1});
         int assp_ray_guiding_enable NGL_CPP_MEMBER_INIT({1});
+        int assp_debug_freeze_frame_random_enable NGL_CPP_MEMBER_INIT({0});
         int assp_debug_leaf_border_enable NGL_CPP_MEMBER_INIT({1});
         int assp_words_per_node NGL_CPP_MEMBER_INIT({int(k_assp_words_per_node)});
         int assp_total_word_count NGL_CPP_MEMBER_INIT({0});
         int assp_tile_size NGL_CPP_MEMBER_INIT({int(k_assp_tile_size)});
         int assp_dummy_padding0 NGL_CPP_MEMBER_INIT({0});
+        int assp_dummy_padding1 NGL_CPP_MEMBER_INIT({0});
     };
 #ifdef NGL_SHADER_CPP_INCLUDE
     // C++用のコンパイル時定数デフォルト構造体.

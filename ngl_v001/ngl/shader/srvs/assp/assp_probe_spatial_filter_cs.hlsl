@@ -62,8 +62,8 @@ void main_cs(
     [unroll]
     for (int i = 0; i < 4; ++i)
     {
-        const int2 neighbor_tile = probe_tile_id + neighbor_offsets[i];
-        if (any(neighbor_tile < int2(0, 0)) || any(neighbor_tile >= int2(tile_info_size)))
+        int2 neighbor_tile = int2(-1, -1);
+        if(!AsspTryResolveSpatialFilterNeighborRepresentativeTileId(probe_tile_id, neighbor_offsets[i], neighbor_tile))
         {
             continue;
         }

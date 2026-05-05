@@ -102,6 +102,7 @@ namespace ngl::render::app
     float ScreenReconstructedVoxelStructure::assp_spatial_filter_depth_exp_scale_ = k_default_srvs_param.assp_spatial_filter_depth_exp_scale;
     int ScreenReconstructedVoxelStructure::assp_temporal_reprojection_enable_ = k_default_srvs_param.assp_temporal_reprojection_enable;
     int ScreenReconstructedVoxelStructure::assp_ray_guiding_enable_ = k_default_srvs_param.assp_ray_guiding_enable;
+    int ScreenReconstructedVoxelStructure::assp_debug_freeze_frame_random_enable_ = k_default_srvs_param.assp_debug_freeze_frame_random_enable;
     int ScreenReconstructedVoxelStructure::dbg_assp_leaf_border_enable_ = k_default_srvs_param.assp_debug_leaf_border_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_lighting_interpolation_enable_ = k_default_srvs_param.fsp_lighting_interpolation_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_spawn_far_cell_enable_ = k_default_srvs_param.fsp_spawn_far_cell_enable;
@@ -295,6 +296,16 @@ namespace ngl::render::app
                     if (ImGui::BeginPopupContextItem()) {
                         if (ImGui::MenuItem("Reset to Default"))
                             assp_ray_guiding_enable_ = k_default_srvs_param.assp_ray_guiding_enable;
+                        ImGui::EndPopup();
+                    }
+                }
+                {
+                    bool v = (0 != assp_debug_freeze_frame_random_enable_);
+                    if (ImGui::Checkbox("Freeze Frame Random", &v))
+                        assp_debug_freeze_frame_random_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            assp_debug_freeze_frame_random_enable_ = k_default_srvs_param.assp_debug_freeze_frame_random_enable;
                         ImGui::EndPopup();
                     }
                 }
@@ -1433,6 +1444,7 @@ namespace ngl::render::app
             param.assp_spatial_filter_depth_exp_scale = ScreenReconstructedVoxelStructure::assp_spatial_filter_depth_exp_scale_;
             param.assp_temporal_reprojection_enable = ScreenReconstructedVoxelStructure::assp_temporal_reprojection_enable_;
             param.assp_ray_guiding_enable = ScreenReconstructedVoxelStructure::assp_ray_guiding_enable_;
+            param.assp_debug_freeze_frame_random_enable = ScreenReconstructedVoxelStructure::assp_debug_freeze_frame_random_enable_;
             param.assp_debug_leaf_border_enable = ScreenReconstructedVoxelStructure::dbg_assp_leaf_border_enable_;
 
             dispatch_param_cache_ = param;
@@ -2131,8 +2143,11 @@ namespace ngl::render::app
                 const ngl::u32 assp_probe_filter_output_index = 1 - assp_probe_filter_input_index;
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_assp_probe_spatial_filter_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+                pso_assp_probe_spatial_filter_->SetView(&desc_set, k_shader_bind_name_assp_buffer_srv.Get(), assp_buffer_.srv.Get());
                 pso_assp_probe_spatial_filter_->SetView(&desc_set, k_shader_bind_name_asspprobe_srv.Get(), assp_probe_tex_[assp_probe_filter_input_index].srv.Get());
                 pso_assp_probe_spatial_filter_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].srv.Get());
+                pso_assp_probe_spatial_filter_->SetView(&desc_set, k_shader_bind_name_asspprobe_representative_tile_srv.Get(), assp_probe_representative_tile_tex_[assp_probe_tile_info_curr_index].srv.Get());
                 pso_assp_probe_spatial_filter_->SetView(&desc_set, k_shader_bind_name_asspprobe_filtered_uav.Get(), assp_probe_tex_[assp_probe_filter_output_index].uav.Get());
 
                 p_command_list->SetPipelineState(pso_assp_probe_spatial_filter_.Get());

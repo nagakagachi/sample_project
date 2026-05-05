@@ -346,6 +346,7 @@ namespace ngl::render::app
         static float assp_spatial_filter_depth_exp_scale_;
         static int assp_temporal_reprojection_enable_;
         static int assp_ray_guiding_enable_;
+        static int assp_debug_freeze_frame_random_enable_;
         static int dbg_assp_leaf_border_enable_;
         static int dbg_fsp_lighting_interpolation_enable_;
         static int dbg_fsp_spawn_far_cell_enable_;

@@ -158,6 +158,130 @@ void AsspResolveLeafNodeFromCurrentRepresentativeTileMap(
     }
 }
 
+bool AsspTryResolveRepresentativeTileIdFromCurrentRepresentativeTileMap(
+    int2 screen_texel_pos,
+    out int2 representative_tile_id,
+    out int selected_lod,
+    out int2 selected_node_origin,
+    out int selected_node_size)
+{
+    int2 representative_texel_pos;
+    float representative_depth;
+    float plane_error;
+    float split_score;
+    float3 representative_normal;
+    AsspResolveLeafNodeFromCurrentRepresentativeTileMap(
+        screen_texel_pos,
+        selected_lod,
+        selected_node_origin,
+        selected_node_size,
+        representative_texel_pos,
+        representative_depth,
+        plane_error,
+        split_score,
+        representative_normal);
+
+    representative_tile_id = int2(-1, -1);
+    if(any(representative_texel_pos < 0))
+    {
+        return false;
+    }
+
+    representative_tile_id = representative_texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+    return true;
+}
+
+bool AsspTryResolveSpatialFilterNeighborRepresentativeTileId(
+    int2 center_representative_tile_id,
+    int2 direction,
+    out int2 neighbor_representative_tile_id)
+{
+    neighbor_representative_tile_id = int2(-1, -1);
+
+    uint2 tile_info_size_u32;
+    AdaptiveScreenSpaceProbeTileInfoTex.GetDimensions(tile_info_size_u32.x, tile_info_size_u32.y);
+    const int2 tile_info_size = int2(tile_info_size_u32);
+
+    int selected_lod;
+    int2 selected_node_origin;
+    int selected_node_size;
+    int2 resolved_center_representative_tile_id;
+    if(!AsspTryResolveRepresentativeTileIdFromCurrentRepresentativeTileMap(
+        center_representative_tile_id * ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE,
+        resolved_center_representative_tile_id,
+        selected_lod,
+        selected_node_origin,
+        selected_node_size))
+    {
+        return false;
+    }
+
+    // LOD0 は tile 隣接がそのまま side-neighbor になるので direct 解決でよい。
+    // LOD1 は representative child の位置に依存すると方向ごとの参照先が不安定になるため、
+    // coarse node 境界基準で近傍を解決する。
+    if(0 == selected_lod)
+    {
+        const int2 direct_lod0_neighbor_tile = center_representative_tile_id + direction;
+        if(all(direct_lod0_neighbor_tile >= int2(0, 0)) && all(direct_lod0_neighbor_tile < tile_info_size))
+        {
+            const float4 direct_lod0_neighbor_tile_info = AdaptiveScreenSpaceProbeTileInfoTex.Load(int3(direct_lod0_neighbor_tile, 0));
+            if(isValidDepth(direct_lod0_neighbor_tile_info.x))
+            {
+                neighbor_representative_tile_id = direct_lod0_neighbor_tile;
+                return true;
+            }
+        }
+    }
+
+    // LOD1、あるいは LOD0 direct が見つからない場合は、自身が属する current node の境界外サンプルから
+    // representative map 経由で「その方向の side-neighbor node」を解決する。
+    const int2 node_center = selected_node_origin + int2(selected_node_size / 2, selected_node_size / 2);
+    int2 neighbor_sample_screen_texel = node_center;
+    if(direction.x < 0)
+    {
+        neighbor_sample_screen_texel = int2(selected_node_origin.x - 1, node_center.y);
+    }
+    else if(direction.x > 0)
+    {
+        neighbor_sample_screen_texel = int2(selected_node_origin.x + selected_node_size, node_center.y);
+    }
+    else if(direction.y < 0)
+    {
+        neighbor_sample_screen_texel = int2(node_center.x, selected_node_origin.y - 1);
+    }
+    else if(direction.y > 0)
+    {
+        neighbor_sample_screen_texel = int2(node_center.x, selected_node_origin.y + selected_node_size);
+    }
+
+    const int2 screen_size = int2(AsspScreenWidth(), AsspScreenHeight());
+    if(any(neighbor_sample_screen_texel < int2(0, 0)) || any(neighbor_sample_screen_texel >= screen_size))
+    {
+        return false;
+    }
+
+    int neighbor_lod;
+    int2 neighbor_node_origin;
+    int neighbor_node_size;
+    if(!AsspTryResolveRepresentativeTileIdFromCurrentRepresentativeTileMap(
+        neighbor_sample_screen_texel,
+        neighbor_representative_tile_id,
+        neighbor_lod,
+        neighbor_node_origin,
+        neighbor_node_size))
+    {
+        return false;
+    }
+
+    if(all(neighbor_representative_tile_id == resolved_center_representative_tile_id))
+    {
+        neighbor_representative_tile_id = int2(-1, -1);
+        return false;
+    }
+
+    return true;
+}
+
 int2 AsspPackedShAtlasCoeffOffset(uint coeff_index, int2 logical_resolution)
 {
     switch(coeff_index)

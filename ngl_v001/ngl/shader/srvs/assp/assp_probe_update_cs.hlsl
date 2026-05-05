@@ -37,6 +37,12 @@ groupshared float gs_guiding_cdf[ADAPTIVE_SCREEN_SPACE_PROBE_UPDATE_THREAD_GROUP
 groupshared uint gs_best_prev_tile_packed[ADAPTIVE_SCREEN_SPACE_PROBE_PROBE_PER_GROUP];
 groupshared uint gs_use_guiding[ADAPTIVE_SCREEN_SPACE_PROBE_PROBE_PER_GROUP];
 
+uint AsspDebugFrameRandomIndex()
+{
+    // フレーム依存乱数を止めたいときは seed の frame 成分だけ固定する。
+    return (0 != cb_srvs.assp_debug_freeze_frame_random_enable) ? 0u : uint(cb_srvs.frame_count);
+}
+
 float AsspBiasedShadowPreservingTemporalFilterWeight(float curr_value, float prev_value)
 {
     const float l1 = curr_value;
@@ -124,8 +130,9 @@ void main_cs(
         gs_temporal_reprojected_probe_value[gindex] = AdaptiveScreenSpaceProbeHistoryTex.Load(int3(prev_global_pos, 0));
     }
 
+    const uint frame_random_index = AsspDebugFrameRandomIndex();
     RandomInstance rng;
-    rng.rngState = asuint(noise_float_to_float(float3(float(global_pos.x), float(global_pos.y), float(cb_srvs.frame_count))));
+    rng.rngState = asuint(noise_float_to_float(float3(float(global_pos.x), float(global_pos.y), float(frame_random_index))));
 
     const float2 cell_oct_uv = (float2(probe_atlas_local_pos) + 0.5) * ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION_INV;
     const float3 cell_dir_ws = SspDecodeDirByNormal(cell_oct_uv, probe_normal_ws);
@@ -199,7 +206,7 @@ void main_cs(
         else
 #endif
         {
-            const float3 unit_v3 = random_unit_vector3(float3(float(global_pos.x), float(global_pos.y), float(local_probe_texel_index ^ cb_srvs.frame_count)));
+            const float3 unit_v3 = random_unit_vector3(float3(float(global_pos.x), float(global_pos.y), float(local_probe_texel_index ^ frame_random_index)));
             const float3 local_dir = normalize(unit_v3 + float3(0.0, 0.0, 1.0));
             sample_ray_dir = local_dir.x * basis_t_ws + local_dir.y * basis_b_ws + local_dir.z * probe_normal_ws;
         }
@@ -222,10 +229,9 @@ void main_cs(
 
         const bool is_sky_visible = (curr_ray_t_ws.x < 0.0);
         const float sky_visibility = is_sky_visible ? 1.0 : 0.0;
+        const float2 oct_uv = SspEncodeDirByNormal(sample_ray_dir, probe_normal_ws);
         const float3 hit_radiance = is_sky_visible ? 0.0.xxx : max(BitmaskBrickVoxelOptionData[hit_voxel_index].resolved_radiance, 0.0.xxx);
         const uint3 fixed_point_hit_radiance = (uint3)(hit_radiance * ASSP_RADIANCE_FIXED_POINT_SCALE + 0.5.xxx);
-
-        const float2 oct_uv = SspEncodeDirByNormal(sample_ray_dir, probe_normal_ws);
         const int2 oct_cell_id = clamp(int2(oct_uv * ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION), int2(0, 0), int2(ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION - 1, ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION - 1));
         const uint accum_index = probe_base_index + oct_cell_id.y * ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION + oct_cell_id.x;
         InterlockedAdd(gs_ray_sample_accum[accum_index * ASSP_RAY_SAMPLE_ACCUM_STRIDE + ASSP_RAY_SAMPLE_ACCUM_COUNT], 1u);
