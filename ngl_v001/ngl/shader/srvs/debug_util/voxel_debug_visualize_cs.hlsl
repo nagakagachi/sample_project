@@ -696,6 +696,30 @@ void main_cs(
                     }
                 }
             }
+            else if(17 == debug_sub_mode)
+            {
+                const bool is_valid_rep = all(representative_texel_pos >= 0) && (representative_depth > 0.0);
+                if(!is_valid_rep)
+                {
+                    RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
+                }
+                else
+                {
+                    const int2 representative_tile_id = representative_texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+                    uint probe_linear_index = 0u;
+                    if(!AsspTryGetProbeLinearIndexFromTileId(representative_tile_id, probe_linear_index))
+                    {
+                        RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
+                    }
+                    else
+                    {
+                        const uint packed_meta = AsspProbeRayMetaBuffer[probe_linear_index];
+                        const uint ray_count_u = AsspUnpackRayMetaCount(packed_meta);
+                        const float t = saturate(float(ray_count_u) / float(k_assp_ray_count_max));
+                        RWTexWork[dtid.xy] = float4(t, t, t, 1.0);
+                    }
+                }
+            }
         }
     }
 }

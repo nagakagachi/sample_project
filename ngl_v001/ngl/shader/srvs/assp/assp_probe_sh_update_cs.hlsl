@@ -28,17 +28,21 @@ void main_cs(
     uint3 gid : SV_GroupID,
     uint gindex : SV_GroupIndex)
 {
-    const uint representative_probe_count = AsspRepresentativeProbeList[0];
+    const uint probe_count = AsspProbeTileCount();
     const uint probe_group_local_index = gindex / ADAPTIVE_SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT;
     const uint probe_list_index = gid.x * ADAPTIVE_SCREEN_SPACE_PROBE_PROBE_PER_GROUP + probe_group_local_index;
     const uint local_probe_texel_index = gindex % ADAPTIVE_SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT;
     const uint local_probe_lane = local_probe_texel_index;
-    const bool is_probe_list_index_valid = probe_list_index < representative_probe_count;
+    const bool is_probe_list_index_valid = probe_list_index < probe_count;
 
     uint2 packed_sh_tex_size;
     RWAdaptiveScreenSpaceProbePackedSHTex.GetDimensions(packed_sh_tex_size.x, packed_sh_tex_size.y);
     const int2 logical_sh_tex_size = int2(packed_sh_tex_size >> 1);
-    const int2 probe_tile_id = is_probe_list_index_valid ? AsspUnpackProbeTileId(AsspRepresentativeProbeList[probe_list_index + 1u]) : int2(-1, -1);
+    int2 probe_tile_id = int2(-1, -1);
+    if(is_probe_list_index_valid)
+    {
+        AsspTryGetProbeTileIdFromLinearIndex(probe_list_index, probe_tile_id);
+    }
     const bool is_probe_tile_in_range = is_probe_list_index_valid && all(probe_tile_id >= 0) && all(probe_tile_id < logical_sh_tex_size);
 
     float4 packed_sh_coeff0 = float4(0.0, 0.0, 0.0, 0.0);

@@ -94,14 +94,18 @@ namespace ngl::render::app
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_ = k_default_srvs_param.ss_probe_spatial_filter_normal_cos_threshold;
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_ = k_default_srvs_param.ss_probe_spatial_filter_depth_exp_scale;
     float ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_ = k_default_srvs_param.ss_probe_side_cache_plane_dist_threshold;
-    float ScreenReconstructedVoxelStructure::assp_lod_geometry_weight_ = k_default_srvs_param.assp_lod_geometry_weight;
-    float ScreenReconstructedVoxelStructure::assp_lod_radiance_variance_weight_ = k_default_srvs_param.assp_lod_radiance_variance_weight;
-    float ScreenReconstructedVoxelStructure::assp_lod_split_score_threshold_ = k_default_srvs_param.assp_lod_split_score_threshold;
     int ScreenReconstructedVoxelStructure::assp_spatial_filter_enable_ = k_default_srvs_param.assp_spatial_filter_enable;
     float ScreenReconstructedVoxelStructure::assp_spatial_filter_normal_cos_threshold_ = k_default_srvs_param.assp_spatial_filter_normal_cos_threshold;
     float ScreenReconstructedVoxelStructure::assp_spatial_filter_depth_exp_scale_ = k_default_srvs_param.assp_spatial_filter_depth_exp_scale;
     int ScreenReconstructedVoxelStructure::assp_temporal_reprojection_enable_ = k_default_srvs_param.assp_temporal_reprojection_enable;
     int ScreenReconstructedVoxelStructure::assp_ray_guiding_enable_ = k_default_srvs_param.assp_ray_guiding_enable;
+    int ScreenReconstructedVoxelStructure::assp_ray_budget_min_rays_ = k_default_srvs_param.assp_ray_budget_min_rays;
+    int ScreenReconstructedVoxelStructure::assp_ray_budget_max_rays_ = k_default_srvs_param.assp_ray_budget_max_rays;
+    float ScreenReconstructedVoxelStructure::assp_ray_budget_variance_weight_ = k_default_srvs_param.assp_ray_budget_variance_weight;
+    float ScreenReconstructedVoxelStructure::assp_ray_budget_normal_delta_weight_ = k_default_srvs_param.assp_ray_budget_normal_delta_weight;
+    float ScreenReconstructedVoxelStructure::assp_ray_budget_depth_delta_weight_ = k_default_srvs_param.assp_ray_budget_depth_delta_weight;
+    float ScreenReconstructedVoxelStructure::assp_ray_budget_no_history_bias_ = k_default_srvs_param.assp_ray_budget_no_history_bias;
+    float ScreenReconstructedVoxelStructure::assp_ray_budget_scale_ = k_default_srvs_param.assp_ray_budget_scale;
     int ScreenReconstructedVoxelStructure::assp_debug_freeze_frame_random_enable_ = k_default_srvs_param.assp_debug_freeze_frame_random_enable;
     int ScreenReconstructedVoxelStructure::dbg_assp_leaf_border_enable_ = k_default_srvs_param.assp_debug_leaf_border_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_lighting_interpolation_enable_ = k_default_srvs_param.fsp_lighting_interpolation_enable;
@@ -112,6 +116,8 @@ namespace ngl::render::app
     int ScreenReconstructedVoxelStructure::dbg_fsp_allocated_probe_count_ = 0;
     int ScreenReconstructedVoxelStructure::dbg_fsp_active_probe_count_ = 0;
     int ScreenReconstructedVoxelStructure::dbg_fsp_visible_surface_cell_count_ = 0;
+    int ScreenReconstructedVoxelStructure::dbg_assp_total_ray_count_ = 0;
+    int ScreenReconstructedVoxelStructure::dbg_assp_probe_count_ = 0;
 
     void ScreenReconstructedVoxelStructure::DrawDebugMenu(bool* p_enable_injection, bool* p_enable_rejection)
     {
@@ -239,24 +245,6 @@ namespace ngl::render::app
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
                 NGL_IMGUI_SCOPED_ID("ASSP");
 
-                ImGui::SliderFloat("LOD Geometry Weight", &assp_lod_geometry_weight_, 0.0f, 4.0f, "%.4f");
-                if (ImGui::BeginPopupContextItem()) {
-                    if (ImGui::MenuItem("Reset to Default"))
-                        assp_lod_geometry_weight_ = k_default_srvs_param.assp_lod_geometry_weight;
-                    ImGui::EndPopup();
-                }
-                ImGui::SliderFloat("LOD Radiance Variance Weight", &assp_lod_radiance_variance_weight_, 0.0f, 4.0f, "%.4f");
-                if (ImGui::BeginPopupContextItem()) {
-                    if (ImGui::MenuItem("Reset to Default"))
-                        assp_lod_radiance_variance_weight_ = k_default_srvs_param.assp_lod_radiance_variance_weight;
-                    ImGui::EndPopup();
-                }
-                ImGui::SliderFloat("LOD Split Score Threshold", &assp_lod_split_score_threshold_, 0.0f, 1.0f, "%.4f");
-                if (ImGui::BeginPopupContextItem()) {
-                    if (ImGui::MenuItem("Reset to Default"))
-                        assp_lod_split_score_threshold_ = k_default_srvs_param.assp_lod_split_score_threshold;
-                    ImGui::EndPopup();
-                }
                 {
                     bool v = (0 != assp_spatial_filter_enable_);
                     if (ImGui::Checkbox("SpatialFilter", &v))
@@ -299,6 +287,63 @@ namespace ngl::render::app
                         ImGui::EndPopup();
                     }
                 }
+                ImGui::SeparatorText("Ray Budget");
+                ImGui::SliderInt("Min Rays", &assp_ray_budget_min_rays_, 1, 16);
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        assp_ray_budget_min_rays_ = k_default_srvs_param.assp_ray_budget_min_rays;
+                    ImGui::EndPopup();
+                }
+                ImGui::SliderInt("Max Rays", &assp_ray_budget_max_rays_, 1, 16);
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        assp_ray_budget_max_rays_ = k_default_srvs_param.assp_ray_budget_max_rays;
+                    ImGui::EndPopup();
+                }
+                assp_ray_budget_min_rays_ = std::clamp(assp_ray_budget_min_rays_, 1, 16);
+                assp_ray_budget_max_rays_ = std::clamp(assp_ray_budget_max_rays_, 1, 16);
+                if (assp_ray_budget_min_rays_ > assp_ray_budget_max_rays_)
+                {
+                    assp_ray_budget_max_rays_ = assp_ray_budget_min_rays_;
+                }
+                ImGui::SliderFloat("Budget Variance Weight", &assp_ray_budget_variance_weight_, 0.0f, 2.0f, "%.4f");
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        assp_ray_budget_variance_weight_ = k_default_srvs_param.assp_ray_budget_variance_weight;
+                    ImGui::EndPopup();
+                }
+                ImGui::SliderFloat("Budget Normal Delta Weight", &assp_ray_budget_normal_delta_weight_, 0.0f, 2.0f, "%.4f");
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        assp_ray_budget_normal_delta_weight_ = k_default_srvs_param.assp_ray_budget_normal_delta_weight;
+                    ImGui::EndPopup();
+                }
+                ImGui::SliderFloat("Budget Depth Delta Weight", &assp_ray_budget_depth_delta_weight_, 0.0f, 2.0f, "%.4f");
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        assp_ray_budget_depth_delta_weight_ = k_default_srvs_param.assp_ray_budget_depth_delta_weight;
+                    ImGui::EndPopup();
+                }
+                ImGui::SliderFloat("Budget No History Bias", &assp_ray_budget_no_history_bias_, 0.0f, 2.0f, "%.4f");
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        assp_ray_budget_no_history_bias_ = k_default_srvs_param.assp_ray_budget_no_history_bias;
+                    ImGui::EndPopup();
+                }
+                ImGui::SliderFloat("Budget Scale", &assp_ray_budget_scale_, 0.0f, 32.0f, "%.4f");
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        assp_ray_budget_scale_ = k_default_srvs_param.assp_ray_budget_scale;
+                    ImGui::EndPopup();
+                }
+                {
+                    ImGui::Text("Total Rays (prev frame): %d", dbg_assp_total_ray_count_);
+                    const float rays_per_probe = (dbg_assp_probe_count_ > 0)
+                        ? (static_cast<float>(dbg_assp_total_ray_count_) / static_cast<float>(dbg_assp_probe_count_))
+                        : 0.0f;
+                    ImGui::Text("Rays / Probe (prev frame): %.3f (%d probes)", rays_per_probe, dbg_assp_probe_count_);
+                    ImGui::TextDisabled("Value is GPU readback from the previous frame.");
+                }
                 {
                     bool v = (0 != assp_debug_freeze_frame_random_enable_);
                     if (ImGui::Checkbox("Freeze Frame Random", &v))
@@ -330,7 +375,7 @@ namespace ngl::render::app
                 // カテゴリ別サブモードスライダ.
                 if (0 <= dbg_view_category_)
                 {
-            const int k_sub_mode_max[] = { 14, 1, 11, 16 };
+            const int k_sub_mode_max[] = { 14, 1, 11, 17 };
                     const int sub_max = k_sub_mode_max[dbg_view_category_];
                     // カテゴリ切替時にクランプ.
                     if (dbg_view_sub_mode_ > sub_max) dbg_view_sub_mode_ = sub_max;
@@ -345,6 +390,7 @@ namespace ngl::render::app
 
                 if (3 == dbg_view_category_)
                 {
+                    ImGui::TextDisabled("Sub Mode 17: per-probe ray count (grayscale, 4..16 rays).");
                     bool v = (0 != dbg_assp_leaf_border_enable_);
                     if (ImGui::Checkbox("ASSP Leaf Border", &v))
                         dbg_assp_leaf_border_enable_ = v ? 1 : 0;
@@ -509,6 +555,15 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_assp_representative_probe_list_srv = "AsspRepresentativeProbeList";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_representative_probe_list_uav = "RWAsspRepresentativeProbeList";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_indirect_arg_uav = "RWAsspProbeIndirectArg";
+    constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_trace_indirect_arg_uav = "RWAsspProbeTraceIndirectArg";
+    constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_total_ray_count_srv = "AsspProbeTotalRayCountBuffer";
+    constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_total_ray_count_uav = "RWAsspProbeTotalRayCountBuffer";
+    constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_ray_meta_srv = "AsspProbeRayMetaBuffer";
+    constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_ray_meta_uav = "RWAsspProbeRayMetaBuffer";
+    constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_ray_query_srv = "AsspProbeRayQueryBuffer";
+    constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_ray_query_uav = "RWAsspProbeRayQueryBuffer";
+    constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_ray_result_srv = "AsspProbeRayResultBuffer";
+    constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_ray_result_uav = "RWAsspProbeRayResultBuffer";
     constexpr SrvsShaderBindName k_shader_bind_name_main_lit_color_srv = "TexMainLitColor";
 
     struct AsspBufferLayout
@@ -592,6 +647,12 @@ namespace ngl::render::app
         assp_buffer_ = {};
         assp_representative_probe_list_ = {};
         assp_probe_indirect_arg_ = {};
+        assp_probe_trace_indirect_arg_ = {};
+        assp_probe_total_ray_count_buffer_ = {};
+        assp_probe_ray_meta_buffer_ = {};
+        assp_probe_ray_query_buffer_ = {};
+        assp_probe_ray_result_buffer_ = {};
+        assp_probe_total_ray_count_readback_buffer_ = {};
 
         for(int i = 0; i < 2; ++i)
         {
@@ -856,6 +917,98 @@ namespace ngl::render::app
                 return false;
             }
         }
+        {
+            if(!assp_probe_trace_indirect_arg_.InitializeAsTyped(
+                p_device,
+                rhi::BufferDep::Desc{
+                    .element_byte_size = sizeof(uint32_t),
+                    .element_count     = 3,
+                    .bind_flag = rhi::ResourceBindFlag::UnorderedAccess | rhi::ResourceBindFlag::IndirectArg,
+                    .heap_type = rhi::EResourceHeapType::Default},
+                rhi::EResourceFormat::Format_R32_UINT,
+                "Srvs_AsspProbeTraceIndirectArg"))
+            {
+                return false;
+            }
+        }
+        {
+            if(!assp_probe_total_ray_count_buffer_.InitializeAsTyped(
+                p_device,
+                rhi::BufferDep::Desc{
+                    .element_byte_size = sizeof(uint32_t),
+                    .element_count     = 1,
+                    .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                    .heap_type = rhi::EResourceHeapType::Default},
+                rhi::EResourceFormat::Format_R32_UINT,
+                "Srvs_AsspProbeTotalRayCount"))
+            {
+                return false;
+            }
+            if(!InitializeReadbackBuffer(
+                p_device,
+                assp_probe_total_ray_count_readback_buffer_,
+                assp_probe_total_ray_count_buffer_.buffer->GetDesc(),
+                "Srvs_AsspProbeTotalRayCountReadback"))
+            {
+                return false;
+            }
+        }
+        {
+            const u32 assp_probe_tile_count =
+                static_cast<u32>((assp_probe_base_resolution_x + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE) *
+                static_cast<u32>((assp_probe_base_resolution_y + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE);
+            if(!assp_probe_ray_meta_buffer_.InitializeAsTyped(
+                p_device,
+                rhi::BufferDep::Desc{
+                    .element_byte_size = sizeof(uint32_t),
+                    .element_count     = assp_probe_tile_count,
+                    .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                    .heap_type = rhi::EResourceHeapType::Default},
+                rhi::EResourceFormat::Format_R32_UINT,
+                "Srvs_AsspProbeRayMetaBuffer"))
+            {
+                return false;
+            }
+        }
+        {
+            const u32 assp_probe_tile_count =
+                static_cast<u32>((assp_probe_base_resolution_x + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE) *
+                static_cast<u32>((assp_probe_base_resolution_y + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE);
+            constexpr u32 k_assp_max_ray_per_probe = ADAPTIVE_SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT;
+            const u32 element_count = assp_probe_tile_count * k_assp_max_ray_per_probe;
+            if(!assp_probe_ray_query_buffer_.InitializeAsTyped(
+                p_device,
+                rhi::BufferDep::Desc{
+                    .element_byte_size = sizeof(uint32_t),
+                    .element_count     = element_count,
+                    .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                    .heap_type = rhi::EResourceHeapType::Default},
+                rhi::EResourceFormat::Format_R32_UINT,
+                "Srvs_AsspProbeRayQueryBuffer"))
+            {
+                return false;
+            }
+        }
+        {
+            const u32 assp_probe_tile_count =
+                static_cast<u32>((assp_probe_base_resolution_x + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE) *
+                static_cast<u32>((assp_probe_base_resolution_y + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE);
+            constexpr u32 k_assp_ray_result_stride = 5u;
+            constexpr u32 k_assp_max_ray_per_probe = ADAPTIVE_SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT;
+            const u32 element_count = assp_probe_tile_count * k_assp_max_ray_per_probe * k_assp_ray_result_stride;
+            if(!assp_probe_ray_result_buffer_.InitializeAsTyped(
+                p_device,
+                rhi::BufferDep::Desc{
+                    .element_byte_size = sizeof(uint32_t),
+                    .element_count     = element_count,
+                    .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                    .heap_type = rhi::EResourceHeapType::Default},
+                rhi::EResourceFormat::Format_R32_UINT,
+                "Srvs_AsspProbeRayResultBuffer"))
+            {
+                return false;
+            }
+        }
 
         return true;
     }
@@ -955,12 +1108,14 @@ namespace ngl::render::app
             pso_assp_probe_list_clear_ = CreateComputePSO("srvs/assp/assp_probe_list_clear_cs.hlsl");
             pso_assp_probe_preupdate_ = CreateComputePSO("srvs/assp/assp_probe_preupdate_cs.hlsl");
             pso_assp_probe_generate_indirect_arg_ = CreateComputePSO("srvs/assp/assp_probe_generate_indirect_arg_cs.hlsl");
+            pso_assp_probe_build_ray_meta_ = CreateComputePSO("srvs/assp/assp_probe_build_ray_meta_cs.hlsl");
+            pso_assp_probe_finalize_ray_query_ = CreateComputePSO("srvs/assp/assp_probe_finalize_ray_query_cs.hlsl");
+            pso_assp_probe_trace_ = CreateComputePSO("srvs/assp/assp_probe_trace_cs.hlsl");
             pso_assp_probe_update_ = CreateComputePSO("srvs/assp/assp_probe_update_cs.hlsl");
             pso_assp_probe_spatial_filter_ = CreateComputePSO("srvs/assp/assp_probe_spatial_filter_cs.hlsl");
             pso_assp_probe_variance_ = CreateComputePSO("srvs/assp/assp_probe_variance_cs.hlsl");
             pso_assp_probe_sh_update_ = CreateComputePSO("srvs/assp/assp_probe_sh_update_cs.hlsl");
             pso_assp_depth_analysis_ = CreateComputePSO("srvs/assp/assp_depth_analysis_cs.hlsl");
-            pso_assp_lod1_build_ = CreateComputePSO("srvs/assp/assp_lod1_build_cs.hlsl");
 
             // デバッグ用PSO.
             {
@@ -1436,14 +1591,18 @@ namespace ngl::render::app
 
             param.debug_probe_radius = ScreenReconstructedVoxelStructure::dbg_probe_scale_ * 0.5f * bbv_grid_updater_.Get().cell_size / k_bbv_per_voxel_resolution;
             param.debug_probe_near_geom_scale = ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_;
-            param.assp_lod_geometry_weight = ScreenReconstructedVoxelStructure::assp_lod_geometry_weight_;
-            param.assp_lod_radiance_variance_weight = ScreenReconstructedVoxelStructure::assp_lod_radiance_variance_weight_;
-            param.assp_lod_split_score_threshold = ScreenReconstructedVoxelStructure::assp_lod_split_score_threshold_;
             param.assp_spatial_filter_enable = ScreenReconstructedVoxelStructure::assp_spatial_filter_enable_;
             param.assp_spatial_filter_normal_cos_threshold = ScreenReconstructedVoxelStructure::assp_spatial_filter_normal_cos_threshold_;
             param.assp_spatial_filter_depth_exp_scale = ScreenReconstructedVoxelStructure::assp_spatial_filter_depth_exp_scale_;
             param.assp_temporal_reprojection_enable = ScreenReconstructedVoxelStructure::assp_temporal_reprojection_enable_;
             param.assp_ray_guiding_enable = ScreenReconstructedVoxelStructure::assp_ray_guiding_enable_;
+            param.assp_ray_budget_min_rays = ScreenReconstructedVoxelStructure::assp_ray_budget_min_rays_;
+            param.assp_ray_budget_max_rays = ScreenReconstructedVoxelStructure::assp_ray_budget_max_rays_;
+            param.assp_ray_budget_variance_weight = ScreenReconstructedVoxelStructure::assp_ray_budget_variance_weight_;
+            param.assp_ray_budget_normal_delta_weight = ScreenReconstructedVoxelStructure::assp_ray_budget_normal_delta_weight_;
+            param.assp_ray_budget_depth_delta_weight = ScreenReconstructedVoxelStructure::assp_ray_budget_depth_delta_weight_;
+            param.assp_ray_budget_no_history_bias = ScreenReconstructedVoxelStructure::assp_ray_budget_no_history_bias_;
+            param.assp_ray_budget_scale = ScreenReconstructedVoxelStructure::assp_ray_budget_scale_;
             param.assp_debug_freeze_frame_random_enable = ScreenReconstructedVoxelStructure::assp_debug_freeze_frame_random_enable_;
             param.assp_debug_leaf_border_enable = ScreenReconstructedVoxelStructure::dbg_assp_leaf_border_enable_;
 
@@ -2057,30 +2216,14 @@ namespace ngl::render::app
 
         {
             {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AdaptiveScreenSpaceProbeListClear");
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_assp_probe_list_clear_->SetView(&desc_set, k_shader_bind_name_assp_representative_probe_list_uav.Get(), assp_representative_probe_list_.uav.Get());
-
-                p_command_list->SetPipelineState(pso_assp_probe_list_clear_.Get());
-                p_command_list->SetDescriptorSet(pso_assp_probe_list_clear_.Get(), &desc_set);
-                pso_assp_probe_list_clear_->DispatchHelper(p_command_list, 1, 1, 1);
-
-                p_command_list->ResourceUavBarrier(assp_representative_probe_list_.buffer.Get());
-            }
-            {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AdaptiveScreenSpaceProbePreUpdate");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_assp_probe_preupdate_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
                 pso_assp_probe_preupdate_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_assp_probe_preupdate_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-                pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_assp_buffer_srv.Get(), assp_buffer_.srv.Get());
                 pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_asspprobe_history_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_history_index].srv.Get());
-                pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_asspprobe_history_representative_tile_srv.Get(), assp_probe_representative_tile_tex_[assp_probe_tile_info_history_index].srv.Get());
-                pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_assp_representative_probe_list_uav.Get(), assp_representative_probe_list_.uav.Get());
                 pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_uav.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].uav.Get());
-                pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_asspprobe_representative_tile_uav.Get(), assp_probe_representative_tile_tex_[assp_probe_tile_info_curr_index].uav.Get());
                 pso_assp_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_asspprobe_best_prev_tile_uav.Get(), assp_probe_best_prev_tile_tex_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_assp_probe_preupdate_.Get());
@@ -2092,37 +2235,104 @@ namespace ngl::render::app
                     1);
 
                 p_command_list->ResourceUavBarrier(assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].texture.Get());
-                p_command_list->ResourceUavBarrier(assp_probe_representative_tile_tex_[assp_probe_tile_info_curr_index].texture.Get());
                 p_command_list->ResourceUavBarrier(assp_probe_best_prev_tile_tex_.texture.Get());
-                p_command_list->ResourceUavBarrier(assp_representative_probe_list_.buffer.Get());
             }
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AdaptiveScreenSpaceProbeIndirectArg");
 
                 assp_probe_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
+                assp_probe_total_ray_count_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_assp_probe_generate_indirect_arg_->SetView(&desc_set, k_shader_bind_name_assp_representative_probe_list_srv.Get(), assp_representative_probe_list_.srv.Get());
+                pso_assp_probe_generate_indirect_arg_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].srv.Get());
                 pso_assp_probe_generate_indirect_arg_->SetView(&desc_set, k_shader_bind_name_assp_probe_indirect_arg_uav.Get(), assp_probe_indirect_arg_.uav.Get());
+                pso_assp_probe_generate_indirect_arg_->SetView(&desc_set, k_shader_bind_name_assp_probe_total_ray_count_uav.Get(), assp_probe_total_ray_count_buffer_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_assp_probe_generate_indirect_arg_.Get());
                 p_command_list->SetDescriptorSet(pso_assp_probe_generate_indirect_arg_.Get(), &desc_set);
                 pso_assp_probe_generate_indirect_arg_->DispatchHelper(p_command_list, 1, 1, 1);
 
+                p_command_list->ResourceUavBarrier(assp_probe_total_ray_count_buffer_.buffer.Get());
                 assp_probe_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::IndirectArgument);
             }
             {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AdaptiveScreenSpaceProbeUpdate");
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AdaptiveScreenSpaceProbeBuildRayMeta");
+
+                assp_probe_ray_meta_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
+                assp_probe_ray_query_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_assp_probe_build_ray_meta_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+                pso_assp_probe_build_ray_meta_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].srv.Get());
+                pso_assp_probe_build_ray_meta_->SetView(&desc_set, k_shader_bind_name_asspprobe_history_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_history_index].srv.Get());
+                pso_assp_probe_build_ray_meta_->SetView(&desc_set, k_shader_bind_name_asspprobe_best_prev_tile_srv.Get(), assp_probe_best_prev_tile_tex_.srv.Get());
+                pso_assp_probe_build_ray_meta_->SetView(&desc_set, k_shader_bind_name_asspprobe_history_variance_srv.Get(), assp_probe_variance_tex_[assp_probe_variance_history_index].srv.Get());
+                pso_assp_probe_build_ray_meta_->SetView(&desc_set, k_shader_bind_name_assp_probe_ray_meta_uav.Get(), assp_probe_ray_meta_buffer_.uav.Get());
+                pso_assp_probe_build_ray_meta_->SetView(&desc_set, k_shader_bind_name_assp_probe_ray_query_uav.Get(), assp_probe_ray_query_buffer_.uav.Get());
+                pso_assp_probe_build_ray_meta_->SetView(&desc_set, k_shader_bind_name_assp_probe_total_ray_count_uav.Get(), assp_probe_total_ray_count_buffer_.uav.Get());
+
+                p_command_list->SetPipelineState(pso_assp_probe_build_ray_meta_.Get());
+                p_command_list->SetDescriptorSet(pso_assp_probe_build_ray_meta_.Get(), &desc_set);
+                p_command_list->DispatchIndirect(assp_probe_indirect_arg_.buffer.Get());
+
+                p_command_list->ResourceUavBarrier(assp_probe_ray_meta_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(assp_probe_ray_query_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(assp_probe_total_ray_count_buffer_.buffer.Get());
+            }
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AdaptiveScreenSpaceProbeFinalizeRayQuery");
+
+                assp_probe_trace_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
+                assp_probe_total_ray_count_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::ShaderRead);
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_assp_probe_finalize_ray_query_->SetView(&desc_set, k_shader_bind_name_assp_probe_total_ray_count_srv.Get(), assp_probe_total_ray_count_buffer_.srv.Get());
+                pso_assp_probe_finalize_ray_query_->SetView(&desc_set, k_shader_bind_name_assp_probe_trace_indirect_arg_uav.Get(), assp_probe_trace_indirect_arg_.uav.Get());
+
+                p_command_list->SetPipelineState(pso_assp_probe_finalize_ray_query_.Get());
+                p_command_list->SetDescriptorSet(pso_assp_probe_finalize_ray_query_.Get(), &desc_set);
+                pso_assp_probe_finalize_ray_query_->DispatchHelper(p_command_list, 1, 1, 1);
+
+                assp_probe_ray_query_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::ShaderRead);
+                assp_probe_total_ray_count_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::ShaderRead);
+                assp_probe_trace_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::IndirectArgument);
+            }
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AdaptiveScreenSpaceProbeTrace");
+
+                assp_probe_ray_result_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_assp_probe_trace_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
+                pso_assp_probe_trace_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+                pso_assp_probe_trace_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+                pso_assp_probe_trace_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
+                pso_assp_probe_trace_->SetView(&desc_set, k_shader_bind_name_asspprobe_history_srv.Get(), assp_probe_tex_[assp_probe_history_index].srv.Get());
+                pso_assp_probe_trace_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].srv.Get());
+                pso_assp_probe_trace_->SetView(&desc_set, k_shader_bind_name_asspprobe_best_prev_tile_srv.Get(), assp_probe_best_prev_tile_tex_.srv.Get());
+                pso_assp_probe_trace_->SetView(&desc_set, k_shader_bind_name_assp_probe_total_ray_count_srv.Get(), assp_probe_total_ray_count_buffer_.srv.Get());
+                pso_assp_probe_trace_->SetView(&desc_set, k_shader_bind_name_assp_probe_ray_meta_srv.Get(), assp_probe_ray_meta_buffer_.srv.Get());
+                pso_assp_probe_trace_->SetView(&desc_set, k_shader_bind_name_assp_probe_ray_query_srv.Get(), assp_probe_ray_query_buffer_.srv.Get());
+                pso_assp_probe_trace_->SetView(&desc_set, k_shader_bind_name_assp_probe_ray_result_uav.Get(), assp_probe_ray_result_buffer_.uav.Get());
+
+                p_command_list->SetPipelineState(pso_assp_probe_trace_.Get());
+                p_command_list->SetDescriptorSet(pso_assp_probe_trace_.Get(), &desc_set);
+                p_command_list->DispatchIndirect(assp_probe_trace_indirect_arg_.buffer.Get());
+
+                p_command_list->ResourceUavBarrier(assp_probe_ray_result_buffer_.buffer.Get());
+                assp_probe_ray_result_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::ShaderRead);
+            }
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AdaptiveScreenSpaceProbeUpdateResolve");
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_assp_probe_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_assp_probe_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-                pso_assp_probe_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                pso_assp_probe_update_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
                 pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_history_srv.Get(), assp_probe_tex_[assp_probe_history_index].srv.Get());
-                pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_assp_representative_probe_list_srv.Get(), assp_representative_probe_list_.srv.Get());
                 pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].srv.Get());
                 pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_best_prev_tile_srv.Get(), assp_probe_best_prev_tile_tex_.srv.Get());
+                pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_assp_probe_ray_meta_srv.Get(), assp_probe_ray_meta_buffer_.srv.Get());
+                pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_assp_probe_ray_result_srv.Get(), assp_probe_ray_result_buffer_.srv.Get());
                 pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_uav.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].uav.Get());
                 pso_assp_probe_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_uav.Get(), assp_probe_tex_[assp_probe_update_write_index].uav.Get());
 
@@ -2144,10 +2354,8 @@ namespace ngl::render::app
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_assp_probe_spatial_filter_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-                pso_assp_probe_spatial_filter_->SetView(&desc_set, k_shader_bind_name_assp_buffer_srv.Get(), assp_buffer_.srv.Get());
                 pso_assp_probe_spatial_filter_->SetView(&desc_set, k_shader_bind_name_asspprobe_srv.Get(), assp_probe_tex_[assp_probe_filter_input_index].srv.Get());
                 pso_assp_probe_spatial_filter_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].srv.Get());
-                pso_assp_probe_spatial_filter_->SetView(&desc_set, k_shader_bind_name_asspprobe_representative_tile_srv.Get(), assp_probe_representative_tile_tex_[assp_probe_tile_info_curr_index].srv.Get());
                 pso_assp_probe_spatial_filter_->SetView(&desc_set, k_shader_bind_name_asspprobe_filtered_uav.Get(), assp_probe_tex_[assp_probe_filter_output_index].uav.Get());
 
                 p_command_list->SetPipelineState(pso_assp_probe_spatial_filter_.Get());
@@ -2169,7 +2377,7 @@ namespace ngl::render::app
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_assp_probe_variance_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-                pso_assp_probe_variance_->SetView(&desc_set, k_shader_bind_name_assp_representative_probe_list_srv.Get(), assp_representative_probe_list_.srv.Get());
+                pso_assp_probe_variance_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].srv.Get());
                 // LOD split/merge は spatial filter 後ではなく、生の update 出力に対する分散を見て判定する。
                 pso_assp_probe_variance_->SetView(&desc_set, k_shader_bind_name_asspprobe_srv.Get(), assp_probe_tex_[assp_probe_update_write_index].srv.Get());
                 pso_assp_probe_variance_->SetView(&desc_set, k_shader_bind_name_asspprobe_history_variance_srv.Get(), assp_probe_variance_tex_[assp_probe_variance_history_index].srv.Get());
@@ -2187,7 +2395,6 @@ namespace ngl::render::app
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_assp_probe_sh_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-                pso_assp_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_assp_representative_probe_list_srv.Get(), assp_representative_probe_list_.srv.Get());
                 pso_assp_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_srv.Get(), assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv.Get());
                 pso_assp_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_probe_tile_info_curr_index].srv.Get());
                 pso_assp_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_asspprobe_packed_sh_uav.Get(), assp_probe_packed_sh_tex_.uav.Get());
@@ -2197,6 +2404,13 @@ namespace ngl::render::app
                 p_command_list->DispatchIndirect(assp_probe_indirect_arg_.buffer.Get());
 
                 p_command_list->ResourceUavBarrier(assp_probe_packed_sh_tex_.texture.Get());
+            }
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AsspReadbackCopy");
+
+                assp_probe_total_ray_count_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::CopySrc);
+                p_command_list->CopyResource(assp_probe_total_ray_count_readback_buffer_.Get(), assp_probe_total_ray_count_buffer_.buffer.Get());
+                assp_probe_total_ray_count_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::ShaderRead);
             }
         }
     }
@@ -2210,7 +2424,6 @@ namespace ngl::render::app
 
         const u32 assp_lod0_width = AsspLodWidth(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.x), 0u);
         const u32 assp_lod0_height = AsspLodHeight(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.y), 0u);
-        const ngl::u32 assp_probe_variance_history_index = assp_variance_prev_frame_tex_index_;
 
         {
             NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AsspLod0Build");
@@ -2227,26 +2440,7 @@ namespace ngl::render::app
 
             p_command_list->ResourceUavBarrier(assp_buffer_.buffer.Get());
         }
-        {
-            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AsspLod1Build");
-
-            ngl::rhi::DescriptorSetDep desc_set = {};
-            pso_assp_lod1_build_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-            pso_assp_lod1_build_->SetView(&desc_set, k_shader_bind_name_assp_buffer_srv.Get(), assp_buffer_.srv.Get());
-            pso_assp_lod1_build_->SetView(&desc_set, k_shader_bind_name_assp_buffer_uav.Get(), assp_buffer_.uav.Get());
-            pso_assp_lod1_build_->SetView(&desc_set, k_shader_bind_name_asspprobe_variance_srv.Get(), assp_probe_variance_tex_[assp_probe_variance_history_index].srv.Get());
-
-            p_command_list->SetPipelineState(pso_assp_lod1_build_.Get());
-            p_command_list->SetDescriptorSet(pso_assp_lod1_build_.Get(), &desc_set);
-            pso_assp_lod1_build_->DispatchHelper(
-                p_command_list,
-                AsspLodWidth(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.x), 1u),
-                AsspLodHeight(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.y), 1u),
-                1);
-
-            p_command_list->ResourceUavBarrier(assp_buffer_.buffer.Get());
-        }
-        // two-level 固定なので hierarchy build は LOD1 で完了。
+        // 4x4固定所有に移行したため、LOD1 build は不要。
     }
 
     void BitmaskBrickVoxelGi::Dispatch_Fsp(rhi::GraphicsCommandListDep* p_command_list,
@@ -2484,6 +2678,7 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_tile_info_curr_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_representative_tile_srv.Get(), assp_probe_representative_tile_tex_[assp_tile_info_curr_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_packed_sh_srv.Get(), assp_probe_packed_sh_tex_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_assp_probe_ray_meta_srv.Get(), assp_probe_ray_meta_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_assp_buffer_srv.Get(), assp_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_main_lit_color_srv.Get(), lit_color_srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
@@ -2630,6 +2825,33 @@ namespace ngl::render::app
             std::max(0, ScreenReconstructedVoxelStructure::dbg_fsp_probe_pool_size_ - ScreenReconstructedVoxelStructure::dbg_fsp_free_probe_count_);
     }
 
+    void BitmaskBrickVoxelGi::UpdateAsspDebugReadback()
+    {
+        if (assp_probe_tile_info_tex_[assp_tile_info_curr_frame_tex_index_].texture.Get())
+        {
+            const auto* p_tex = assp_probe_tile_info_tex_[assp_tile_info_curr_frame_tex_index_].texture.Get();
+            ScreenReconstructedVoxelStructure::dbg_assp_probe_count_ =
+                static_cast<int>(p_tex->GetWidth() * p_tex->GetHeight());
+        }
+        else
+        {
+            ScreenReconstructedVoxelStructure::dbg_assp_probe_count_ = 0;
+        }
+
+        if (assp_probe_total_ray_count_readback_buffer_.Get() == nullptr)
+        {
+            ScreenReconstructedVoxelStructure::dbg_assp_total_ray_count_ = 0;
+            return;
+        }
+        if (auto* mapped = assp_probe_total_ray_count_readback_buffer_->MapAs<uint32_t>())
+        {
+            ScreenReconstructedVoxelStructure::dbg_assp_total_ray_count_ = static_cast<int>(mapped[0]);
+            assp_probe_total_ray_count_readback_buffer_->Unmap();
+            return;
+        }
+        ScreenReconstructedVoxelStructure::dbg_assp_total_ray_count_ = 0;
+    }
+
     void ScreenReconstructedVoxelStructure::DispatchBegin(rhi::GraphicsCommandListDep* p_command_list,
         rhi::ConstantBufferPooledHandle scene_cbv, 
         const ngl::render::task::RenderPassViewInfo& main_view_info, const math::Vec2i& render_resolution)
@@ -2637,6 +2859,7 @@ namespace ngl::render::app
         if(bbvgi_instance_)
         {
             bbvgi_instance_->UpdateFspDebugReadback();
+            bbvgi_instance_->UpdateAsspDebugReadback();
             bbvgi_instance_->Dispatch_Begin(p_command_list, scene_cbv, main_view_info, render_resolution);
         }
     }

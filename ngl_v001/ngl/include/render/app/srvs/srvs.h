@@ -153,6 +153,7 @@ namespace ngl::render::app
             rhi::RefTextureDep lighting_tex, rhi::RefRtvDep lighting_rtv);
 
         void UpdateFspDebugReadback();
+        void UpdateAsspDebugReadback();
 
 
         void SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir);
@@ -237,12 +238,14 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_list_clear_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_preupdate_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_generate_indirect_arg_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_build_ray_meta_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_finalize_ray_query_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_trace_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_spatial_filter_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_variance_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_sh_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_depth_analysis_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_lod1_build_ = {};
 
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
@@ -310,7 +313,13 @@ namespace ngl::render::app
         ComputeTextureSet assp_probe_best_prev_tile_tex_ = {}; // r32_uint, Preupdateで計算したBestPrevTile.
         ComputeBufferSet assp_buffer_ = {}; // LOD0-LOD[MAX] unified scalar uint buffer.
         ComputeBufferSet assp_representative_probe_list_ = {}; // 0番はcounter, 1番以降はpacked tile id.
-        ComputeBufferSet assp_probe_indirect_arg_ = {}; // DispatchIndirect 用 3 uint.
+        ComputeBufferSet assp_probe_indirect_arg_ = {}; // Probe単位 pass(Resolve/Variance/SH) 用 DispatchIndirect 3 uint.
+        ComputeBufferSet assp_probe_trace_indirect_arg_ = {}; // RayTrace pass 用 DispatchIndirect 3 uint.
+        ComputeBufferSet assp_probe_total_ray_count_buffer_ = {}; // [0] = frame total traced ray count.
+        ComputeBufferSet assp_probe_ray_meta_buffer_ = {}; // packed ray meta: offset|count per representative probe.
+        ComputeBufferSet assp_probe_ray_query_buffer_ = {}; // packed ray query: probe_list_index|local_ray_index.
+        ComputeBufferSet assp_probe_ray_result_buffer_ = {}; // ray結果: [octCell, skyVis, radiance.rgb] を uint5 で保持.
+        rhi::RefBufferDep assp_probe_total_ray_count_readback_buffer_ = {};
 
     };
 
@@ -338,14 +347,18 @@ namespace ngl::render::app
         static float dbg_ss_probe_spatial_filter_normal_cos_threshold_;
         static float dbg_ss_probe_spatial_filter_depth_exp_scale_;
         static float dbg_ss_probe_side_cache_plane_dist_threshold_;
-        static float assp_lod_geometry_weight_;
-        static float assp_lod_radiance_variance_weight_;
-        static float assp_lod_split_score_threshold_;
         static int assp_spatial_filter_enable_;
         static float assp_spatial_filter_normal_cos_threshold_;
         static float assp_spatial_filter_depth_exp_scale_;
         static int assp_temporal_reprojection_enable_;
         static int assp_ray_guiding_enable_;
+        static int assp_ray_budget_min_rays_;
+        static int assp_ray_budget_max_rays_;
+        static float assp_ray_budget_variance_weight_;
+        static float assp_ray_budget_normal_delta_weight_;
+        static float assp_ray_budget_depth_delta_weight_;
+        static float assp_ray_budget_no_history_bias_;
+        static float assp_ray_budget_scale_;
         static int assp_debug_freeze_frame_random_enable_;
         static int dbg_assp_leaf_border_enable_;
         static int dbg_fsp_lighting_interpolation_enable_;
@@ -356,6 +369,8 @@ namespace ngl::render::app
         static int dbg_fsp_allocated_probe_count_;
         static int dbg_fsp_active_probe_count_;
         static int dbg_fsp_visible_surface_cell_count_;
+        static int dbg_assp_total_ray_count_;
+        static int dbg_assp_probe_count_;
 
         // デバッグメニューを描画する. ImGuiウィンドウ内で呼び出すこと.
         static void DrawDebugMenu(bool* p_enable_injection, bool* p_enable_rejection);

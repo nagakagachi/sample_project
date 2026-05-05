@@ -1,14 +1,4 @@
-#if 0
-
-assp_probe_preupdate_cs.hlsl
-
-AdaptiveScreenSpaceProbe ProbeTile 用の前処理。
-全 4x4 tile を軽く走査し、active representative だけ tile info を更新して list 化する。
-
-#endif
-
 #include "assp_probe_common.hlsli"
-#include "assp_buffer_util.hlsli"
 #include "../../include/scene_view_struct.hlsli"
 #include "../../include/depth_buffer_util.hlsli"
 
@@ -23,32 +13,22 @@ void AsspStoreInvalidProbeTile(int2 probe_id)
     RWAdaptiveScreenSpaceProbeBestPrevTileTex[probe_id] = 0xffffffffu;
 }
 
-void AsspPushRepresentativeProbe(uint2 probe_id)
-{
-    uint list_element_count = 0u;
-    RWAsspRepresentativeProbeList.GetDimensions(list_element_count);
-
-    uint old_count = 0u;
-    InterlockedAdd(RWAsspRepresentativeProbeList[0], 1u, old_count);
-    if((old_count + 1u) < list_element_count)
-    {
-        RWAsspRepresentativeProbeList[old_count + 1u] = AsspPackProbeTileId(probe_id);
-    }
-}
-
 bool AsspTryLoadFrontDepthSample(
     int2 texel_pos,
     uint2 depth_size,
     out float probe_depth)
 {
     probe_depth = 0.0;
-
     if(any(texel_pos < 0) || any(texel_pos >= int2(depth_size)))
+    {
         return false;
+    }
 
     const float depth = TexHardwareDepth.Load(int3(texel_pos, 0)).r;
     if(!isValidDepth(depth))
+    {
         return false;
+    }
 
     probe_depth = depth;
     return true;
@@ -68,32 +48,18 @@ float3 AsspCalcProbeNormalWs(int2 probe_texel_pos, float probe_depth, float2 dep
     return (normal_len_sq > 1e-8) ? (probe_normal_ws * rsqrt(normal_len_sq)) : float3(0.0, 0.0, 1.0);
 }
 
-bool AsspTryEvaluateHistoryRepresentativeCandidate(
-    int2 history_lookup_tile_id,
+bool AsspTryEvaluateHistoryTileCandidate(
+    int2 candidate_tile_id,
     float2 depth_size_inv,
     float3 current_probe_pos_ws,
     float3 current_probe_normal_ws,
-    out uint candidate_representative_tile_packed,
     out uint quantized_score)
 {
-    candidate_representative_tile_packed = 0xffffffffu;
     quantized_score = 0xffffffffu;
 
     uint2 history_tile_info_size;
-    AdaptiveScreenSpaceProbeHistoryRepresentativeTileTex.GetDimensions(history_tile_info_size.x, history_tile_info_size.y);
-    if(any(history_lookup_tile_id < 0) || any(history_lookup_tile_id >= int2(history_tile_info_size)))
-    {
-        return false;
-    }
-
-    candidate_representative_tile_packed = AdaptiveScreenSpaceProbeHistoryRepresentativeTileTex.Load(int3(history_lookup_tile_id, 0)).x;
-    if(0xffffffffu == candidate_representative_tile_packed)
-    {
-        return false;
-    }
-
-    const int2 candidate_tile_id = AsspUnpackProbeTileId(candidate_representative_tile_packed);
-    if(any(candidate_tile_id < 0) || any(candidate_tile_id >= int2(history_tile_info_size)))
+    AdaptiveScreenSpaceProbeHistoryTileInfoTex.GetDimensions(history_tile_info_size.x, history_tile_info_size.y);
+    if(any(candidate_tile_id < int2(0, 0)) || any(candidate_tile_id >= int2(history_tile_info_size)))
     {
         return false;
     }
@@ -108,10 +74,10 @@ bool AsspTryEvaluateHistoryRepresentativeCandidate(
     const float candidate_view_z = calc_view_z_from_ndc_z(candidate_tile_info.x, cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
     const float3 candidate_pos_vs = CalcViewSpacePosition((float2(candidate_probe_texel) + 0.5) * depth_size_inv, candidate_view_z, cb_ngl_sceneview.cb_prev_proj_mtx);
     const float3 candidate_pos_ws = mul(cb_ngl_sceneview.cb_prev_view_inv_mtx, float4(candidate_pos_vs, 1.0));
+
     const float3 diff_ws = candidate_pos_ws - current_probe_pos_ws;
     const float plane_dist = abs(dot(diff_ws, current_probe_normal_ws));
     const float normal_dot = dot(current_probe_normal_ws, OctDecode(candidate_tile_info.zw));
-
     if(plane_dist >= cb_srvs.ss_probe_temporal_filter_plane_dist_threshold
         || normal_dot <= cb_srvs.ss_probe_temporal_filter_normal_cos_threshold)
     {
@@ -130,7 +96,9 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
     uint2 tile_info_size;
     RWAdaptiveScreenSpaceProbeTileInfoTex.GetDimensions(tile_info_size.x, tile_info_size.y);
     if(any(dtid.xy >= tile_info_size))
+    {
         return;
+    }
 
     uint2 depth_size;
     TexHardwareDepth.GetDimensions(depth_size.x, depth_size.y);
@@ -138,15 +106,6 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
 
     const int2 probe_id = int2(dtid.xy);
     const int2 tile_pixel_start = probe_id * ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-    const int2 representative_tile_id = AsspResolveRepresentativeTileId(tile_pixel_start);
-    RWAdaptiveScreenSpaceProbeRepresentativeTileTex[probe_id] =
-        any(representative_tile_id < 0) ? 0xffffffffu : AsspPackProbeTileId(uint2(representative_tile_id));
-    if(any(representative_tile_id < 0) || any(representative_tile_id != probe_id))
-    {
-        AsspStoreInvalidProbeTile(probe_id);
-        return;
-    }
-
     uint2 probe_pos_in_tile = uint2(0, 0);
     int2 probe_texel_pos = tile_pixel_start;
     float probe_depth = 0.0;
@@ -161,7 +120,6 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
         {
             const uint2 local_probe_pos = uint2(sx, sy);
             const int2 sample_texel_pos = tile_pixel_start + int2(local_probe_pos);
-
             float sample_depth = 0.0;
             if(!AsspTryLoadFrontDepthSample(sample_texel_pos, depth_size, sample_depth))
             {
@@ -203,35 +161,24 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
             const float2 prev_pos_texel = prev_uv * float2(depth_size);
             const int2 prev_center_tile = clamp(int2(prev_pos_texel) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE, int2(0, 0), probe_tile_count - 1);
 
-            uint direct_candidate_packed = 0xffffffffu;
-            uint direct_candidate_score = 0xffffffffu;
-            if(AsspTryEvaluateHistoryRepresentativeCandidate(prev_center_tile, depth_size_inv, probe_pos_ws, probe_normal_ws, direct_candidate_packed, direct_candidate_score))
+            uint best_candidate_score = 0xffffffffu;
+            [unroll]
+            for(int oy = -ASSP_TEMPORAL_SEARCH_RADIUS; oy <= ASSP_TEMPORAL_SEARCH_RADIUS; ++oy)
             {
-                best_prev_tile_packed = direct_candidate_packed;
-            }
-            else
-            {
-                uint best_candidate_score = 0xffffffffu;
                 [unroll]
-                for(int oy = -ASSP_TEMPORAL_SEARCH_RADIUS; oy <= ASSP_TEMPORAL_SEARCH_RADIUS; ++oy)
+                for(int ox = -ASSP_TEMPORAL_SEARCH_RADIUS; ox <= ASSP_TEMPORAL_SEARCH_RADIUS; ++ox)
                 {
-                    [unroll]
-                    for(int ox = -ASSP_TEMPORAL_SEARCH_RADIUS; ox <= ASSP_TEMPORAL_SEARCH_RADIUS; ++ox)
+                    const int2 candidate_tile_id = clamp(prev_center_tile + int2(ox, oy), int2(0, 0), probe_tile_count - 1);
+                    uint candidate_score = 0xffffffffu;
+                    if(!AsspTryEvaluateHistoryTileCandidate(candidate_tile_id, depth_size_inv, probe_pos_ws, probe_normal_ws, candidate_score))
                     {
-                        const int2 candidate_lookup_tile_id = clamp(prev_center_tile + int2(ox, oy), int2(0, 0), probe_tile_count - 1);
+                        continue;
+                    }
 
-                        uint candidate_packed = 0xffffffffu;
-                        uint candidate_score = 0xffffffffu;
-                        if(!AsspTryEvaluateHistoryRepresentativeCandidate(candidate_lookup_tile_id, depth_size_inv, probe_pos_ws, probe_normal_ws, candidate_packed, candidate_score))
-                        {
-                            continue;
-                        }
-
-                        if(candidate_score < best_candidate_score)
-                        {
-                            best_candidate_score = candidate_score;
-                            best_prev_tile_packed = candidate_packed;
-                        }
+                    if(candidate_score < best_candidate_score)
+                    {
+                        best_candidate_score = candidate_score;
+                        best_prev_tile_packed = AsspPackProbeTileId(uint2(candidate_tile_id));
                     }
                 }
             }
@@ -240,5 +187,4 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
 
     RWAdaptiveScreenSpaceProbeTileInfoTex[probe_id] = AsspTileInfoBuild(probe_depth, probe_pos_in_tile, OctEncode(probe_normal_ws), 0xffffffffu != best_prev_tile_packed);
     RWAdaptiveScreenSpaceProbeBestPrevTileTex[probe_id] = best_prev_tile_packed;
-    AsspPushRepresentativeProbe(uint2(probe_id));
 }

@@ -436,20 +436,23 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
         float debug_probe_radius NGL_CPP_MEMBER_INIT({0.0f});
         float debug_probe_near_geom_scale NGL_CPP_MEMBER_INIT({0.2f});
-        float assp_lod_geometry_weight NGL_CPP_MEMBER_INIT({1.0f});
-        float assp_lod_radiance_variance_weight NGL_CPP_MEMBER_INIT({1.0f});
-        float assp_lod_split_score_threshold NGL_CPP_MEMBER_INIT({0.5f});
         int assp_spatial_filter_enable NGL_CPP_MEMBER_INIT({1});
         float assp_spatial_filter_normal_cos_threshold NGL_CPP_MEMBER_INIT({float(SCREEN_SPACE_PROBE_SPATIAL_FILTER_NORMAL_COS_THRESHOLD)});
         float assp_spatial_filter_depth_exp_scale NGL_CPP_MEMBER_INIT({float(SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE)});
         int assp_temporal_reprojection_enable NGL_CPP_MEMBER_INIT({1});
         int assp_ray_guiding_enable NGL_CPP_MEMBER_INIT({1});
+        int assp_ray_budget_min_rays NGL_CPP_MEMBER_INIT({4});
+        int assp_ray_budget_max_rays NGL_CPP_MEMBER_INIT({16});
+        float assp_ray_budget_variance_weight NGL_CPP_MEMBER_INIT({0.55f});
+        float assp_ray_budget_normal_delta_weight NGL_CPP_MEMBER_INIT({0.25f});
+        float assp_ray_budget_depth_delta_weight NGL_CPP_MEMBER_INIT({0.20f});
+        float assp_ray_budget_no_history_bias NGL_CPP_MEMBER_INIT({0.45f});
+        float assp_ray_budget_scale NGL_CPP_MEMBER_INIT({12.0f});
         int assp_debug_freeze_frame_random_enable NGL_CPP_MEMBER_INIT({0});
         int assp_debug_leaf_border_enable NGL_CPP_MEMBER_INIT({1});
         int assp_words_per_node NGL_CPP_MEMBER_INIT({int(k_assp_words_per_node)});
         int assp_total_word_count NGL_CPP_MEMBER_INIT({0});
         int assp_tile_size NGL_CPP_MEMBER_INIT({int(k_assp_tile_size)});
-        int assp_dummy_padding0 NGL_CPP_MEMBER_INIT({0});
         int assp_dummy_padding1 NGL_CPP_MEMBER_INIT({0});
     };
 #ifdef NGL_SHADER_CPP_INCLUDE

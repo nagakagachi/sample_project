@@ -29,6 +29,53 @@ RWTexture2D<float4>    RWAdaptiveScreenSpaceProbePackedSHTex;
 Buffer<uint>           AsspRepresentativeProbeList;
 RWBuffer<uint>         RWAsspRepresentativeProbeList;
 RWBuffer<uint>         RWAsspProbeIndirectArg;
+RWBuffer<uint>         RWAsspProbeTraceIndirectArg;
+Buffer<uint>           AsspProbeTotalRayCountBuffer;
+RWBuffer<uint>         RWAsspProbeTotalRayCountBuffer;
+Buffer<uint>           AsspProbeRayMetaBuffer;
+RWBuffer<uint>         RWAsspProbeRayMetaBuffer;
+Buffer<uint>           AsspProbeRayQueryBuffer;
+RWBuffer<uint>         RWAsspProbeRayQueryBuffer;
+Buffer<uint>           AsspProbeRayResultBuffer;
+RWBuffer<uint>         RWAsspProbeRayResultBuffer;
+
+static const uint k_assp_ray_count_max = ADAPTIVE_SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT;
+static const uint k_assp_ray_meta_count_bits = 5u;
+static const uint k_assp_ray_meta_count_mask = (1u << k_assp_ray_meta_count_bits) - 1u;
+static const uint k_assp_ray_meta_offset_shift = k_assp_ray_meta_count_bits;
+static const uint k_assp_ray_query_local_ray_bits = 5u;
+static const uint k_assp_ray_query_local_ray_mask = (1u << k_assp_ray_query_local_ray_bits) - 1u;
+static const uint k_assp_ray_query_probe_index_shift = k_assp_ray_query_local_ray_bits;
+
+uint AsspPackRayMeta(uint ray_offset, uint ray_count)
+{
+    return (ray_offset << k_assp_ray_meta_offset_shift) | (ray_count & k_assp_ray_meta_count_mask);
+}
+
+uint AsspUnpackRayMetaCount(uint packed_meta)
+{
+    return packed_meta & k_assp_ray_meta_count_mask;
+}
+
+uint AsspUnpackRayMetaOffset(uint packed_meta)
+{
+    return packed_meta >> k_assp_ray_meta_offset_shift;
+}
+
+uint AsspPackRayQuery(uint probe_list_index, uint local_ray_index)
+{
+    return (probe_list_index << k_assp_ray_query_probe_index_shift) | (local_ray_index & k_assp_ray_query_local_ray_mask);
+}
+
+uint AsspUnpackRayQueryProbeListIndex(uint packed_query)
+{
+    return packed_query >> k_assp_ray_query_probe_index_shift;
+}
+
+uint AsspUnpackRayQueryLocalRayIndex(uint packed_query)
+{
+    return packed_query & k_assp_ray_query_local_ray_mask;
+}
 
 static const uint k_assp_tile_info_probe_pos_mask = 0x3fu;
 static const uint k_assp_tile_info_reprojection_succeeded_shift = 6u;
@@ -85,6 +132,48 @@ int2 AsspUnpackProbeTileId(uint packed_probe_tile_id)
     return int2(packed_probe_tile_id & 0xffffu, packed_probe_tile_id >> 16u);
 }
 
+uint AsspProbeTileCount()
+{
+    uint2 tile_info_size_u32;
+    AdaptiveScreenSpaceProbeTileInfoTex.GetDimensions(tile_info_size_u32.x, tile_info_size_u32.y);
+    return tile_info_size_u32.x * tile_info_size_u32.y;
+}
+
+bool AsspTryGetProbeTileIdFromLinearIndex(uint probe_linear_index, out int2 probe_tile_id)
+{
+    uint2 tile_info_size_u32;
+    AdaptiveScreenSpaceProbeTileInfoTex.GetDimensions(tile_info_size_u32.x, tile_info_size_u32.y);
+    if(0u == tile_info_size_u32.x || 0u == tile_info_size_u32.y)
+    {
+        probe_tile_id = int2(-1, -1);
+        return false;
+    }
+
+    const uint probe_tile_count = tile_info_size_u32.x * tile_info_size_u32.y;
+    if(probe_linear_index >= probe_tile_count)
+    {
+        probe_tile_id = int2(-1, -1);
+        return false;
+    }
+
+    probe_tile_id = int2(probe_linear_index % tile_info_size_u32.x, probe_linear_index / tile_info_size_u32.x);
+    return true;
+}
+
+bool AsspTryGetProbeLinearIndexFromTileId(int2 probe_tile_id, out uint probe_linear_index)
+{
+    uint2 tile_info_size_u32;
+    AdaptiveScreenSpaceProbeTileInfoTex.GetDimensions(tile_info_size_u32.x, tile_info_size_u32.y);
+    if(any(probe_tile_id < int2(0, 0)) || any(probe_tile_id >= int2(tile_info_size_u32)))
+    {
+        probe_linear_index = 0u;
+        return false;
+    }
+
+    probe_linear_index = uint(probe_tile_id.y) * tile_info_size_u32.x + uint(probe_tile_id.x);
+    return true;
+}
+
 void AsspResolveLeafNodeFromCurrentRepresentativeTileMap(
     int2 screen_texel_pos,
     out int selected_lod,
@@ -105,57 +194,28 @@ void AsspResolveLeafNodeFromCurrentRepresentativeTileMap(
     split_score = 0.0;
     representative_normal = float3(0.0, 0.0, 1.0);
 
-    uint2 representative_tile_tex_size;
-    AdaptiveScreenSpaceProbeRepresentativeTileTex.GetDimensions(representative_tile_tex_size.x, representative_tile_tex_size.y);
     const int2 current_tile_id = screen_texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-    if(any(current_tile_id < 0) || any(current_tile_id >= int2(representative_tile_tex_size)))
+    uint2 tile_info_size_u32;
+    AdaptiveScreenSpaceProbeTileInfoTex.GetDimensions(tile_info_size_u32.x, tile_info_size_u32.y);
+    if(any(current_tile_id < 0) || any(current_tile_id >= int2(tile_info_size_u32)))
     {
         return;
     }
 
-    const uint representative_tile_packed = AdaptiveScreenSpaceProbeRepresentativeTileTex.Load(int3(current_tile_id, 0)).x;
-    if(0xffffffffu == representative_tile_packed)
+    const float4 tile_info = AdaptiveScreenSpaceProbeTileInfoTex.Load(int3(current_tile_id, 0));
+    if(!isValidDepth(tile_info.x))
     {
         return;
     }
 
-    const int2 representative_tile_id = AsspUnpackProbeTileId(representative_tile_packed);
-    const AsspLod0NodeRecord representative_lod0_node = AsspLoadLod0Node(uint2(representative_tile_id));
-    representative_texel_pos = AsspUnpackRepresentativeTexelInt2(representative_lod0_node.representative_texel_packed);
-    representative_depth = representative_lod0_node.front_depth;
-    plane_error = representative_lod0_node.plane_error;
-    split_score = representative_lod0_node.split_score;
-    representative_normal = AsspLod0NodeIsSolid(representative_lod0_node) ? representative_lod0_node.representative_normal : float3(0.0, 0.0, 1.0);
-    selected_node_origin = representative_tile_id * int(ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE);
-
-    const int2 coarse_tile_origin = (current_tile_id / 2) * 2;
-    bool is_same_representative_in_coarse_block = true;
-    [unroll]
-    for(int oy = 0; oy < 2; ++oy)
-    {
-        [unroll]
-        for(int ox = 0; ox < 2; ++ox)
-        {
-            const int2 block_tile_id = coarse_tile_origin + int2(ox, oy);
-            if(any(block_tile_id >= int2(representative_tile_tex_size)))
-            {
-                continue;
-            }
-
-            const uint block_representative_tile_packed = AdaptiveScreenSpaceProbeRepresentativeTileTex.Load(int3(block_tile_id, 0)).x;
-            if(block_representative_tile_packed != representative_tile_packed)
-            {
-                is_same_representative_in_coarse_block = false;
-            }
-        }
-    }
-
-    if(is_same_representative_in_coarse_block)
-    {
-        selected_lod = 1;
-        selected_node_origin = coarse_tile_origin * int(ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE);
-        selected_node_size = int(AsspNodeSizeInPixels(1u));
-    }
+    selected_lod = 0;
+    selected_node_origin = current_tile_id * int(ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE);
+    selected_node_size = int(ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE);
+    representative_depth = tile_info.x;
+    representative_normal = normalize(OctDecode(tile_info.zw));
+    representative_texel_pos = current_tile_id * int(ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION) + AsspTileInfoDecodeProbePosInTile(tile_info.y);
+    plane_error = 0.0;
+    split_score = 0.0;
 }
 
 bool AsspTryResolveRepresentativeTileIdFromCurrentRepresentativeTileMap(
@@ -182,13 +242,22 @@ bool AsspTryResolveRepresentativeTileIdFromCurrentRepresentativeTileMap(
         representative_normal);
 
     representative_tile_id = int2(-1, -1);
-    if(any(representative_texel_pos < 0))
+    const int2 current_tile_id = screen_texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
+    uint2 tile_info_size_u32;
+    AdaptiveScreenSpaceProbeTileInfoTex.GetDimensions(tile_info_size_u32.x, tile_info_size_u32.y);
+    if(any(current_tile_id < int2(0, 0)) || any(current_tile_id >= int2(tile_info_size_u32)))
     {
         return false;
     }
 
-    representative_tile_id = representative_texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-    return true;
+    const float4 tile_info = AdaptiveScreenSpaceProbeTileInfoTex.Load(int3(current_tile_id, 0));
+    if(!isValidDepth(tile_info.x))
+    {
+        return false;
+    }
+
+    representative_tile_id = current_tile_id;
+    return any(representative_texel_pos >= int2(0, 0));
 }
 
 bool AsspTryResolveSpatialFilterNeighborRepresentativeTileId(
@@ -201,84 +270,19 @@ bool AsspTryResolveSpatialFilterNeighborRepresentativeTileId(
     uint2 tile_info_size_u32;
     AdaptiveScreenSpaceProbeTileInfoTex.GetDimensions(tile_info_size_u32.x, tile_info_size_u32.y);
     const int2 tile_info_size = int2(tile_info_size_u32);
-
-    int selected_lod;
-    int2 selected_node_origin;
-    int selected_node_size;
-    int2 resolved_center_representative_tile_id;
-    if(!AsspTryResolveRepresentativeTileIdFromCurrentRepresentativeTileMap(
-        center_representative_tile_id * ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE,
-        resolved_center_representative_tile_id,
-        selected_lod,
-        selected_node_origin,
-        selected_node_size))
+    const int2 neighbor_tile = center_representative_tile_id + direction;
+    if(any(neighbor_tile < int2(0, 0)) || any(neighbor_tile >= tile_info_size))
     {
         return false;
     }
 
-    // LOD0 は tile 隣接がそのまま side-neighbor になるので direct 解決でよい。
-    // LOD1 は representative child の位置に依存すると方向ごとの参照先が不安定になるため、
-    // coarse node 境界基準で近傍を解決する。
-    if(0 == selected_lod)
-    {
-        const int2 direct_lod0_neighbor_tile = center_representative_tile_id + direction;
-        if(all(direct_lod0_neighbor_tile >= int2(0, 0)) && all(direct_lod0_neighbor_tile < tile_info_size))
-        {
-            const float4 direct_lod0_neighbor_tile_info = AdaptiveScreenSpaceProbeTileInfoTex.Load(int3(direct_lod0_neighbor_tile, 0));
-            if(isValidDepth(direct_lod0_neighbor_tile_info.x))
-            {
-                neighbor_representative_tile_id = direct_lod0_neighbor_tile;
-                return true;
-            }
-        }
-    }
-
-    // LOD1、あるいは LOD0 direct が見つからない場合は、自身が属する current node の境界外サンプルから
-    // representative map 経由で「その方向の side-neighbor node」を解決する。
-    const int2 node_center = selected_node_origin + int2(selected_node_size / 2, selected_node_size / 2);
-    int2 neighbor_sample_screen_texel = node_center;
-    if(direction.x < 0)
-    {
-        neighbor_sample_screen_texel = int2(selected_node_origin.x - 1, node_center.y);
-    }
-    else if(direction.x > 0)
-    {
-        neighbor_sample_screen_texel = int2(selected_node_origin.x + selected_node_size, node_center.y);
-    }
-    else if(direction.y < 0)
-    {
-        neighbor_sample_screen_texel = int2(node_center.x, selected_node_origin.y - 1);
-    }
-    else if(direction.y > 0)
-    {
-        neighbor_sample_screen_texel = int2(node_center.x, selected_node_origin.y + selected_node_size);
-    }
-
-    const int2 screen_size = int2(AsspScreenWidth(), AsspScreenHeight());
-    if(any(neighbor_sample_screen_texel < int2(0, 0)) || any(neighbor_sample_screen_texel >= screen_size))
+    const float4 neighbor_tile_info = AdaptiveScreenSpaceProbeTileInfoTex.Load(int3(neighbor_tile, 0));
+    if(!isValidDepth(neighbor_tile_info.x))
     {
         return false;
     }
 
-    int neighbor_lod;
-    int2 neighbor_node_origin;
-    int neighbor_node_size;
-    if(!AsspTryResolveRepresentativeTileIdFromCurrentRepresentativeTileMap(
-        neighbor_sample_screen_texel,
-        neighbor_representative_tile_id,
-        neighbor_lod,
-        neighbor_node_origin,
-        neighbor_node_size))
-    {
-        return false;
-    }
-
-    if(all(neighbor_representative_tile_id == resolved_center_representative_tile_id))
-    {
-        neighbor_representative_tile_id = int2(-1, -1);
-        return false;
-    }
-
+    neighbor_representative_tile_id = neighbor_tile;
     return true;
 }
 
