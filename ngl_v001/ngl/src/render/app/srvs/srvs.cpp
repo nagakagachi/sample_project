@@ -288,13 +288,22 @@ namespace ngl::render::app
                     }
                 }
                 ImGui::SeparatorText("Ray Budget");
+                auto show_ray_budget_tooltip = [](const char* text)
+                {
+                    if(ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort))
+                    {
+                        ImGui::SetTooltip("%s", text);
+                    }
+                };
                 ImGui::SliderInt("Min Rays", &assp_ray_budget_min_rays_, 1, 16);
+                show_ray_budget_tooltip("Per-probe ray count lower bound. Final ray count is clamped into [Min Rays, Max Rays].");
                 if (ImGui::BeginPopupContextItem()) {
                     if (ImGui::MenuItem("Reset to Default"))
                         assp_ray_budget_min_rays_ = k_default_srvs_param.assp_ray_budget_min_rays;
                     ImGui::EndPopup();
                 }
                 ImGui::SliderInt("Max Rays", &assp_ray_budget_max_rays_, 1, 16);
+                show_ray_budget_tooltip("Per-probe ray count upper bound. Larger values improve quality but increase trace cost.");
                 if (ImGui::BeginPopupContextItem()) {
                     if (ImGui::MenuItem("Reset to Default"))
                         assp_ray_budget_max_rays_ = k_default_srvs_param.assp_ray_budget_max_rays;
@@ -307,30 +316,35 @@ namespace ngl::render::app
                     assp_ray_budget_max_rays_ = assp_ray_budget_min_rays_;
                 }
                 ImGui::SliderFloat("Budget Variance Weight", &assp_ray_budget_variance_weight_, 0.0f, 2.0f, "%.4f");
+                show_ray_budget_tooltip("Weight of history variance signal. Higher value allocates more rays to temporally unstable probes.");
                 if (ImGui::BeginPopupContextItem()) {
                     if (ImGui::MenuItem("Reset to Default"))
                         assp_ray_budget_variance_weight_ = k_default_srvs_param.assp_ray_budget_variance_weight;
                     ImGui::EndPopup();
                 }
                 ImGui::SliderFloat("Budget Normal Delta Weight", &assp_ray_budget_normal_delta_weight_, 0.0f, 2.0f, "%.4f");
+                show_ray_budget_tooltip("Weight of normal change between current tile and best previous tile.");
                 if (ImGui::BeginPopupContextItem()) {
                     if (ImGui::MenuItem("Reset to Default"))
                         assp_ray_budget_normal_delta_weight_ = k_default_srvs_param.assp_ray_budget_normal_delta_weight;
                     ImGui::EndPopup();
                 }
                 ImGui::SliderFloat("Budget Depth Delta Weight", &assp_ray_budget_depth_delta_weight_, 0.0f, 2.0f, "%.4f");
+                show_ray_budget_tooltip("Weight of depth change between current tile and best previous tile.");
                 if (ImGui::BeginPopupContextItem()) {
                     if (ImGui::MenuItem("Reset to Default"))
                         assp_ray_budget_depth_delta_weight_ = k_default_srvs_param.assp_ray_budget_depth_delta_weight;
                     ImGui::EndPopup();
                 }
                 ImGui::SliderFloat("Budget No History Bias", &assp_ray_budget_no_history_bias_, 0.0f, 2.0f, "%.4f");
+                show_ray_budget_tooltip("Additional score when no valid temporal history exists. Raises rays for newly observed probes.");
                 if (ImGui::BeginPopupContextItem()) {
                     if (ImGui::MenuItem("Reset to Default"))
                         assp_ray_budget_no_history_bias_ = k_default_srvs_param.assp_ray_budget_no_history_bias;
                     ImGui::EndPopup();
                 }
                 ImGui::SliderFloat("Budget Scale", &assp_ray_budget_scale_, 0.0f, 32.0f, "%.4f");
+                show_ray_budget_tooltip("Pre-scale for variance signal before weighting. Higher values make ray distribution react faster.");
                 if (ImGui::BeginPopupContextItem()) {
                     if (ImGui::MenuItem("Reset to Default"))
                         assp_ray_budget_scale_ = k_default_srvs_param.assp_ray_budget_scale;
@@ -375,7 +389,82 @@ namespace ngl::render::app
                 // カテゴリ別サブモードスライダ.
                 if (0 <= dbg_view_category_)
                 {
-            const int k_sub_mode_max[] = { 14, 1, 11, 17 };
+                    const int k_sub_mode_max[] = { 14, 1, 11, 17 };
+                    auto get_sub_mode_description = [](int category, int sub_mode) -> const char*
+                    {
+                        switch(category)
+                        {
+                        case 0: // BBV
+                            switch(sub_mode)
+                            {
+                            case 0: return "HiBrick trace: voxel ID color";
+                            case 1: return "Non-HiBrick trace: fine voxel color";
+                            case 2: return "HiBrick trace: brick ID color";
+                            case 3: return "HiBrick trace: hit normal";
+                            case 4: return "HiBrick trace: hit depth";
+                            case 5: return "HiBrick trace: brick occupancy";
+                            case 6: return "HiBrick occupancy test trace";
+                            case 7: return "Top-down occupancy X-ray";
+                            case 8: return "HiBrick empty-skip count";
+                            case 9: return "HiBrick occupied-descend count";
+                            case 10: return "Brick coarse-check count";
+                            case 11: return "Fine voxel/bitmask check count";
+                            case 12: return "HiBrick skip efficiency";
+                            case 13: return "Cone transmittance approximation";
+                            case 14: return "Resolved brick radiance";
+                            default: return "Unknown";
+                            }
+                        case 1: // FSP
+                            switch(sub_mode)
+                            {
+                            case 0: return "FSP Octahedral atlas RGBA";
+                            case 1: return "FSP packed SH RGBA";
+                            default: return "Unknown";
+                            }
+                        case 2: // SSP
+                            switch(sub_mode)
+                            {
+                            case 0: return "Probe atlas RGB + sky visibility A";
+                            case 1: return "Sky visibility only";
+                            case 2: return "Probe normal";
+                            case 3: return "Probe placement in tile";
+                            case 4: return "Sky visibility SH coefficients";
+                            case 5: return "Sky visibility SH sample";
+                            case 6: return "Radiance SH coeff 0";
+                            case 7: return "Radiance SH coeff 1";
+                            case 8: return "Radiance SH coeff 2";
+                            case 9: return "Radiance SH coeff 3";
+                            case 10: return "Temporal reprojection success";
+                            case 11: return "Side cache state";
+                            default: return "Unknown";
+                            }
+                        case 3: // ASSP
+                            switch(sub_mode)
+                            {
+                            case 0: return "Lod0 depth/error/split overview";
+                            case 1: return "Lod0 representative depth";
+                            case 2: return "Lod0 plane error";
+                            case 3: return "Lod0 split score";
+                            case 4: return "Lod0 representative normal";
+                            case 5: return "Selected LOD color";
+                            case 6: return "Leaf noise pattern";
+                            case 7: return "Leaf border visualization";
+                            case 8: return "Representative lit color";
+                            case 9: return "ASSP probe atlas raw";
+                            case 10: return "Representative probe sample";
+                            case 11: return "ASSP packed SH raw";
+                            case 12: return "ASSP SH sample";
+                            case 13: return "Filtered variance mean";
+                            case 14: return "Filtered variance";
+                            case 15: return "Raw variance mean";
+                            case 16: return "Raw variance";
+                            case 17: return "Per-probe ray count";
+                            default: return "Unknown";
+                            }
+                        default:
+                            return "Unknown";
+                        }
+                    };
                     const int sub_max = k_sub_mode_max[dbg_view_category_];
                     // カテゴリ切替時にクランプ.
                     if (dbg_view_sub_mode_ > sub_max) dbg_view_sub_mode_ = sub_max;
@@ -386,11 +475,11 @@ namespace ngl::render::app
                             dbg_view_sub_mode_ = 0;
                         ImGui::EndPopup();
                     }
+                    ImGui::TextDisabled("Sub Mode %d: %s", dbg_view_sub_mode_, get_sub_mode_description(dbg_view_category_, dbg_view_sub_mode_));
                 }
 
                 if (3 == dbg_view_category_)
                 {
-                    ImGui::TextDisabled("Sub Mode 17: per-probe ray count (grayscale, 4..16 rays).");
                     bool v = (0 != dbg_assp_leaf_border_enable_);
                     if (ImGui::Checkbox("ASSP Leaf Border", &v))
                         dbg_assp_leaf_border_enable_ = v ? 1 : 0;
@@ -539,9 +628,6 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_tile_info_srv = "AdaptiveScreenSpaceProbeTileInfoTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_history_tile_info_srv = "AdaptiveScreenSpaceProbeHistoryTileInfoTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_tile_info_uav = "RWAdaptiveScreenSpaceProbeTileInfoTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_representative_tile_srv = "AdaptiveScreenSpaceProbeRepresentativeTileTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_history_representative_tile_srv = "AdaptiveScreenSpaceProbeHistoryRepresentativeTileTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_representative_tile_uav = "RWAdaptiveScreenSpaceProbeRepresentativeTileTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_best_prev_tile_srv = "AdaptiveScreenSpaceProbeBestPrevTileTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_best_prev_tile_uav = "RWAdaptiveScreenSpaceProbeBestPrevTileTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_variance_srv = "AdaptiveScreenSpaceProbeVarianceTex";
@@ -552,8 +638,6 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_packed_sh_uav = "RWAdaptiveScreenSpaceProbePackedSHTex";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_buffer_srv = "AsspBuffer";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_buffer_uav = "RWAsspBuffer";
-    constexpr SrvsShaderBindName k_shader_bind_name_assp_representative_probe_list_srv = "AsspRepresentativeProbeList";
-    constexpr SrvsShaderBindName k_shader_bind_name_assp_representative_probe_list_uav = "RWAsspRepresentativeProbeList";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_indirect_arg_uav = "RWAsspProbeIndirectArg";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_trace_indirect_arg_uav = "RWAsspProbeTraceIndirectArg";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_total_ray_count_srv = "AsspProbeTotalRayCountBuffer";
@@ -645,7 +729,6 @@ namespace ngl::render::app
         assp_probe_packed_sh_tex_ = {};
         assp_probe_best_prev_tile_tex_ = {};
         assp_buffer_ = {};
-        assp_representative_probe_list_ = {};
         assp_probe_indirect_arg_ = {};
         assp_probe_trace_indirect_arg_ = {};
         assp_probe_total_ray_count_buffer_ = {};
@@ -822,23 +905,6 @@ namespace ngl::render::app
             if(!assp_probe_tile_info_tex_[i].Initialize(p_device, desc, (0 == i) ? "Srvs_AsspProbeTileInfoTexA" : "Srvs_AsspProbeTileInfoTexB"))
                 return false;
         }
-        for(int i = 0; i < 2; ++i)
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width = (assp_probe_base_resolution_x + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.height = (assp_probe_base_resolution_y + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R32_UINT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            if(!assp_probe_representative_tile_tex_[i].Initialize(p_device, desc, (0 == i) ? "Srvs_AsspProbeRepresentativeTileTexA" : "Srvs_AsspProbeRepresentativeTileTexB"))
-                return false;
-        }
         {
             rhi::TextureDep::Desc desc = {};
             desc.type = rhi::ETextureType::Texture2D;
@@ -882,23 +948,6 @@ namespace ngl::render::app
                     .heap_type = rhi::EResourceHeapType::Default},
                 rhi::EResourceFormat::Format_R32_UINT,
                 "Srvs_AsspBuffer"))
-            {
-                return false;
-            }
-        }
-        {
-            const u32 assp_probe_tile_count =
-                static_cast<u32>((assp_probe_base_resolution_x + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE) *
-                static_cast<u32>((assp_probe_base_resolution_y + ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE - 1) / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE);
-            if(!assp_representative_probe_list_.InitializeAsTyped(
-                p_device,
-                rhi::BufferDep::Desc{
-                    .element_byte_size = sizeof(uint32_t),
-                    .element_count     = assp_probe_tile_count + 1u,
-                    .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
-                    .heap_type = rhi::EResourceHeapType::Default},
-                rhi::EResourceFormat::Format_R32_UINT,
-                "Srvs_AsspRepresentativeProbeList"))
             {
                 return false;
             }
@@ -1105,7 +1154,6 @@ namespace ngl::render::app
             pso_ss_probe_spatial_filter_ = CreateComputePSO("srvs/ssp/ss_probe_spatial_filter_cs.hlsl");
             pso_ss_probe_sh_update_ = CreateComputePSO("srvs/ssp/ss_probe_sh_update_cs.hlsl");
             pso_assp_probe_clear_ = CreateComputePSO("srvs/assp/assp_probe_clear_cs.hlsl");
-            pso_assp_probe_list_clear_ = CreateComputePSO("srvs/assp/assp_probe_list_clear_cs.hlsl");
             pso_assp_probe_preupdate_ = CreateComputePSO("srvs/assp/assp_probe_preupdate_cs.hlsl");
             pso_assp_probe_generate_indirect_arg_ = CreateComputePSO("srvs/assp/assp_probe_generate_indirect_arg_cs.hlsl");
             pso_assp_probe_build_ray_meta_ = CreateComputePSO("srvs/assp/assp_probe_build_ray_meta_cs.hlsl");
@@ -1699,7 +1747,6 @@ namespace ngl::render::app
                     p_command_list->ResourceBarrier(assp_probe_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                     p_command_list->ResourceBarrier(assp_probe_variance_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                     p_command_list->ResourceBarrier(assp_probe_tile_info_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                    p_command_list->ResourceBarrier(assp_probe_representative_tile_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 }
                 p_command_list->ResourceBarrier(fsp_probe_packed_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 p_command_list->ResourceBarrier(ss_probe_packed_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
@@ -1707,7 +1754,6 @@ namespace ngl::render::app
                 p_command_list->ResourceBarrier(ss_probe_best_prev_tile_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 p_command_list->ResourceBarrier(assp_probe_best_prev_tile_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 p_command_list->ResourceBarrier(assp_buffer_.buffer.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                p_command_list->ResourceBarrier(assp_representative_probe_list_.buffer.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
 
             }
         }
@@ -2676,7 +2722,6 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_srv.Get(), assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_variance_srv.Get(), assp_probe_variance_tex_[assp_variance_curr_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_tile_info_curr_frame_tex_index_].srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_representative_tile_srv.Get(), assp_probe_representative_tile_tex_[assp_tile_info_curr_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_packed_sh_srv.Get(), assp_probe_packed_sh_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_assp_probe_ray_meta_srv.Get(), assp_probe_ray_meta_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_assp_buffer_srv.Get(), assp_buffer_.srv.Get());
@@ -2939,7 +2984,6 @@ namespace ngl::render::app
         p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_packed_sh_srv.Get(), bbvgi_instance_->GetSsProbePackedShTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_assp_buffer_srv.Get(), bbvgi_instance_->GetAsspBuffer().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), bbvgi_instance_->GetAsspProbeTileInfoTex().Get());
-        p_pso->SetView(p_desc_set, k_shader_bind_name_asspprobe_representative_tile_srv.Get(), bbvgi_instance_->GetAsspProbeRepresentativeTileTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_asspprobe_packed_sh_srv.Get(), bbvgi_instance_->GetAsspProbePackedShTex().Get());
         p_pso->SetView(p_desc_set, "cb_srvs", &bbvgi_instance_->GetDispatchCbh()->cbv);
     }

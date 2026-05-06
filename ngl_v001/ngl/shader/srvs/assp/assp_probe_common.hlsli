@@ -16,18 +16,12 @@ Texture2D<float4>      AdaptiveScreenSpaceProbeTileInfoTex;
 Texture2D<float4>      AdaptiveScreenSpaceProbeHistoryTileInfoTex;
 RWTexture2D<float4>    RWAdaptiveScreenSpaceProbeTileInfoTex;
 
-Texture2D<uint>        AdaptiveScreenSpaceProbeRepresentativeTileTex;
-Texture2D<uint>        AdaptiveScreenSpaceProbeHistoryRepresentativeTileTex;
-RWTexture2D<uint>      RWAdaptiveScreenSpaceProbeRepresentativeTileTex;
-
 Texture2D<uint>        AdaptiveScreenSpaceProbeBestPrevTileTex;
 RWTexture2D<uint>      RWAdaptiveScreenSpaceProbeBestPrevTileTex;
 
 Texture2D<float4>      AdaptiveScreenSpaceProbePackedSHTex;
 RWTexture2D<float4>    RWAdaptiveScreenSpaceProbePackedSHTex;
 
-Buffer<uint>           AsspRepresentativeProbeList;
-RWBuffer<uint>         RWAsspRepresentativeProbeList;
 RWBuffer<uint>         RWAsspProbeIndirectArg;
 RWBuffer<uint>         RWAsspProbeTraceIndirectArg;
 Buffer<uint>           AsspProbeTotalRayCountBuffer;

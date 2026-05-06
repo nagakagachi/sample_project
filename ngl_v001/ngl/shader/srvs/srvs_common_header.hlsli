@@ -441,13 +441,13 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         float assp_spatial_filter_depth_exp_scale NGL_CPP_MEMBER_INIT({float(SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE)});
         int assp_temporal_reprojection_enable NGL_CPP_MEMBER_INIT({1});
         int assp_ray_guiding_enable NGL_CPP_MEMBER_INIT({1});
-        int assp_ray_budget_min_rays NGL_CPP_MEMBER_INIT({4});
+        int assp_ray_budget_min_rays NGL_CPP_MEMBER_INIT({1});
         int assp_ray_budget_max_rays NGL_CPP_MEMBER_INIT({16});
         float assp_ray_budget_variance_weight NGL_CPP_MEMBER_INIT({0.55f});
         float assp_ray_budget_normal_delta_weight NGL_CPP_MEMBER_INIT({0.25f});
         float assp_ray_budget_depth_delta_weight NGL_CPP_MEMBER_INIT({0.20f});
-        float assp_ray_budget_no_history_bias NGL_CPP_MEMBER_INIT({0.45f});
-        float assp_ray_budget_scale NGL_CPP_MEMBER_INIT({12.0f});
+        float assp_ray_budget_no_history_bias NGL_CPP_MEMBER_INIT({1.0f});
+        float assp_ray_budget_scale NGL_CPP_MEMBER_INIT({1.0f});
         int assp_debug_freeze_frame_random_enable NGL_CPP_MEMBER_INIT({0});
         int assp_debug_leaf_border_enable NGL_CPP_MEMBER_INIT({1});
         int assp_words_per_node NGL_CPP_MEMBER_INIT({int(k_assp_words_per_node)});
