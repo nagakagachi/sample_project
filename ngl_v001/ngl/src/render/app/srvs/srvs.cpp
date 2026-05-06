@@ -295,22 +295,23 @@ namespace ngl::render::app
                         ImGui::SetTooltip("%s", text);
                     }
                 };
-                ImGui::SliderInt("Min Rays", &assp_ray_budget_min_rays_, 1, 16);
+                constexpr int k_assp_ray_budget_ui_max_rays = 31; // packed local ray index is 5-bit.
+                ImGui::SliderInt("Min Rays", &assp_ray_budget_min_rays_, 1, k_assp_ray_budget_ui_max_rays);
                 show_ray_budget_tooltip("Per-probe ray count lower bound. Final ray count is clamped into [Min Rays, Max Rays].");
                 if (ImGui::BeginPopupContextItem()) {
                     if (ImGui::MenuItem("Reset to Default"))
                         assp_ray_budget_min_rays_ = k_default_srvs_param.assp_ray_budget_min_rays;
                     ImGui::EndPopup();
                 }
-                ImGui::SliderInt("Max Rays", &assp_ray_budget_max_rays_, 1, 16);
-                show_ray_budget_tooltip("Per-probe ray count upper bound. Larger values improve quality but increase trace cost.");
+                ImGui::SliderInt("Max Rays", &assp_ray_budget_max_rays_, 1, k_assp_ray_budget_ui_max_rays);
+                show_ray_budget_tooltip("Per-probe ray count upper bound. Values >16 are allowed, while total frame rays remain capped to (probe_count * 16).");
                 if (ImGui::BeginPopupContextItem()) {
                     if (ImGui::MenuItem("Reset to Default"))
                         assp_ray_budget_max_rays_ = k_default_srvs_param.assp_ray_budget_max_rays;
                     ImGui::EndPopup();
                 }
-                assp_ray_budget_min_rays_ = std::clamp(assp_ray_budget_min_rays_, 1, 16);
-                assp_ray_budget_max_rays_ = std::clamp(assp_ray_budget_max_rays_, 1, 16);
+                assp_ray_budget_min_rays_ = std::clamp(assp_ray_budget_min_rays_, 1, k_assp_ray_budget_ui_max_rays);
+                assp_ray_budget_max_rays_ = std::clamp(assp_ray_budget_max_rays_, 1, k_assp_ray_budget_ui_max_rays);
                 if (assp_ray_budget_min_rays_ > assp_ray_budget_max_rays_)
                 {
                     assp_ray_budget_max_rays_ = assp_ray_budget_min_rays_;

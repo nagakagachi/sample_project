@@ -33,7 +33,7 @@ RWBuffer<uint>         RWAsspProbeRayQueryBuffer;
 Buffer<uint>           AsspProbeRayResultBuffer;
 RWBuffer<uint>         RWAsspProbeRayResultBuffer;
 
-static const uint k_assp_ray_count_max = ADAPTIVE_SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT;
+static const uint k_assp_ray_count_max = 31u; // packed local_ray/count is 5-bit.
 static const uint k_assp_ray_meta_count_bits = 5u;
 static const uint k_assp_ray_meta_count_mask = (1u << k_assp_ray_meta_count_bits) - 1u;
 static const uint k_assp_ray_meta_offset_shift = k_assp_ray_meta_count_bits;

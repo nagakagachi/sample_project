@@ -12,6 +12,7 @@ RayMeta(offset,count) と total ray count を構築する。
 groupshared uint gs_probe_ray_count[ADAPTIVE_SCREEN_SPACE_PROBE_PROBE_PER_GROUP];
 groupshared uint gs_probe_prefix_inclusive[ADAPTIVE_SCREEN_SPACE_PROBE_PROBE_PER_GROUP];
 groupshared uint gs_group_total_ray_count;
+groupshared uint gs_group_allocated_ray_count;
 groupshared uint gs_group_global_ray_offset_base;
 
 uint AsspComputeRayCount(uint probe_list_index, uint probe_count)
@@ -136,9 +137,25 @@ void main_cs(uint3 gtid : SV_GroupThreadID, uint gindex : SV_GroupIndex, uint3 g
     GroupMemoryBarrierWithGroupSync();
 #endif
 
+    // グローバル総ray予算内で group 単位に安全割り当て.
+    // 1回の atomic add で予約し、超過分は atomic add(減算) でロールバックする。
     if(0u == gindex)
     {
-        InterlockedAdd(RWAsspProbeTotalRayCountBuffer[0], gs_group_total_ray_count, gs_group_global_ray_offset_base);
+        const uint total_ray_budget = probe_count * ADAPTIVE_SCREEN_SPACE_PROBE_OCT_TEXEL_COUNT; // 現行の16 rays/probe相当を総予算に維持.
+        uint reserved_counter_before = 0u;
+        InterlockedAdd(RWAsspProbeTotalRayCountBuffer[0], gs_group_total_ray_count, reserved_counter_before);
+
+        const uint alloc_ray_count = (reserved_counter_before < total_ray_budget)
+            ? min(gs_group_total_ray_count, total_ray_budget - reserved_counter_before)
+            : 0u;
+        const uint rollback_ray_count = gs_group_total_ray_count - alloc_ray_count;
+        if(rollback_ray_count > 0u)
+        {
+            uint rollback_counter_before = 0u;
+            InterlockedAdd(RWAsspProbeTotalRayCountBuffer[0], (0u - rollback_ray_count), rollback_counter_before);
+        }
+        gs_group_global_ray_offset_base = reserved_counter_before;
+        gs_group_allocated_ray_count = alloc_ray_count;
     }
     GroupMemoryBarrierWithGroupSync();
 
@@ -147,15 +164,19 @@ void main_cs(uint3 gtid : SV_GroupThreadID, uint gindex : SV_GroupIndex, uint3 g
         return;
     }
 
-    // Probeごとのグローバルoffsetを確定.
-    const uint ray_offset = gs_group_global_ray_offset_base + (gs_probe_prefix_inclusive[gindex] - ray_count);
-    RWAsspProbeRayMetaBuffer[probe_list_index] = AsspPackRayMeta(ray_offset, ray_count);
+    // Probeごとのグローバルoffsetを確定し、group内で割り当て上限を超える分は切り詰める.
+    const uint probe_ray_start_in_group = gs_probe_prefix_inclusive[gindex] - ray_count;
+    const uint ray_offset = gs_group_global_ray_offset_base + probe_ray_start_in_group;
+    const uint allocated_ray_count = (gs_group_allocated_ray_count > probe_ray_start_in_group)
+        ? min(ray_count, gs_group_allocated_ray_count - probe_ray_start_in_group)
+        : 0u;
+    RWAsspProbeRayMetaBuffer[probe_list_index] = AsspPackRayMeta(ray_offset, allocated_ray_count);
 
     // RayQuery展開を同一パスで実行して FillRayQuery パスを不要化.
     [unroll]
     for(uint local_ray_index = 0u; local_ray_index < k_assp_ray_count_max; ++local_ray_index)
     {
-        if(local_ray_index < ray_count)
+        if(local_ray_index < allocated_ray_count)
         {
             RWAsspProbeRayQueryBuffer[ray_offset + local_ray_index] = AsspPackRayQuery(probe_list_index, local_ray_index);
         }
