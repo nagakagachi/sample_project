@@ -1,7 +1,8 @@
-﻿
+﻿// main.cpp: Sample application entry and scene/render setup.
 #include <algorithm>
 #include <array>
 #include <cfloat>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <thread>
@@ -371,7 +372,8 @@ bool AppGame::Initialize()
         const char* mesh_file_spider         = "../ngl/data/model/assimp/FBX/spider.fbx";
         const float spider_base_scale        = 0.0001f;
 
-        const char* mesh_file_box = "K:\\GitHub\\sample_projct_lib\\ngl_v001\\ngl\\external\\assimp\\test\\models\\FBX\\box.fbx";
+        //const char* mesh_file_box = "K:\\GitHub\\sample_projct_lib\\ngl_v001\\ngl\\external\\assimp\\test\\models\\FBX\\box.fbx";
+        const char* mesh_file_box = "../ngl/data/model/assimp/FBX/box.fbx";
 
         // シーンモデル.
 #if 0
@@ -383,11 +385,29 @@ bool AppGame::Initialize()
         const float target_scene_base_scale = sponza_scale;
 #else
         // Amazon Lumberyard Bistro.
-        const char* mesh_file_bistro = "C:/Users/nagak/Downloads/Bistro_v5_2/Bistro_v5_2/BistroExterior.fbx";
+        const char* mesh_file_bistro = "../ngl/data/model/Bistro_v5_2/BistroExterior.fbx";
         const float bistro_scale     = 1.0f;
 
         const char* mesh_target_scene       = mesh_file_bistro;
         const float target_scene_base_scale = bistro_scale;
+        {
+            // BistroExterior はリポジトリ外配布のため、ローカル配置をチェックする。
+            std::error_code ec;
+            const bool is_mesh_target_scene_exists = std::filesystem::exists(mesh_target_scene, ec);
+            if (!is_mesh_target_scene_exists)
+            {
+                std::cout << "[ERROR] Required model file was not found: " << mesh_target_scene << std::endl;
+                std::cout << "Please download/checkout BistroExterior and place it under:" << std::endl;
+                std::cout << "  ../ngl/data/model/Bistro_v5_2" << std::endl;
+                std::cout << "Expected file:" << std::endl;
+                std::cout << "  ../ngl/data/model/Bistro_v5_2/BistroExterior.fbx" << std::endl;
+                if(ec)
+                {
+                    std::cout << "filesystem error: " << ec.message() << std::endl;
+                }
+                return false;
+            }
+        }
 #endif
 
         std::shared_ptr<ngl::gfx::MeshData> procedural_mesh_data = std::make_shared<ngl::gfx::MeshData>();
