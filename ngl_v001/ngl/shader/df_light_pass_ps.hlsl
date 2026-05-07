@@ -648,121 +648,112 @@ bool AsspTryLoadPackedShL1FromRepresentativeTileId(out AsspProbePackedShL1Sample
     return true;
 }
 
-bool AsspTrySamplePackedShL1FromScreenTexel(out AsspProbePackedShL1Sample result, out float reliability_weight, int2 screen_texel_pos, float linear_depth)
+void CalcAsspProbeShUpsampleInfo(
+    out int2 out_assp_probe_sh_base_texel,
+    out float4 out_upscale_gathered_weight,
+    out bool out_valid_upscale_sample,
+    float2 screen_uv,
+    float linear_depth)
 {
-    result = MakeZeroAsspProbePackedShL1Sample();
-    reliability_weight = 0.0;
+    const int2 assp_probe_sh_tex_size = AsspPackedShAtlasLogicalResolution();
+    const float2 assp_probe_sh_tex_size_f = float2(assp_probe_sh_tex_size);
+    const float2 assp_probe_sh_texel_pos_f = screen_uv * assp_probe_sh_tex_size_f;
+    out_assp_probe_sh_base_texel = clamp(int2(floor(assp_probe_sh_texel_pos_f - 0.5)), int2(0, 0), int2(assp_probe_sh_tex_size) - int2(2, 2));
 
-    int selected_lod = 0;
-    int2 selected_node_origin = int2(0, 0);
-    int selected_node_size = 0;
-    int2 representative_texel_pos = int2(0, 0);
-    float representative_depth = 0.0;
-    float plane_error = 0.0;
-    float split_score = 0.0;
-    float3 representative_normal = 0.0.xxx;
-    AsspResolveLeafNodeFromCurrentRepresentativeTileMap(
-        screen_texel_pos,
-        selected_lod,
-        selected_node_origin,
-        selected_node_size,
-        representative_texel_pos,
-        representative_depth,
-        plane_error,
-        split_score,
-        representative_normal);
-
-    if(any(representative_texel_pos < 0))
+    const float4 low_hw_depth4 = AdaptiveScreenSpaceProbeTileInfoTex.GatherRed(samp, screen_uv);
+    out_upscale_gathered_weight = float4(0.0, 0.0, 0.0, 0.0);
+    const float upscale_limit_view_z = 0.01 + 0.25 * linear_depth;
+    [unroll]
+    for(int ci = 0; ci < 4; ++ci)
     {
-        return false;
+        if(!isValidDepth(low_hw_depth4[ci]))
+        {
+            out_upscale_gathered_weight[ci] = 0.0;
+            continue;
+        }
+        const float low_view_z = abs(calc_view_z_from_ndc_z(low_hw_depth4[ci], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef));
+        const float diff = abs(low_view_z - linear_depth);
+        out_upscale_gathered_weight[ci] = (diff < upscale_limit_view_z) ? (1.0 - diff / upscale_limit_view_z) : 0.0;
     }
 
-    const int2 representative_tile_id = representative_texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-    if(!AsspTryLoadPackedShL1FromRepresentativeTileId(result, representative_tile_id))
+    const float upscale_weight_sum =
+        out_upscale_gathered_weight.x + out_upscale_gathered_weight.y + out_upscale_gathered_weight.z + out_upscale_gathered_weight.w;
+    out_valid_upscale_sample = (upscale_weight_sum > 0.0);
+    if(out_valid_upscale_sample)
     {
-        return false;
+        out_upscale_gathered_weight /= upscale_weight_sum;
+    }
+}
+
+float4 SampleAsspProbePackedShCoeff(
+    uint coeff_index,
+    float2 screen_uv,
+    int2 assp_probe_sh_base_texel,
+    float4 upscale_gathered_weight,
+    bool valid_upscale_sample)
+{
+    const int2 logical_resolution = AsspPackedShAtlasLogicalResolution();
+    float4 gathered_sh[4];
+    gathered_sh[0] = AdaptiveScreenSpaceProbePackedSHTex.Load(int3(AsspPackedShAtlasTexelCoord(assp_probe_sh_base_texel + GatherComponentIndexToTexelOffset(0), coeff_index, logical_resolution), 0));
+    gathered_sh[1] = AdaptiveScreenSpaceProbePackedSHTex.Load(int3(AsspPackedShAtlasTexelCoord(assp_probe_sh_base_texel + GatherComponentIndexToTexelOffset(1), coeff_index, logical_resolution), 0));
+    gathered_sh[2] = AdaptiveScreenSpaceProbePackedSHTex.Load(int3(AsspPackedShAtlasTexelCoord(assp_probe_sh_base_texel + GatherComponentIndexToTexelOffset(2), coeff_index, logical_resolution), 0));
+    gathered_sh[3] = AdaptiveScreenSpaceProbePackedSHTex.Load(int3(AsspPackedShAtlasTexelCoord(assp_probe_sh_base_texel + GatherComponentIndexToTexelOffset(3), coeff_index, logical_resolution), 0));
+
+    if(valid_upscale_sample)
+    {
+        return
+            gathered_sh[0] * upscale_gathered_weight[0]
+            + gathered_sh[1] * upscale_gathered_weight[1]
+            + gathered_sh[2] * upscale_gathered_weight[2]
+            + gathered_sh[3] * upscale_gathered_weight[3];
     }
 
-    const float plane_error_bias = max(representative_depth * 0.01, 0.01);
-    const float depth_error_bias = max(linear_depth * 0.05, 0.05);
-    const float depth_error = abs(representative_depth - linear_depth);
-    const float depth_weight = rcp(1.0 + depth_error / depth_error_bias);
-    reliability_weight = depth_weight * rcp(max(plane_error, plane_error_bias));
-    return true;
+    uint2 packed_sh_tex_size;
+    AdaptiveScreenSpaceProbePackedSHTex.GetDimensions(packed_sh_tex_size.x, packed_sh_tex_size.y);
+    const float2 logical_resolution_f = float2(logical_resolution);
+    const float2 packed_sh_tex_size_f = float2(packed_sh_tex_size);
+    const float2 coeff_offset = float2(AsspPackedShAtlasCoeffOffset(coeff_index, logical_resolution));
+    const float2 coeff_uv = (clamp(screen_uv * logical_resolution_f, 0.5, logical_resolution_f - 0.5) + coeff_offset) / packed_sh_tex_size_f;
+    return AdaptiveScreenSpaceProbePackedSHTex.SampleLevel(samp, coeff_uv, 0);
+}
+
+AsspProbePackedShL1Sample SampleAsspPackedShL1(
+    float2 screen_uv,
+    int2 assp_probe_sh_base_texel,
+    float4 upscale_gathered_weight,
+    bool valid_upscale_sample)
+{
+    AsspProbePackedShL1Sample result;
+
+    const float4 coeff0 = SampleAsspProbePackedShCoeff(0, screen_uv, assp_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
+    const float4 coeff1 = SampleAsspProbePackedShCoeff(1, screen_uv, assp_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
+    const float4 coeff2 = SampleAsspProbePackedShCoeff(2, screen_uv, assp_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
+    const float4 coeff3 = SampleAsspProbePackedShCoeff(3, screen_uv, assp_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
+
+    result.sky_visibility_sh = float4(coeff0.r, coeff1.r, coeff2.r, coeff3.r);
+    result.radiance_sh_r = float4(coeff0.g, coeff1.g, coeff2.g, coeff3.g);
+    result.radiance_sh_g = float4(coeff0.b, coeff1.b, coeff2.b, coeff3.b);
+    result.radiance_sh_b = float4(coeff0.a, coeff1.a, coeff2.a, coeff3.a);
+    return result;
 }
 
 bool TrySampleAsspPackedShL1(out AsspProbePackedShL1Sample result, float2 screen_uv, float linear_depth)
 {
     result = MakeZeroAsspProbePackedShL1Sample();
-
-    const int2 probe_grid_resolution = int2(AsspLodWidthFromCb(0u), AsspLodHeightFromCb(0u));
-    uint2 screen_size_u;
-    tex_lineardepth.GetDimensions(screen_size_u.x, screen_size_u.y);
-    const int2 screen_resolution = int2(screen_size_u);
-    const int2 screen_texel_pos = clamp(int2(screen_uv * float2(screen_resolution)), int2(0, 0), screen_resolution - int2(1, 1));
-
-    if(any(probe_grid_resolution <= 0))
-    {
-        float fallback_weight = 0.0;
-        return AsspTrySamplePackedShL1FromScreenTexel(result, fallback_weight, screen_texel_pos, linear_depth);
-    }
-
-    if(any(probe_grid_resolution <= 1))
-    {
-        float fallback_weight = 0.0;
-        return AsspTrySamplePackedShL1FromScreenTexel(result, fallback_weight, screen_texel_pos, linear_depth);
-    }
-
-    const float2 probe_grid_coord = screen_uv * float2(probe_grid_resolution) - 0.5;
-    const int2 probe_grid_base = clamp(
-        int2(floor(probe_grid_coord)),
-        int2(0, 0),
-        max(probe_grid_resolution - int2(2, 2), int2(0, 0)));
-    const float2 probe_grid_lerp_rate = saturate(frac(probe_grid_coord));
-
-    float total_weight = 0.0;
-    [unroll]
-    for(int gather_component_index = 0; gather_component_index < 4; ++gather_component_index)
-    {
-        const int2 gather_offset = GatherComponentIndexToTexelOffset(gather_component_index);
-        const int2 probe_tile_id = probe_grid_base + gather_offset;
-        const float bilinear_weight =
-            ((gather_offset.x == 0) ? (1.0 - probe_grid_lerp_rate.x) : probe_grid_lerp_rate.x)
-            * ((gather_offset.y == 0) ? (1.0 - probe_grid_lerp_rate.y) : probe_grid_lerp_rate.y);
-        if(bilinear_weight <= 0.0)
-        {
-            continue;
-        }
-
-        const int2 gather_screen_texel_pos = clamp(
-            probe_tile_id * ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE + int2(ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE / 2, ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE / 2),
-            int2(0, 0),
-            screen_resolution - int2(1, 1));
-
-        AsspProbePackedShL1Sample probe_sh = MakeZeroAsspProbePackedShL1Sample();
-        float reliability_weight = 0.0;
-        if(!AsspTrySamplePackedShL1FromScreenTexel(probe_sh, reliability_weight, gather_screen_texel_pos, linear_depth))
-        {
-            continue;
-        }
-
-        const float combined_weight = bilinear_weight * reliability_weight;
-        if(combined_weight <= 0.0)
-        {
-            continue;
-        }
-
-        AccumulateAsspPackedShL1Sample(result, probe_sh, combined_weight);
-        total_weight += combined_weight;
-    }
-
-    if(total_weight <= 0.0)
-    {
-        float fallback_weight = 0.0;
-        return AsspTrySamplePackedShL1FromScreenTexel(result, fallback_weight, screen_texel_pos, linear_depth);
-    }
-
-    ScaleAsspPackedShL1Sample(result, rcp(total_weight));
+    int2 assp_probe_sh_base_texel = int2(0, 0);
+    float4 upscale_gathered_weight = float4(0.0, 0.0, 0.0, 0.0);
+    bool valid_upscale_sample = false;
+    CalcAsspProbeShUpsampleInfo(
+        assp_probe_sh_base_texel,
+        upscale_gathered_weight,
+        valid_upscale_sample,
+        screen_uv,
+        linear_depth);
+    result = SampleAsspPackedShL1(
+        screen_uv,
+        assp_probe_sh_base_texel,
+        upscale_gathered_weight,
+        valid_upscale_sample);
     return true;
 }
 
