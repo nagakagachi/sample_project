@@ -595,59 +595,6 @@ AsspProbePackedShL1Sample MakeZeroAsspProbePackedShL1Sample()
     return result;
 }
 
-void AccumulateAsspPackedShL1Sample(inout AsspProbePackedShL1Sample accum, AsspProbePackedShL1Sample sample_value, float weight)
-{
-    accum.sky_visibility_sh += sample_value.sky_visibility_sh * weight;
-    accum.radiance_sh_r += sample_value.radiance_sh_r * weight;
-    accum.radiance_sh_g += sample_value.radiance_sh_g * weight;
-    accum.radiance_sh_b += sample_value.radiance_sh_b * weight;
-}
-
-void ScaleAsspPackedShL1Sample(inout AsspProbePackedShL1Sample sample_value, float scale)
-{
-    sample_value.sky_visibility_sh *= scale;
-    sample_value.radiance_sh_r *= scale;
-    sample_value.radiance_sh_g *= scale;
-    sample_value.radiance_sh_b *= scale;
-}
-
-bool AsspTryLoadPackedShL1FromRepresentativeTileId(out AsspProbePackedShL1Sample result, int2 representative_tile_id)
-{
-    result = MakeZeroAsspProbePackedShL1Sample();
-
-    const int2 logical_resolution = AsspPackedShAtlasLogicalResolution();
-    if(any(representative_tile_id < 0) || any(representative_tile_id >= logical_resolution))
-    {
-        return false;
-    }
-
-    const float4 coeff0 = AsspPackedShAtlasLoadCoeff(representative_tile_id, 0);
-    const float4 coeff1 = AsspPackedShAtlasLoadCoeff(representative_tile_id, 1);
-    const float4 coeff2 = AsspPackedShAtlasLoadCoeff(representative_tile_id, 2);
-    const float4 coeff3 = AsspPackedShAtlasLoadCoeff(representative_tile_id, 3);
-    result.sky_visibility_sh = float4(
-        coeff0.r,
-        coeff1.r,
-        coeff2.r,
-        coeff3.r);
-    result.radiance_sh_r = float4(
-        coeff0.g,
-        coeff1.g,
-        coeff2.g,
-        coeff3.g);
-    result.radiance_sh_g = float4(
-        coeff0.b,
-        coeff1.b,
-        coeff2.b,
-        coeff3.b);
-    result.radiance_sh_b = float4(
-        coeff0.a,
-        coeff1.a,
-        coeff2.a,
-        coeff3.a);
-    return true;
-}
-
 void CalcAsspProbeShUpsampleInfo(
     out int2 out_assp_probe_sh_base_texel,
     out float4 out_upscale_gathered_weight,

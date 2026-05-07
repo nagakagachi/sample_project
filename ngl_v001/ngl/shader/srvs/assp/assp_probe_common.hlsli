@@ -212,48 +212,6 @@ void AsspResolveLeafNodeFromCurrentRepresentativeTileMap(
     split_score = 0.0;
 }
 
-bool AsspTryResolveRepresentativeTileIdFromCurrentRepresentativeTileMap(
-    int2 screen_texel_pos,
-    out int2 representative_tile_id,
-    out int selected_lod,
-    out int2 selected_node_origin,
-    out int selected_node_size)
-{
-    int2 representative_texel_pos;
-    float representative_depth;
-    float plane_error;
-    float split_score;
-    float3 representative_normal;
-    AsspResolveLeafNodeFromCurrentRepresentativeTileMap(
-        screen_texel_pos,
-        selected_lod,
-        selected_node_origin,
-        selected_node_size,
-        representative_texel_pos,
-        representative_depth,
-        plane_error,
-        split_score,
-        representative_normal);
-
-    representative_tile_id = int2(-1, -1);
-    const int2 current_tile_id = screen_texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-    uint2 tile_info_size_u32;
-    AdaptiveScreenSpaceProbeTileInfoTex.GetDimensions(tile_info_size_u32.x, tile_info_size_u32.y);
-    if(any(current_tile_id < int2(0, 0)) || any(current_tile_id >= int2(tile_info_size_u32)))
-    {
-        return false;
-    }
-
-    const float4 tile_info = AdaptiveScreenSpaceProbeTileInfoTex.Load(int3(current_tile_id, 0));
-    if(!isValidDepth(tile_info.x))
-    {
-        return false;
-    }
-
-    representative_tile_id = current_tile_id;
-    return any(representative_texel_pos >= int2(0, 0));
-}
-
 bool AsspTryResolveSpatialFilterNeighborRepresentativeTileId(
     int2 center_representative_tile_id,
     int2 direction,

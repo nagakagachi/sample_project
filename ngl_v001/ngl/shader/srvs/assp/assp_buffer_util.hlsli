@@ -346,31 +346,4 @@ void AsspResolveLeafNode(
     }
 }
 
-int2 AsspResolveRepresentativeTileId(int2 screen_texel_pos)
-{
-    int selected_lod;
-    int2 selected_node_origin;
-    int selected_node_size;
-    int2 representative_texel_pos;
-    float representative_depth;
-    float plane_error;
-    float split_score;
-    float3 representative_normal;
-    AsspResolveLeafNode(
-        screen_texel_pos,
-        selected_lod,
-        selected_node_origin,
-        selected_node_size,
-        representative_texel_pos,
-        representative_depth,
-        plane_error,
-        split_score,
-        representative_normal);
-    if(any(representative_texel_pos < 0))
-    {
-        return int2(-1, -1);
-    }
-    return representative_texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-}
-
 #endif

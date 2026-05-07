@@ -312,7 +312,7 @@ namespace ngl::render::app
         ComputeBufferSet assp_probe_indirect_arg_ = {}; // Probe単位 pass(Resolve/Variance/SH) 用 DispatchIndirect 3 uint.
         ComputeBufferSet assp_probe_trace_indirect_arg_ = {}; // RayTrace pass 用 DispatchIndirect 3 uint.
         ComputeBufferSet assp_probe_total_ray_count_buffer_ = {}; // [0] = frame total traced ray count.
-        ComputeBufferSet assp_probe_ray_meta_buffer_ = {}; // packed ray meta: offset|count per representative probe.
+        ComputeBufferSet assp_probe_ray_meta_buffer_ = {}; // packed ray meta: offset|count per active ASSP probe(tile).
         ComputeBufferSet assp_probe_ray_query_buffer_ = {}; // packed ray query: probe_list_index|local_ray_index.
         ComputeBufferSet assp_probe_ray_result_buffer_ = {}; // ray結果: [octCell, skyVis, radiance.rgb] を uint5 で保持.
         rhi::RefBufferDep assp_probe_total_ray_count_readback_buffer_ = {};
