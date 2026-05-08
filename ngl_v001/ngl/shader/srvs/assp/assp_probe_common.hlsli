@@ -2,7 +2,6 @@
 #define NGL_SHADER_SRVS_ASSP_PROBE_COMMON_H
 
 #include "../srvs_util.hlsli"
-#include "assp_buffer_util.hlsli"
 
 Texture2D<float4>      AdaptiveScreenSpaceProbeTex;
 Texture2D<float4>      AdaptiveScreenSpaceProbeHistoryTex;
@@ -166,50 +165,6 @@ bool AsspTryGetProbeLinearIndexFromTileId(int2 probe_tile_id, out uint probe_lin
 
     probe_linear_index = uint(probe_tile_id.y) * tile_info_size_u32.x + uint(probe_tile_id.x);
     return true;
-}
-
-void AsspResolveLeafNodeFromCurrentRepresentativeTileMap(
-    int2 screen_texel_pos,
-    out int selected_lod,
-    out int2 selected_node_origin,
-    out int selected_node_size,
-    out int2 representative_texel_pos,
-    out float representative_depth,
-    out float plane_error,
-    out float split_score,
-    out float3 representative_normal)
-{
-    selected_lod = 0;
-    selected_node_origin = int2(0, 0);
-    selected_node_size = int(k_assp_tile_size);
-    representative_texel_pos = int2(-1, -1);
-    representative_depth = 0.0;
-    plane_error = 0.0;
-    split_score = 0.0;
-    representative_normal = float3(0.0, 0.0, 1.0);
-
-    const int2 current_tile_id = screen_texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-    uint2 tile_info_size_u32;
-    AdaptiveScreenSpaceProbeTileInfoTex.GetDimensions(tile_info_size_u32.x, tile_info_size_u32.y);
-    if(any(current_tile_id < 0) || any(current_tile_id >= int2(tile_info_size_u32)))
-    {
-        return;
-    }
-
-    const float4 tile_info = AdaptiveScreenSpaceProbeTileInfoTex.Load(int3(current_tile_id, 0));
-    if(!isValidDepth(tile_info.x))
-    {
-        return;
-    }
-
-    selected_lod = 0;
-    selected_node_origin = current_tile_id * int(ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE);
-    selected_node_size = int(ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE);
-    representative_depth = tile_info.x;
-    representative_normal = normalize(OctDecode(tile_info.zw));
-    representative_texel_pos = current_tile_id * int(ADAPTIVE_SCREEN_SPACE_PROBE_OCT_RESOLUTION) + AsspTileInfoDecodeProbePosInTile(tile_info.y);
-    plane_error = 0.0;
-    split_score = 0.0;
 }
 
 bool AsspTryResolveSpatialFilterNeighborRepresentativeTileId(

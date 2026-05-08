@@ -107,7 +107,6 @@ namespace ngl::render::app
     float ScreenReconstructedVoxelStructure::assp_ray_budget_no_history_bias_ = k_default_srvs_param.assp_ray_budget_no_history_bias;
     float ScreenReconstructedVoxelStructure::assp_ray_budget_scale_ = k_default_srvs_param.assp_ray_budget_scale;
     int ScreenReconstructedVoxelStructure::assp_debug_freeze_frame_random_enable_ = k_default_srvs_param.assp_debug_freeze_frame_random_enable;
-    int ScreenReconstructedVoxelStructure::dbg_assp_leaf_border_enable_ = k_default_srvs_param.assp_debug_leaf_border_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_lighting_interpolation_enable_ = k_default_srvs_param.fsp_lighting_interpolation_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_spawn_far_cell_enable_ = k_default_srvs_param.fsp_spawn_far_cell_enable;
     int ScreenReconstructedVoxelStructure::dbg_fsp_lighting_stochastic_sampling_enable_ = k_default_srvs_param.fsp_lighting_stochastic_sampling_enable;
@@ -390,7 +389,7 @@ namespace ngl::render::app
                 // カテゴリ別サブモードスライダ.
                 if (0 <= dbg_view_category_)
                 {
-                    const int k_sub_mode_max[] = { 14, 1, 11, 17 };
+                    const int k_sub_mode_max[] = { 14, 1, 11, 7 };
                     auto get_sub_mode_description = [](int category, int sub_mode) -> const char*
                     {
                         switch(category)
@@ -442,24 +441,14 @@ namespace ngl::render::app
                         case 3: // ASSP
                             switch(sub_mode)
                             {
-                            case 0: return "Lod0 depth/error/split overview";
-                            case 1: return "Lod0 representative depth";
-                            case 2: return "Lod0 plane error";
-                            case 3: return "Lod0 split score";
-                            case 4: return "Lod0 representative normal";
-                            case 5: return "Selected LOD color";
-                            case 6: return "Leaf noise pattern";
-                            case 7: return "Leaf border visualization";
-                            case 8: return "Representative lit color";
-                            case 9: return "ASSP probe atlas raw";
-                            case 10: return "Representative probe sample";
-                            case 11: return "ASSP packed SH raw";
-                            case 12: return "ASSP SH sample";
-                            case 13: return "Filtered variance mean";
-                            case 14: return "Filtered variance";
-                            case 15: return "Raw variance mean";
-                            case 16: return "Raw variance";
-                            case 17: return "Per-probe ray count";
+                            case 0: return "ASSP probe atlas raw";
+                            case 1: return "ASSP packed SH raw";
+                            case 2: return "ASSP SH sample";
+                            case 3: return "Filtered variance mean";
+                            case 4: return "Filtered variance";
+                            case 5: return "Raw variance mean";
+                            case 6: return "Raw variance";
+                            case 7: return "Per-probe ray count";
                             default: return "Unknown";
                             }
                         default:
@@ -479,17 +468,6 @@ namespace ngl::render::app
                     ImGui::TextDisabled("Sub Mode %d: %s", dbg_view_sub_mode_, get_sub_mode_description(dbg_view_category_, dbg_view_sub_mode_));
                 }
 
-                if (3 == dbg_view_category_)
-                {
-                    bool v = (0 != dbg_assp_leaf_border_enable_);
-                    if (ImGui::Checkbox("ASSP Leaf Border", &v))
-                        dbg_assp_leaf_border_enable_ = v ? 1 : 0;
-                    if (ImGui::BeginPopupContextItem()) {
-                        if (ImGui::MenuItem("Reset to Default"))
-                            dbg_assp_leaf_border_enable_ = k_default_srvs_param.assp_debug_leaf_border_enable;
-                        ImGui::EndPopup();
-                    }
-                }
             }
 
             ImGui::SetNextItemOpen(true, ImGuiCond_Once);
@@ -637,8 +615,6 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_filtered_uav = "RWAdaptiveScreenSpaceProbeFilteredTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_packed_sh_srv = "AdaptiveScreenSpaceProbePackedSHTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_packed_sh_uav = "RWAdaptiveScreenSpaceProbePackedSHTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_assp_buffer_srv = "AsspBuffer";
-    constexpr SrvsShaderBindName k_shader_bind_name_assp_buffer_uav = "RWAsspBuffer";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_indirect_arg_uav = "RWAsspProbeIndirectArg";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_trace_indirect_arg_uav = "RWAsspProbeTraceIndirectArg";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_total_ray_count_srv = "AsspProbeTotalRayCountBuffer";
@@ -649,19 +625,6 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_ray_query_uav = "RWAsspProbeRayQueryBuffer";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_ray_result_srv = "AsspProbeRayResultBuffer";
     constexpr SrvsShaderBindName k_shader_bind_name_assp_probe_ray_result_uav = "RWAsspProbeRayResultBuffer";
-    constexpr SrvsShaderBindName k_shader_bind_name_main_lit_color_srv = "TexMainLitColor";
-
-    struct AsspBufferLayout
-    {
-        u32 total_word_count = 0;
-    };
-
-    AsspBufferLayout BuildAsspBufferLayout(u32 screen_width, u32 screen_height)
-    {
-        AsspBufferLayout layout = {};
-        layout.total_word_count = AsspTotalWordCount(screen_width, screen_height);
-        return layout;
-    }
 
     ngl::rhi::ConstantBufferPooledHandle AllocSrvsParamCbh(
         ngl::rhi::GraphicsCommandListDep* p_command_list,
@@ -729,7 +692,6 @@ namespace ngl::render::app
         for(auto& tex : assp_probe_tile_info_tex_) { tex = {}; }
         assp_probe_packed_sh_tex_ = {};
         assp_probe_best_prev_tile_tex_ = {};
-        assp_buffer_ = {};
         assp_probe_indirect_arg_ = {};
         assp_probe_trace_indirect_arg_ = {};
         assp_probe_total_ray_count_buffer_ = {};
@@ -937,21 +899,6 @@ namespace ngl::render::app
 
             if(!assp_probe_best_prev_tile_tex_.Initialize(p_device, desc, "Srvs_AsspProbeBestPrevTileTex"))
                 return false;
-        }
-        {
-            const AsspBufferLayout assp_layout = BuildAsspBufferLayout(assp_probe_base_resolution_x, assp_probe_base_resolution_y);
-            if(!assp_buffer_.InitializeAsTyped(
-                p_device,
-                rhi::BufferDep::Desc{
-                    .element_byte_size = sizeof(uint32_t),
-                    .element_count     = assp_layout.total_word_count,
-                    .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
-                    .heap_type = rhi::EResourceHeapType::Default},
-                rhi::EResourceFormat::Format_R32_UINT,
-                "Srvs_AsspBuffer"))
-            {
-                return false;
-            }
         }
         {
             if(!assp_probe_indirect_arg_.InitializeAsTyped(
@@ -1164,7 +1111,6 @@ namespace ngl::render::app
             pso_assp_probe_spatial_filter_ = CreateComputePSO("srvs/assp/assp_probe_spatial_filter_cs.hlsl");
             pso_assp_probe_variance_ = CreateComputePSO("srvs/assp/assp_probe_variance_cs.hlsl");
             pso_assp_probe_sh_update_ = CreateComputePSO("srvs/assp/assp_probe_sh_update_cs.hlsl");
-            pso_assp_depth_analysis_ = CreateComputePSO("srvs/assp/assp_depth_analysis_cs.hlsl");
 
             // デバッグ用PSO.
             {
@@ -1614,10 +1560,6 @@ namespace ngl::render::app
 
             param.tex_main_view_depth_size = hw_depth_size;
             param.frame_count = frame_count_;
-            const AsspBufferLayout assp_layout = BuildAsspBufferLayout(static_cast<u32>(hw_depth_size.x), static_cast<u32>(hw_depth_size.y));
-            param.assp_words_per_node = static_cast<int>(k_assp_words_per_node);
-            param.assp_total_word_count = static_cast<int>(assp_layout.total_word_count);
-            param.assp_tile_size = static_cast<int>(k_assp_tile_size);
 
             // dbg_系: ランタイム変更可能なパラメータ.
             param.ss_probe_spatial_filter_normal_cos_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_;
@@ -1653,7 +1595,6 @@ namespace ngl::render::app
             param.assp_ray_budget_no_history_bias = ScreenReconstructedVoxelStructure::assp_ray_budget_no_history_bias_;
             param.assp_ray_budget_scale = ScreenReconstructedVoxelStructure::assp_ray_budget_scale_;
             param.assp_debug_freeze_frame_random_enable = ScreenReconstructedVoxelStructure::assp_debug_freeze_frame_random_enable_;
-            param.assp_debug_leaf_border_enable = ScreenReconstructedVoxelStructure::dbg_assp_leaf_border_enable_;
 
             dispatch_param_cache_ = param;
             // ローカル変数からマップ先バッファへコピー.
@@ -1754,7 +1695,6 @@ namespace ngl::render::app
                 p_command_list->ResourceBarrier(assp_probe_packed_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 p_command_list->ResourceBarrier(ss_probe_best_prev_tile_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 p_command_list->ResourceBarrier(assp_probe_best_prev_tile_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                p_command_list->ResourceBarrier(assp_buffer_.buffer.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
 
             }
         }
@@ -2462,34 +2402,6 @@ namespace ngl::render::app
         }
     }
 
-    void BitmaskBrickVoxelGi::Dispatch_AsspHierarchy(rhi::GraphicsCommandListDep* p_command_list,
-                        rhi::ConstantBufferPooledHandle scene_cbv,
-                        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
-                        )
-    {
-        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_AsspHierarchy");
-
-        const u32 assp_lod0_width = AsspLodWidth(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.x), 0u);
-        const u32 assp_lod0_height = AsspLodHeight(static_cast<u32>(dispatch_param_cache_.tex_main_view_depth_size.y), 0u);
-
-        {
-            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "AsspLod0Build");
-
-            ngl::rhi::DescriptorSetDep desc_set = {};
-            pso_assp_depth_analysis_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
-            pso_assp_depth_analysis_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-            pso_assp_depth_analysis_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-            pso_assp_depth_analysis_->SetView(&desc_set, k_shader_bind_name_assp_buffer_uav.Get(), assp_buffer_.uav.Get());
-
-            p_command_list->SetPipelineState(pso_assp_depth_analysis_.Get());
-            p_command_list->SetDescriptorSet(pso_assp_depth_analysis_.Get(), &desc_set);
-            pso_assp_depth_analysis_->DispatchHelper(p_command_list, assp_lod0_width, assp_lod0_height, 1);
-
-            p_command_list->ResourceUavBarrier(assp_buffer_.buffer.Get());
-        }
-        // 4x4固定所有に移行したため、LOD1 build は不要。
-    }
-
     void BitmaskBrickVoxelGi::Dispatch_Fsp(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
                         const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
@@ -2696,7 +2608,7 @@ namespace ngl::render::app
     void BitmaskBrickVoxelGi::Dispatch_Debug(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
                         const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
-                        rhi::RefSrvDep lit_color_srv, rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav)
+                        rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav)
     {
         NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_Debug");
 
@@ -2725,8 +2637,6 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_tile_info_curr_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_packed_sh_srv.Get(), assp_probe_packed_sh_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_assp_probe_ray_meta_srv.Get(), assp_probe_ray_meta_buffer_.srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_assp_buffer_srv.Get(), assp_buffer_.srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_main_lit_color_srv.Get(), lit_color_srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
             
             pso_bbv_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
@@ -2936,7 +2846,6 @@ namespace ngl::render::app
         if(bbvgi_instance_)
         {
             bbvgi_instance_->Dispatch_Bbv_Main(p_command_list, scene_cbv);
-            bbvgi_instance_->Dispatch_AsspHierarchy(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
             bbvgi_instance_->Dispatch_AsspProbe(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
             bbvgi_instance_->Dispatch_SsProbe(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
             bbvgi_instance_->Dispatch_Fsp(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
@@ -2946,11 +2855,11 @@ namespace ngl::render::app
     void ScreenReconstructedVoxelStructure::DispatchDebug(rhi::GraphicsCommandListDep* p_command_list,
         rhi::ConstantBufferPooledHandle scene_cbv, 
         const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
-        rhi::RefSrvDep lit_color_srv, rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav)
+        rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav)
     {
         if(bbvgi_instance_)
         {
-            bbvgi_instance_->Dispatch_Debug(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv, lit_color_srv, work_tex, work_uav);
+            bbvgi_instance_->Dispatch_Debug(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv, work_tex, work_uav);
         }
     }
 
@@ -2983,7 +2892,6 @@ namespace ngl::render::app
         p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_srv.Get(), bbvgi_instance_->GetSsProbeTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), bbvgi_instance_->GetSsProbeTileInfoTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_packed_sh_srv.Get(), bbvgi_instance_->GetSsProbePackedShTex().Get());
-        p_pso->SetView(p_desc_set, k_shader_bind_name_assp_buffer_srv.Get(), bbvgi_instance_->GetAsspBuffer().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), bbvgi_instance_->GetAsspProbeTileInfoTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_asspprobe_packed_sh_srv.Get(), bbvgi_instance_->GetAsspProbePackedShTex().Get());
         p_pso->SetView(p_desc_set, "cb_srvs", &bbvgi_instance_->GetDispatchCbh()->cbv);

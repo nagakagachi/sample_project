@@ -191,68 +191,9 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     // SsProbe PreUpdateの再配置確率.
     #define SCREEN_SPACE_PROBE_PREUPDATE_RELOCATION_PROBABILITY 0.025
 
-    // Adaptive Screen Space Probe tile hierarchy.
-    // 現在は two-level 固定:
-    //   LOD0 = 4x4 fine tile
-    //   LOD1 = 8x8 coarse tile
-    // のみを 1 本の scalar uint buffer へ [LOD0][LOD1] の順で連結格納する。
+    // Adaptive Screen Space Probe.
+    // タイル割当は固定 4x4 運用。
     static const uint k_assp_tile_size = 4u;
-    static const uint k_assp_max_lod_count = 2u;
-    // LOD0 は詳細 plane 情報を保持し、LOD1 は representative と active count 中心の軽量 record を持つ。
-    // k_assp_words_per_node は C++ 側の互換用に最大 word 数を残し、実際の LOD 別幅は AsspWordsPerNode() で引く。
-    static const uint k_assp_lod0_words_per_node = 9u;
-    static const uint k_assp_upper_words_per_node = 2u;
-    static const uint k_assp_words_per_node = k_assp_lod0_words_per_node;
-    static const uint k_assp_state_invalid = 0u;
-    static const uint k_assp_state_empty = 1u;
-    static const uint k_assp_state_solid = 2u;
-    static const uint k_assp_state_split = 3u;
-    static const uint k_assp_hierarchy_state_bit_count = 2u;
-    static const uint k_assp_hierarchy_state_mask = (1u << k_assp_hierarchy_state_bit_count) - 1u;
-
-    inline uint AsspWordsPerNode(uint lod_index)
-    {
-        return (0u == lod_index) ? k_assp_lod0_words_per_node : k_assp_upper_words_per_node;
-    }
-
-    inline uint AsspDivRoundUp(uint value, uint divisor)
-    {
-        return (value + divisor - 1u) / divisor;
-    }
-
-    inline uint AsspNodeSizeInPixels(uint lod_index)
-    {
-        // two-level 固定なので 0 -> 4x4, 1 -> 8x8。
-        return k_assp_tile_size << lod_index;
-    }
-
-    inline uint AsspLodWidth(uint screen_width, uint lod_index)
-    {
-        return AsspDivRoundUp(screen_width, AsspNodeSizeInPixels(lod_index));
-    }
-
-    inline uint AsspLodHeight(uint screen_height, uint lod_index)
-    {
-        return AsspDivRoundUp(screen_height, AsspNodeSizeInPixels(lod_index));
-    }
-
-    inline uint AsspLodNodeCount(uint screen_width, uint screen_height, uint lod_index)
-    {
-        return AsspLodWidth(screen_width, lod_index) * AsspLodHeight(screen_height, lod_index);
-    }
-
-    inline uint AsspLodBaseWordOffset(uint screen_width, uint screen_height, uint lod_index)
-    {
-        // two-level 固定なので [LOD0][LOD1] のみ。
-        return (0u == lod_index) ? 0u : (AsspLodNodeCount(screen_width, screen_height, 0u) * k_assp_lod0_words_per_node);
-    }
-
-    inline uint AsspTotalWordCount(uint screen_width, uint screen_height)
-    {
-        return
-            AsspLodNodeCount(screen_width, screen_height, 0u) * k_assp_lod0_words_per_node +
-            AsspLodNodeCount(screen_width, screen_height, 1u) * k_assp_upper_words_per_node;
-    }
 
 
     // シェーダとCppで一致させる.
@@ -449,11 +390,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         float assp_ray_budget_no_history_bias NGL_CPP_MEMBER_INIT({1.0f});
         float assp_ray_budget_scale NGL_CPP_MEMBER_INIT({1.0f});
         int assp_debug_freeze_frame_random_enable NGL_CPP_MEMBER_INIT({0});
-        int assp_debug_leaf_border_enable NGL_CPP_MEMBER_INIT({1});
-        int assp_words_per_node NGL_CPP_MEMBER_INIT({int(k_assp_words_per_node)});
-        int assp_total_word_count NGL_CPP_MEMBER_INIT({0});
-        int assp_tile_size NGL_CPP_MEMBER_INIT({int(k_assp_tile_size)});
-        int assp_dummy_padding1 NGL_CPP_MEMBER_INIT({0});
+        int3 assp_dummy_padding1 NGL_CPP_MEMBER_INIT({});
     };
 #ifdef NGL_SHADER_CPP_INCLUDE
     // C++用のコンパイル時定数デフォルト構造体.

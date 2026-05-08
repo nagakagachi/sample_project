@@ -128,10 +128,6 @@ namespace ngl::render::app
             rhi::ConstantBufferPooledHandle scene_cbv,
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
             );
-        void Dispatch_AsspHierarchy(rhi::GraphicsCommandListDep* p_command_list,
-            rhi::ConstantBufferPooledHandle scene_cbv,
-            const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
-            );
         void Dispatch_AsspProbe(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv,
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
@@ -145,7 +141,7 @@ namespace ngl::render::app
         void Dispatch_Debug(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
-            rhi::RefSrvDep lit_color_srv, rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
+            rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
 
         void DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
@@ -167,7 +163,6 @@ namespace ngl::render::app
         rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_[ss_probe_latest_filtered_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbeTileInfoTex() const { return ss_probe_tile_info_tex_[ss_probe_tile_info_curr_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbePackedShTex() const { return ss_probe_packed_sh_tex_.srv; }
-        rhi::RefSrvDep GetAsspBuffer() const { return assp_buffer_.srv; }
         rhi::RefSrvDep GetAsspProbeTex() const { return assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv; }
         rhi::RefSrvDep GetAsspProbeTileInfoTex() const { return assp_probe_tile_info_tex_[assp_tile_info_curr_frame_tex_index_].srv; }
         rhi::RefSrvDep GetAsspProbePackedShTex() const { return assp_probe_packed_sh_tex_.srv; }
@@ -243,7 +238,6 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_spatial_filter_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_variance_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_sh_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_depth_analysis_ = {};
 
 
         ngl::rhi::ConstantBufferPooledHandle cbh_dispatch_ = {};
@@ -308,7 +302,6 @@ namespace ngl::render::app
         ComputeTextureSet assp_probe_variance_tex_[2] = {}; // f16_rgba, x: filtered mean, y: filtered second moment, z: raw mean, w: raw variance.
         ComputeTextureSet assp_probe_packed_sh_tex_ = {}; // f16_rgba, 係数優先2x2 atlas.
         ComputeTextureSet assp_probe_best_prev_tile_tex_ = {}; // r32_uint, Preupdateで計算したBestPrevTile.
-        ComputeBufferSet assp_buffer_ = {}; // LOD0-LOD[MAX] unified scalar uint buffer.
         ComputeBufferSet assp_probe_indirect_arg_ = {}; // Probe単位 pass(Resolve/Variance/SH) 用 DispatchIndirect 3 uint.
         ComputeBufferSet assp_probe_trace_indirect_arg_ = {}; // RayTrace pass 用 DispatchIndirect 3 uint.
         ComputeBufferSet assp_probe_total_ray_count_buffer_ = {}; // [0] = frame total traced ray count.
@@ -356,7 +349,6 @@ namespace ngl::render::app
         static float assp_ray_budget_no_history_bias_;
         static float assp_ray_budget_scale_;
         static int assp_debug_freeze_frame_random_enable_;
-        static int dbg_assp_leaf_border_enable_;
         static int dbg_fsp_lighting_interpolation_enable_;
         static int dbg_fsp_spawn_far_cell_enable_;
         static int dbg_fsp_lighting_stochastic_sampling_enable_;
@@ -402,7 +394,7 @@ namespace ngl::render::app
         void DispatchDebug(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
-            rhi::RefSrvDep lit_color_srv, rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
+            rhi::RefTextureDep work_tex, rhi::RefUavDep work_uav);
 
         void DebugDraw(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
@@ -680,15 +672,13 @@ namespace ngl::render::app
 					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RenderTaskSrvsDebug");
 
 					auto res_depth = builder.GetAllocatedResource(this, h_depth_);
-                    auto res_color = builder.GetAllocatedResource(this, h_color_);
                     auto res_work = builder.GetAllocatedResource(this, h_work_);
 					assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
-                    assert(res_color.srv_.IsValid());
                     assert(res_work.tex_.IsValid() && res_work.uav_.IsValid());
 
                     desc_.p_srvs->DispatchDebug(gfx_commandlist, desc_.scene_cbv,
                         view_info, res_depth.tex_, res_depth.srv_,
-                        res_color.srv_, res_work.tex_, res_work.uav_);
+                        res_work.tex_, res_work.uav_);
 				}
 			);
 		}

@@ -68,7 +68,6 @@ Texture2D tex_ibl_dfg;
 // GI
 #include "srvs/srvs_util.hlsli"
 #include "srvs/assp/assp_probe_common.hlsli"
-#include "srvs/assp/assp_buffer_util.hlsli"
 
 
 // DirectionalLight評価. 標準.
