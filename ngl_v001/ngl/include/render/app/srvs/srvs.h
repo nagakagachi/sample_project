@@ -359,6 +359,7 @@ namespace ngl::render::app
         static int dbg_fsp_visible_surface_cell_count_;
         static int dbg_assp_total_ray_count_;
         static int dbg_assp_probe_count_;
+        static int dbg_gi_update_sample_mode_;
 
         // デバッグメニューを描画する. ImGuiウィンドウ内で呼び出すこと.
         static void DrawDebugMenu(bool* p_enable_injection, bool* p_enable_rejection);
@@ -390,7 +391,8 @@ namespace ngl::render::app
             
         void DispatchUpdate(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
-            const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv);
+            const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
+            int gi_sample_mode);
         void DispatchDebug(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
@@ -589,6 +591,7 @@ namespace ngl::render::app
 			
             rhi::ConstantBufferPooledHandle scene_cbv{};
             render::app::ScreenReconstructedVoxelStructure* p_srvs = {};
+            int gi_sample_mode = 0;
 
             ngl::rtg::RtgResourceHandle h_depth{};
 		};
@@ -623,7 +626,7 @@ namespace ngl::render::app
 					assert(res_depth.tex_.IsValid() && res_depth.srv_.IsValid());
 
                     desc_.p_srvs->DispatchUpdate(gfx_commandlist, desc_.scene_cbv, 
-                        view_info, res_depth.tex_, res_depth.srv_);
+                        view_info, res_depth.tex_, res_depth.srv_, desc_.gi_sample_mode);
 				}
 			);
 		}

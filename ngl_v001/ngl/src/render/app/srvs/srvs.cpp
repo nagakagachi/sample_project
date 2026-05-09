@@ -6,6 +6,7 @@
 #include "render/app/srvs/srvs.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <cstring>
@@ -35,6 +36,42 @@ namespace ngl::render::app
 
     static constexpr u32 k_fsp_probe_pool_size = 1<<13;//10000;
     static constexpr u32 k_fsp_probe_surface_cell_count_max = 1024*2;//1024;
+
+    enum class SrvsGiSolutionMode : int
+    {
+        None = 0,
+        Ssp = 1,
+        Fsp = 2,
+        Assp = 3,
+    };
+
+    const char* SrvsGiSolutionModeName(int mode)
+    {
+        switch(static_cast<SrvsGiSolutionMode>(mode))
+        {
+        case SrvsGiSolutionMode::None: return "None";
+        case SrvsGiSolutionMode::Ssp: return "SSP";
+        case SrvsGiSolutionMode::Fsp: return "FSP";
+        case SrvsGiSolutionMode::Assp: return "ASSP";
+        default: return "Unknown";
+        }
+    }
+
+    struct SrvsGiDispatchEntry
+    {
+        SrvsGiSolutionMode mode;
+        void (BitmaskBrickVoxelGi::*dispatch_func)(rhi::GraphicsCommandListDep*,
+            rhi::ConstantBufferPooledHandle,
+            const ngl::render::task::RenderPassViewInfo&, rhi::RefTextureDep, rhi::RefSrvDep);
+    };
+
+    // GIソリューションの実行順序/対応を集中管理する。
+    // 追加/削除時はこのテーブルとモード定義の更新に集約する。
+    constexpr std::array<SrvsGiDispatchEntry, 3> k_srvs_gi_dispatch_entries = {{
+        { SrvsGiSolutionMode::Ssp,  &BitmaskBrickVoxelGi::Dispatch_SsProbe },
+        { SrvsGiSolutionMode::Assp, &BitmaskBrickVoxelGi::Dispatch_AsspProbe },
+        { SrvsGiSolutionMode::Fsp,  &BitmaskBrickVoxelGi::Dispatch_Fsp },
+    }};
     
     
     // 時間分散するScreenProbeグループのサイズ. 幅がこのサイズのProbeグループ毎に1Fに一つ更新をする. GI-1.0などは2を指定して 4フレームで2x2のグループが更新される.
@@ -117,6 +154,7 @@ namespace ngl::render::app
     int ScreenReconstructedVoxelStructure::dbg_fsp_visible_surface_cell_count_ = 0;
     int ScreenReconstructedVoxelStructure::dbg_assp_total_ray_count_ = 0;
     int ScreenReconstructedVoxelStructure::dbg_assp_probe_count_ = 0;
+    int ScreenReconstructedVoxelStructure::dbg_gi_update_sample_mode_ = static_cast<int>(SrvsGiSolutionMode::Assp);
 
     void ScreenReconstructedVoxelStructure::DrawDebugMenu(bool* p_enable_injection, bool* p_enable_rejection)
     {
@@ -128,6 +166,7 @@ namespace ngl::render::app
             // 右クリックで個別リセット. BeginPopupContextItem は直前のウィジェットを対象とする.
             ImGui::Checkbox("Bbv Injection", p_enable_injection);
             ImGui::Checkbox("Bbv Rejection", p_enable_rejection);
+            ImGui::Text("GI Update Target (linked): %s", SrvsGiSolutionModeName(dbg_gi_update_sample_mode_));
 
             
             ImGui::SetNextItemOpen(true, ImGuiCond_Once);
@@ -2841,14 +2880,21 @@ namespace ngl::render::app
     }
     void ScreenReconstructedVoxelStructure::DispatchUpdate(rhi::GraphicsCommandListDep* p_command_list,
         rhi::ConstantBufferPooledHandle scene_cbv, 
-        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv)
+        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv,
+        int gi_sample_mode)
     {
+        dbg_gi_update_sample_mode_ = gi_sample_mode;
         if(bbvgi_instance_)
         {
             bbvgi_instance_->Dispatch_Bbv_Main(p_command_list, scene_cbv);
-            bbvgi_instance_->Dispatch_AsspProbe(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
-            bbvgi_instance_->Dispatch_SsProbe(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
-            bbvgi_instance_->Dispatch_Fsp(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
+            for(const auto& entry : k_srvs_gi_dispatch_entries)
+            {
+                if(static_cast<int>(entry.mode) == gi_sample_mode)
+                {
+                    (bbvgi_instance_->*entry.dispatch_func)(p_command_list, scene_cbv, main_view_info, hw_depth_tex, hw_depth_srv);
+                    break;
+                }
+            }
         }
     }
 

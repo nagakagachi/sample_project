@@ -656,7 +656,7 @@ bool AppGame::Initialize()
 #if 1
     // Srvs.
     srvs_.Initialize(&device, ngl::math::Vec3u(64), 3.0f, ngl::math::Vec3u(32), 2.0f, 5);
-    ngl::render::app::ScreenReconstructedVoxelStructure::dbg_view_category_ = 2;
+    ngl::render::app::ScreenReconstructedVoxelStructure::dbg_view_category_ = 3;
     ngl::render::app::ScreenReconstructedVoxelStructure::dbg_view_sub_mode_ = 0;
 #endif
 
@@ -870,9 +870,9 @@ bool AppGame::ExecuteApp()
                 ImGui::SameLine();
                 ImGui::RadioButton("SSP##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Ssp);
                 ImGui::SameLine();
-                ImGui::RadioButton("FSP##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Fsp);
-                ImGui::SameLine();
                 ImGui::RadioButton("ASSP##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Assp);
+                ImGui::SameLine();
+                ImGui::RadioButton("FSP##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Fsp);
                 ImGui::Checkbox("Enable SkyVisibility", &dbgw_enable_srvs_sky_visibility_lighting);
                 ImGui::Checkbox("Enable Irradiance", &dbgw_enable_srvs_radiance_lighting);
                 ImGui::SliderFloat("Sample Offset View", &dbgw_gi_probe_sample_offset_view, 0.0f, 10.0f);

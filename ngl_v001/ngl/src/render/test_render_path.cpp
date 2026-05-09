@@ -400,7 +400,8 @@ namespace ngl::test
 							setup_desc.scene_cbv = scene_cb_h;
 
 							setup_desc.p_srvs = render_frame_desc.feature_config.gi.p_srvs;
-                            
+                            setup_desc.gi_sample_mode = render_frame_desc.feature_config.gi.sample_mode;
+                             
                             // main view.
 							setup_desc.h_depth = task_depth->h_depth_;
                         }
