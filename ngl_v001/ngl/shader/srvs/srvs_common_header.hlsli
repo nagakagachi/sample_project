@@ -140,7 +140,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     #define k_bbv_per_voxel_resolution_vec3i int3(k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution)
 
     // fsp probeあたりのOctahedralMapAtlas解像度.
-    #define k_fsp_probe_octmap_width (8)
+    #define k_fsp_probe_octmap_width (6)
     // 旧 border 前提コード互換用エイリアス。現在は border なしの 8x8 をそのまま使う。
     #define k_fsp_probe_octmap_width_with_border (k_fsp_probe_octmap_width)
     // fsp
