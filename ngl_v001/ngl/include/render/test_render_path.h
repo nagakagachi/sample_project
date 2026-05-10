@@ -31,6 +31,7 @@ namespace ngl::test
         EGiSampleMode_Ssp = 1,
         EGiSampleMode_Fsp = 2,
         EGiSampleMode_Assp = 3,
+        EGiSampleMode_Ddgi = 4,
     };
 
     struct RenderFeatureLighting

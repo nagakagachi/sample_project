@@ -873,6 +873,8 @@ bool AppGame::ExecuteApp()
                 ImGui::RadioButton("ASSP##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Assp);
                 ImGui::SameLine();
                 ImGui::RadioButton("FSP##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Fsp);
+                ImGui::SameLine();
+                ImGui::RadioButton("DDGI##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Ddgi);
                 ImGui::Checkbox("Enable SkyVisibility", &dbgw_enable_srvs_sky_visibility_lighting);
                 ImGui::Checkbox("Enable Irradiance", &dbgw_enable_srvs_radiance_lighting);
                 ImGui::SliderFloat("Sample Offset View", &dbgw_gi_probe_sample_offset_view, 0.0f, 10.0f);

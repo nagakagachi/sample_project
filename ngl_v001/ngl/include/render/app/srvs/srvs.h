@@ -137,6 +137,10 @@ namespace ngl::render::app
             rhi::ConstantBufferPooledHandle scene_cbv, 
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
             );
+        void Dispatch_Ddgi(rhi::GraphicsCommandListDep* p_command_list,
+            rhi::ConstantBufferPooledHandle scene_cbv,
+            const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
+            );
 
         void Dispatch_Debug(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
@@ -160,6 +164,8 @@ namespace ngl::render::app
         rhi::RefSrvDep GetFspProbePackedShTex() const { return fsp_probe_packed_sh_tex_.srv; }
         rhi::RefSrvDep GetFspCellProbeIndexBuffer() const { return fsp_cell_probe_index_buffer_.srv; }
         rhi::RefSrvDep GetFspProbePoolBuffer() const { return fsp_probe_pool_buffer_.srv; }
+        rhi::RefSrvDep GetDdgiProbePackedShBuffer() const { return ddgi_probe_packed_sh_buffer_.srv; }
+        rhi::RefSrvDep GetDdgiProbeDistanceMomentBuffer() const { return ddgi_probe_distance_moment_buffer_.srv; }
         rhi::RefSrvDep GetSsProbeTex() const { return ss_probe_tex_[ss_probe_latest_filtered_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbeTileInfoTex() const { return ss_probe_tile_info_tex_[ss_probe_tile_info_curr_frame_tex_index_].srv; }
         rhi::RefSrvDep GetSsProbePackedShTex() const { return ss_probe_packed_sh_tex_.srv; }
@@ -216,11 +222,14 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_pre_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_update_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_sh_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ddgi_clear_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ddgi_update_ = {};
 
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_debug_visualize_ = {};
         ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_bbv_debug_probe_ = {};
         ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_fsp_debug_probe_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_ddgi_debug_probe_ = {};
 
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_ss_probe_clear_ = {};
@@ -267,11 +276,15 @@ namespace ngl::render::app
         // ----------------------------------------------------------------
         std::vector<ToroidalGridUpdater> fsp_grid_updaters_ = {};
         std::vector<u32> fsp_cascade_cell_offset_array_ = {};
+        std::vector<ToroidalGridUpdater> ddgi_grid_updaters_ = {};
+        std::vector<u32> ddgi_cascade_cell_offset_array_ = {};
 
         ngl::u32     fsp_visible_surface_buffer_size_ = {};
         ngl::u32     fsp_probe_pool_size_ = {};
         ngl::u32     fsp_cascade_count_ = {};
         ngl::u32     fsp_total_cell_count_ = {};
+        ngl::u32     ddgi_cascade_count_ = {};
+        ngl::u32     ddgi_total_cell_count_ = {};
         ngl::u32     fsp_probe_atlas_tile_width_ = {};
         ngl::u32     fsp_probe_atlas_tile_height_ = {};
         ComputeBufferSet fsp_visible_surface_list_ = {};
@@ -283,6 +296,8 @@ namespace ngl::render::app
         ComputeBufferSet fsp_buffer_ = {};
         ComputeTextureSet fsp_probe_atlas_tex_ = {};
         ComputeTextureSet fsp_probe_packed_sh_tex_ = {};
+        ComputeBufferSet ddgi_probe_packed_sh_buffer_ = {};
+        ComputeBufferSet ddgi_probe_distance_moment_buffer_ = {};
         rhi::RefBufferDep fsp_visible_surface_list_readback_buffer_ = {};
         rhi::RefBufferDep fsp_probe_free_stack_readback_buffer_ = {};
         rhi::RefBufferDep fsp_active_probe_list_readback_buffer_ = {};
@@ -324,6 +339,9 @@ namespace ngl::render::app
         static int dbg_fsp_probe_debug_mode_;
         static int dbg_fsp_probe_debug_cascade_;
         static int dbg_fsp_cascade_count_;
+        static int dbg_ddgi_probe_debug_mode_;
+        static int dbg_ddgi_probe_debug_cascade_;
+        static int dbg_ddgi_cascade_count_;
         static float dbg_probe_scale_;
         static float dbg_probe_near_geom_scale_;
         static int dbg_ss_probe_spatial_filter_enable_;

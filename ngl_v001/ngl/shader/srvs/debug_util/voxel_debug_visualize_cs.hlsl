@@ -563,4 +563,56 @@ void main_cs(
             }
         }
     }
+    // Category 4: DDGI.
+    else if(4 == debug_category)
+    {
+        const uint total_cell_count = uint(max(cb_srvs.ddgi_total_cell_count, 0));
+        if(0 == total_cell_count)
+        {
+            RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
+            return;
+        }
+
+        const uint atlas_width = uint(ceil(sqrt((float)total_cell_count)));
+        const uint atlas_height = (total_cell_count + atlas_width - 1) / atlas_width;
+        const uint2 ddgi_texel = uint2(screen_uv * float2(atlas_width, atlas_height));
+        const uint cell_index = ddgi_texel.x + ddgi_texel.y * atlas_width;
+        if(cell_index >= total_cell_count)
+        {
+            RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
+            return;
+        }
+
+        const uint sh_base = cell_index * 4;
+        const float4 sh0 = DdgiProbePackedShBuffer[sh_base + 0];
+        const float4 sh1 = DdgiProbePackedShBuffer[sh_base + 1];
+
+        if(0 == debug_sub_mode)
+        {
+            RWTexWork[dtid.xy] = sh0;
+        }
+        else if(1 == debug_sub_mode)
+        {
+            RWTexWork[dtid.xy] = sh1;
+        }
+        else if(2 == debug_sub_mode)
+        {
+            const uint dist_base = cell_index * 8;
+            const float mean0 = DdgiProbeDistanceMomentBuffer[dist_base + 0].x;
+            RWTexWork[dtid.xy] = mean0.xxxx;
+        }
+        else if(3 == debug_sub_mode)
+        {
+            const uint dist_base = cell_index * 8;
+            const float mean0 = DdgiProbeDistanceMomentBuffer[dist_base + 0].x;
+            const float mean20 = DdgiProbeDistanceMomentBuffer[dist_base + 4].x;
+            const float variance0 = max(mean20 - mean0 * mean0, 0.0);
+            const float variance_vis = variance0 / (0.1 + variance0);
+            RWTexWork[dtid.xy] = float4(lerp(float3(0.02, 0.02, 0.05), float3(1.0, 0.35, 0.1), variance_vis), 1.0);
+        }
+        else
+        {
+            RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
+        }
+    }
 }

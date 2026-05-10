@@ -43,6 +43,7 @@ namespace ngl::render::app
         Ssp = 1,
         Fsp = 2,
         Assp = 3,
+        Ddgi = 4,
     };
 
     const char* SrvsGiSolutionModeName(int mode)
@@ -53,6 +54,7 @@ namespace ngl::render::app
         case SrvsGiSolutionMode::Ssp: return "SSP";
         case SrvsGiSolutionMode::Fsp: return "FSP";
         case SrvsGiSolutionMode::Assp: return "ASSP";
+        case SrvsGiSolutionMode::Ddgi: return "DDGI";
         default: return "Unknown";
         }
     }
@@ -67,10 +69,11 @@ namespace ngl::render::app
 
     // GIソリューションの実行順序/対応を集中管理する。
     // 追加/削除時はこのテーブルとモード定義の更新に集約する。
-    constexpr std::array<SrvsGiDispatchEntry, 3> k_srvs_gi_dispatch_entries = {{
+    constexpr std::array<SrvsGiDispatchEntry, 4> k_srvs_gi_dispatch_entries = {{
         { SrvsGiSolutionMode::Ssp,  &BitmaskBrickVoxelGi::Dispatch_SsProbe },
         { SrvsGiSolutionMode::Assp, &BitmaskBrickVoxelGi::Dispatch_AsspProbe },
         { SrvsGiSolutionMode::Fsp,  &BitmaskBrickVoxelGi::Dispatch_Fsp },
+        { SrvsGiSolutionMode::Ddgi, &BitmaskBrickVoxelGi::Dispatch_Ddgi },
     }};
     
     
@@ -119,6 +122,9 @@ namespace ngl::render::app
     int ScreenReconstructedVoxelStructure::dbg_fsp_probe_debug_mode_ = -1;
     int ScreenReconstructedVoxelStructure::dbg_fsp_probe_debug_cascade_ = -1;
     int ScreenReconstructedVoxelStructure::dbg_fsp_cascade_count_ = 1;
+    int ScreenReconstructedVoxelStructure::dbg_ddgi_probe_debug_mode_ = -1;
+    int ScreenReconstructedVoxelStructure::dbg_ddgi_probe_debug_cascade_ = -1;
+    int ScreenReconstructedVoxelStructure::dbg_ddgi_cascade_count_ = 1;
     float ScreenReconstructedVoxelStructure::dbg_probe_scale_ = 1.0f;
     float ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_ = 0.2f;
     int ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_enable_ = 1;
@@ -424,11 +430,13 @@ namespace ngl::render::app
                 if (ImGui::RadioButton("SSP", dbg_view_category_ == 2)) { dbg_view_category_ = 2; }
                 ImGui::SameLine();
                 if (ImGui::RadioButton("ASSP", dbg_view_category_ == 3)) { dbg_view_category_ = 3; }
+                ImGui::SameLine();
+                if (ImGui::RadioButton("DDGI", dbg_view_category_ == 4)) { dbg_view_category_ = 4; }
 
                 // カテゴリ別サブモードスライダ.
                 if (0 <= dbg_view_category_)
                 {
-                    const int k_sub_mode_max[] = { 14, 1, 11, 7 };
+                    const int k_sub_mode_max[] = { 14, 1, 11, 7, 3 };
                     auto get_sub_mode_description = [](int category, int sub_mode) -> const char*
                     {
                         switch(category)
@@ -488,6 +496,15 @@ namespace ngl::render::app
                             case 5: return "Raw variance mean";
                             case 6: return "Raw variance";
                             case 7: return "Per-probe ray count";
+                            default: return "Unknown";
+                            }
+                        case 4: // DDGI
+                            switch(sub_mode)
+                            {
+                            case 0: return "DDGI packed SH coeff0 raw";
+                            case 1: return "DDGI packed SH coeff1 raw";
+                            case 2: return "DDGI distance mean coeff0 raw";
+                            case 3: return "DDGI distance variance coeff0";
                             default: return "Unknown";
                             }
                         default:
@@ -585,7 +602,7 @@ namespace ngl::render::app
                         ImGui::TextDisabled("Stats are GPU readback values from the previous frame.");
                     }
 
-                    if (ImGui::CollapsingHeader("Visualization", ImGuiTreeNodeFlags_DefaultOpen))
+                    if (ImGui::CollapsingHeader("Visualization##FspProbeDebug", ImGuiTreeNodeFlags_DefaultOpen))
                     {
                         NGL_IMGUI_SCOPED_INDENT(10.0f);
                         ImGui::SliderInt("Fsp Probe Mode", &dbg_fsp_probe_debug_mode_, -1, 8);
@@ -599,6 +616,29 @@ namespace ngl::render::app
                         if (ImGui::BeginPopupContextItem()) {
                             if (ImGui::MenuItem("Reset to Default"))
                                 dbg_fsp_probe_debug_cascade_ = -1;
+                            ImGui::EndPopup();
+                        }
+                        ImGui::TextDisabled("-1 = all cascades");
+                    }
+                }
+                if (ImGui::CollapsingHeader("Dense DDGI Probe", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    NGL_IMGUI_SCOPED_INDENT(10.0f);
+                    ImGui::Text("Cascade Count: %d", dbg_ddgi_cascade_count_);
+                    if (ImGui::CollapsingHeader("Visualization##DdgiProbeDebug", ImGuiTreeNodeFlags_DefaultOpen))
+                    {
+                        NGL_IMGUI_SCOPED_INDENT(10.0f);
+                        ImGui::SliderInt("Ddgi Probe Mode", &dbg_ddgi_probe_debug_mode_, -1, 4);
+                        if (ImGui::BeginPopupContextItem()) {
+                            if (ImGui::MenuItem("Reset to Default"))
+                                dbg_ddgi_probe_debug_mode_ = -1;
+                            ImGui::EndPopup();
+                        }
+                        const int ddgi_debug_cascade_max = std::max(-1, dbg_ddgi_cascade_count_ - 1);
+                        ImGui::SliderInt("Ddgi Debug Cascade", &dbg_ddgi_probe_debug_cascade_, -1, ddgi_debug_cascade_max);
+                        if (ImGui::BeginPopupContextItem()) {
+                            if (ImGui::MenuItem("Reset to Default"))
+                                dbg_ddgi_probe_debug_cascade_ = -1;
                             ImGui::EndPopup();
                         }
                         ImGui::TextDisabled("-1 = all cascades");
@@ -624,6 +664,10 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_fsp_atlas_uav = "RWFspProbeAtlasTex";
     constexpr SrvsShaderBindName k_shader_bind_name_fsp_packed_sh_srv = "FspProbePackedSHTex";
     constexpr SrvsShaderBindName k_shader_bind_name_fsp_packed_sh_uav = "RWFspProbePackedSHTex";
+    constexpr SrvsShaderBindName k_shader_bind_name_ddgi_packed_sh_srv = "DdgiProbePackedShBuffer";
+    constexpr SrvsShaderBindName k_shader_bind_name_ddgi_packed_sh_uav = "RWDdgiProbePackedShBuffer";
+    constexpr SrvsShaderBindName k_shader_bind_name_ddgi_distance_moment_srv = "DdgiProbeDistanceMomentBuffer";
+    constexpr SrvsShaderBindName k_shader_bind_name_ddgi_distance_moment_uav = "RWDdgiProbeDistanceMomentBuffer";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_srv = "ScreenSpaceProbeTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_history_srv = "ScreenSpaceProbeHistoryTex";
     constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_uav = "RWScreenSpaceProbeTex";
@@ -1068,6 +1112,20 @@ namespace ngl::render::app
                 cascade_cell_size *= 2.0f;
             }
         }
+        ddgi_cascade_count_ = std::clamp<u32>(init_arg.probe_cascade_count, 1u, k_fsp_max_cascade_count);
+        ddgi_grid_updaters_.resize(ddgi_cascade_count_);
+        ddgi_cascade_cell_offset_array_.resize(ddgi_cascade_count_);
+        ddgi_total_cell_count_ = 0;
+        {
+            float cascade_cell_size = init_arg.probe_cell_size;
+            for(u32 cascade_index = 0; cascade_index < ddgi_cascade_count_; ++cascade_index)
+            {
+                ddgi_grid_updaters_[cascade_index].Initialize(init_arg.probe_resolution, cascade_cell_size);
+                ddgi_cascade_cell_offset_array_[cascade_index] = ddgi_total_cell_count_;
+                ddgi_total_cell_count_ += ddgi_grid_updaters_[cascade_index].Get().total_count;
+                cascade_cell_size *= 2.0f;
+            }
+        }
 
 
         const auto bbv_grid_resolution = bbv_grid_updater_.Get().resolution;
@@ -1134,6 +1192,8 @@ namespace ngl::render::app
             pso_fsp_pre_update_ = CreateComputePSO("srvs/fsp/fsp_pre_update_cs.hlsl");
             pso_fsp_update_ = CreateComputePSO("srvs/fsp/fsp_update_cs.hlsl");
             pso_fsp_sh_update_ = CreateComputePSO("srvs/fsp/fsp_probe_sh_update_cs.hlsl");
+            pso_ddgi_clear_ = CreateComputePSO("srvs/ddgi/ddgi_clear_cs.hlsl");
+            pso_ddgi_update_ = CreateComputePSO("srvs/ddgi/ddgi_update_cs.hlsl");
 
             pso_ss_probe_clear_ = CreateComputePSO("srvs/ssp/ss_probe_clear_cs.hlsl");
             pso_ss_probe_preupdate_ = CreateComputePSO("srvs/ssp/ss_probe_preupdate_cs.hlsl");
@@ -1222,6 +1282,37 @@ namespace ngl::render::app
 
                     auto* pso_cache = p_device->GetPipelineStateCache();
                     pso_fsp_debug_probe_ = pso_cache->GetOrCreate(p_device, gpso_desc);
+                }
+                {
+                    pso_ddgi_debug_probe_ = ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep>(new ngl::rhi::GraphicsPipelineStateDep());
+                    ngl::rhi::GraphicsPipelineStateDep::Desc gpso_desc = {};
+                    {
+                        ngl::gfx::ResShader::LoadDesc vs_load_desc = {};
+                        vs_load_desc.stage                         = ngl::rhi::EShaderStage::Vertex;
+                        vs_load_desc.shader_model_version          = k_shader_model;
+                        vs_load_desc.entry_point_name              = "main_vs";
+                        auto vs_load_handle                        = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
+                            p_device, NGL_RENDER_SHADER_PATH("srvs/debug_util/ddgi_probe_debug_vs.hlsl"), &vs_load_desc);
+                        gpso_desc.vs = &vs_load_handle->data_;
+                    }
+                    {
+                        ngl::gfx::ResShader::LoadDesc ps_load_desc = {};
+                        ps_load_desc.stage                         = ngl::rhi::EShaderStage::Pixel;
+                        ps_load_desc.shader_model_version          = k_shader_model;
+                        ps_load_desc.entry_point_name              = "main_ps";
+                        auto ps_load_handle                        = ngl::res::ResourceManager::Instance().LoadResource<ngl::gfx::ResShader>(
+                            p_device, NGL_RENDER_SHADER_PATH("srvs/debug_util/ddgi_probe_debug_ps.hlsl"), &ps_load_desc);
+                        gpso_desc.ps = &ps_load_handle->data_;
+                    }
+                    gpso_desc.num_render_targets = 1;
+                    gpso_desc.render_target_formats[0] = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
+                    gpso_desc.depth_stencil_state.depth_enable = true;
+                    gpso_desc.depth_stencil_state.depth_func = ngl::rhi::ECompFunc::Greater;
+                    gpso_desc.depth_stencil_state.depth_write_enable = true;
+                    gpso_desc.depth_stencil_state.stencil_enable = false;
+                    gpso_desc.depth_stencil_format = rhi::EResourceFormat::Format_D32_FLOAT;
+                    auto* pso_cache = p_device->GetPipelineStateCache();
+                    pso_ddgi_debug_probe_ = pso_cache->GetOrCreate(p_device, gpso_desc);
                 }
             }
         }
@@ -1445,6 +1536,26 @@ namespace ngl::render::app
 
             fsp_probe_packed_sh_tex_.Initialize(p_device, desc, "Srvs_FspProbePackedShTex");
         }
+        {
+            ddgi_probe_packed_sh_buffer_.InitializeAsStructured(
+                p_device,
+                rhi::BufferDep::Desc{
+                    .element_byte_size = sizeof(math::Vec4),
+                    .element_count = ddgi_total_cell_count_ * 4u,
+                    .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                    .heap_type = rhi::EResourceHeapType::Default},
+                "Srvs_DdgiProbePackedShBuffer");
+        }
+        {
+            ddgi_probe_distance_moment_buffer_.InitializeAsStructured(
+                p_device,
+                rhi::BufferDep::Desc{
+                    .element_byte_size = sizeof(math::Vec4),
+                    .element_count = ddgi_total_cell_count_ * 8u,
+                    .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                    .heap_type = rhi::EResourceHeapType::Default},
+                "Srvs_DdgiProbeDistanceMomentBuffer");
+        }
 
         if(!ResizeScreenProbeResources(p_device, math::Vec2i(1920, 1080)))
         {
@@ -1533,6 +1644,10 @@ namespace ngl::render::app
             {
                 fsp_grid_updater.UpdateGrid(modified_important_point);
             }
+            for(auto& ddgi_grid_updater : ddgi_grid_updaters_)
+            {
+                ddgi_grid_updater.UpdateGrid(modified_important_point);
+            }
         }
         #else
             // FIXME. デバッグ. gridの移動を止めて外部からレイトレースをした場合のデバッグ等.
@@ -1595,6 +1710,25 @@ namespace ngl::render::app
                     cascade_param.cell_offset = fsp_cascade_cell_offset_array_[cascade_index];
                     cascade_param.cell_count = cascade_grid.total_count;
                 }
+                param.ddgi_cascade_count = static_cast<int>(ddgi_cascade_count_);
+                param.ddgi_total_cell_count = static_cast<int>(ddgi_total_cell_count_);
+                param.ddgi_lighting_interpolation_enable = ScreenReconstructedVoxelStructure::dbg_fsp_lighting_interpolation_enable_;
+                for(u32 cascade_index = 0; cascade_index < ddgi_cascade_count_; ++cascade_index)
+                {
+                    const auto& cascade_grid = ddgi_grid_updaters_[cascade_index].Get();
+                    auto& cascade_param = param.ddgi_cascade[cascade_index];
+                    cascade_param.grid.grid_resolution = cascade_grid.resolution.Cast<int>();
+                    cascade_param.grid.grid_min_pos = cascade_grid.min_pos;
+                    cascade_param.grid.grid_min_voxel_coord = math::Vec3::Floor(cascade_grid.min_pos * (1.0f / cascade_grid.cell_size)).Cast<int>();
+                    cascade_param.grid.grid_toroidal_offset = cascade_grid.toroidal_offset;
+                    cascade_param.grid.grid_toroidal_offset_prev = cascade_grid.toroidal_offset_prev;
+                    cascade_param.grid.grid_move_cell_delta = cascade_grid.min_pos_delta_cell;
+                    cascade_param.grid.flatten_2d_width = cascade_grid.flatten_2d_width;
+                    cascade_param.grid.cell_size = cascade_grid.cell_size;
+                    cascade_param.grid.cell_size_inv = 1.0f / cascade_grid.cell_size;
+                    cascade_param.cell_offset = ddgi_cascade_cell_offset_array_[cascade_index];
+                    cascade_param.cell_count = cascade_grid.total_count;
+                }
             }
 
             param.tex_main_view_depth_size = hw_depth_size;
@@ -1618,6 +1752,8 @@ namespace ngl::render::app
             param.debug_bbv_probe_mode = ScreenReconstructedVoxelStructure::dbg_bbv_probe_debug_mode_;
             param.debug_fsp_probe_mode = ScreenReconstructedVoxelStructure::dbg_fsp_probe_debug_mode_;
             param.debug_fsp_probe_cascade = ScreenReconstructedVoxelStructure::dbg_fsp_probe_debug_cascade_;
+            param.debug_ddgi_probe_mode = ScreenReconstructedVoxelStructure::dbg_ddgi_probe_debug_mode_;
+            param.debug_ddgi_probe_cascade = ScreenReconstructedVoxelStructure::dbg_ddgi_probe_debug_cascade_;
 
             param.debug_probe_radius = ScreenReconstructedVoxelStructure::dbg_probe_scale_ * 0.5f * bbv_grid_updater_.Get().cell_size / k_bbv_per_voxel_resolution;
             param.debug_probe_near_geom_scale = ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_;
@@ -1687,6 +1823,25 @@ namespace ngl::render::app
                 p_command_list->ResourceUavBarrier(fsp_active_probe_list_[1].buffer.Get());
                 p_command_list->ResourceUavBarrier(fsp_visible_surface_list_.buffer.Get());
                 p_command_list->ResourceBarrier(fsp_probe_atlas_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
+            }
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "DdgiInitClear");
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_ddgi_clear_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+                pso_ddgi_clear_->SetView(&desc_set, k_shader_bind_name_ddgi_packed_sh_uav.Get(), ddgi_probe_packed_sh_buffer_.uav.Get());
+                pso_ddgi_clear_->SetView(&desc_set, k_shader_bind_name_ddgi_distance_moment_uav.Get(), ddgi_probe_distance_moment_buffer_.uav.Get());
+
+                p_command_list->SetPipelineState(pso_ddgi_clear_.Get());
+                p_command_list->SetDescriptorSet(pso_ddgi_clear_.Get(), &desc_set);
+                pso_ddgi_clear_->DispatchHelper(
+                    p_command_list,
+                    std::max<u32>(ddgi_total_cell_count_ * 4u, ddgi_total_cell_count_ * 8u),
+                    1,
+                    1);
+
+                p_command_list->ResourceUavBarrier(ddgi_probe_packed_sh_buffer_.buffer.Get());
+                p_command_list->ResourceUavBarrier(ddgi_probe_distance_moment_buffer_.buffer.Get());
             }
 
             // SsProbeクリア. pso_ss_probe_clear_使用.
@@ -2643,6 +2798,29 @@ namespace ngl::render::app
             }
         }
     }
+
+    void BitmaskBrickVoxelGi::Dispatch_Ddgi(rhi::GraphicsCommandListDep* p_command_list,
+                        rhi::ConstantBufferPooledHandle scene_cbv,
+                        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
+                        )
+    {
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_Ddgi");
+
+        ngl::rhi::DescriptorSetDep desc_set = {};
+        pso_ddgi_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
+        pso_ddgi_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+        pso_ddgi_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
+        pso_ddgi_update_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
+        pso_ddgi_update_->SetView(&desc_set, k_shader_bind_name_ddgi_packed_sh_uav.Get(), ddgi_probe_packed_sh_buffer_.uav.Get());
+        pso_ddgi_update_->SetView(&desc_set, k_shader_bind_name_ddgi_distance_moment_uav.Get(), ddgi_probe_distance_moment_buffer_.uav.Get());
+
+        p_command_list->SetPipelineState(pso_ddgi_update_.Get());
+        p_command_list->SetDescriptorSet(pso_ddgi_update_.Get(), &desc_set);
+        pso_ddgi_update_->DispatchHelper(p_command_list, ddgi_total_cell_count_, 1, 1);
+
+        p_command_list->ResourceUavBarrier(ddgi_probe_packed_sh_buffer_.buffer.Get());
+        p_command_list->ResourceUavBarrier(ddgi_probe_distance_moment_buffer_.buffer.Get());
+    }
     
     void BitmaskBrickVoxelGi::Dispatch_Debug(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
@@ -2676,6 +2854,8 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_tile_info_curr_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_packed_sh_srv.Get(), assp_probe_packed_sh_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_assp_probe_ray_meta_srv.Get(), assp_probe_ray_meta_buffer_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ddgi_packed_sh_srv.Get(), ddgi_probe_packed_sh_buffer_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ddgi_distance_moment_srv.Get(), ddgi_probe_distance_moment_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
             
             pso_bbv_debug_visualize_->SetView(&desc_set, "RWTexWork", work_uav.Get());
@@ -2739,6 +2919,8 @@ namespace ngl::render::app
             pso_fsp_debug_probe_->SetView(&desc_set, "FspProbeBuffer", fsp_buffer_.srv.Get());
             pso_fsp_debug_probe_->SetView(&desc_set, k_shader_bind_name_fsp_atlas_srv.Get(), fsp_probe_atlas_tex_.srv.Get());
             pso_fsp_debug_probe_->SetView(&desc_set, k_shader_bind_name_fsp_packed_sh_srv.Get(), fsp_probe_packed_sh_tex_.srv.Get());
+            pso_fsp_debug_probe_->SetView(&desc_set, k_shader_bind_name_ddgi_packed_sh_srv.Get(), ddgi_probe_packed_sh_buffer_.srv.Get());
+            pso_fsp_debug_probe_->SetView(&desc_set, k_shader_bind_name_ddgi_distance_moment_srv.Get(), ddgi_probe_distance_moment_buffer_.srv.Get());
             pso_fsp_debug_probe_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
 
 
@@ -2746,6 +2928,23 @@ namespace ngl::render::app
 
             p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
             p_command_list->DrawInstanced(6 * fsp_total_cell_count_, 1, 0, 0);
+        }
+        if (0 <= ScreenReconstructedVoxelStructure::dbg_ddgi_probe_debug_mode_)
+        {
+            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "DdgiProbeDebug");
+
+            p_command_list->SetPipelineState(pso_ddgi_debug_probe_.Get());
+            ngl::rhi::DescriptorSetDep desc_set = {};
+
+            pso_ddgi_debug_probe_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
+            pso_ddgi_debug_probe_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+            pso_ddgi_debug_probe_->SetView(&desc_set, k_shader_bind_name_ddgi_packed_sh_srv.Get(), ddgi_probe_packed_sh_buffer_.srv.Get());
+            pso_ddgi_debug_probe_->SetView(&desc_set, k_shader_bind_name_ddgi_distance_moment_srv.Get(), ddgi_probe_distance_moment_buffer_.srv.Get());
+            pso_ddgi_debug_probe_->SetView(&desc_set, "SmpLinearClamp", gfx::GlobalRenderResource::Instance().default_resource_.sampler_linear_clamp.Get());
+
+            p_command_list->SetDescriptorSet(pso_ddgi_debug_probe_.Get(), &desc_set);
+            p_command_list->SetPrimitiveTopology(ngl::rhi::EPrimitiveTopology::TriangleList);
+            p_command_list->DrawInstanced(6 * ddgi_total_cell_count_, 1, 0, 0);
         }
 
     }
@@ -2782,6 +2981,8 @@ namespace ngl::render::app
         is_initialized_ = true;
         dbg_fsp_cascade_count_ = static_cast<int>(std::clamp<u32>(fsp_cascade_count, 1u, k_fsp_max_cascade_count));
         dbg_fsp_probe_debug_cascade_ = std::clamp(dbg_fsp_probe_debug_cascade_, -1, dbg_fsp_cascade_count_ - 1);
+        dbg_ddgi_cascade_count_ = static_cast<int>(std::clamp<u32>(fsp_cascade_count, 1u, k_fsp_max_cascade_count));
+        dbg_ddgi_probe_debug_cascade_ = std::clamp(dbg_ddgi_probe_debug_cascade_, -1, dbg_ddgi_cascade_count_ - 1);
         return true;
     }
     // 破棄
@@ -2933,6 +3134,8 @@ namespace ngl::render::app
         assert(bbvgi_instance_);
         p_pso->SetView(p_desc_set, k_shader_bind_name_fsp_atlas_srv.Get(), bbvgi_instance_->GetFspProbeAtlasTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_fsp_packed_sh_srv.Get(), bbvgi_instance_->GetFspProbePackedShTex().Get());
+        p_pso->SetView(p_desc_set, k_shader_bind_name_ddgi_packed_sh_srv.Get(), bbvgi_instance_->GetDdgiProbePackedShBuffer().Get());
+        p_pso->SetView(p_desc_set, k_shader_bind_name_ddgi_distance_moment_srv.Get(), bbvgi_instance_->GetDdgiProbeDistanceMomentBuffer().Get());
         p_pso->SetView(p_desc_set, "FspCellProbeIndexBuffer", bbvgi_instance_->GetFspCellProbeIndexBuffer().Get());
         p_pso->SetView(p_desc_set, "FspProbePoolBuffer", bbvgi_instance_->GetFspProbePoolBuffer().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_srv.Get(), bbvgi_instance_->GetSsProbeTex().Get());

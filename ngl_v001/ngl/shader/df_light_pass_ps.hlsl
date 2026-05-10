@@ -47,6 +47,7 @@ static const int k_gi_sample_mode_none = 0;
 static const int k_gi_sample_mode_ssp = 1;
 static const int k_gi_sample_mode_fsp = 2;
 static const int k_gi_sample_mode_assp = 3;
+static const int k_gi_sample_mode_ddgi = 4;
 
 Texture2D tex_lineardepth;// Linear View Depth.
 Texture2D tex_gbuffer0;
@@ -576,6 +577,243 @@ float EvalFspSkyVisibilityL1Directional(float4 sky_visibility_sh_coeff, float4 s
     return dot(sky_visibility_sh_coeff, sh_basis);
 }
 
+struct DdgiProbePackedShL1Sample
+{
+    float4 sky_visibility_sh;
+    float4 radiance_sh_r;
+    float4 radiance_sh_g;
+    float4 radiance_sh_b;
+};
+
+DdgiProbePackedShL1Sample MakeZeroDdgiProbePackedShL1Sample()
+{
+    DdgiProbePackedShL1Sample result;
+    result.sky_visibility_sh = 0.0.xxxx;
+    result.radiance_sh_r = 0.0.xxxx;
+    result.radiance_sh_g = 0.0.xxxx;
+    result.radiance_sh_b = 0.0.xxxx;
+    return result;
+}
+
+void AccumulateDdgiPackedShL1Sample(inout DdgiProbePackedShL1Sample accum, DdgiProbePackedShL1Sample sample_value, float weight)
+{
+    accum.sky_visibility_sh += sample_value.sky_visibility_sh * weight;
+    accum.radiance_sh_r += sample_value.radiance_sh_r * weight;
+    accum.radiance_sh_g += sample_value.radiance_sh_g * weight;
+    accum.radiance_sh_b += sample_value.radiance_sh_b * weight;
+}
+
+void ScaleDdgiPackedShL1Sample(inout DdgiProbePackedShL1Sample sample_value, float scale)
+{
+    sample_value.sky_visibility_sh *= scale;
+    sample_value.radiance_sh_r *= scale;
+    sample_value.radiance_sh_g *= scale;
+    sample_value.radiance_sh_b *= scale;
+}
+
+bool DdgiTryLoadPackedShL1FromCellIndex(out DdgiProbePackedShL1Sample result, uint global_cell_index)
+{
+    result = MakeZeroDdgiProbePackedShL1Sample();
+    if(global_cell_index >= (uint)cb_srvs.ddgi_total_cell_count)
+    {
+        return false;
+    }
+
+    const uint base_index = global_cell_index * 4;
+    const float4 coeff0 = DdgiProbePackedShBuffer[base_index + 0];
+    const float4 coeff1 = DdgiProbePackedShBuffer[base_index + 1];
+    const float4 coeff2 = DdgiProbePackedShBuffer[base_index + 2];
+    const float4 coeff3 = DdgiProbePackedShBuffer[base_index + 3];
+    result.sky_visibility_sh = float4(coeff0.r, coeff1.r, coeff2.r, coeff3.r);
+    result.radiance_sh_r = float4(coeff0.g, coeff1.g, coeff2.g, coeff3.g);
+    result.radiance_sh_g = float4(coeff0.b, coeff1.b, coeff2.b, coeff3.b);
+    result.radiance_sh_b = float4(coeff0.a, coeff1.a, coeff2.a, coeff3.a);
+    return true;
+}
+
+float DdgiEvalDistanceMomentVisibility(uint global_cell_index, float3 sample_pos_ws, float3 probe_pos_ws)
+{
+    if(0 == cb_srvs.ddgi_distance_weight_enable || global_cell_index >= (uint)cb_srvs.ddgi_total_cell_count)
+    {
+        return 1.0;
+    }
+
+    const float3 sample_to_probe_dir = normalize(probe_pos_ws - sample_pos_ws);
+    const float4 dir_basis = EvaluateL1ShBasis(sample_to_probe_dir);
+    const uint dist_base_index = global_cell_index * 8;
+    const float4 mean_coeff0 = DdgiProbeDistanceMomentBuffer[dist_base_index + 0];
+    const float4 mean_coeff1 = DdgiProbeDistanceMomentBuffer[dist_base_index + 1];
+    const float4 mean_coeff2 = DdgiProbeDistanceMomentBuffer[dist_base_index + 2];
+    const float4 mean_coeff3 = DdgiProbeDistanceMomentBuffer[dist_base_index + 3];
+    const float4 mean2_coeff0 = DdgiProbeDistanceMomentBuffer[dist_base_index + 4];
+    const float4 mean2_coeff1 = DdgiProbeDistanceMomentBuffer[dist_base_index + 5];
+    const float4 mean2_coeff2 = DdgiProbeDistanceMomentBuffer[dist_base_index + 6];
+    const float4 mean2_coeff3 = DdgiProbeDistanceMomentBuffer[dist_base_index + 7];
+
+    const float mean_distance = max(0.0, dot(float4(mean_coeff0.x, mean_coeff1.x, mean_coeff2.x, mean_coeff3.x), dir_basis));
+    const float mean2_distance = max(0.0, dot(float4(mean2_coeff0.x, mean2_coeff1.x, mean2_coeff2.x, mean2_coeff3.x), dir_basis));
+    const float variance = max(mean2_distance - mean_distance * mean_distance, cb_srvs.ddgi_visibility_variance_bias);
+    const float distance_to_probe_norm = saturate(length(probe_pos_ws - sample_pos_ws) * rcp(max(cb_srvs.ddgi_distance_normalize_m, 1e-3)));
+    const float delta = max(distance_to_probe_norm - mean_distance, 0.0);
+    const float p_max = variance / (variance + delta * delta);
+    return max(pow(saturate(p_max), max(cb_srvs.ddgi_visibility_sharpness, 1e-3)), cb_srvs.ddgi_visibility_min_weight);
+}
+
+float DdgiCalcCascadeBoundaryDitherRate(float3 sample_pos_ws, uint cascade_index)
+{
+    if((cascade_index + 1u) >= DdgiCascadeCount())
+    {
+        return 0.0;
+    }
+
+    uint coarse_global_cell_index = k_fsp_invalid_probe_index;
+    if(!DdgiTryGetGlobalCellIndexFromWorldPos(sample_pos_ws, cascade_index + 1u, coarse_global_cell_index))
+    {
+        return 0.0;
+    }
+
+    const FspCascadeGridParam cascade = DdgiGetCascadeParam(cascade_index);
+    const FspCascadeGridParam coarse_cascade = DdgiGetCascadeParam(cascade_index + 1u);
+    const float3 cascade_max_pos = cascade.grid.grid_min_pos + float3(cascade.grid.grid_resolution) * cascade.grid.cell_size;
+    const float3 dist_to_min = sample_pos_ws - cascade.grid.grid_min_pos;
+    const float3 dist_to_max = cascade_max_pos - sample_pos_ws;
+    const float boundary_dist = min(min(dist_to_min.x, dist_to_max.x), min(min(dist_to_min.y, dist_to_max.y), min(dist_to_min.z, dist_to_max.z)));
+    const float dither_width = max(coarse_cascade.grid.cell_size, cascade.grid.cell_size);
+    return 1.0 - saturate(boundary_dist / max(dither_width, 1e-5));
+}
+
+bool DdgiTrySelectLightingCascade(out uint cascade_index, float3 sample_pos_ws, float2 dither_seed)
+{
+    cascade_index = 0;
+    const uint cascade_count = DdgiCascadeCount();
+    [loop]
+    for(uint ci = 0; ci < cascade_count; ++ci)
+    {
+        uint global_cell_index = k_fsp_invalid_probe_index;
+        if(!DdgiTryGetGlobalCellIndexFromWorldPos(sample_pos_ws, ci, global_cell_index))
+        {
+            continue;
+        }
+        cascade_index = ci;
+        const float coarse_select_rate = DdgiCalcCascadeBoundaryDitherRate(sample_pos_ws, ci);
+        if(coarse_select_rate > 0.0 && interleaved_gradient_noise(dither_seed) < coarse_select_rate)
+        {
+            cascade_index = min(ci + 1u, cascade_count - 1u);
+        }
+        return true;
+    }
+    return false;
+}
+
+bool TrySampleDdgiPackedShL1(out DdgiProbePackedShL1Sample result, float3 sample_pos_ws, float2 dither_seed)
+{
+    result = MakeZeroDdgiProbePackedShL1Sample();
+
+    uint cascade_index = 0;
+    if(!DdgiTrySelectLightingCascade(cascade_index, sample_pos_ws, dither_seed))
+    {
+        return false;
+    }
+
+    const FspCascadeGridParam cascade = DdgiGetCascadeParam(cascade_index);
+    if(0 == cb_srvs.ddgi_lighting_interpolation_enable)
+    {
+        uint nearest_global_cell_index = k_fsp_invalid_probe_index;
+        if(!DdgiTryGetGlobalCellIndexFromWorldPos(sample_pos_ws, cascade_index, nearest_global_cell_index))
+        {
+            return false;
+        }
+        return DdgiTryLoadPackedShL1FromCellIndex(result, nearest_global_cell_index);
+    }
+
+    const float3 grid_coordf = (sample_pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv - float3(0.5, 0.5, 0.5);
+    const int3 base_coord = int3(floor(grid_coordf));
+    const float3 lerp_rate = saturate(frac(grid_coordf));
+
+    float neighbor_weight[8];
+    uint neighbor_cell_index[8];
+    [unroll]
+    for(uint i = 0; i < 8; ++i)
+    {
+        neighbor_weight[i] = 0.0;
+        neighbor_cell_index[i] = k_fsp_invalid_probe_index;
+    }
+
+    float total_weight = 0.0;
+    [unroll]
+    for(int oz = 0; oz < 2; ++oz)
+    {
+        [unroll]
+        for(int oy = 0; oy < 2; ++oy)
+        {
+            [unroll]
+            for(int ox = 0; ox < 2; ++ox)
+            {
+                const int3 neighbor_coord = base_coord + int3(ox, oy, oz);
+                if(any(neighbor_coord < 0) || any(neighbor_coord >= cascade.grid.grid_resolution))
+                {
+                    continue;
+                }
+
+                const float wx = (ox == 0) ? (1.0 - lerp_rate.x) : lerp_rate.x;
+                const float wy = (oy == 0) ? (1.0 - lerp_rate.y) : lerp_rate.y;
+                const float wz = (oz == 0) ? (1.0 - lerp_rate.z) : lerp_rate.z;
+                float weight = wx * wy * wz;
+                if(weight <= 0.0)
+                {
+                    continue;
+                }
+
+                const int3 neighbor_coord_toroidal = voxel_coord_toroidal_mapping(neighbor_coord, cascade.grid.grid_toroidal_offset, cascade.grid.grid_resolution);
+                const uint local_cell_index = voxel_coord_to_index(neighbor_coord_toroidal, cascade.grid.grid_resolution);
+                const uint global_cell_index = cascade.cell_offset + local_cell_index;
+                const float3 probe_pos_ws = DdgiCalcCellCenterWs(cascade_index, local_cell_index);
+                weight *= DdgiEvalDistanceMomentVisibility(global_cell_index, sample_pos_ws, probe_pos_ws);
+
+                DdgiProbePackedShL1Sample probe_sh = MakeZeroDdgiProbePackedShL1Sample();
+                if(!DdgiTryLoadPackedShL1FromCellIndex(probe_sh, global_cell_index))
+                {
+                    continue;
+                }
+
+                const uint neighbor_index = uint(ox + oy * 2 + oz * 4);
+                neighbor_weight[neighbor_index] = weight;
+                neighbor_cell_index[neighbor_index] = global_cell_index;
+                total_weight += weight;
+            }
+        }
+    }
+    if(total_weight <= 0.0)
+    {
+        return false;
+    }
+
+    [unroll]
+    for(uint i = 0; i < 8; ++i)
+    {
+        if(neighbor_weight[i] <= 0.0)
+        {
+            continue;
+        }
+        DdgiProbePackedShL1Sample probe_sh = MakeZeroDdgiProbePackedShL1Sample();
+        if(!DdgiTryLoadPackedShL1FromCellIndex(probe_sh, neighbor_cell_index[i]))
+        {
+            continue;
+        }
+        AccumulateDdgiPackedShL1Sample(result, probe_sh, neighbor_weight[i]);
+    }
+    ScaleDdgiPackedShL1Sample(result, rcp(total_weight));
+    return true;
+}
+
+float3 EvalDdgiRadianceL1DiffuseIrradiance(DdgiProbePackedShL1Sample probe_sh, float4 sh_basis)
+{
+    return float3(
+        dot(ConvolveL1ShByClampedCosine(probe_sh.radiance_sh_r), sh_basis),
+        dot(ConvolveL1ShByClampedCosine(probe_sh.radiance_sh_g), sh_basis),
+        dot(ConvolveL1ShByClampedCosine(probe_sh.radiance_sh_b), sh_basis));
+}
+
 struct AsspProbePackedShL1Sample
 {
     float4 sky_visibility_sh;
@@ -964,6 +1202,28 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
                     gi_probe_diffuse_irradiance = max(
                         float3(0.0, 0.0, 0.0),
                         EvalAsspRadianceL1DiffuseIrradiance(assp_probe_sh, sh_basis));
+                }
+            }
+        }
+        else if(cb_ngl_lighting_pass.gi_sample_mode == k_gi_sample_mode_ddgi)
+        {
+            DdgiProbePackedShL1Sample ddgi_probe_sh;
+            if(TrySampleDdgiPackedShL1(ddgi_probe_sh, gi_sample_pos_ws, input.pos.xy))
+            {
+                if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
+                {
+                    const float diffuse_sh_sample = max(0.0, dot(ConvolveL1ShByNormalizedClampedCosine(ddgi_probe_sh.sky_visibility_sh), sh_basis));
+                    diffuse_sky_visibility = saturate(diffuse_sh_sample);
+
+                    const float directional_specular_sample = max(0.0, dot(ddgi_probe_sh.sky_visibility_sh, reflection_sh_basis));
+                    const float roughness_blend = saturate(gb_roughness * gb_roughness);
+                    specular_sky_visibility = saturate(lerp(directional_specular_sample, diffuse_sky_visibility, roughness_blend));
+                }
+                if(cb_ngl_lighting_pass.is_enable_radiance)
+                {
+                    gi_probe_diffuse_irradiance = max(
+                        float3(0.0, 0.0, 0.0),
+                        EvalDdgiRadianceL1DiffuseIrradiance(ddgi_probe_sh, sh_basis));
                 }
             }
         }

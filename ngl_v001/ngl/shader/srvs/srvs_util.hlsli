@@ -69,6 +69,10 @@ Texture2D<float4>      FspProbeAtlasTex;
 RWTexture2D<float4>    RWFspProbeAtlasTex;
 Texture2D<float4>      FspProbePackedSHTex;
 RWTexture2D<float4>    RWFspProbePackedSHTex;
+StructuredBuffer<float4>      DdgiProbePackedShBuffer;
+RWStructuredBuffer<float4>    RWDdgiProbePackedShBuffer;
+StructuredBuffer<float4>      DdgiProbeDistanceMomentBuffer;
+RWStructuredBuffer<float4>    RWDdgiProbeDistanceMomentBuffer;
 
 // 0番目はアトミックカウンタ, それ以降をリスト利用.
 Buffer<uint>		SurfaceProbeCellList;
@@ -166,6 +170,66 @@ float3 FspCalcCellCenterWs(uint cascade_index, uint local_cell_index)
 bool FspTryGetGlobalCellIndexFromWorldPos(float3 pos_ws, uint cascade_index, out uint global_cell_index)
 {
     const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const float3 voxel_coordf = (pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv;
+    const int3 voxel_coord = floor(voxel_coordf);
+    if(all(voxel_coord >= 0) && all(voxel_coord < cascade.grid.grid_resolution))
+    {
+        const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cascade.grid.grid_toroidal_offset, cascade.grid.grid_resolution);
+        const uint local_cell_index = voxel_coord_to_index(voxel_coord_toroidal, cascade.grid.grid_resolution);
+        global_cell_index = cascade.cell_offset + local_cell_index;
+        return true;
+    }
+
+    global_cell_index = k_fsp_invalid_probe_index;
+    return false;
+}
+
+uint DdgiCascadeCount()
+{
+    return min((uint)cb_srvs.ddgi_cascade_count, k_fsp_max_cascade_count);
+}
+
+FspCascadeGridParam DdgiGetCascadeParam(uint cascade_index)
+{
+    return cb_srvs.ddgi_cascade[min(cascade_index, k_fsp_max_cascade_count - 1u)];
+}
+
+bool DdgiDecodeGlobalCellIndex(uint global_cell_index, out uint cascade_index, out uint local_cell_index)
+{
+    const uint cascade_count = DdgiCascadeCount();
+    [unroll]
+    for(uint ci = 0; ci < k_fsp_max_cascade_count; ++ci)
+    {
+        if(ci >= cascade_count)
+        {
+            break;
+        }
+
+        const FspCascadeGridParam cascade = cb_srvs.ddgi_cascade[ci];
+        if(cascade.cell_offset <= global_cell_index && global_cell_index < (cascade.cell_offset + cascade.cell_count))
+        {
+            cascade_index = ci;
+            local_cell_index = global_cell_index - cascade.cell_offset;
+            return true;
+        }
+    }
+
+    cascade_index = 0;
+    local_cell_index = 0;
+    return false;
+}
+
+float3 DdgiCalcCellCenterWs(uint cascade_index, uint local_cell_index)
+{
+    const FspCascadeGridParam cascade = DdgiGetCascadeParam(cascade_index);
+    const int3 voxel_coord_toroidal = index_to_voxel_coord(local_cell_index, cascade.grid.grid_resolution);
+    const int3 voxel_coord = voxel_coord_toroidal_mapping(voxel_coord_toroidal, cascade.grid.grid_resolution - cascade.grid.grid_toroidal_offset, cascade.grid.grid_resolution);
+    return (float3(voxel_coord) + 0.5) * cascade.grid.cell_size + cascade.grid.grid_min_pos;
+}
+
+bool DdgiTryGetGlobalCellIndexFromWorldPos(float3 pos_ws, uint cascade_index, out uint global_cell_index)
+{
+    const FspCascadeGridParam cascade = DdgiGetCascadeParam(cascade_index);
     const float3 voxel_coordf = (pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv;
     const int3 voxel_coord = floor(voxel_coordf);
     if(all(voxel_coord >= 0) && all(voxel_coord < cascade.grid.grid_resolution))

@@ -391,6 +391,20 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         float assp_ray_budget_scale NGL_CPP_MEMBER_INIT({1.0f});
         int assp_debug_freeze_frame_random_enable NGL_CPP_MEMBER_INIT({0});
         int3 assp_dummy_padding1 NGL_CPP_MEMBER_INIT({});
+
+        FspCascadeGridParam ddgi_cascade[k_fsp_max_cascade_count] NGL_CPP_MEMBER_INIT({});
+        int ddgi_cascade_count NGL_CPP_MEMBER_INIT({1});
+        int ddgi_total_cell_count NGL_CPP_MEMBER_INIT({0});
+        int ddgi_update_split NGL_CPP_MEMBER_INIT({8});
+        int ddgi_lighting_interpolation_enable NGL_CPP_MEMBER_INIT({1});
+        int ddgi_distance_weight_enable NGL_CPP_MEMBER_INIT({1});
+        float ddgi_distance_normalize_m NGL_CPP_MEMBER_INIT({30.0f});
+        float ddgi_visibility_variance_bias NGL_CPP_MEMBER_INIT({0.02f});
+        float ddgi_visibility_min_weight NGL_CPP_MEMBER_INIT({0.1f});
+        float ddgi_visibility_sharpness NGL_CPP_MEMBER_INIT({1.0f});
+        int debug_ddgi_probe_cascade NGL_CPP_MEMBER_INIT({-1});
+        int debug_ddgi_probe_mode NGL_CPP_MEMBER_INIT({-1});
+        int2 ddgi_dummy_padding0_1 NGL_CPP_MEMBER_INIT({});
     };
 #ifdef NGL_SHADER_CPP_INCLUDE
     // C++用のコンパイル時定数デフォルト構造体.
