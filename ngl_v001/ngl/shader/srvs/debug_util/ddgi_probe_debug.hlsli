@@ -91,10 +91,10 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     const float4 coeff2 = DdgiProbePackedShBuffer[sh_base + 2];
     const float4 coeff3 = DdgiProbePackedShBuffer[sh_base + 3];
     const float4 sh_basis = EvaluateL1ShBasis(normal_ws);
-    const float4 sh_sky = float4(coeff0.r, coeff1.r, coeff2.r, coeff3.r);
-    const float4 sh_rad_r = float4(coeff0.g, coeff1.g, coeff2.g, coeff3.g);
-    const float4 sh_rad_g = float4(coeff0.b, coeff1.b, coeff2.b, coeff3.b);
-    const float4 sh_rad_b = float4(coeff0.a, coeff1.a, coeff2.a, coeff3.a);
+    const float4 sh_sky = float4(coeff0.a, coeff1.a, coeff2.a, coeff3.a);
+    const float4 sh_rad_r = float4(coeff0.r, coeff1.r, coeff2.r, coeff3.r);
+    const float4 sh_rad_g = float4(coeff0.g, coeff1.g, coeff2.g, coeff3.g);
+    const float4 sh_rad_b = float4(coeff0.b, coeff1.b, coeff2.b, coeff3.b);
 
     if(0 == cb_srvs.debug_ddgi_probe_mode)
     {
@@ -131,6 +131,32 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
         DdgiProbeDistanceMomentBuffer[dist_base + 7].x);
     const float mean2_distance = max(0.0, dot(mean2_coeff, sh_basis));
     const float variance = max(mean2_distance - mean_distance * mean_distance, 0.0);
-    const float variance_vis = variance / (0.1 + variance);
-    return float4(lerp(float3(0.02, 0.02, 0.05), float3(1.0, 0.35, 0.1), variance_vis), 1.0);
+    if(4 == cb_srvs.debug_ddgi_probe_mode)
+    {
+        const float variance_vis = variance / (0.1 + variance);
+        return float4(lerp(float3(0.02, 0.02, 0.05), float3(1.0, 0.35, 0.1), variance_vis), 1.0);
+    }
+
+    const float3 sample_to_probe_dir = normalize(input.probe_pos_ws - view_origin);
+    const float4 sample_basis = EvaluateL1ShBasis(sample_to_probe_dir);
+    const float mean_sample = max(0.0, dot(mean_coeff, sample_basis));
+    const float mean2_sample = max(0.0, dot(mean2_coeff, sample_basis));
+    const float variance_sample = max(mean2_sample - mean_sample * mean_sample, cb_srvs.ddgi_visibility_variance_bias);
+    const float distance_to_probe = length(input.probe_pos_ws - view_origin);
+    const float delta = max(distance_to_probe - mean_sample, 0.0);
+    const float p_max = variance_sample / (variance_sample + delta * delta);
+    const float visibility = max(pow(saturate(p_max), max(cb_srvs.ddgi_visibility_sharpness, 1e-3)), cb_srvs.ddgi_visibility_min_weight);
+    if(5 == cb_srvs.debug_ddgi_probe_mode)
+    {
+        return visibility.xxxx;
+    }
+    if(6 == cb_srvs.debug_ddgi_probe_mode)
+    {
+        return (delta / (1.0 + delta)).xxxx;
+    }
+    if(7 == cb_srvs.debug_ddgi_probe_mode)
+    {
+        return saturate(p_max).xxxx;
+    }
+    return 0.0.xxxx;
 }

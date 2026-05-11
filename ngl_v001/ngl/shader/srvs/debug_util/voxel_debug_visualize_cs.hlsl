@@ -382,7 +382,7 @@ void main_cs(
                 RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
             }
         }
-        else if(4 == debug_sub_mode)
+        else if(4 <= debug_sub_mode && debug_sub_mode <= 6)
         {
             // SkyVisibility SH係数をそのままRGBAで可視化 (Y00=R, Y1_{-1}(y)=G, Y1_0(z)=B, Y1_{+1}(x)=A).
             const float4 ss_probe_sh = float4(
@@ -572,43 +572,97 @@ void main_cs(
             RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
             return;
         }
+        if(4 <= debug_sub_mode && debug_sub_mode <= 15)
+        {
+            // XZ slices tiled for every Y, and cascades stacked by rows.
+            const uint cascade_count = DdgiCascadeCount();
+            if(0 == cascade_count)
+            {
+                RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
+                return;
+            }
 
-        const uint atlas_width = uint(ceil(sqrt((float)total_cell_count)));
-        const uint atlas_height = (total_cell_count + atlas_width - 1) / atlas_width;
-        const uint2 ddgi_texel = uint2(screen_uv * float2(atlas_width, atlas_height));
-        const uint cell_index = ddgi_texel.x + ddgi_texel.y * atlas_width;
-        if(cell_index >= total_cell_count)
-        {
-            RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
-            return;
-        }
+            bool found_cascade = false;
+            FspCascadeGridParam cascade = DdgiGetCascadeParam(0);
+            int3 grid_res = int3(0, 0, 0);
+            uint local_y_in_cascade_block = 0;
+            uint tile_w = 1;
+            uint tile_h = 1;
+            uint tiles_per_row = 1;
+            uint y_block_offset = 0;
 
-        const uint sh_base = cell_index * 4;
-        const float4 sh0 = DdgiProbePackedShBuffer[sh_base + 0];
-        const float4 sh1 = DdgiProbePackedShBuffer[sh_base + 1];
+            [loop]
+            for(uint ci = 0; ci < cascade_count; ++ci)
+            {
+                const FspCascadeGridParam ci_cascade = DdgiGetCascadeParam(ci);
+                const int3 ci_grid_res = ci_cascade.grid.grid_resolution;
+                if(any(ci_grid_res <= 0))
+                {
+                    continue;
+                }
 
-        if(0 == debug_sub_mode)
-        {
-            RWTexWork[dtid.xy] = sh0;
-        }
-        else if(1 == debug_sub_mode)
-        {
-            RWTexWork[dtid.xy] = sh1;
-        }
-        else if(2 == debug_sub_mode)
-        {
-            const uint dist_base = cell_index * 8;
-            const float mean0 = DdgiProbeDistanceMomentBuffer[dist_base + 0].x;
-            RWTexWork[dtid.xy] = mean0.xxxx;
-        }
-        else if(3 == debug_sub_mode)
-        {
-            const uint dist_base = cell_index * 8;
-            const float mean0 = DdgiProbeDistanceMomentBuffer[dist_base + 0].x;
-            const float mean20 = DdgiProbeDistanceMomentBuffer[dist_base + 4].x;
-            const float variance0 = max(mean20 - mean0 * mean0, 0.0);
-            const float variance_vis = variance0 / (0.1 + variance0);
-            RWTexWork[dtid.xy] = float4(lerp(float3(0.02, 0.02, 0.05), float3(1.0, 0.35, 0.1), variance_vis), 1.0);
+                const uint k_probe_pixel_scale = 4u;
+                const uint ci_tile_w = max((uint)ci_grid_res.x, 1u) * k_probe_pixel_scale;
+                const uint ci_tile_h = max((uint)ci_grid_res.z, 1u) * k_probe_pixel_scale;
+                const uint ci_tiles_per_row = max(work_tex_size_u.x / ci_tile_w, 1u);
+                const uint ci_rows = ((uint)ci_grid_res.y + ci_tiles_per_row - 1u) / ci_tiles_per_row;
+                const uint ci_block_h = ci_rows * ci_tile_h;
+
+                if(dtid.y >= y_block_offset && dtid.y < (y_block_offset + ci_block_h))
+                {
+                    found_cascade = true;
+                    cascade = ci_cascade;
+                    grid_res = ci_grid_res;
+                    local_y_in_cascade_block = dtid.y - y_block_offset;
+                    tile_w = ci_tile_w;
+                    tile_h = ci_tile_h;
+                    tiles_per_row = ci_tiles_per_row;
+                    break;
+                }
+
+                y_block_offset += ci_block_h;
+            }
+
+            if(!found_cascade)
+            {
+                RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
+                return;
+            }
+
+            const uint tile_x = dtid.x / tile_w;
+            const uint tile_y = local_y_in_cascade_block / tile_h;
+            const uint y_slice = tile_x + tile_y * tiles_per_row;
+            if(y_slice >= (uint)grid_res.y)
+            {
+                RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
+                return;
+            }
+
+            const uint k_probe_pixel_scale = 4u;
+            const uint local_x = (dtid.x % tile_w) / k_probe_pixel_scale;
+            const uint local_z = (local_y_in_cascade_block % tile_h) / k_probe_pixel_scale;
+            const int3 linear_coord = int3((int)local_x, (int)y_slice, (int)local_z);
+
+            const int3 toroidal_coord = voxel_coord_toroidal_mapping(linear_coord, cascade.grid.grid_toroidal_offset, grid_res);
+            const uint local_cell_index = voxel_coord_to_index(toroidal_coord, grid_res);
+            const uint slice_cell_index = cascade.cell_offset + local_cell_index;
+            if(4 <= debug_sub_mode && debug_sub_mode <= 7)
+            {
+                const uint sh_coeff_index = uint(debug_sub_mode - 4);
+                RWTexWork[dtid.xy] = DdgiProbePackedShBuffer[slice_cell_index * 4 + sh_coeff_index];
+            }
+            else if(8 <= debug_sub_mode && debug_sub_mode <= 11)
+            {
+                const uint mean_coeff_index = uint(debug_sub_mode - 8);
+                const float mean_v = DdgiProbeDistanceMomentBuffer[slice_cell_index * 8 + mean_coeff_index].x;
+                RWTexWork[dtid.xy] = mean_v.xxxx;
+            }
+            else
+            {
+                const uint mean2_coeff_index = uint(debug_sub_mode - 12);
+                const float mean2_v = DdgiProbeDistanceMomentBuffer[slice_cell_index * 8 + 4 + mean2_coeff_index].x;
+                RWTexWork[dtid.xy] = mean2_v.xxxx;
+            }
         }
         else
         {

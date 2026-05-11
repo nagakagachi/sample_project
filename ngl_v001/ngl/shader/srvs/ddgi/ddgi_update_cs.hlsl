@@ -6,6 +6,8 @@
 #include "../srvs_util.hlsli"
 #include "../../include/scene_view_struct.hlsli"
 
+#define DDGI_UPDATE_TEMPORAL_RATE (0.1)
+
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
@@ -35,8 +37,53 @@ void main_cs(
         return;
     }
 
-    const float3 probe_pos_ws = DdgiCalcCellCenterWs(cascade_index, local_cell_index);
-    const float distance_norm_scale = rcp(max(cb_srvs.ddgi_distance_normalize_m, 1e-3));
+    const FspCascadeGridParam cascade = DdgiGetCascadeParam(cascade_index);
+    const float3 probe_cell_center_ws = DdgiCalcCellCenterWs(cascade_index, local_cell_index);
+    float3 probe_pos_ws = probe_cell_center_ws;
+    bool relocation_succeeded = false;
+    if(0 != cb_srvs.ddgi_probe_relocation_enable)
+    {
+        const int relocation_count = 8;
+        if(read_bbv_voxel_from_world_pos(
+            BitmaskBrickVoxel,
+            cb_srvs.bbv.grid_resolution,
+            cb_srvs.bbv.grid_toroidal_offset,
+            cb_srvs.bbv.grid_min_pos,
+            cb_srvs.bbv.cell_size_inv,
+            probe_pos_ws) != 0)
+        {
+            [loop]
+            for(int ri = 0; ri < relocation_count; ++ri)
+            {
+                const float3 random_offset = float3(
+                    noise_float_to_float(float2(global_cell_index, ri + 0)),
+                    noise_float_to_float(float2(global_cell_index, ri + 1)),
+                    noise_float_to_float(float2(global_cell_index, ri + 2))) - 0.5;
+                const float3 candidate_pos_ws = probe_cell_center_ws + random_offset * (cascade.grid.cell_size * 0.4);
+                if(read_bbv_voxel_from_world_pos(
+                    BitmaskBrickVoxel,
+                    cb_srvs.bbv.grid_resolution,
+                    cb_srvs.bbv.grid_toroidal_offset,
+                    cb_srvs.bbv.grid_min_pos,
+                    cb_srvs.bbv.cell_size_inv,
+                    candidate_pos_ws) == 0)
+                {
+                    probe_pos_ws = candidate_pos_ws;
+                    relocation_succeeded = true;
+                    break;
+                }
+            }
+        }
+    }
+    const bool is_buried_after_relocation =
+        (read_bbv_voxel_from_world_pos(
+            BitmaskBrickVoxel,
+            cb_srvs.bbv.grid_resolution,
+            cb_srvs.bbv.grid_toroidal_offset,
+            cb_srvs.bbv.grid_min_pos,
+            cb_srvs.bbv.cell_size_inv,
+            probe_pos_ws) != 0);
+    const float probe_validity = is_buried_after_relocation ? 0.0 : 1.0;
     const float texel_solid_angle = (4.0 * 3.14159265359) / float(k_fsp_probe_octmap_width * k_fsp_probe_octmap_width);
 
     float4 packed_sh_coeff0 = 0.0.xxxx;
@@ -80,42 +127,61 @@ void main_cs(
                 ? 0.0.xxx
                 : max(BitmaskBrickVoxelOptionData[hit_voxel_index].resolved_radiance, 0.0.xxx);
             const float hit_distance = is_sky_visible ? trace_distance : curr_ray_t_ws.x;
-            const float d_norm = saturate(hit_distance * distance_norm_scale);
-            const float d_norm2 = d_norm * d_norm;
+            const float hit_distance2 = hit_distance * hit_distance;
 
             const float4 sh_basis = EvaluateL1ShBasis(sample_ray_dir);
-            const float4 packed_sample = float4(sky_visibility, hit_radiance);
+            // DDGI packed SH channel layout: RGB=radiance, A=sky visibility.
+            const float4 packed_sample = float4(hit_radiance, sky_visibility);
 
             packed_sh_coeff0 += packed_sample * sh_basis.x;
             packed_sh_coeff1 += packed_sample * sh_basis.y;
             packed_sh_coeff2 += packed_sample * sh_basis.z;
             packed_sh_coeff3 += packed_sample * sh_basis.w;
 
-            dist_mean_coeff0 += d_norm * sh_basis.x;
-            dist_mean_coeff1 += d_norm * sh_basis.y;
-            dist_mean_coeff2 += d_norm * sh_basis.z;
-            dist_mean_coeff3 += d_norm * sh_basis.w;
+            dist_mean_coeff0 += hit_distance * sh_basis.x;
+            dist_mean_coeff1 += hit_distance * sh_basis.y;
+            dist_mean_coeff2 += hit_distance * sh_basis.z;
+            dist_mean_coeff3 += hit_distance * sh_basis.w;
 
-            dist_mean2_coeff0 += d_norm2 * sh_basis.x;
-            dist_mean2_coeff1 += d_norm2 * sh_basis.y;
-            dist_mean2_coeff2 += d_norm2 * sh_basis.z;
-            dist_mean2_coeff3 += d_norm2 * sh_basis.w;
+            dist_mean2_coeff0 += hit_distance2 * sh_basis.x;
+            dist_mean2_coeff1 += hit_distance2 * sh_basis.y;
+            dist_mean2_coeff2 += hit_distance2 * sh_basis.z;
+            dist_mean2_coeff3 += hit_distance2 * sh_basis.w;
         }
     }
 
+    const float temporal_rate = saturate(DDGI_UPDATE_TEMPORAL_RATE);
+
     const uint sh_base_index = global_cell_index * 4;
-    RWDdgiProbePackedShBuffer[sh_base_index + 0] = packed_sh_coeff0 * texel_solid_angle;
-    RWDdgiProbePackedShBuffer[sh_base_index + 1] = packed_sh_coeff1 * texel_solid_angle;
-    RWDdgiProbePackedShBuffer[sh_base_index + 2] = packed_sh_coeff2 * texel_solid_angle;
-    RWDdgiProbePackedShBuffer[sh_base_index + 3] = packed_sh_coeff3 * texel_solid_angle;
+    const float4 curr_sh0 = packed_sh_coeff0 * texel_solid_angle;
+    const float4 curr_sh1 = packed_sh_coeff1 * texel_solid_angle;
+    const float4 curr_sh2 = packed_sh_coeff2 * texel_solid_angle;
+    const float4 curr_sh3 = packed_sh_coeff3 * texel_solid_angle;
+    RWDdgiProbePackedShBuffer[sh_base_index + 0] = lerp(RWDdgiProbePackedShBuffer[sh_base_index + 0], curr_sh0, temporal_rate);
+    RWDdgiProbePackedShBuffer[sh_base_index + 1] = lerp(RWDdgiProbePackedShBuffer[sh_base_index + 1], curr_sh1, temporal_rate);
+    RWDdgiProbePackedShBuffer[sh_base_index + 2] = lerp(RWDdgiProbePackedShBuffer[sh_base_index + 2], curr_sh2, temporal_rate);
+    RWDdgiProbePackedShBuffer[sh_base_index + 3] = lerp(RWDdgiProbePackedShBuffer[sh_base_index + 3], curr_sh3, temporal_rate);
 
     const uint dist_base_index = global_cell_index * 8;
-    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 0] = dist_mean_coeff0 * texel_solid_angle;
-    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 1] = dist_mean_coeff1 * texel_solid_angle;
-    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 2] = dist_mean_coeff2 * texel_solid_angle;
-    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 3] = dist_mean_coeff3 * texel_solid_angle;
-    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 4] = dist_mean2_coeff0 * texel_solid_angle;
-    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 5] = dist_mean2_coeff1 * texel_solid_angle;
-    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 6] = dist_mean2_coeff2 * texel_solid_angle;
-    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 7] = dist_mean2_coeff3 * texel_solid_angle;
+    const float4 curr_dist0 = dist_mean_coeff0 * texel_solid_angle;
+    const float4 curr_dist1 = dist_mean_coeff1 * texel_solid_angle;
+    const float4 curr_dist2 = dist_mean_coeff2 * texel_solid_angle;
+    const float4 curr_dist3 = dist_mean_coeff3 * texel_solid_angle;
+    const float4 curr_dist4 = dist_mean2_coeff0 * texel_solid_angle;
+    const float4 curr_dist5 = dist_mean2_coeff1 * texel_solid_angle;
+    const float4 curr_dist6 = dist_mean2_coeff2 * texel_solid_angle;
+    const float4 curr_dist7 = dist_mean2_coeff3 * texel_solid_angle;
+
+    float4 dist0 = lerp(RWDdgiProbeDistanceMomentBuffer[dist_base_index + 0], curr_dist0, temporal_rate);
+    dist0.y = relocation_succeeded ? 1.0 : 0.0;
+    dist0.z = probe_validity;
+    dist0.w = 0.0;
+    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 0] = dist0;
+    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 1] = lerp(RWDdgiProbeDistanceMomentBuffer[dist_base_index + 1], curr_dist1, temporal_rate);
+    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 2] = lerp(RWDdgiProbeDistanceMomentBuffer[dist_base_index + 2], curr_dist2, temporal_rate);
+    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 3] = lerp(RWDdgiProbeDistanceMomentBuffer[dist_base_index + 3], curr_dist3, temporal_rate);
+    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 4] = lerp(RWDdgiProbeDistanceMomentBuffer[dist_base_index + 4], curr_dist4, temporal_rate);
+    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 5] = lerp(RWDdgiProbeDistanceMomentBuffer[dist_base_index + 5], curr_dist5, temporal_rate);
+    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 6] = lerp(RWDdgiProbeDistanceMomentBuffer[dist_base_index + 6], curr_dist6, temporal_rate);
+    RWDdgiProbeDistanceMomentBuffer[dist_base_index + 7] = lerp(RWDdgiProbeDistanceMomentBuffer[dist_base_index + 7], curr_dist7, temporal_rate);
 }

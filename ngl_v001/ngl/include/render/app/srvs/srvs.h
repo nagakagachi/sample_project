@@ -342,6 +342,16 @@ namespace ngl::render::app
         static int dbg_ddgi_probe_debug_mode_;
         static int dbg_ddgi_probe_debug_cascade_;
         static int dbg_ddgi_cascade_count_;
+        static int dbg_ddgi_lighting_interpolation_enable_;
+        static int dbg_ddgi_distance_weight_enable_;
+        static int dbg_ddgi_validity_weight_enable_;
+        static int dbg_ddgi_normal_weight_enable_;
+        static int dbg_ddgi_probe_relocation_enable_;
+        static int dbg_ddgi_cascade_dither_enable_;
+        static int dbg_ddgi_trilinear_weight_enable_;
+        static float dbg_ddgi_visibility_variance_bias_;
+        static float dbg_ddgi_visibility_min_weight_;
+        static float dbg_ddgi_visibility_sharpness_;
         static float dbg_probe_scale_;
         static float dbg_probe_near_geom_scale_;
         static int dbg_ss_probe_spatial_filter_enable_;

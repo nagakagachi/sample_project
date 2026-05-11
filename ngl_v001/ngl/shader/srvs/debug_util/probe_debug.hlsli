@@ -168,22 +168,22 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     const float4 ddgi_coeff1 = DdgiProbePackedShBuffer[ddgi_sh_base + 1];
     const float4 ddgi_coeff2 = DdgiProbePackedShBuffer[ddgi_sh_base + 2];
     const float4 ddgi_coeff3 = DdgiProbePackedShBuffer[ddgi_sh_base + 3];
-    const float4 sh_sky_vis = is_ddgi_debug ? float4(ddgi_coeff0.r, ddgi_coeff1.r, ddgi_coeff2.r, ddgi_coeff3.r) : float4(
+    const float4 sh_sky_vis = is_ddgi_debug ? float4(ddgi_coeff0.a, ddgi_coeff1.a, ddgi_coeff2.a, ddgi_coeff3.a) : float4(
         FspPackedShAtlasLoadCoeff(probe_tile_id, 0).r,
         FspPackedShAtlasLoadCoeff(probe_tile_id, 1).r,
         FspPackedShAtlasLoadCoeff(probe_tile_id, 2).r,
         FspPackedShAtlasLoadCoeff(probe_tile_id, 3).r);
-    const float4 sh_radiance_r = is_ddgi_debug ? float4(ddgi_coeff0.g, ddgi_coeff1.g, ddgi_coeff2.g, ddgi_coeff3.g) : float4(
+    const float4 sh_radiance_r = is_ddgi_debug ? float4(ddgi_coeff0.r, ddgi_coeff1.r, ddgi_coeff2.r, ddgi_coeff3.r) : float4(
         FspPackedShAtlasLoadCoeff(probe_tile_id, 0).g,
         FspPackedShAtlasLoadCoeff(probe_tile_id, 1).g,
         FspPackedShAtlasLoadCoeff(probe_tile_id, 2).g,
         FspPackedShAtlasLoadCoeff(probe_tile_id, 3).g);
-    const float4 sh_radiance_g = is_ddgi_debug ? float4(ddgi_coeff0.b, ddgi_coeff1.b, ddgi_coeff2.b, ddgi_coeff3.b) : float4(
+    const float4 sh_radiance_g = is_ddgi_debug ? float4(ddgi_coeff0.g, ddgi_coeff1.g, ddgi_coeff2.g, ddgi_coeff3.g) : float4(
         FspPackedShAtlasLoadCoeff(probe_tile_id, 0).b,
         FspPackedShAtlasLoadCoeff(probe_tile_id, 1).b,
         FspPackedShAtlasLoadCoeff(probe_tile_id, 2).b,
         FspPackedShAtlasLoadCoeff(probe_tile_id, 3).b);
-    const float4 sh_radiance_b = is_ddgi_debug ? float4(ddgi_coeff0.a, ddgi_coeff1.a, ddgi_coeff2.a, ddgi_coeff3.a) : float4(
+    const float4 sh_radiance_b = is_ddgi_debug ? float4(ddgi_coeff0.b, ddgi_coeff1.b, ddgi_coeff2.b, ddgi_coeff3.b) : float4(
         FspPackedShAtlasLoadCoeff(probe_tile_id, 0).a,
         FspPackedShAtlasLoadCoeff(probe_tile_id, 1).a,
         FspPackedShAtlasLoadCoeff(probe_tile_id, 2).a,

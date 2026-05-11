@@ -125,6 +125,16 @@ namespace ngl::render::app
     int ScreenReconstructedVoxelStructure::dbg_ddgi_probe_debug_mode_ = -1;
     int ScreenReconstructedVoxelStructure::dbg_ddgi_probe_debug_cascade_ = -1;
     int ScreenReconstructedVoxelStructure::dbg_ddgi_cascade_count_ = 1;
+    int ScreenReconstructedVoxelStructure::dbg_ddgi_lighting_interpolation_enable_ = k_default_srvs_param.ddgi_lighting_interpolation_enable;
+    int ScreenReconstructedVoxelStructure::dbg_ddgi_distance_weight_enable_ = k_default_srvs_param.ddgi_distance_weight_enable;
+    int ScreenReconstructedVoxelStructure::dbg_ddgi_validity_weight_enable_ = k_default_srvs_param.ddgi_validity_weight_enable;
+    int ScreenReconstructedVoxelStructure::dbg_ddgi_normal_weight_enable_ = k_default_srvs_param.ddgi_normal_weight_enable;
+    int ScreenReconstructedVoxelStructure::dbg_ddgi_probe_relocation_enable_ = k_default_srvs_param.ddgi_probe_relocation_enable;
+    int ScreenReconstructedVoxelStructure::dbg_ddgi_cascade_dither_enable_ = k_default_srvs_param.ddgi_cascade_dither_enable;
+    int ScreenReconstructedVoxelStructure::dbg_ddgi_trilinear_weight_enable_ = k_default_srvs_param.ddgi_trilinear_weight_enable;
+    float ScreenReconstructedVoxelStructure::dbg_ddgi_visibility_variance_bias_ = k_default_srvs_param.ddgi_visibility_variance_bias;
+    float ScreenReconstructedVoxelStructure::dbg_ddgi_visibility_min_weight_ = k_default_srvs_param.ddgi_visibility_min_weight;
+    float ScreenReconstructedVoxelStructure::dbg_ddgi_visibility_sharpness_ = k_default_srvs_param.ddgi_visibility_sharpness;
     float ScreenReconstructedVoxelStructure::dbg_probe_scale_ = 1.0f;
     float ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_ = 0.2f;
     int ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_enable_ = 1;
@@ -416,9 +426,107 @@ namespace ngl::render::app
             }
 
             ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-            if (ImGui::CollapsingHeader("Voxel Debug"))
+            if (ImGui::CollapsingHeader("Dense DDGI"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
+                NGL_IMGUI_SCOPED_ID("DDGI");
+
+                {
+                    bool v = (0 != dbg_ddgi_lighting_interpolation_enable_);
+                    if (ImGui::Checkbox("Lighting Interpolation", &v))
+                        dbg_ddgi_lighting_interpolation_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ddgi_lighting_interpolation_enable_ = k_default_srvs_param.ddgi_lighting_interpolation_enable;
+                        ImGui::EndPopup();
+                    }
+                }
+                {
+                    bool v = (0 != dbg_ddgi_trilinear_weight_enable_);
+                    if (ImGui::Checkbox("Trilinear Weight", &v))
+                        dbg_ddgi_trilinear_weight_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ddgi_trilinear_weight_enable_ = k_default_srvs_param.ddgi_trilinear_weight_enable;
+                        ImGui::EndPopup();
+                    }
+                }
+                {
+                    bool v = (0 != dbg_ddgi_distance_weight_enable_);
+                    if (ImGui::Checkbox("Distance Moment Weight", &v))
+                        dbg_ddgi_distance_weight_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ddgi_distance_weight_enable_ = k_default_srvs_param.ddgi_distance_weight_enable;
+                        ImGui::EndPopup();
+                    }
+                }
+                {
+                    bool v = (0 != dbg_ddgi_validity_weight_enable_);
+                    if (ImGui::Checkbox("Validity Weight", &v))
+                        dbg_ddgi_validity_weight_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ddgi_validity_weight_enable_ = k_default_srvs_param.ddgi_validity_weight_enable;
+                        ImGui::EndPopup();
+                    }
+                }
+                {
+                    bool v = (0 != dbg_ddgi_normal_weight_enable_);
+                    if (ImGui::Checkbox("Normal Weight", &v))
+                        dbg_ddgi_normal_weight_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ddgi_normal_weight_enable_ = k_default_srvs_param.ddgi_normal_weight_enable;
+                        ImGui::EndPopup();
+                    }
+                }
+                {
+                    bool v = (0 != dbg_ddgi_probe_relocation_enable_);
+                    if (ImGui::Checkbox("Probe Relocation", &v))
+                        dbg_ddgi_probe_relocation_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ddgi_probe_relocation_enable_ = k_default_srvs_param.ddgi_probe_relocation_enable;
+                        ImGui::EndPopup();
+                    }
+                }
+                {
+                    bool v = (0 != dbg_ddgi_cascade_dither_enable_);
+                    if (ImGui::Checkbox("Cascade Boundary Dither", &v))
+                        dbg_ddgi_cascade_dither_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_ddgi_cascade_dither_enable_ = k_default_srvs_param.ddgi_cascade_dither_enable;
+                        ImGui::EndPopup();
+                    }
+                }
+                ImGui::SliderFloat("Visibility Variance Bias", &dbg_ddgi_visibility_variance_bias_, 0.0f, 25.0f, "%.4f");
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        dbg_ddgi_visibility_variance_bias_ = k_default_srvs_param.ddgi_visibility_variance_bias;
+                    ImGui::EndPopup();
+                }
+                ImGui::SliderFloat("Visibility Min Weight", &dbg_ddgi_visibility_min_weight_, 0.0f, 1.0f, "%.4f");
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        dbg_ddgi_visibility_min_weight_ = k_default_srvs_param.ddgi_visibility_min_weight;
+                    ImGui::EndPopup();
+                }
+                ImGui::SliderFloat("Visibility Sharpness", &dbg_ddgi_visibility_sharpness_, 0.01f, 8.0f, "%.4f");
+                if (ImGui::BeginPopupContextItem()) {
+                    if (ImGui::MenuItem("Reset to Default"))
+                        dbg_ddgi_visibility_sharpness_ = k_default_srvs_param.ddgi_visibility_sharpness;
+                    ImGui::EndPopup();
+                }
+            }
+
+            const auto draw_voxel_debug_menu = [&]()
+            {
+                ImGui::SetNextItemOpen(true, ImGuiCond_Once);
+                if (ImGui::CollapsingHeader("Voxel Debug"))
+                {
+                    NGL_IMGUI_SCOPED_INDENT(10.0f);
 
                 // カテゴリ選択ラジオボタン.
                 if (ImGui::RadioButton("Off", dbg_view_category_ == -1)) { dbg_view_category_ = -1; }
@@ -436,7 +544,7 @@ namespace ngl::render::app
                 // カテゴリ別サブモードスライダ.
                 if (0 <= dbg_view_category_)
                 {
-                    const int k_sub_mode_max[] = { 14, 1, 11, 7, 3 };
+                    const int k_sub_mode_max[] = { 14, 1, 11, 7, 15 };
                     auto get_sub_mode_description = [](int category, int sub_mode) -> const char*
                     {
                         switch(category)
@@ -501,10 +609,18 @@ namespace ngl::render::app
                         case 4: // DDGI
                             switch(sub_mode)
                             {
-                            case 0: return "DDGI packed SH coeff0 raw";
-                            case 1: return "DDGI packed SH coeff1 raw";
-                            case 2: return "DDGI distance mean coeff0 raw";
-                            case 3: return "DDGI distance variance coeff0";
+                            case 4: return "DDGI SH coeff0 XZ slices tiled (all cascades, 4x4px/probe)";
+                            case 5: return "DDGI SH coeff1 XZ slices tiled (all cascades, 4x4px/probe)";
+                            case 6: return "DDGI SH coeff2 XZ slices tiled (all cascades, 4x4px/probe)";
+                            case 7: return "DDGI SH coeff3 XZ slices tiled (all cascades, 4x4px/probe)";
+                            case 8: return "DDGI distance-mean coeff0 XZ slices tiled (all cascades, 4x4px/probe)";
+                            case 9: return "DDGI distance-mean coeff1 XZ slices tiled (all cascades, 4x4px/probe)";
+                            case 10: return "DDGI distance-mean coeff2 XZ slices tiled (all cascades, 4x4px/probe)";
+                            case 11: return "DDGI distance-mean coeff3 XZ slices tiled (all cascades, 4x4px/probe)";
+                            case 12: return "DDGI distance-mean2 coeff0 XZ slices tiled (all cascades, 4x4px/probe)";
+                            case 13: return "DDGI distance-mean2 coeff1 XZ slices tiled (all cascades, 4x4px/probe)";
+                            case 14: return "DDGI distance-mean2 coeff2 XZ slices tiled (all cascades, 4x4px/probe)";
+                            case 15: return "DDGI distance-mean2 coeff3 XZ slices tiled (all cascades, 4x4px/probe)";
                             default: return "Unknown";
                             }
                         default:
@@ -512,19 +628,20 @@ namespace ngl::render::app
                         }
                     };
                     const int sub_max = k_sub_mode_max[dbg_view_category_];
+                    const int sub_min = (dbg_view_category_ == 4) ? 4 : 0;
                     // カテゴリ切替時にクランプ.
                     if (dbg_view_sub_mode_ > sub_max) dbg_view_sub_mode_ = sub_max;
-                    if (dbg_view_sub_mode_ < 0) dbg_view_sub_mode_ = 0;
-                    ImGui::SliderInt("Sub Mode", &dbg_view_sub_mode_, 0, sub_max);
+                    if (dbg_view_sub_mode_ < sub_min) dbg_view_sub_mode_ = sub_min;
+                    ImGui::SliderInt("Sub Mode", &dbg_view_sub_mode_, sub_min, sub_max);
                     if (ImGui::BeginPopupContextItem()) {
                         if (ImGui::MenuItem("Reset to Default"))
-                            dbg_view_sub_mode_ = 0;
+                            dbg_view_sub_mode_ = sub_min;
                         ImGui::EndPopup();
                     }
                     ImGui::TextDisabled("Sub Mode %d: %s", dbg_view_sub_mode_, get_sub_mode_description(dbg_view_category_, dbg_view_sub_mode_));
                 }
-
-            }
+                }
+            };
 
             ImGui::SetNextItemOpen(true, ImGuiCond_Once);
             if (ImGui::CollapsingHeader("Frustum Space Probe"))
@@ -562,6 +679,8 @@ namespace ngl::render::app
                     }
                 }
             }
+
+            draw_voxel_debug_menu();
 
             if (ImGui::CollapsingHeader("Probe Debug"))
             {
@@ -605,12 +724,30 @@ namespace ngl::render::app
                     if (ImGui::CollapsingHeader("Visualization##FspProbeDebug", ImGuiTreeNodeFlags_DefaultOpen))
                     {
                         NGL_IMGUI_SCOPED_INDENT(10.0f);
+                        const auto get_fsp_probe_mode_description = [](int mode) -> const char*
+                        {
+                            switch(mode)
+                            {
+                            case -1: return "Off";
+                            case 0: return "Observed this frame";
+                            case 1: return "Average sky visibility";
+                            case 2: return "Probe hash color";
+                            case 3: return "Probe age";
+                            case 4: return "Cascade hash color";
+                            case 5: return "Octahedral radiance";
+                            case 6: return "Octahedral sky visibility";
+                            case 7: return "Packed SH radiance";
+                            case 8: return "Packed SH sky visibility";
+                            default: return "Unknown";
+                            }
+                        };
                         ImGui::SliderInt("Fsp Probe Mode", &dbg_fsp_probe_debug_mode_, -1, 8);
                         if (ImGui::BeginPopupContextItem()) {
                             if (ImGui::MenuItem("Reset to Default"))
                                 dbg_fsp_probe_debug_mode_ = k_default_srvs_param.debug_fsp_probe_mode;
                             ImGui::EndPopup();
                         }
+                        ImGui::TextDisabled("Mode %d: %s", dbg_fsp_probe_debug_mode_, get_fsp_probe_mode_description(dbg_fsp_probe_debug_mode_));
                         const int fsp_debug_cascade_max = std::max(-1, dbg_fsp_cascade_count_ - 1);
                         ImGui::SliderInt("Fsp Debug Cascade", &dbg_fsp_probe_debug_cascade_, -1, fsp_debug_cascade_max);
                         if (ImGui::BeginPopupContextItem()) {
@@ -618,7 +755,6 @@ namespace ngl::render::app
                                 dbg_fsp_probe_debug_cascade_ = -1;
                             ImGui::EndPopup();
                         }
-                        ImGui::TextDisabled("-1 = all cascades");
                     }
                 }
                 if (ImGui::CollapsingHeader("Dense DDGI Probe", ImGuiTreeNodeFlags_DefaultOpen))
@@ -628,12 +764,29 @@ namespace ngl::render::app
                     if (ImGui::CollapsingHeader("Visualization##DdgiProbeDebug", ImGuiTreeNodeFlags_DefaultOpen))
                     {
                         NGL_IMGUI_SCOPED_INDENT(10.0f);
-                        ImGui::SliderInt("Ddgi Probe Mode", &dbg_ddgi_probe_debug_mode_, -1, 4);
+                        const auto get_ddgi_probe_mode_description = [](int mode) -> const char*
+                        {
+                            switch(mode)
+                            {
+                            case -1: return "Off";
+                            case 0: return "Cascade hash color";
+                            case 1: return "Packed SH radiance";
+                            case 2: return "Packed SH sky visibility";
+                            case 3: return "Distance mean";
+                            case 4: return "Distance variance";
+                            case 5: return "Chebyshev visibility weight";
+                            case 6: return "Chebyshev delta";
+                            case 7: return "Chebyshev p_max";
+                            default: return "Unknown";
+                            }
+                        };
+                        ImGui::SliderInt("Ddgi Probe Mode", &dbg_ddgi_probe_debug_mode_, -1, 7);
                         if (ImGui::BeginPopupContextItem()) {
                             if (ImGui::MenuItem("Reset to Default"))
                                 dbg_ddgi_probe_debug_mode_ = -1;
                             ImGui::EndPopup();
                         }
+                        ImGui::TextDisabled("Mode %d: %s", dbg_ddgi_probe_debug_mode_, get_ddgi_probe_mode_description(dbg_ddgi_probe_debug_mode_));
                         const int ddgi_debug_cascade_max = std::max(-1, dbg_ddgi_cascade_count_ - 1);
                         ImGui::SliderInt("Ddgi Debug Cascade", &dbg_ddgi_probe_debug_cascade_, -1, ddgi_debug_cascade_max);
                         if (ImGui::BeginPopupContextItem()) {
@@ -641,7 +794,6 @@ namespace ngl::render::app
                                 dbg_ddgi_probe_debug_cascade_ = -1;
                             ImGui::EndPopup();
                         }
-                        ImGui::TextDisabled("-1 = all cascades");
                     }
                 }
 
@@ -1712,7 +1864,16 @@ namespace ngl::render::app
                 }
                 param.ddgi_cascade_count = static_cast<int>(ddgi_cascade_count_);
                 param.ddgi_total_cell_count = static_cast<int>(ddgi_total_cell_count_);
-                param.ddgi_lighting_interpolation_enable = ScreenReconstructedVoxelStructure::dbg_fsp_lighting_interpolation_enable_;
+                param.ddgi_lighting_interpolation_enable = ScreenReconstructedVoxelStructure::dbg_ddgi_lighting_interpolation_enable_;
+                param.ddgi_distance_weight_enable = ScreenReconstructedVoxelStructure::dbg_ddgi_distance_weight_enable_;
+                param.ddgi_validity_weight_enable = ScreenReconstructedVoxelStructure::dbg_ddgi_validity_weight_enable_;
+                param.ddgi_normal_weight_enable = ScreenReconstructedVoxelStructure::dbg_ddgi_normal_weight_enable_;
+                param.ddgi_probe_relocation_enable = ScreenReconstructedVoxelStructure::dbg_ddgi_probe_relocation_enable_;
+                param.ddgi_cascade_dither_enable = ScreenReconstructedVoxelStructure::dbg_ddgi_cascade_dither_enable_;
+                param.ddgi_trilinear_weight_enable = ScreenReconstructedVoxelStructure::dbg_ddgi_trilinear_weight_enable_;
+                param.ddgi_visibility_variance_bias = ScreenReconstructedVoxelStructure::dbg_ddgi_visibility_variance_bias_;
+                param.ddgi_visibility_min_weight = ScreenReconstructedVoxelStructure::dbg_ddgi_visibility_min_weight_;
+                param.ddgi_visibility_sharpness = ScreenReconstructedVoxelStructure::dbg_ddgi_visibility_sharpness_;
                 for(u32 cascade_index = 0; cascade_index < ddgi_cascade_count_; ++cascade_index)
                 {
                     const auto& cascade_grid = ddgi_grid_updaters_[cascade_index].Get();

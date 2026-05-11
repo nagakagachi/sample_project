@@ -398,13 +398,17 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int ddgi_update_split NGL_CPP_MEMBER_INIT({8});
         int ddgi_lighting_interpolation_enable NGL_CPP_MEMBER_INIT({1});
         int ddgi_distance_weight_enable NGL_CPP_MEMBER_INIT({1});
+        int ddgi_validity_weight_enable NGL_CPP_MEMBER_INIT({1});
+        int ddgi_normal_weight_enable NGL_CPP_MEMBER_INIT({1});
+        int ddgi_probe_relocation_enable NGL_CPP_MEMBER_INIT({1});
         float ddgi_distance_normalize_m NGL_CPP_MEMBER_INIT({30.0f});
-        float ddgi_visibility_variance_bias NGL_CPP_MEMBER_INIT({0.02f});
+        float ddgi_visibility_variance_bias NGL_CPP_MEMBER_INIT({0.25f});
         float ddgi_visibility_min_weight NGL_CPP_MEMBER_INIT({0.1f});
         float ddgi_visibility_sharpness NGL_CPP_MEMBER_INIT({1.0f});
+        int ddgi_cascade_dither_enable NGL_CPP_MEMBER_INIT({1});
+        int ddgi_trilinear_weight_enable NGL_CPP_MEMBER_INIT({1});
         int debug_ddgi_probe_cascade NGL_CPP_MEMBER_INIT({-1});
         int debug_ddgi_probe_mode NGL_CPP_MEMBER_INIT({-1});
-        int2 ddgi_dummy_padding0_1 NGL_CPP_MEMBER_INIT({});
     };
 #ifdef NGL_SHADER_CPP_INCLUDE
     // C++用のコンパイル時定数デフォルト構造体.

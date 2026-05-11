@@ -203,10 +203,10 @@ SsProbePackedShL1Sample SampleSsProbePackedShL1(
     const float4 coeff2 = SampleSsProbePackedShCoeff(2, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
     const float4 coeff3 = SampleSsProbePackedShCoeff(3, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
 
-    result.sky_visibility_sh = float4(coeff0.r, coeff1.r, coeff2.r, coeff3.r);
-    result.radiance_sh_r = float4(coeff0.g, coeff1.g, coeff2.g, coeff3.g);
-    result.radiance_sh_g = float4(coeff0.b, coeff1.b, coeff2.b, coeff3.b);
-    result.radiance_sh_b = float4(coeff0.a, coeff1.a, coeff2.a, coeff3.a);
+    result.sky_visibility_sh = float4(coeff0.a, coeff1.a, coeff2.a, coeff3.a);
+    result.radiance_sh_r = float4(coeff0.r, coeff1.r, coeff2.r, coeff3.r);
+    result.radiance_sh_g = float4(coeff0.g, coeff1.g, coeff2.g, coeff3.g);
+    result.radiance_sh_b = float4(coeff0.b, coeff1.b, coeff2.b, coeff3.b);
 
     return result;
 }
@@ -624,10 +624,10 @@ bool DdgiTryLoadPackedShL1FromCellIndex(out DdgiProbePackedShL1Sample result, ui
     const float4 coeff1 = DdgiProbePackedShBuffer[base_index + 1];
     const float4 coeff2 = DdgiProbePackedShBuffer[base_index + 2];
     const float4 coeff3 = DdgiProbePackedShBuffer[base_index + 3];
-    result.sky_visibility_sh = float4(coeff0.r, coeff1.r, coeff2.r, coeff3.r);
-    result.radiance_sh_r = float4(coeff0.g, coeff1.g, coeff2.g, coeff3.g);
-    result.radiance_sh_g = float4(coeff0.b, coeff1.b, coeff2.b, coeff3.b);
-    result.radiance_sh_b = float4(coeff0.a, coeff1.a, coeff2.a, coeff3.a);
+    result.sky_visibility_sh = float4(coeff0.a, coeff1.a, coeff2.a, coeff3.a);
+    result.radiance_sh_r = float4(coeff0.r, coeff1.r, coeff2.r, coeff3.r);
+    result.radiance_sh_g = float4(coeff0.g, coeff1.g, coeff2.g, coeff3.g);
+    result.radiance_sh_b = float4(coeff0.b, coeff1.b, coeff2.b, coeff3.b);
     return true;
 }
 
@@ -653,10 +653,24 @@ float DdgiEvalDistanceMomentVisibility(uint global_cell_index, float3 sample_pos
     const float mean_distance = max(0.0, dot(float4(mean_coeff0.x, mean_coeff1.x, mean_coeff2.x, mean_coeff3.x), dir_basis));
     const float mean2_distance = max(0.0, dot(float4(mean2_coeff0.x, mean2_coeff1.x, mean2_coeff2.x, mean2_coeff3.x), dir_basis));
     const float variance = max(mean2_distance - mean_distance * mean_distance, cb_srvs.ddgi_visibility_variance_bias);
-    const float distance_to_probe_norm = saturate(length(probe_pos_ws - sample_pos_ws) * rcp(max(cb_srvs.ddgi_distance_normalize_m, 1e-3)));
-    const float delta = max(distance_to_probe_norm - mean_distance, 0.0);
+    const float distance_to_probe = length(probe_pos_ws - sample_pos_ws);
+    const float delta = max(distance_to_probe - mean_distance, 0.0);
     const float p_max = variance / (variance + delta * delta);
     return max(pow(saturate(p_max), max(cb_srvs.ddgi_visibility_sharpness, 1e-3)), cb_srvs.ddgi_visibility_min_weight);
+}
+
+float DdgiLoadProbeValidity(uint global_cell_index)
+{
+    if(0 == cb_srvs.ddgi_validity_weight_enable)
+    {
+        return 1.0;
+    }
+    if(global_cell_index >= (uint)cb_srvs.ddgi_total_cell_count)
+    {
+        return 1.0;
+    }
+    const uint dist_base_index = global_cell_index * 8;
+    return saturate(DdgiProbeDistanceMomentBuffer[dist_base_index + 0].z);
 }
 
 float DdgiCalcCascadeBoundaryDitherRate(float3 sample_pos_ws, uint cascade_index)
@@ -696,7 +710,9 @@ bool DdgiTrySelectLightingCascade(out uint cascade_index, float3 sample_pos_ws, 
         }
         cascade_index = ci;
         const float coarse_select_rate = DdgiCalcCascadeBoundaryDitherRate(sample_pos_ws, ci);
-        if(coarse_select_rate > 0.0 && interleaved_gradient_noise(dither_seed) < coarse_select_rate)
+        if(0 != cb_srvs.ddgi_cascade_dither_enable
+            && coarse_select_rate > 0.0
+            && interleaved_gradient_noise(dither_seed) < coarse_select_rate)
         {
             cascade_index = min(ci + 1u, cascade_count - 1u);
         }
@@ -705,7 +721,7 @@ bool DdgiTrySelectLightingCascade(out uint cascade_index, float3 sample_pos_ws, 
     return false;
 }
 
-bool TrySampleDdgiPackedShL1(out DdgiProbePackedShL1Sample result, float3 sample_pos_ws, float2 dither_seed)
+bool TrySampleDdgiPackedShL1(out DdgiProbePackedShL1Sample result, float3 sample_pos_ws, float3 sample_normal_ws, float2 dither_seed)
 {
     result = MakeZeroDdgiProbePackedShL1Sample();
 
@@ -755,10 +771,14 @@ bool TrySampleDdgiPackedShL1(out DdgiProbePackedShL1Sample result, float3 sample
                     continue;
                 }
 
-                const float wx = (ox == 0) ? (1.0 - lerp_rate.x) : lerp_rate.x;
-                const float wy = (oy == 0) ? (1.0 - lerp_rate.y) : lerp_rate.y;
-                const float wz = (oz == 0) ? (1.0 - lerp_rate.z) : lerp_rate.z;
-                float weight = wx * wy * wz;
+                float weight = 1.0;
+                if(0 != cb_srvs.ddgi_trilinear_weight_enable)
+                {
+                    const float wx = (ox == 0) ? (1.0 - lerp_rate.x) : lerp_rate.x;
+                    const float wy = (oy == 0) ? (1.0 - lerp_rate.y) : lerp_rate.y;
+                    const float wz = (oz == 0) ? (1.0 - lerp_rate.z) : lerp_rate.z;
+                    weight = wx * wy * wz;
+                }
                 if(weight <= 0.0)
                 {
                     continue;
@@ -767,7 +787,20 @@ bool TrySampleDdgiPackedShL1(out DdgiProbePackedShL1Sample result, float3 sample
                 const int3 neighbor_coord_toroidal = voxel_coord_toroidal_mapping(neighbor_coord, cascade.grid.grid_toroidal_offset, cascade.grid.grid_resolution);
                 const uint local_cell_index = voxel_coord_to_index(neighbor_coord_toroidal, cascade.grid.grid_resolution);
                 const uint global_cell_index = cascade.cell_offset + local_cell_index;
+                const float probe_validity = DdgiLoadProbeValidity(global_cell_index);
+                if(probe_validity <= 0.0)
+                {
+                    continue;
+                }
                 const float3 probe_pos_ws = DdgiCalcCellCenterWs(cascade_index, local_cell_index);
+                if(0 != cb_srvs.ddgi_normal_weight_enable)
+                {
+                    // RTXGI/DDGI系の backface 低減: sample->probe 方向とサーフェイス法線の整合を重みに反映。
+                    const float3 sample_to_probe_dir = normalize(probe_pos_ws - sample_pos_ws);
+                    const float normal_weight = saturate(dot(sample_normal_ws, sample_to_probe_dir));
+                    weight *= max(normal_weight * normal_weight, 1e-3);
+                }
+                weight *= probe_validity;
                 weight *= DdgiEvalDistanceMomentVisibility(global_cell_index, sample_pos_ws, probe_pos_ws);
 
                 DdgiProbePackedShL1Sample probe_sh = MakeZeroDdgiProbePackedShL1Sample();
@@ -1208,7 +1241,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
         else if(cb_ngl_lighting_pass.gi_sample_mode == k_gi_sample_mode_ddgi)
         {
             DdgiProbePackedShL1Sample ddgi_probe_sh;
-            if(TrySampleDdgiPackedShL1(ddgi_probe_sh, gi_sample_pos_ws, input.pos.xy))
+            if(TrySampleDdgiPackedShL1(ddgi_probe_sh, gi_sample_pos_ws, gb_normal_ws, input.pos.xy))
             {
                 if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
                 {
