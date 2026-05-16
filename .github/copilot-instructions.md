@@ -87,5 +87,36 @@ ngl_v001/ngl/
   - 例: `include/framework/gfx_framework.h` ↔ `src/framework/gfx_framework.cpp`
   - 例: `include/render/test_render_path.h` ↔ `src/render/test_render_path.cpp`
 
+## グラフィックス実装・デバッグ運用ルール（恒久）
+
+### 実行優先順位
+1. 対症療法より根本原因の修正を優先する。
+2. 変更は最小限に保ちつつ、要求範囲は欠けなく満たす。
+3. 明示要求がない限り、既存レンダリング挙動を維持する。
+
+### GPUデバッグ必須チェック
+- CPU側ディスパッチ設定とシェーダ宣言の CBV/SRV/UAV/Sampler バインド整合を確認する。
+- IndirectArg / Counter バッファの初期化・更新・消費順序を確認する。
+- Producer/Consumer パス境界のリソース状態遷移と UAV バリアを確認する。
+- 座標系前提（NDC範囲、Reverse-Z、手系、View空間の符号）を確認する。
+- 深度規約（hardware depth と linear/view Z の変換）を統一して確認する。
+- MainView と ShadowView（カスケード含む）を分離し、独立ON/OFFで切り分ける。
+- coarse/fine 階層を別々に検証し、Brick結果を fine 正常動作と混同しない。
+
+### 不具合調査の進め方
+- 最小再現経路（単一View・最小パス・決定的トグル）でまず切り分ける。
+- 次にパス単位の観測点（カウンタ、デバッグバッファ、軽量可視化）を追加する。
+- 報告は **症状** / **疑い段** / **確定根本原因** / **適用修正** を明示する。
+- もっともらしい修正で改善しない場合、シェーダ数式変更より先にバインドとディスパッチ前提を再確認する。
+
+### SRVS/BBV向け優先確認点
+- Injection不発: 深度ソース、view情報CB、候補リスト生成、culling条件を確認する。
+- Fine removal不発: fine bit更新経路が有効か、coarse専用経路や古いcounterに潰されていないか確認する。
+- カメラ近傍の幽霊Injection: サーフェイス復元不正、frustum/depth判定のずれ、深度解釈ミスを確認する。
+
+### コード変更スタイル
+- 型安全で明示的な変更を優先する。
+- 広域try/catch、無言フォールバック、失敗握りつぶしを避ける。
+- コメントはGPU同期や数式前提など非自明点に限定して短く書く。
 
 
