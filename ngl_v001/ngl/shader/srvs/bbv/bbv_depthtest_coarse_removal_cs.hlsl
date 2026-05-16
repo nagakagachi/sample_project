@@ -67,6 +67,12 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
             }
 
             const float3 ndc = bitcell_center_cs.xyz / bitcell_center_cs.w;
+            // 各Viewの射影空間で前後範囲外のセルはRemoval対象にしない。
+            // Main/Shadowともに同一ロジックで「そのViewに映っていない前後」を保持する。
+            if(ndc.z < 0.0 || ndc.z > 1.0)
+            {
+                continue;
+            }
             const float2 uv = float2(ndc.x * 0.5 + 0.5, -ndc.y * 0.5 + 0.5);
             if(any(uv < 0.0) || any(uv > 1.0))
             {
@@ -79,14 +85,18 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
             const float surface_depth = TexHardwareDepth.Load(int3(atlas_pos, 0)).r;
             if(!isValidDepth(surface_depth))
             {
-                // 背景(最遠方)など有効深度がない画素は、この視線上の既存 voxel を除去する。
-                // これにより空領域へ残留した occupancy をクリアできる。
-                remain_mask &= ~bit_value;
+                // no-depth時の挙動はView種別で分離する。
+                // MainView: 空領域の残留occupancy掃除のため除去する。
+                // ShadowView: atlas未カバー領域などでの過剰除去を避けるため除去しない。
+                if(0 != cb_injection_src_view_info.cb_is_main_view)
+                {
+                    remain_mask &= ~bit_value;
+                }
                 continue;
             }
 
-            const float surface_view_z = abs(calc_view_z_from_ndc_z(surface_depth, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef));
-            const float bitcell_view_z = abs(bitcell_center_vs.z);
+            const float surface_view_z = calc_view_z_from_ndc_z(surface_depth, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef);
+            const float bitcell_view_z = bitcell_center_vs.z;
             if(bitcell_view_z < surface_view_z)
             {
                 remain_mask &= ~bit_value;

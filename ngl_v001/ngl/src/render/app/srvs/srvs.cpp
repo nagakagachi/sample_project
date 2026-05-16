@@ -1464,6 +1464,7 @@ namespace ngl::render::app
             {
                 auto* p = cbh_injection_view_info->buffer.MapAs<BbvSurfaceInjectionViewInfo>();
                 {
+                    const bool is_main_view_update = (i == (num_depth_buffer - 1));
                     p->cb_view_mtx = target_depth_info.view_mat;
                     p->cb_proj_mtx = target_depth_info.proj_mat;
                     p->cb_view_inv_mtx = ngl::math::Mat34::Inverse(target_depth_info.view_mat);
@@ -1476,6 +1477,8 @@ namespace ngl::render::app
                         target_depth_info.atlas_resolution.x,
                         target_depth_info.atlas_resolution.y
                     );
+                    p->cb_is_main_view = is_main_view_update ? 1 : 0;
+                    p->cb_padding0 = math::Vec3i(0, 0, 0);
                 }
                 cbh_injection_view_info->buffer.Unmap();
             }
@@ -1605,7 +1608,6 @@ namespace ngl::render::app
             };
             auto func_call_depthtest_injection_pass = [this](
                 rhi::GraphicsCommandListDep* p_command_list,
-                rhi::ConstantBufferPooledHandle scene_cbv,
                 rhi::ConstantBufferPooledHandle cbh_injection_view_info,
                 const InjectionSourceDepthBufferViewInfo& target_depth_info
             )
@@ -1614,7 +1616,6 @@ namespace ngl::render::app
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_bbv_depthtest_injection_apply_->SetView(&desc_set, "TexHardwareDepth", target_depth_info.hw_depth_srv.Get());
-                pso_bbv_depthtest_injection_apply_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_bbv_depthtest_injection_apply_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv);
                 pso_bbv_depthtest_injection_apply_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
                 pso_bbv_depthtest_injection_apply_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
@@ -1652,7 +1653,7 @@ namespace ngl::render::app
                 func_call_depthtest_frustum_pass(p_command_list, cbh_injection_view_info);
                 if(target_depth_info.is_enable_injection_pass)
                 {
-                    func_call_depthtest_injection_pass(p_command_list, scene_cbv, cbh_injection_view_info, target_depth_info);
+                    func_call_depthtest_injection_pass(p_command_list, cbh_injection_view_info, target_depth_info);
                 }
                 if(target_depth_info.is_enable_removal_pass)
                 {
@@ -1729,6 +1730,8 @@ namespace ngl::render::app
                 view_info.atlas_offset.y,
                 view_info.atlas_resolution.x,
                 view_info.atlas_resolution.y);
+            p->cb_is_main_view = 1;
+            p->cb_padding0 = math::Vec3i(0, 0, 0);
             cbh_injection_view_info->buffer.Unmap();
         }
 

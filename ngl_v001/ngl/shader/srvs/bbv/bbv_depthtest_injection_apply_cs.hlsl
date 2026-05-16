@@ -15,9 +15,6 @@ DepthTest 側の挙動調整が Legacy 側へ影響しないようにする。
 // SceneView定数バッファ構造定義.
 #include "../../include/scene_view_struct.hlsli"
 
-// MainViewの情報.
-ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
-
 // Injection元のDepthDeputhBufferのView情報.
 ConstantBuffer<BbvSurfaceInjectionViewInfo> cb_injection_src_view_info;
 
@@ -69,21 +66,26 @@ void main_cs(
     // 無限遠ピクセルのチェック. ReverseZを考慮して0 < d < 1.
     if(0.0 < d && d < 1.0)
     {
-        const float3 camera_pos = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
         // DepthBufferに紐づいたView情報で復元.
         float view_z = calc_view_z_from_ndc_z(d, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef);
+        const float2 near_far_plane_d = GetNearFarPlaneDepthFromProjectionMatrix(cb_injection_src_view_info.cb_proj_mtx);
+        const float near_plane_view_z = calc_view_z_from_ndc_z(near_far_plane_d.x, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef);
         
         // 深度->PixelWorldPosition
         // DepthBufferに紐づいたView情報で復元.
         const float2 screen_uv = (float2(dtid.xy) + float2(0.5, 0.5)) / float2(cb_injection_src_view_info.cb_view_depth_buffer_offset_size.zw);
         // Orthoも含めて対応するためPositionを直接復元.
         float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4(CalcViewSpacePosition(screen_uv, view_z, cb_injection_src_view_info.cb_proj_mtx), 1.0));
-        const float3 view_ray_ws = pixel_pos_ws - camera_pos;
-        const float view_ray_len_sq = dot(view_ray_ws, view_ray_ws);
-        if(view_ray_len_sq > 1e-10)
+
+        // near平面上の同一ピクセル点を始点にすると、
+        // Perspectiveでは放射状、Orthoでは平行方向のレイが得られる。
+        const float3 view_ray_origin_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4(CalcViewSpacePosition(screen_uv, near_plane_view_z, cb_injection_src_view_info.cb_proj_mtx), 1.0));
+        const float3 to_pixel_vec_ws = pixel_pos_ws - view_ray_origin_ws;
+        const float to_pixel_len_sq = dot(to_pixel_vec_ws, to_pixel_vec_ws);
+        if(to_pixel_len_sq > 1e-10)
         {
             // 表面注入がRemovalで落ちやすいケース向けに、固定ワールド距離だけ視線奥へシフト.
-            pixel_pos_ws += normalize(view_ray_ws) * cb_srvs.bbv_depthtest_injection_world_offset;
+            pixel_pos_ws += normalize(to_pixel_vec_ws) * cb_srvs.bbv_depthtest_injection_world_offset;
         }
 
 

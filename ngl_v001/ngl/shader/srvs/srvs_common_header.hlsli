@@ -256,6 +256,9 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
 
         // xy: ターゲットDepthBuffer上のオフセット, zw: サイズ.
         int4    cb_view_depth_buffer_offset_size;
+        // MainView由来なら1, ShadowView由来なら0.
+        int     cb_is_main_view;
+        int3    cb_padding0;
     };
 
 

@@ -55,12 +55,15 @@ void main_cs(
     float3 pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4(CalcViewSpacePosition(screen_uv, view_z, cb_injection_src_view_info.cb_proj_mtx), 1.0));
     if(cb_srvs.bbv_update_flow_mode == k_bbv_update_flow_depthtest)
     {
-        const float3 camera_pos = GetViewOriginFromInverseViewMatrix(cb_injection_src_view_info.cb_view_inv_mtx);
-        const float3 view_ray_ws = pos_ws - camera_pos;
-        const float view_ray_len_sq = dot(view_ray_ws, view_ray_ws);
-        if(view_ray_len_sq > 1e-10)
+        const float2 near_far_plane_d = GetNearFarPlaneDepthFromProjectionMatrix(cb_injection_src_view_info.cb_proj_mtx);
+        const float near_plane_view_z = calc_view_z_from_ndc_z(near_far_plane_d.x, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef);
+        // Injectionと同じ方向生成を使い、occupancy注入先とradiance注入先を一致させる。
+        const float3 view_ray_origin_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4(CalcViewSpacePosition(screen_uv, near_plane_view_z, cb_injection_src_view_info.cb_proj_mtx), 1.0));
+        const float3 to_pixel_vec_ws = pos_ws - view_ray_origin_ws;
+        const float to_pixel_len_sq = dot(to_pixel_vec_ws, to_pixel_vec_ws);
+        if(to_pixel_len_sq > 1e-10)
         {
-            pos_ws += normalize(view_ray_ws) * cb_srvs.bbv_depthtest_injection_world_offset;
+            pos_ws += normalize(to_pixel_vec_ws) * cb_srvs.bbv_depthtest_injection_world_offset;
         }
     }
 
