@@ -868,8 +868,6 @@ bool AppGame::ExecuteApp()
                 ImGui::Text("Sample Mode");
                 ImGui::RadioButton("None##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_None);
                 ImGui::SameLine();
-                ImGui::RadioButton("SSP##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Ssp);
-                ImGui::SameLine();
                 ImGui::RadioButton("ASSP##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Assp);
                 ImGui::SameLine();
                 ImGui::RadioButton("FSP##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Fsp);

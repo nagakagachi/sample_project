@@ -40,7 +40,6 @@ namespace ngl::render::app
     enum class SrvsGiSolutionMode : int
     {
         None = 0,
-        Ssp = 1,
         Fsp = 2,
         Assp = 3,
     };
@@ -50,7 +49,6 @@ namespace ngl::render::app
         switch(static_cast<SrvsGiSolutionMode>(mode))
         {
         case SrvsGiSolutionMode::None: return "None";
-        case SrvsGiSolutionMode::Ssp: return "SSP";
         case SrvsGiSolutionMode::Fsp: return "FSP";
         case SrvsGiSolutionMode::Assp: return "ASSP";
         default: return "Unknown";
@@ -67,16 +65,12 @@ namespace ngl::render::app
 
     // GIソリューションの実行順序/対応を集中管理する。
     // 追加/削除時はこのテーブルとモード定義の更新に集約する。
-    constexpr std::array<SrvsGiDispatchEntry, 3> k_srvs_gi_dispatch_entries = {{
-        { SrvsGiSolutionMode::Ssp,  &BitmaskBrickVoxelGi::Dispatch_SsProbe },
+    constexpr std::array<SrvsGiDispatchEntry, 2> k_srvs_gi_dispatch_entries = {{
         { SrvsGiSolutionMode::Assp, &BitmaskBrickVoxelGi::Dispatch_AsspProbe },
         { SrvsGiSolutionMode::Fsp,  &BitmaskBrickVoxelGi::Dispatch_Fsp },
     }};
     
     
-    // 時間分散するScreenProbeグループのサイズ. 幅がこのサイズのProbeグループ毎に1Fに一つ更新をする. GI-1.0などは2を指定して 4フレームで2x2のグループが更新される.
-    static const int k_ss_probe_update_skip_tile_group_width = 1;
-
     static math::Vec2u CalcBbvRadianceInjectionDispatchResolution(const math::Vec2u& src_resolution)
     {
         const math::Vec2u tile_grid_resolution(
@@ -121,16 +115,6 @@ namespace ngl::render::app
     int ScreenReconstructedVoxelStructure::dbg_fsp_cascade_count_ = 1;
     float ScreenReconstructedVoxelStructure::dbg_probe_scale_ = 1.0f;
     float ScreenReconstructedVoxelStructure::dbg_probe_near_geom_scale_ = 0.2f;
-    int ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_enable_ = 1;
-    int ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_ = 1;
-    int ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_ = 1;
-    int ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_enable_ = 1;
-    float ScreenReconstructedVoxelStructure::dbg_ss_probe_preupdate_relocation_probability_ = k_default_srvs_param.ss_probe_preupdate_relocation_probability;
-    float ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_normal_cos_threshold_ = k_default_srvs_param.ss_probe_temporal_filter_normal_cos_threshold;
-    float ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_plane_dist_threshold_ = k_default_srvs_param.ss_probe_temporal_filter_plane_dist_threshold;
-    float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_ = k_default_srvs_param.ss_probe_spatial_filter_normal_cos_threshold;
-    float ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_ = k_default_srvs_param.ss_probe_spatial_filter_depth_exp_scale;
-    float ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_ = k_default_srvs_param.ss_probe_side_cache_plane_dist_threshold;
     int ScreenReconstructedVoxelStructure::assp_spatial_filter_enable_ = k_default_srvs_param.assp_spatial_filter_enable;
     float ScreenReconstructedVoxelStructure::assp_spatial_filter_normal_cos_threshold_ = k_default_srvs_param.assp_spatial_filter_normal_cos_threshold;
     float ScreenReconstructedVoxelStructure::assp_spatial_filter_depth_exp_scale_ = k_default_srvs_param.assp_spatial_filter_depth_exp_scale;
@@ -169,114 +153,6 @@ namespace ngl::render::app
             ImGui::Text("GI Update Target (linked): %s", SrvsGiSolutionModeName(dbg_gi_update_sample_mode_));
 
             
-            ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-            if (ImGui::CollapsingHeader("Screen Space Probe"))
-            {
-                NGL_IMGUI_SCOPED_INDENT(10.0f);
-                
-                {
-                    bool v = (0 != dbg_ss_probe_temporal_reprojection_enable_);
-                    if (ImGui::Checkbox("TemporalReprojection", &v))
-                        dbg_ss_probe_temporal_reprojection_enable_ = v ? 1 : 0;
-                    if (ImGui::BeginPopupContextItem()) {
-                        if (ImGui::MenuItem("Reset to Default"))
-                            dbg_ss_probe_temporal_reprojection_enable_ = k_default_srvs_param.ss_probe_temporal_reprojection_enable;
-                        ImGui::EndPopup();
-                    }
-                }
-                {
-                    bool v = (0 != dbg_ss_probe_spatial_filter_enable_);
-                    if (ImGui::Checkbox("SpatialFilter", &v))
-                        dbg_ss_probe_spatial_filter_enable_ = v ? 1 : 0;
-                    if (ImGui::BeginPopupContextItem()) {
-                        if (ImGui::MenuItem("Reset to Default"))
-                            dbg_ss_probe_spatial_filter_enable_ = 1;
-                        ImGui::EndPopup();
-                    }
-                }
-                {
-                    bool v = (0 != dbg_ss_probe_ray_guiding_enable_);
-                    if (ImGui::Checkbox("RayGuiding", &v))
-                        dbg_ss_probe_ray_guiding_enable_ = v ? 1 : 0;
-                    if (ImGui::BeginPopupContextItem()) {
-                        if (ImGui::MenuItem("Reset to Default"))
-                            dbg_ss_probe_ray_guiding_enable_ = k_default_srvs_param.ss_probe_ray_guiding_enable;
-                        ImGui::EndPopup();
-                    }
-                }
-                {
-                    bool v = (0 != dbg_ss_probe_side_cache_enable_);
-                    if (ImGui::Checkbox("SideCache", &v))
-                        dbg_ss_probe_side_cache_enable_ = v ? 1 : 0;
-                    if (ImGui::BeginPopupContextItem()) {
-                        if (ImGui::MenuItem("Reset to Default"))
-                            dbg_ss_probe_side_cache_enable_ = k_default_srvs_param.ss_probe_side_cache_enable;
-                        ImGui::EndPopup();
-                    }
-                }
-
-                ImGui::SliderFloat("Probe Relocation Probability", &dbg_ss_probe_preupdate_relocation_probability_, 0.0f, 1.0f, "%.4f");
-                if (ImGui::BeginPopupContextItem()) {
-                    if (ImGui::MenuItem("Reset to Default"))
-                        dbg_ss_probe_preupdate_relocation_probability_ = k_default_srvs_param.ss_probe_preupdate_relocation_probability;
-                    ImGui::EndPopup();
-                }
-
-                ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-                if (ImGui::CollapsingHeader("Temporal Filter"))
-                {
-                    NGL_IMGUI_SCOPED_INDENT(10.0f);
-                    NGL_IMGUI_SCOPED_ID("TemporalFilter");
-                    
-
-                    ImGui::SliderFloat("Normal Cos Threshold", &dbg_ss_probe_temporal_filter_normal_cos_threshold_, -1.0f, 1.0f, "%.4f");
-                    if (ImGui::BeginPopupContextItem()) {
-                        if (ImGui::MenuItem("Reset to Default"))
-                            dbg_ss_probe_temporal_filter_normal_cos_threshold_ = k_default_srvs_param.ss_probe_temporal_filter_normal_cos_threshold;
-                        ImGui::EndPopup();
-                    }
-                    ImGui::SliderFloat("Plane Distance Threshold", &dbg_ss_probe_temporal_filter_plane_dist_threshold_, 0.0f, 5.0f, "%.4f");
-                    if (ImGui::BeginPopupContextItem()) {
-                        if (ImGui::MenuItem("Reset to Default"))
-                            dbg_ss_probe_temporal_filter_plane_dist_threshold_ = k_default_srvs_param.ss_probe_temporal_filter_plane_dist_threshold;
-                        ImGui::EndPopup();
-                    }
-                }
-                ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-                if (ImGui::CollapsingHeader("Spatial Filter"))
-                {
-                    NGL_IMGUI_SCOPED_INDENT(10.0f);
-                    NGL_IMGUI_SCOPED_ID("SpatialFilter");
-
-                    ImGui::SliderFloat("Normal Cos Threshold", &dbg_ss_probe_spatial_filter_normal_cos_threshold_, -1.0f, 1.0f, "%.4f");
-                    if (ImGui::BeginPopupContextItem()) {
-                        if (ImGui::MenuItem("Reset to Default"))
-                            dbg_ss_probe_spatial_filter_normal_cos_threshold_ = k_default_srvs_param.ss_probe_spatial_filter_normal_cos_threshold;
-                        ImGui::EndPopup();
-                    }
-                    ImGui::SliderFloat("Depth Exp Scale", &dbg_ss_probe_spatial_filter_depth_exp_scale_, 0.0f, 500.0f, "%.4f");
-                    if (ImGui::BeginPopupContextItem()) {
-                        if (ImGui::MenuItem("Reset to Default"))
-                            dbg_ss_probe_spatial_filter_depth_exp_scale_ = k_default_srvs_param.ss_probe_spatial_filter_depth_exp_scale;
-                        ImGui::EndPopup();
-                    }
-                }
-                ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-                if (ImGui::CollapsingHeader("Side Cache"))
-                {
-                    NGL_IMGUI_SCOPED_INDENT(10.0f);
-                    NGL_IMGUI_SCOPED_ID("SideCache");
-                    
-                    ImGui::SliderFloat("Plane Distance Threshold", &dbg_ss_probe_side_cache_plane_dist_threshold_, 0.0f, 5.0f, "%.4f");
-                    if (ImGui::BeginPopupContextItem()) {
-                        if (ImGui::MenuItem("Reset to Default"))
-                            dbg_ss_probe_side_cache_plane_dist_threshold_ = k_default_srvs_param.ss_probe_side_cache_plane_dist_threshold;
-                        ImGui::EndPopup();
-                    }
-                }
-
-            }
-
             ImGui::SetNextItemOpen(true, ImGuiCond_Once);
             if (ImGui::CollapsingHeader("Adaptive Screen Space Probe"))
             {
@@ -421,14 +297,13 @@ namespace ngl::render::app
                 ImGui::SameLine();
                 if (ImGui::RadioButton("FSP", dbg_view_category_ == 1)) { dbg_view_category_ = 1; }
                 ImGui::SameLine();
-                if (ImGui::RadioButton("SSP", dbg_view_category_ == 2)) { dbg_view_category_ = 2; }
-                ImGui::SameLine();
-                if (ImGui::RadioButton("ASSP", dbg_view_category_ == 3)) { dbg_view_category_ = 3; }
+                if (ImGui::RadioButton("ASSP", dbg_view_category_ == 2)) { dbg_view_category_ = 2; }
+                if(dbg_view_category_ > 2) { dbg_view_category_ = 2; }
 
                 // カテゴリ別サブモードスライダ.
                 if (0 <= dbg_view_category_)
                 {
-                    const int k_sub_mode_max[] = { 14, 1, 11, 7 };
+                    const int k_sub_mode_max[] = { 14, 1, 7 };
                     auto get_sub_mode_description = [](int category, int sub_mode) -> const char*
                     {
                         switch(category)
@@ -460,24 +335,7 @@ namespace ngl::render::app
                             case 1: return "FSP packed SH RGBA";
                             default: return "Unknown";
                             }
-                        case 2: // SSP
-                            switch(sub_mode)
-                            {
-                            case 0: return "Probe atlas RGB + sky visibility A";
-                            case 1: return "Sky visibility only";
-                            case 2: return "Probe normal";
-                            case 3: return "Probe placement in tile";
-                            case 4: return "Sky visibility SH coefficients";
-                            case 5: return "Sky visibility SH sample";
-                            case 6: return "Radiance SH coeff 0";
-                            case 7: return "Radiance SH coeff 1";
-                            case 8: return "Radiance SH coeff 2";
-                            case 9: return "Radiance SH coeff 3";
-                            case 10: return "Temporal reprojection success";
-                            case 11: return "Side cache state";
-                            default: return "Unknown";
-                            }
-                        case 3: // ASSP
+                        case 2: // ASSP
                             switch(sub_mode)
                             {
                             case 0: return "ASSP probe atlas raw";
@@ -624,22 +482,6 @@ namespace ngl::render::app
     constexpr SrvsShaderBindName k_shader_bind_name_fsp_atlas_uav = "RWFspProbeAtlasTex";
     constexpr SrvsShaderBindName k_shader_bind_name_fsp_packed_sh_srv = "FspProbePackedSHTex";
     constexpr SrvsShaderBindName k_shader_bind_name_fsp_packed_sh_uav = "RWFspProbePackedSHTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_srv = "ScreenSpaceProbeTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_history_srv = "ScreenSpaceProbeHistoryTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_uav = "RWScreenSpaceProbeTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_tile_info_srv = "ScreenSpaceProbeTileInfoTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_history_tile_info_srv = "ScreenSpaceProbeHistoryTileInfoTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_tile_info_uav = "RWScreenSpaceProbeTileInfoTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_best_prev_tile_srv = "ScreenSpaceProbeBestPrevTileTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_best_prev_tile_uav = "RWScreenSpaceProbeBestPrevTileTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_filtered_uav = "RWScreenSpaceProbeFilteredTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_packed_sh_srv = "ScreenSpaceProbePackedSHTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_packed_sh_uav = "RWScreenSpaceProbePackedSHTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_srv = "ScreenSpaceProbeSideCacheTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_uav = "RWScreenSpaceProbeSideCacheTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_meta_srv = "ScreenSpaceProbeSideCacheMetaTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_meta_uav = "RWScreenSpaceProbeSideCacheMetaTex";
-    constexpr SrvsShaderBindName k_shader_bind_name_ssprobe_side_cache_lock_uav = "RWScreenSpaceProbeSideCacheLockTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_srv = "AdaptiveScreenSpaceProbeTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_history_srv = "AdaptiveScreenSpaceProbeHistoryTex";
     constexpr SrvsShaderBindName k_shader_bind_name_asspprobe_uav = "RWAdaptiveScreenSpaceProbeTex";
@@ -716,16 +558,8 @@ namespace ngl::render::app
 
     bool BitmaskBrickVoxelGi::ResizeScreenProbeResources(ngl::rhi::DeviceDep* p_device, const math::Vec2i& render_resolution)
     {
-        const int ss_probe_base_resolution_x = std::max(render_resolution.x, 1);
-        const int ss_probe_base_resolution_y = std::max(render_resolution.y, 1);
-
-        for(auto& tex : ss_probe_tex_) { tex = {}; }
-        for(auto& tex : ss_probe_tile_info_tex_) { tex = {}; }
-        ss_probe_packed_sh_tex_ = {};
-        ss_probe_best_prev_tile_tex_ = {};
-        ss_probe_side_cache_tex_ = {};
-        ss_probe_side_cache_meta_tex_ = {};
-        ss_probe_side_cache_lock_tex_ = {};
+        const int assp_probe_base_resolution_x = std::max(render_resolution.x, 1);
+        const int assp_probe_base_resolution_y = std::max(render_resolution.y, 1);
 
         for(auto& tex : assp_probe_tex_) { tex = {}; }
         for(auto& tex : assp_probe_tile_info_tex_) { tex = {}; }
@@ -739,123 +573,6 @@ namespace ngl::render::app
         assp_probe_ray_result_buffer_ = {};
         assp_probe_total_ray_count_readback_buffer_ = {};
 
-        for(int i = 0; i < 2; ++i)
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width = ss_probe_base_resolution_x;
-            desc.height = ss_probe_base_resolution_y;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            if(!ss_probe_tex_[i].Initialize(p_device, desc, (0 == i)? "Srvs_SsProbeTexA" : "Srvs_SsProbeTexB"))
-                return false;
-        }
-        for(int i = 0; i < 2; ++i)
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            if(!ss_probe_tile_info_tex_[i].Initialize(p_device, desc, (0 == i)? "Srvs_SsProbeTileInfoTexA" : "Srvs_SsProbeTileInfoTexB"))
-                return false;
-        }
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  ((ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE) * 2;
-            desc.height = ((ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE) * 2;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            if(!ss_probe_packed_sh_tex_.Initialize(p_device, desc, "Srvs_SsProbePackedShTex"))
-                return false;
-        }
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  ss_probe_base_resolution_x;
-            desc.height = ss_probe_base_resolution_y;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R16G16B16A16_FLOAT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            if(!ss_probe_side_cache_tex_.Initialize(p_device, desc, "Srvs_SsProbeSideCacheTex"))
-                return false;
-        }
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R32G32B32A32_FLOAT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            if(!ss_probe_side_cache_meta_tex_.Initialize(p_device, desc, "Srvs_SsProbeSideCacheMetaTex"))
-                return false;
-        }
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R32_UINT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            if(!ss_probe_side_cache_lock_tex_.Initialize(p_device, desc, "Srvs_SsProbeSideCacheLockTex"))
-                return false;
-        }
-        {
-            rhi::TextureDep::Desc desc = {};
-            desc.type = rhi::ETextureType::Texture2D;
-            desc.width =  (ss_probe_base_resolution_x + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.height = (ss_probe_base_resolution_y + SCREEN_SPACE_PROBE_INFO_DOWNSCALE -1) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-            desc.depth = 1;
-            desc.mip_count = 1;
-            desc.array_size = 1;
-            desc.format = rhi::EResourceFormat::Format_R32_UINT;
-            desc.sample_count = 1;
-            desc.bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess;
-            desc.initial_state = rhi::EResourceState::Common;
-
-            if(!ss_probe_best_prev_tile_tex_.Initialize(p_device, desc, "Srvs_SsProbeBestPrevTileTex"))
-                return false;
-        }
-
-        const int assp_probe_base_resolution_x = ss_probe_base_resolution_x;
-        const int assp_probe_base_resolution_y = ss_probe_base_resolution_y;
         for(int i = 0; i < 2; ++i)
         {
             rhi::TextureDep::Desc desc = {};
@@ -1135,11 +852,6 @@ namespace ngl::render::app
             pso_fsp_update_ = CreateComputePSO("srvs/fsp/fsp_update_cs.hlsl");
             pso_fsp_sh_update_ = CreateComputePSO("srvs/fsp/fsp_probe_sh_update_cs.hlsl");
 
-            pso_ss_probe_clear_ = CreateComputePSO("srvs/ssp/ss_probe_clear_cs.hlsl");
-            pso_ss_probe_preupdate_ = CreateComputePSO("srvs/ssp/ss_probe_preupdate_cs.hlsl");
-            pso_ss_probe_update_ = CreateComputePSO("srvs/ssp/ss_probe_update_cs.hlsl");
-            pso_ss_probe_spatial_filter_ = CreateComputePSO("srvs/ssp/ss_probe_spatial_filter_cs.hlsl");
-            pso_ss_probe_sh_update_ = CreateComputePSO("srvs/ssp/ss_probe_sh_update_cs.hlsl");
             pso_assp_probe_clear_ = CreateComputePSO("srvs/assp/assp_probe_clear_cs.hlsl");
             pso_assp_probe_preupdate_ = CreateComputePSO("srvs/assp/assp_probe_preupdate_cs.hlsl");
             pso_assp_probe_generate_indirect_arg_ = CreateComputePSO("srvs/assp/assp_probe_generate_indirect_arg_cs.hlsl");
@@ -1471,9 +1183,9 @@ namespace ngl::render::app
 
         const math::Vec2i desired_probe_resolution(std::max(render_resolution.x, 1), std::max(render_resolution.y, 1));
         const bool needs_screen_probe_resize =
-            (nullptr == ss_probe_tex_[0].texture.Get()) ||
-            (static_cast<int>(ss_probe_tex_[0].texture->GetWidth()) != desired_probe_resolution.x) ||
-            (static_cast<int>(ss_probe_tex_[0].texture->GetHeight()) != desired_probe_resolution.y);
+            (nullptr == assp_probe_tex_[0].texture.Get()) ||
+            (static_cast<int>(assp_probe_tex_[0].texture->GetWidth()) != desired_probe_resolution.x) ||
+            (static_cast<int>(assp_probe_tex_[0].texture->GetHeight()) != desired_probe_resolution.y);
         if(needs_screen_probe_resize)
         {
             const bool resize_success = ResizeScreenProbeResources(p_command_list->GetDevice(), desired_probe_resolution);
@@ -1484,11 +1196,6 @@ namespace ngl::render::app
             }
 
             is_first_dispatch_ = true;
-            ss_probe_prev_frame_tex_index_ = 0;
-            ss_probe_curr_frame_tex_index_ = 0;
-            ss_probe_latest_filtered_frame_tex_index_ = 0;
-            ss_probe_tile_info_prev_frame_tex_index_ = 0;
-            ss_probe_tile_info_curr_frame_tex_index_ = 0;
             assp_prev_frame_tex_index_ = 0;
             assp_curr_frame_tex_index_ = 0;
             assp_latest_filtered_frame_tex_index_ = 0;
@@ -1501,13 +1208,6 @@ namespace ngl::render::app
         const bool is_first_dispatch = is_first_dispatch_;
         is_first_dispatch_           = false;
         ++frame_count_;
-
-        ss_probe_prev_frame_tex_index_ = ss_probe_curr_frame_tex_index_;
-        ss_probe_curr_frame_tex_index_ = 1 - ss_probe_prev_frame_tex_index_;
-        ss_probe_latest_filtered_frame_tex_index_ = ss_probe_prev_frame_tex_index_;
-
-        ss_probe_tile_info_prev_frame_tex_index_ = ss_probe_tile_info_curr_frame_tex_index_;
-        ss_probe_tile_info_curr_frame_tex_index_ = 1 - ss_probe_tile_info_prev_frame_tex_index_;
 
         assp_prev_frame_tex_index_ = assp_curr_frame_tex_index_;
         assp_curr_frame_tex_index_ = 1 - assp_prev_frame_tex_index_;
@@ -1601,15 +1301,8 @@ namespace ngl::render::app
             param.frame_count = frame_count_;
 
             // dbg_系: ランタイム変更可能なパラメータ.
-            param.ss_probe_spatial_filter_normal_cos_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_normal_cos_threshold_;
-            param.ss_probe_spatial_filter_depth_exp_scale = ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_depth_exp_scale_;
-            param.ss_probe_temporal_reprojection_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_reprojection_enable_;
-            param.ss_probe_ray_guiding_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_ray_guiding_enable_;
-            param.ss_probe_side_cache_enable = ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_enable_;
-            param.ss_probe_preupdate_relocation_probability = ScreenReconstructedVoxelStructure::dbg_ss_probe_preupdate_relocation_probability_;
-            param.ss_probe_temporal_filter_normal_cos_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_normal_cos_threshold_;
-            param.ss_probe_temporal_filter_plane_dist_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_temporal_filter_plane_dist_threshold_;
-            param.ss_probe_side_cache_plane_dist_threshold = ScreenReconstructedVoxelStructure::dbg_ss_probe_side_cache_plane_dist_threshold_;
+            param.ss_probe_temporal_filter_normal_cos_threshold = k_default_srvs_param.ss_probe_temporal_filter_normal_cos_threshold;
+            param.ss_probe_temporal_filter_plane_dist_threshold = k_default_srvs_param.ss_probe_temporal_filter_plane_dist_threshold;
 
             param.main_light_dir_ws = main_view_info.main_light_dir_ws;
 
@@ -1689,33 +1382,7 @@ namespace ngl::render::app
                 p_command_list->ResourceBarrier(fsp_probe_atlas_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
             }
 
-            // SsProbeクリア. pso_ss_probe_clear_使用.
             {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "SsProbeInitClear");
-                p_command_list->SetPipelineState(pso_ss_probe_clear_.Get());
-                for(int i = 0; i < 2; ++i)
-                {
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_ss_probe_clear_->SetView(&desc_set, k_shader_bind_name_ssprobe_uav.Get(), ss_probe_tex_[i].uav.Get());
-                    pso_ss_probe_clear_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_[i].uav.Get());
-                    p_command_list->SetDescriptorSet(pso_ss_probe_clear_.Get(), &desc_set);
-                    pso_ss_probe_clear_->DispatchHelper(p_command_list, ss_probe_tex_[i].texture->GetWidth(), ss_probe_tex_[i].texture->GetHeight(), 1);
-
-                    p_command_list->ResourceBarrier(ss_probe_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                    p_command_list->ResourceBarrier(ss_probe_tile_info_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                }
-                {
-                    // Side cache clears use the same clear kernel by rebinding UAVs.
-                    ngl::rhi::DescriptorSetDep desc_set = {};
-                    pso_ss_probe_clear_->SetView(&desc_set, k_shader_bind_name_ssprobe_uav.Get(), ss_probe_side_cache_tex_.uav.Get());
-                    pso_ss_probe_clear_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_side_cache_meta_tex_.uav.Get());
-                    p_command_list->SetDescriptorSet(pso_ss_probe_clear_.Get(), &desc_set);
-                    pso_ss_probe_clear_->DispatchHelper(p_command_list, ss_probe_side_cache_tex_.texture->GetWidth(), ss_probe_side_cache_tex_.texture->GetHeight(), 1);
-
-                    p_command_list->ResourceBarrier(ss_probe_side_cache_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                    p_command_list->ResourceBarrier(ss_probe_side_cache_meta_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                    p_command_list->ResourceBarrier(ss_probe_side_cache_lock_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                }
                 p_command_list->SetPipelineState(pso_assp_probe_clear_.Get());
                 for(int i = 0; i < 2; ++i)
                 {
@@ -1730,9 +1397,7 @@ namespace ngl::render::app
                     p_command_list->ResourceBarrier(assp_probe_tile_info_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 }
                 p_command_list->ResourceBarrier(fsp_probe_packed_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                p_command_list->ResourceBarrier(ss_probe_packed_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 p_command_list->ResourceBarrier(assp_probe_packed_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                p_command_list->ResourceBarrier(ss_probe_best_prev_tile_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 p_command_list->ResourceBarrier(assp_probe_best_prev_tile_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
 
             }
@@ -2097,134 +1762,6 @@ namespace ngl::render::app
         }
     }
     
-    void BitmaskBrickVoxelGi::Dispatch_SsProbe(rhi::GraphicsCommandListDep* p_command_list,
-                        rhi::ConstantBufferPooledHandle scene_cbv,
-                        const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
-                        )
-    {
-        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Srvs_Dispatch_SsProbe");
-
-        auto& global_res = gfx::GlobalRenderResource::Instance();
-
-        const math::Vec2i hw_depth_size = math::Vec2i(static_cast<int>(hw_depth_tex->GetWidth()), static_cast<int>(hw_depth_tex->GetHeight()));
-        const ngl::u32 ss_probe_history_index = ss_probe_prev_frame_tex_index_;
-        const ngl::u32 ss_probe_update_write_index = ss_probe_curr_frame_tex_index_;
-        const ngl::u32 ss_probe_tile_info_history_index = ss_probe_tile_info_prev_frame_tex_index_;
-        const ngl::u32 ss_probe_tile_info_curr_index = ss_probe_tile_info_curr_frame_tex_index_;
-        const bool is_ss_probe_spatial_filter_enable = (0 != ScreenReconstructedVoxelStructure::dbg_ss_probe_spatial_filter_enable_);
-
-        ngl::u32 ss_probe_sh_input_index = ss_probe_update_write_index;
-
-        {
-            {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ScreenSpaceProbePreUpdate");
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_ss_probe_preupdate_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
-                pso_ss_probe_preupdate_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-                pso_ss_probe_preupdate_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-                pso_ss_probe_preupdate_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                pso_ss_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].uav.Get());
-                pso_ss_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_history_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_history_index].srv.Get());
-                pso_ss_probe_preupdate_->SetView(&desc_set, k_shader_bind_name_ssprobe_best_prev_tile_uav.Get(), ss_probe_best_prev_tile_tex_.uav.Get());
-
-                p_command_list->SetPipelineState(pso_ss_probe_preupdate_.Get());
-                p_command_list->SetDescriptorSet(pso_ss_probe_preupdate_.Get(), &desc_set);
-                // PreUpdate は 1 スレッドグループ(3x3) = 1 ProbeTile.
-                p_command_list->Dispatch(ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].texture->GetWidth(),
-                    ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].texture->GetHeight(), 1);
-
-                p_command_list->ResourceUavBarrier(ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].texture.Get());
-                p_command_list->ResourceUavBarrier(ss_probe_best_prev_tile_tex_.texture.Get());
-            }
-            {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ScreenSpaceProbeUpdate");
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                //pso_ss_probe_update_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
-                pso_ss_probe_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-                pso_ss_probe_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-                pso_ss_probe_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                pso_ss_probe_update_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
-                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_uav.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].uav.Get());
-                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_best_prev_tile_srv.Get(), ss_probe_best_prev_tile_tex_.srv.Get());
-                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_history_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_history_index].srv.Get());
-                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_history_srv.Get(), ss_probe_tex_[ss_probe_history_index].srv.Get());
-                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_uav.Get(), ss_probe_tex_[ss_probe_update_write_index].uav.Get());
-                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_srv.Get(), ss_probe_side_cache_tex_.srv.Get());
-                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_uav.Get(), ss_probe_side_cache_tex_.uav.Get());
-                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_meta_srv.Get(), ss_probe_side_cache_meta_tex_.srv.Get());
-                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_meta_uav.Get(), ss_probe_side_cache_meta_tex_.uav.Get());
-                pso_ss_probe_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_lock_uav.Get(), ss_probe_side_cache_lock_tex_.uav.Get());
-
-                p_command_list->SetPipelineState(pso_ss_probe_update_.Get());
-                p_command_list->SetDescriptorSet(pso_ss_probe_update_.Get(), &desc_set);
-
-                pso_ss_probe_update_->DispatchHelper(p_command_list, ss_probe_tex_[ss_probe_update_write_index].texture->GetWidth()/k_ss_probe_update_skip_tile_group_width, ss_probe_tex_[ss_probe_update_write_index].texture->GetHeight()/k_ss_probe_update_skip_tile_group_width, 1);
-
-                p_command_list->ResourceUavBarrier(ss_probe_tex_[ss_probe_update_write_index].texture.Get());
-                p_command_list->ResourceUavBarrier(ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].texture.Get());
-                p_command_list->ResourceUavBarrier(ss_probe_side_cache_tex_.texture.Get());
-                p_command_list->ResourceUavBarrier(ss_probe_side_cache_meta_tex_.texture.Get());
-                p_command_list->ResourceUavBarrier(ss_probe_side_cache_lock_tex_.texture.Get());
-            }
-            if(is_ss_probe_spatial_filter_enable)
-            {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ScreenSpaceProbeSpatialFilter");
-
-                const ngl::u32 ss_probe_filter_input_index = ss_probe_update_write_index;
-                const ngl::u32 ss_probe_filter_output_index = 1 - ss_probe_filter_input_index;
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_ss_probe_spatial_filter_->SetView(&desc_set, k_shader_bind_name_ssprobe_srv.Get(), ss_probe_tex_[ss_probe_filter_input_index].srv.Get());
-                pso_ss_probe_spatial_filter_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].srv.Get());
-                pso_ss_probe_spatial_filter_->SetView(&desc_set, k_shader_bind_name_ssprobe_filtered_uav.Get(), ss_probe_tex_[ss_probe_filter_output_index].uav.Get());
-
-                p_command_list->SetPipelineState(pso_ss_probe_spatial_filter_.Get());
-                p_command_list->SetDescriptorSet(pso_ss_probe_spatial_filter_.Get(), &desc_set);
-                pso_ss_probe_spatial_filter_->DispatchHelper(
-                    p_command_list,
-                    ss_probe_tex_[ss_probe_filter_output_index].texture->GetWidth(),
-                    ss_probe_tex_[ss_probe_filter_output_index].texture->GetHeight(),
-                    1);
-
-                p_command_list->ResourceUavBarrier(ss_probe_tex_[ss_probe_filter_output_index].texture.Get());
-
-                // SpatialFilter後のフリップで、最新フィルタ済みを公開/次フレーム履歴として扱う.
-                ss_probe_latest_filtered_frame_tex_index_ = ss_probe_filter_output_index;
-                ss_probe_curr_frame_tex_index_ = ss_probe_latest_filtered_frame_tex_index_;
-                ss_probe_prev_frame_tex_index_ = 1 - ss_probe_curr_frame_tex_index_;
-
-                ss_probe_sh_input_index = ss_probe_latest_filtered_frame_tex_index_;
-            }
-            else
-            {
-                // SpatialFilter無効時はDispatchとフリップを行わず、Update出力をそのまま利用する.
-                ss_probe_latest_filtered_frame_tex_index_ = ss_probe_update_write_index;
-                ss_probe_sh_input_index = ss_probe_update_write_index;
-            }
-            {
-                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "ScreenSpaceProbeShUpdate");
-
-                ngl::rhi::DescriptorSetDep desc_set = {};
-                pso_ss_probe_sh_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-                pso_ss_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_srv.Get(), ss_probe_tex_[ss_probe_sh_input_index].srv.Get());
-                pso_ss_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_curr_index].srv.Get());
-                pso_ss_probe_sh_update_->SetView(&desc_set, k_shader_bind_name_ssprobe_packed_sh_uav.Get(), ss_probe_packed_sh_tex_.uav.Get());
-
-                p_command_list->SetPipelineState(pso_ss_probe_sh_update_.Get());
-                p_command_list->SetDescriptorSet(pso_ss_probe_sh_update_.Get(), &desc_set);
-                pso_ss_probe_sh_update_->DispatchHelper(
-                    p_command_list,
-                    ss_probe_packed_sh_tex_.texture->GetWidth() / 2,
-                    ss_probe_packed_sh_tex_.texture->GetHeight() / 2,
-                    1);
-
-                p_command_list->ResourceUavBarrier(ss_probe_packed_sh_tex_.texture.Get());
-            }
-        }
-    }
-
     void BitmaskBrickVoxelGi::Dispatch_AsspProbe(rhi::GraphicsCommandListDep* p_command_list,
                         rhi::ConstantBufferPooledHandle scene_cbv,
                         const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
@@ -2666,11 +2203,6 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_fsp_atlas_srv.Get(), fsp_probe_atlas_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_fsp_packed_sh_srv.Get(), fsp_probe_packed_sh_tex_.srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_srv.Get(), ss_probe_tex_[ss_probe_latest_filtered_frame_tex_index_].srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), ss_probe_tile_info_tex_[ss_probe_tile_info_curr_frame_tex_index_].srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_packed_sh_srv.Get(), ss_probe_packed_sh_tex_.srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_srv.Get(), ss_probe_side_cache_tex_.srv.Get());
-            pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_ssprobe_side_cache_meta_srv.Get(), ss_probe_side_cache_meta_tex_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_srv.Get(), assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_variance_srv.Get(), assp_probe_variance_tex_[assp_variance_curr_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), assp_probe_tile_info_tex_[assp_tile_info_curr_frame_tex_index_].srv.Get());
@@ -2935,9 +2467,6 @@ namespace ngl::render::app
         p_pso->SetView(p_desc_set, k_shader_bind_name_fsp_packed_sh_srv.Get(), bbvgi_instance_->GetFspProbePackedShTex().Get());
         p_pso->SetView(p_desc_set, "FspCellProbeIndexBuffer", bbvgi_instance_->GetFspCellProbeIndexBuffer().Get());
         p_pso->SetView(p_desc_set, "FspProbePoolBuffer", bbvgi_instance_->GetFspProbePoolBuffer().Get());
-        p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_srv.Get(), bbvgi_instance_->GetSsProbeTex().Get());
-        p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_tile_info_srv.Get(), bbvgi_instance_->GetSsProbeTileInfoTex().Get());
-        p_pso->SetView(p_desc_set, k_shader_bind_name_ssprobe_packed_sh_srv.Get(), bbvgi_instance_->GetSsProbePackedShTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_asspprobe_tile_info_srv.Get(), bbvgi_instance_->GetAsspProbeTileInfoTex().Get());
         p_pso->SetView(p_desc_set, k_shader_bind_name_asspprobe_packed_sh_srv.Get(), bbvgi_instance_->GetAsspProbePackedShTex().Get());
         p_pso->SetView(p_desc_set, "cb_srvs", &bbvgi_instance_->GetDispatchCbh()->cbv);

@@ -47,18 +47,6 @@ void main_cs(
     const float3 to_pixel_ray_vs = CalcViewSpaceRay(screen_uv, cb_ngl_sceneview.cb_proj_mtx);
     const float3 ray_dir_ws = mul(cb_ngl_sceneview.cb_view_inv_mtx, float4(to_pixel_ray_vs, 0.0));
 
-
-    // ScreenSpaceProbe Octahedral Map.
-    const int2 ss_probe_tile_id = int2(floor(float2(texel_pos) / SCREEN_SPACE_PROBE_INFO_DOWNSCALE));
-    const int2 ss_probe_screen_tile_base_pos = ss_probe_tile_id * SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
-    const int2 ss_probe_atlas_tile_base_pos = ss_probe_tile_id * SCREEN_SPACE_PROBE_OCT_RESOLUTION;
-    const float4 ss_probe_tile_info = ScreenSpaceProbeTileInfoTex.Load(int3(ss_probe_tile_id, 0));
-    const float ss_probe_depth = ss_probe_tile_info.x;
-    const float3 ss_probe_tile_normal_ws = OctDecode(ss_probe_tile_info.zw);
-    const int2 ss_probe_pos_in_tile = SspTileInfoDecodeProbePosInTile(ss_probe_tile_info.y);
-    const bool ss_probe_reprojection_succeeded = SspTileInfoIsReprojectionSucceeded(ss_probe_tile_info.y);
-
-
     const int debug_category = cb_srvs.debug_view_category;
     const int debug_sub_mode = cb_srvs.debug_view_sub_mode;
 
@@ -349,122 +337,8 @@ void main_cs(
             RWTexWork[dtid.xy] = FspProbePackedSHTex.Load(uint3(texel_pos, 0));
         }
     }
-    // Category 2: SSP.
+    // Category 2: ASSP.
     else if(2 == debug_category)
-    {
-        if(0 == debug_sub_mode)
-        {
-            // Screen Space Probe Atlas Textureの表示. RGB=radiance, A=sky visibility をそのまま表示。
-            const float4 probe_data = ScreenSpaceProbeTex.Load(uint3(texel_pos, 0));
-            RWTexWork[dtid.xy] = probe_data;
-        }
-        else if(1 == debug_sub_mode)
-        {
-            // Screen Space Probe の Aチャンネル sky visibility 表示.
-            const float4 probe_data = ScreenSpaceProbeTex.Load(uint3(texel_pos, 0));
-            RWTexWork[dtid.xy] = probe_data.aaaa;
-        }
-        else if(2 == debug_sub_mode)
-        {
-            // Screen Space Probe の Normalデバッグ.
-            RWTexWork[dtid.xy] = float4(ss_probe_tile_normal_ws * 0.5 + 0.5, 1.0);
-        }
-        else if(3 == debug_sub_mode)
-        {
-            // Screen Space Probe の Tile内配置Positionデバッグ.
-            if(isValidDepth(ss_probe_depth) && all(ss_probe_screen_tile_base_pos + ss_probe_pos_in_tile == texel_pos))
-            {
-                const float debug_d = 0.01 / (ss_probe_depth + 1e-6);
-                RWTexWork[dtid.xy] = float4(cos(debug_d) * 0.5 + 0.5, cos(debug_d * 0.5)*0.5+0.5, cos(debug_d * 0.25)*0.5+0.5, 1.0);
-            }
-            else
-            {
-                RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
-            }
-        }
-        else if(4 == debug_sub_mode)
-        {
-            // SkyVisibility SH係数をそのままRGBAで可視化 (Y00=R, Y1_{-1}(y)=G, Y1_0(z)=B, Y1_{+1}(x)=A).
-            const float4 ss_probe_sh = float4(
-                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 0).r,
-                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 1).r,
-                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 2).r,
-                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 3).r);
-            RWTexWork[dtid.xy] = ss_probe_sh;
-        }
-        else if(5 == debug_sub_mode)
-        {
-            // Plain SkyVisibility SH の main_light_dir_ws 方向再評価結果を表示.
-            const float3 sample_dir = normalize(-cb_srvs.main_light_dir_ws);
-            const float4 sh_basis = EvaluateL1ShBasis(sample_dir);
-            const float4 ss_probe_sh = float4(
-                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 0).r,
-                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 1).r,
-                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 2).r,
-                SspPackedShAtlasLoadCoeff(ss_probe_tile_id, 3).r);
-            const float sh_sample = max(0.0, dot(ss_probe_sh, sh_basis));
-            RWTexWork[dtid.xy] = sh_sample.xxxx;
-        }
-        else if(6 <= debug_sub_mode && debug_sub_mode <= 9)
-        {
-            // Plain Radiance SH係数を係数インデックスごとに可視化. RGB がそれぞれ R/G/B channel の同一 SH coefficient.
-            const uint coeff_index = uint(debug_sub_mode - 6);
-            const float4 packed_sh_coeff = SspPackedShAtlasLoadCoeff(ss_probe_tile_id, coeff_index);
-            RWTexWork[dtid.xy] = float4(packed_sh_coeff.gba, 1.0);
-        }
-        else if(10 == debug_sub_mode)
-        {
-            // Screen Space Probe の Reprojection成功可視化.
-            if(!isValidDepth(ss_probe_depth))
-            {
-                RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
-            }
-            else
-            {
-                const float3 debug_color = ss_probe_reprojection_succeeded ? float3(0.0, 1.0, 0.0) : float3(1.0, 0.0, 0.0);
-                RWTexWork[dtid.xy] = float4(debug_color, 1.0);
-            }
-        }
-        else if(11 == debug_sub_mode)
-        {
-            // Screen Space Probe SideCache の生存状態可視化.
-            if(0 == cb_srvs.ss_probe_side_cache_enable)
-            {
-                // SideCache無効.
-                RWTexWork[dtid.xy] = float4(0.15, 0.15, 0.15, 1.0);
-            }
-            else
-            {
-                const float4 side_cache_meta = ScreenSpaceProbeSideCacheMetaTex.Load(int3(ss_probe_tile_id, 0));
-                const float cached_frame_index = side_cache_meta.w;
-
-                if(cached_frame_index < 0.5)
-                {
-                    // 未初期化キャッシュ.
-                    RWTexWork[dtid.xy] = float4(0.0, 0.25, 1.0, 1.0);
-                }
-                else
-                {
-                    const float cache_age = max(0.0, float(cb_srvs.frame_count) - cached_frame_index);
-                    const float max_life = max(1.0, float(cb_srvs.ss_probe_side_cache_max_life_frame));
-                    if(cache_age > max_life)
-                    {
-                        // 期限切れキャッシュ.
-                        RWTexWork[dtid.xy] = float4(0.8, 0.1, 0.9, 1.0);
-                    }
-                    else
-                    {
-                        // 生存キャッシュ: 新鮮=緑, 寿命末期=赤.
-                        const float life_rate = saturate(cache_age / max_life);
-                        const float3 debug_color = lerp(float3(0.0, 1.0, 0.0), float3(1.0, 0.0, 0.0), life_rate);
-                        RWTexWork[dtid.xy] = float4(debug_color, 1.0);
-                    }
-                }
-            }
-        }
-    }
-    // Category 3: ASSP.
-    else if(3 == debug_category)
     {
         const int2 representative_tile_id = texel_pos / ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE;
         uint2 tile_info_size_u32;

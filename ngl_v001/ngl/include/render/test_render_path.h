@@ -28,7 +28,6 @@ namespace ngl::test
     enum EGiSampleMode
     {
         EGiSampleMode_None = 0,
-        EGiSampleMode_Ssp = 1,
         EGiSampleMode_Fsp = 2,
         EGiSampleMode_Assp = 3,
     };
@@ -46,7 +45,7 @@ namespace ngl::test
     struct RenderFeatureGi
     {
         render::app::ScreenReconstructedVoxelStructure* p_srvs = {};
-        int sample_mode = EGiSampleMode_Ssp;
+        int sample_mode = EGiSampleMode_Assp;
         bool enable_sky_visibility = false;
         bool enable_radiance = false;
         float probe_sample_offset_view{0.0f};

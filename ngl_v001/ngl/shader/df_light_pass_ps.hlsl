@@ -40,11 +40,9 @@ ConstantBuffer<CbLightingPass> cb_ngl_lighting_pass;
 
 // GI source selection:
 //   none = probe GI を使わない
-//   ssp  = Screen Space Probe を使う
 //   fsp  = Frustum Space Probe を使う
 //   assp = Adaptive Screen Space Probe を使う
 static const int k_gi_sample_mode_none = 0;
-static const int k_gi_sample_mode_ssp = 1;
 static const int k_gi_sample_mode_fsp = 2;
 static const int k_gi_sample_mode_assp = 3;
 
@@ -116,129 +114,6 @@ void EvalIblDiffuseStandard
 	// FresnelでDiffuseとSpecularに分配.
 	out_diffuse = brdf_diffuse * irradiance_diffuse;
 	out_specular = irradiance_specular * (F * specular_dfg.x + specular_dfg.y);
-}
-
-void CalcSsProbeShUpsampleInfo(
-    out int2 out_ss_probe_sh_base_texel,
-    out float4 out_upscale_gathered_weight,
-    out bool out_valid_upscale_sample,
-    float2 screen_uv,
-    float ld)
-{
-    const int2 ss_probe_sh_tex_size = SspPackedShAtlasLogicalResolution();
-    const float2 ss_probe_sh_tex_size_f = float2(ss_probe_sh_tex_size);
-
-    const float2 ss_probe_sh_texel_pos_f = screen_uv * ss_probe_sh_tex_size_f;
-    out_ss_probe_sh_base_texel = clamp(int2(floor(ss_probe_sh_texel_pos_f - 0.5)), int2(0, 0), int2(ss_probe_sh_tex_size) - int2(2, 2));
-
-    const float4 low_hw_depth4 = ScreenSpaceProbeTileInfoTex.GatherRed(samp, screen_uv);
-    out_upscale_gathered_weight = float4(0, 0, 0, 0);
-    const float upscale_limit_view_z = 0.01 + 0.25 * ld;
-    for(int ci = 0; ci < 4; ++ci)
-    {
-        const float low_view_z = calc_view_z_from_ndc_z(low_hw_depth4[ci], cb_ngl_sceneview.cb_ndc_z_to_view_z_coef);
-        const float diff = abs(low_view_z - ld);
-        out_upscale_gathered_weight[ci] = (diff < upscale_limit_view_z)? 1.0 - diff / upscale_limit_view_z : 0.0;
-    }
-
-    const float upscale_weight_sum = out_upscale_gathered_weight.x + out_upscale_gathered_weight.y + out_upscale_gathered_weight.z + out_upscale_gathered_weight.w;
-    out_valid_upscale_sample = (upscale_weight_sum > 0.0);
-    if(out_valid_upscale_sample)
-    {
-        out_upscale_gathered_weight /= upscale_weight_sum;
-    }
-}
-
-float4 SampleSsProbePackedShCoeff(
-    uint coeff_index,
-    float2 screen_uv,
-    int2 ss_probe_sh_base_texel,
-    float4 upscale_gathered_weight,
-    bool valid_upscale_sample)
-{
-    const int2 logical_resolution = SspPackedShAtlasLogicalResolution();
-    float4 gathered_sh[4];
-    gathered_sh[0] = ScreenSpaceProbePackedSHTex.Load(int3(SspPackedShAtlasTexelCoord(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(0), coeff_index, logical_resolution), 0));
-    gathered_sh[1] = ScreenSpaceProbePackedSHTex.Load(int3(SspPackedShAtlasTexelCoord(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(1), coeff_index, logical_resolution), 0));
-    gathered_sh[2] = ScreenSpaceProbePackedSHTex.Load(int3(SspPackedShAtlasTexelCoord(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(2), coeff_index, logical_resolution), 0));
-    gathered_sh[3] = ScreenSpaceProbePackedSHTex.Load(int3(SspPackedShAtlasTexelCoord(ss_probe_sh_base_texel + GatherComponentIndexToTexelOffset(3), coeff_index, logical_resolution), 0));
-
-    if(valid_upscale_sample)
-    {
-        return
-            gathered_sh[0] * upscale_gathered_weight[0]
-            + gathered_sh[1] * upscale_gathered_weight[1]
-            + gathered_sh[2] * upscale_gathered_weight[2]
-            + gathered_sh[3] * upscale_gathered_weight[3];
-    }
-
-    uint2 packed_sh_tex_size;
-    ScreenSpaceProbePackedSHTex.GetDimensions(packed_sh_tex_size.x, packed_sh_tex_size.y);
-    const float2 logical_resolution_f = float2(logical_resolution);
-    const float2 packed_sh_tex_size_f = float2(packed_sh_tex_size);
-    const float2 coeff_offset = float2(SspPackedShAtlasCoeffOffset(coeff_index, logical_resolution));
-    const float2 coeff_uv = (clamp(screen_uv * logical_resolution_f, 0.5, logical_resolution_f - 0.5) + coeff_offset) / packed_sh_tex_size_f;
-    return ScreenSpaceProbePackedSHTex.SampleLevel(samp, coeff_uv, 0);
-}
-
-struct SsProbePackedShL1Sample
-{
-    float4 sky_visibility_sh;
-    float4 radiance_sh_r;
-    float4 radiance_sh_g;
-    float4 radiance_sh_b;
-};
-
-SsProbePackedShL1Sample SampleSsProbePackedShL1(
-    float2 screen_uv,
-    int2 ss_probe_sh_base_texel,
-    float4 upscale_gathered_weight,
-    bool valid_upscale_sample)
-{
-    SsProbePackedShL1Sample result;
-
-    const float4 coeff0 = SampleSsProbePackedShCoeff(0, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
-    const float4 coeff1 = SampleSsProbePackedShCoeff(1, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
-    const float4 coeff2 = SampleSsProbePackedShCoeff(2, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
-    const float4 coeff3 = SampleSsProbePackedShCoeff(3, screen_uv, ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample);
-
-    result.sky_visibility_sh = float4(coeff0.r, coeff1.r, coeff2.r, coeff3.r);
-    result.radiance_sh_r = float4(coeff0.g, coeff1.g, coeff2.g, coeff3.g);
-    result.radiance_sh_g = float4(coeff0.b, coeff1.b, coeff2.b, coeff3.b);
-    result.radiance_sh_b = float4(coeff0.a, coeff1.a, coeff2.a, coeff3.a);
-
-    return result;
-}
-
-float4 ConvolveSsProbeRadianceL1ToDiffuseIrradiance(float4 radiance_sh_coeff)
-{
-    return ConvolveL1ShByClampedCosine(radiance_sh_coeff);
-}
-
-float4 ConvolveSsProbeSkyVisibilityL1ToIblOcclusion(float4 sky_visibility_sh_coeff)
-{
-    return ConvolveL1ShByNormalizedClampedCosine(sky_visibility_sh_coeff);
-}
-
-float3 EvalSsProbeRadianceL1DiffuseIrradiance(SsProbePackedShL1Sample ss_probe_sh, float4 sh_basis)
-{
-    // Packed SH stores plain radiance. Apply cosine convolution here so the evaluated value is diffuse irradiance.
-    return float3(
-        dot(ConvolveSsProbeRadianceL1ToDiffuseIrradiance(ss_probe_sh.radiance_sh_r), sh_basis),
-        dot(ConvolveSsProbeRadianceL1ToDiffuseIrradiance(ss_probe_sh.radiance_sh_g), sh_basis),
-        dot(ConvolveSsProbeRadianceL1ToDiffuseIrradiance(ss_probe_sh.radiance_sh_b), sh_basis));
-}
-
-float EvalSsProbeSkyVisibilityL1IblOcclusion(float4 sky_visibility_sh_coeff, float4 sh_basis)
-{
-    // Sky visibility is stored as a plain directional function. Use normalized cosine convolution for diffuse-style IBL occlusion.
-    return dot(ConvolveSsProbeSkyVisibilityL1ToIblOcclusion(sky_visibility_sh_coeff), sh_basis);
-}
-
-float EvalSsProbeSkyVisibilityL1Directional(float4 sky_visibility_sh_coeff, float4 sh_basis)
-{
-    // Plain directional query used for specular-side visibility before roughness-based stabilization.
-    return dot(sky_visibility_sh_coeff, sh_basis);
 }
 
 struct FspProbePackedShL1Sample
@@ -892,36 +767,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
         const float3 reflected_view_dir = 2.0 * dot(V, gb_normal_ws) * gb_normal_ws - V;
         const float4 reflection_sh_basis = EvaluateL1ShBasis(reflected_view_dir);
 
-        // gi_sample_mode に応じて、SSP か FSP のどちらを GI ソースに使うかを切り替える。
-        if(cb_ngl_lighting_pass.gi_sample_mode == k_gi_sample_mode_ssp)
-        {
-            int2 ss_probe_sh_base_texel = int2(0, 0);
-            float4 upscale_gathered_weight = float4(0.0, 0.0, 0.0, 0.0);
-            bool valid_upscale_sample = false;
-            CalcSsProbeShUpsampleInfo(ss_probe_sh_base_texel, upscale_gathered_weight, valid_upscale_sample, screen_uv, ld);
-
-            const SsProbePackedShL1Sample ss_probe_sh = SampleSsProbePackedShL1(
-                screen_uv,
-                ss_probe_sh_base_texel,
-                upscale_gathered_weight,
-                valid_upscale_sample);
-            if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.dbg_view_srvs_sky_visibility)
-            {
-                const float diffuse_sh_sample = max(0.0, EvalSsProbeSkyVisibilityL1IblOcclusion(ss_probe_sh.sky_visibility_sh, sh_basis));
-                diffuse_sky_visibility = saturate(diffuse_sh_sample);
-
-                const float directional_specular_sample = max(0.0, EvalSsProbeSkyVisibilityL1Directional(ss_probe_sh.sky_visibility_sh, reflection_sh_basis));
-                const float roughness_blend = saturate(gb_roughness * gb_roughness);
-                specular_sky_visibility = saturate(lerp(directional_specular_sample, diffuse_sky_visibility, roughness_blend));
-            }
-            if(cb_ngl_lighting_pass.is_enable_radiance)
-            {
-                gi_probe_diffuse_irradiance = max(
-                    float3(0.0, 0.0, 0.0),
-                    EvalSsProbeRadianceL1DiffuseIrradiance(ss_probe_sh, sh_basis));
-            }
-        }
-        else if(cb_ngl_lighting_pass.gi_sample_mode == k_gi_sample_mode_fsp)
+        if(cb_ngl_lighting_pass.gi_sample_mode == k_gi_sample_mode_fsp)
         {
             FspProbePackedShL1Sample fsp_probe_sh;
             // stochastic の有無はここで決め、sampling 関数には policy として渡すだけにする。
