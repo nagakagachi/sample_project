@@ -1,12 +1,11 @@
 
 #if 0
 
-bbv_injection_apply_cs.hlsl
+bbv_depthtest_injection_apply_cs.hlsl
 
-深度バッファをもとに可視表面のVoxel情報をBbvに注入する.
-また, フレームでの可視Voxel処理用リストの生成.
-
-ViewとしてはPerspectiveなMainViewに加えてShadowMapViewも同一シェーダでInjectionしたい.
+DepthTest ベース更新向けの Legacy 相当 Injection。
+Legacy Injection と独立した専用シェーダとして維持し、
+DepthTest 側の挙動調整が Legacy 側へ影響しないようにする。
 
 #endif
 
@@ -61,8 +60,6 @@ void main_cs(
         }
     #endif
 
-    const float3 camera_pos = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
-
     // ハードウェア深度取得. AtlasTexture対応のためオフセット考慮.
     float d = TexHardwareDepth.Load(int3(dtid.xy + cb_injection_src_view_info.cb_view_depth_buffer_offset_size.xy, 0)).r;
 
@@ -72,6 +69,7 @@ void main_cs(
     // 無限遠ピクセルのチェック. ReverseZを考慮して0 < d < 1.
     if(0.0 < d && d < 1.0)
     {
+        const float3 camera_pos = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
         // DepthBufferに紐づいたView情報で復元.
         float view_z = calc_view_z_from_ndc_z(d, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef);
         
@@ -80,9 +78,13 @@ void main_cs(
         const float2 screen_uv = (float2(dtid.xy) + float2(0.5, 0.5)) / float2(cb_injection_src_view_info.cb_view_depth_buffer_offset_size.zw);
         // Orthoも含めて対応するためPositionを直接復元.
         float3 pixel_pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4(CalcViewSpacePosition(screen_uv, view_z, cb_injection_src_view_info.cb_proj_mtx), 1.0));
-
-        // 実際の表面の奥側にBbvを充填するために, 視線方向にbbvの1セル分オフセット
-        //pixel_pos_ws += normalize(pixel_pos_ws - camera_pos) * cb_srvs.bbv.cell_size * k_bbv_per_voxel_resolution_inv * 1.0;
+        const float3 view_ray_ws = pixel_pos_ws - camera_pos;
+        const float view_ray_len_sq = dot(view_ray_ws, view_ray_ws);
+        if(view_ray_len_sq > 1e-10)
+        {
+            // 表面注入がRemovalで落ちやすいケース向けに、固定ワールド距離だけ視線奥へシフト.
+            pixel_pos_ws += normalize(view_ray_ws) * cb_srvs.bbv_depthtest_injection_world_offset;
+        }
 
 
         // PixelWorldPosition->VoxelCoord

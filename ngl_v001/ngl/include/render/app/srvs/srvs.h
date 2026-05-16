@@ -189,10 +189,11 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_radiance_resolve_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_brick_count_aggregate_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_hibrick_count_aggregate_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_generate_visible_voxel_indirect_arg_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_removal_indirect_arg_build_ = {};
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_element_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_visible_surface_element_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_depthtest_frustum_cull_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_depthtest_injection_apply_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_depthtest_coarse_removal_ = {};
 
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_clear_ = {};
@@ -233,15 +234,13 @@ namespace ngl::render::app
         ComputeBufferSet bbv_radiance_accum_buffer_ = {};
 
         ngl::u32     bbv_hollow_voxel_list_count_max_ = {};
-        // 可視Voxelのみ更新用.
         ngl::u32     bbv_fine_update_voxel_count_max_ = {};
-        ComputeBufferSet bbv_fine_update_voxel_list_ = {};
-        ComputeBufferSet bbv_fine_update_voxel_indirect_arg_ = {};
-        ComputeBufferSet bbv_fine_update_voxel_probe_buffer_ = {};
-        
+
         // 除去用リスト.
         ComputeBufferSet bbv_removal_list_ = {};
         ComputeBufferSet bbv_removal_indirect_arg_ = {};
+        // 深度テストベース更新用. 1..N に候補 Brick index+1 を格納し、0 は無効値.
+        ComputeBufferSet bbv_depthtest_frustum_brick_list_ = {};
 
 
         // Frustum Surface Probe. Fsp.
@@ -322,9 +321,17 @@ namespace ngl::render::app
         static int dbg_assp_total_ray_count_;
         static int dbg_assp_probe_count_;
         static int dbg_gi_update_sample_mode_;
+        static int dbg_bbv_update_flow_mode_;
+        static float dbg_bbv_depthtest_injection_world_offset_;
 
         // デバッグメニューを描画する. ImGuiウィンドウ内で呼び出すこと.
-        static void DrawDebugMenu(bool* p_enable_injection, bool* p_enable_rejection);
+        static void DrawDebugMenu(
+            bool* p_enable_all_injection,
+            bool* p_enable_all_removal,
+            bool* p_enable_main_view_injection,
+            bool* p_enable_main_view_removal,
+            bool* p_enable_shadow_view_injection,
+            bool* p_enable_shadow_view_removal);
 
     public:
         ScreenReconstructedVoxelStructure() = default;

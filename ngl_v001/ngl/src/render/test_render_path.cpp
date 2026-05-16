@@ -365,8 +365,10 @@ namespace ngl::test
 								setup_desc.depth_buffer_info.primary.atlas_resolution = math::Vec2i(screen_w, screen_h);
 								setup_desc.depth_buffer_info.primary.h_depth = task_depth->h_depth_;
 
-								setup_desc.depth_buffer_info.primary.is_enable_injection_pass = (render_frame_desc.feature_config.gi.enable_srvs_injection_pass) && true;// Voxel充填利用するか.
-								setup_desc.depth_buffer_info.primary.is_enable_removal_pass = (render_frame_desc.feature_config.gi.enable_srvs_rejection_pass) && true;// Voxel除去に利用するか.
+								setup_desc.depth_buffer_info.primary.is_enable_injection_pass =
+									(render_frame_desc.feature_config.gi.enable_srvs_all_injection_pass && render_frame_desc.feature_config.gi.enable_srvs_main_view_injection_pass) && true;// MainView Voxel充填利用するか.
+								setup_desc.depth_buffer_info.primary.is_enable_removal_pass =
+									(render_frame_desc.feature_config.gi.enable_srvs_all_removal_pass && render_frame_desc.feature_config.gi.enable_srvs_main_view_removal_pass) && true;// MainView Voxel除去に利用するか.
                             }
 
                             // ShadowMapのDepthBuffer登録. 高速化のためにフレーム毎にカスケードスキップするのもありかもしれない.
@@ -380,8 +382,10 @@ namespace ngl::test
 									shadow_depth_info.atlas_resolution = math::Vec2i(task_d_shadow->csm_param_.cascade_tile_size_x[cascade_idx], task_d_shadow->csm_param_.cascade_tile_size_y[cascade_idx]);
 									shadow_depth_info.h_depth = task_d_shadow->h_shadow_depth_atlas_;
                                     
-									shadow_depth_info.is_enable_injection_pass = (render_frame_desc.feature_config.gi.enable_srvs_injection_pass) && true;// Voxel充填に利用するか.
-									shadow_depth_info.is_enable_removal_pass = (render_frame_desc.feature_config.gi.enable_srvs_rejection_pass) && true;// Voxel除去に利用するか.
+									shadow_depth_info.is_enable_injection_pass =
+										(render_frame_desc.feature_config.gi.enable_srvs_all_injection_pass && render_frame_desc.feature_config.gi.enable_srvs_shadow_view_injection_pass) && true;// ShadowView Voxel充填に利用するか.
+									shadow_depth_info.is_enable_removal_pass =
+										(render_frame_desc.feature_config.gi.enable_srvs_all_removal_pass && render_frame_desc.feature_config.gi.enable_srvs_shadow_view_removal_pass) && true;// ShadowView Voxel除去に利用するか.
                                 }
 
 									setup_desc.depth_buffer_info.sub_array.push_back(shadow_depth_info);
@@ -485,7 +489,8 @@ namespace ngl::test
                             setup_desc.view_info.atlas_resolution = math::Vec2i(screen_w, screen_h);
                             setup_desc.view_info.h_depth = task_depth->h_depth_;
                             setup_desc.view_info.h_color = task_light->h_light_;
-                            setup_desc.view_info.is_enable_radiance_injection_pass = (render_frame_desc.feature_config.gi.enable_srvs_injection_pass) && true;
+                            setup_desc.view_info.is_enable_radiance_injection_pass =
+                                (render_frame_desc.feature_config.gi.enable_srvs_all_injection_pass && render_frame_desc.feature_config.gi.enable_srvs_main_view_injection_pass) && true;
                         }
                         task_srvs_view_voxel_radiance_injection->Setup(rtg_builder, p_device, view_info, setup_desc);
                     }
@@ -638,4 +643,3 @@ namespace ngl::test
 		}
 	}
 }
-

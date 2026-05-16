@@ -3,7 +3,7 @@
 
 bbv_begin_view_update_cs.hlsl
 
-BbvのView毎の処理の開始用処理. ViewのDepthBufferから復元した表面Voxelを格納するリストのカウンタリセット.
+BbvのView毎の処理の開始用処理. 除去リストのカウンタリセット.
 
 #endif
 
@@ -19,10 +19,6 @@ void main_cs(
 {
     if(0 == dtid.x)
     {
-        // VisibleCoarseVoxelListのアトミックカウンタをクリア.
-        // 0番目はアトミックカウンタ用に予約している.
-        RWVisibleVoxelList[0] = 0;
-
         RWRemoveVoxelList[0] = 0;
     }
 }

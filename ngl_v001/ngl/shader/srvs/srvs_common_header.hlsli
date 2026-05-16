@@ -288,6 +288,9 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         uint dummy0;
         uint dummy1;
     };
+    // BBV update flow mode.
+    #define k_bbv_update_flow_legacy (0)
+    #define k_bbv_update_flow_depthtest (1)
 
     // Dispatchパラメータ.
     // ConstantBuffer は HLSL の cbuffer packing に合わせて 16-byte 単位で member レイアウトを調整すること。
@@ -303,7 +306,10 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int3 bbv_indirect_cs_thread_group_size NGL_CPP_MEMBER_INIT({});// IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
         int bbv_visible_voxel_buffer_size NGL_CPP_MEMBER_INIT({});// 更新プローブ用のワークサイズ.
         int bbv_hollow_voxel_buffer_size NGL_CPP_MEMBER_INIT({});// 削除用中空Voxel情報のワークサイズ.
-        int dummy0 NGL_CPP_MEMBER_INIT({});
+        int bbv_update_flow_mode NGL_CPP_MEMBER_INIT({k_bbv_update_flow_legacy});
+        // DepthTest専用Injectionで、サーフェイス座標を視線奥へ固定ワールド距離オフセットする量.
+        // 推奨初期値は BBV cell=3.0 / fine=8 のとき約2 fineセル相当の 0.75。
+        float bbv_depthtest_injection_world_offset NGL_CPP_MEMBER_INIT({0.75f});
         int dummy1 NGL_CPP_MEMBER_INIT({});
         int dummy2 NGL_CPP_MEMBER_INIT({});
 

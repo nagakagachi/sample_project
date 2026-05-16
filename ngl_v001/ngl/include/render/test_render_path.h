@@ -52,8 +52,12 @@ namespace ngl::test
         float probe_sample_offset_surface_normal{0.0f};
         float probe_sample_offset_bent_normal{0.0f};
 
-        bool enable_srvs_injection_pass{true};
-        bool enable_srvs_rejection_pass{true};
+        bool enable_srvs_all_injection_pass{true};
+        bool enable_srvs_all_removal_pass{true};
+        bool enable_srvs_main_view_injection_pass{true};
+        bool enable_srvs_main_view_removal_pass{true};
+        bool enable_srvs_shadow_view_injection_pass{true};
+        bool enable_srvs_shadow_view_removal_pass{true};
     };
     struct RenderFeatureConfig
     {

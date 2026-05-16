@@ -52,7 +52,17 @@ void main_cs(
 
     const float view_z = calc_view_z_from_ndc_z(depth, cb_injection_src_view_info.cb_ndc_z_to_view_z_coef);
     const float2 screen_uv = (float2(src_texel_in_view) + 0.5.xx) / float2(src_resolution);
-    const float3 pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4(CalcViewSpacePosition(screen_uv, view_z, cb_injection_src_view_info.cb_proj_mtx), 1.0));
+    float3 pos_ws = mul(cb_injection_src_view_info.cb_view_inv_mtx, float4(CalcViewSpacePosition(screen_uv, view_z, cb_injection_src_view_info.cb_proj_mtx), 1.0));
+    if(cb_srvs.bbv_update_flow_mode == k_bbv_update_flow_depthtest)
+    {
+        const float3 camera_pos = GetViewOriginFromInverseViewMatrix(cb_injection_src_view_info.cb_view_inv_mtx);
+        const float3 view_ray_ws = pos_ws - camera_pos;
+        const float view_ray_len_sq = dot(view_ray_ws, view_ray_ws);
+        if(view_ray_len_sq > 1e-10)
+        {
+            pos_ws += normalize(view_ray_ws) * cb_srvs.bbv_depthtest_injection_world_offset;
+        }
+    }
 
     const float3 voxel_coordf = (pos_ws - cb_srvs.bbv.grid_min_pos) * cb_srvs.bbv.cell_size_inv;
     const int3 voxel_coord = floor(voxel_coordf);

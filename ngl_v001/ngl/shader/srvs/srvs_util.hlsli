@@ -37,18 +37,14 @@ StructuredBuffer<BbvOptionalData>		BitmaskBrickVoxelOptionData;
 RWStructuredBuffer<BbvOptionalData>	RWBitmaskBrickVoxelOptionData;
 RWBuffer<uint>    RWBbvRadianceAccumBuffer;
 
-// ジオメトリ可視表面のBbvリスト. 0番要素はカウンタ.
-Buffer<uint>		VisibleVoxelList;
-RWBuffer<uint>		RWVisibleVoxelList;
-
 // ジオメトリ表面ではなくなった除去Bbvリスト. 0番要素xはカウンタ. 
 // 詳細情報を含める必要があるためuint*4相当のバッファ. カウンタ用Atomic操作するためバッファ型としてはScalar型にしている.
 // k_component_count_RemoveVoxelList単位. i番目のデータは (1+i)*k_component_count_RemoveVoxelList から k_component_count_RemoveVoxelList個.
 Buffer<uint>		RemoveVoxelList;
 RWBuffer<uint>		RWRemoveVoxelList;
-
-Buffer<float>		UpdateProbeWork;
-RWBuffer<float>		RWUpdateProbeWork;
+// 深度テストベース更新用のBrickリスト. 1..N に候補 Brick index+1 を格納し、0 は無効値.
+Buffer<uint>		FrustumBrickList;
+RWBuffer<uint>		RWFrustumBrickList;
 
 // Frustum Surface Probe.
 StructuredBuffer<FspProbeData>		FspProbeBuffer;

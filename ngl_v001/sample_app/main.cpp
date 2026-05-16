@@ -74,8 +74,12 @@ static int  dbgw_gi_sample_mode                         = ngl::test::EGiSampleMo
 static float dbgw_gi_probe_sample_offset_view           = 0.2f;
 static float dbgw_gi_probe_sample_offset_surface_normal = 0.2f;
 static float dbgw_gi_probe_sample_offset_bent_normal    = 0.0f;
-static bool dbgw_enable_srvs_injection_pass = true;
-static bool dbgw_enable_srvs_rejection_pass = true;
+static bool dbgw_enable_srvs_all_injection_pass = true;
+static bool dbgw_enable_srvs_all_removal_pass = true;
+static bool dbgw_enable_srvs_main_view_injection_pass = true;
+static bool dbgw_enable_srvs_main_view_removal_pass = true;
+static bool dbgw_enable_srvs_shadow_view_injection_pass = true;
+static bool dbgw_enable_srvs_shadow_view_removal_pass = true;
 
 static bool dbgw_enable_gtao_demo = false;
 
@@ -884,7 +888,13 @@ bool AppGame::ExecuteApp()
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-            ngl::render::app::ScreenReconstructedVoxelStructure::DrawDebugMenu(&dbgw_enable_srvs_injection_pass, &dbgw_enable_srvs_rejection_pass);
+            ngl::render::app::ScreenReconstructedVoxelStructure::DrawDebugMenu(
+                &dbgw_enable_srvs_all_injection_pass,
+                &dbgw_enable_srvs_all_removal_pass,
+                &dbgw_enable_srvs_main_view_injection_pass,
+                &dbgw_enable_srvs_main_view_removal_pass,
+                &dbgw_enable_srvs_shadow_view_injection_pass,
+                &dbgw_enable_srvs_shadow_view_removal_pass);
 
             if (ImGui::CollapsingHeader("GTAO Demo"))
             {
@@ -1202,8 +1212,12 @@ void AppGame::RenderApp(ngl::fwk::RtgFrameRenderSubmitCommandBuffer& out_rtg_com
                         render_frame_desc.feature_config.gi.probe_sample_offset_surface_normal = dbgw_gi_probe_sample_offset_surface_normal;
                         render_frame_desc.feature_config.gi.probe_sample_offset_bent_normal    = dbgw_gi_probe_sample_offset_bent_normal;
 
-                        render_frame_desc.feature_config.gi.enable_srvs_injection_pass = dbgw_enable_srvs_injection_pass;
-                        render_frame_desc.feature_config.gi.enable_srvs_rejection_pass = dbgw_enable_srvs_rejection_pass;
+                        render_frame_desc.feature_config.gi.enable_srvs_all_injection_pass = dbgw_enable_srvs_all_injection_pass;
+                        render_frame_desc.feature_config.gi.enable_srvs_all_removal_pass = dbgw_enable_srvs_all_removal_pass;
+                        render_frame_desc.feature_config.gi.enable_srvs_main_view_injection_pass = dbgw_enable_srvs_main_view_injection_pass;
+                        render_frame_desc.feature_config.gi.enable_srvs_main_view_removal_pass = dbgw_enable_srvs_main_view_removal_pass;
+                        render_frame_desc.feature_config.gi.enable_srvs_shadow_view_injection_pass = dbgw_enable_srvs_shadow_view_injection_pass;
+                        render_frame_desc.feature_config.gi.enable_srvs_shadow_view_removal_pass = dbgw_enable_srvs_shadow_view_removal_pass;
                     }
                 }
                 // GTAO.

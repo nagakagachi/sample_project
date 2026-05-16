@@ -139,8 +139,16 @@ namespace ngl::render::app
     int ScreenReconstructedVoxelStructure::dbg_assp_total_ray_count_ = 0;
     int ScreenReconstructedVoxelStructure::dbg_assp_probe_count_ = 0;
     int ScreenReconstructedVoxelStructure::dbg_gi_update_sample_mode_ = static_cast<int>(SrvsGiSolutionMode::Assp);
+    int ScreenReconstructedVoxelStructure::dbg_bbv_update_flow_mode_ = k_bbv_update_flow_legacy;
+    float ScreenReconstructedVoxelStructure::dbg_bbv_depthtest_injection_world_offset_ = k_default_srvs_param.bbv_depthtest_injection_world_offset;
 
-    void ScreenReconstructedVoxelStructure::DrawDebugMenu(bool* p_enable_injection, bool* p_enable_rejection)
+    void ScreenReconstructedVoxelStructure::DrawDebugMenu(
+        bool* p_enable_all_injection,
+        bool* p_enable_all_removal,
+        bool* p_enable_main_view_injection,
+        bool* p_enable_main_view_removal,
+        bool* p_enable_shadow_view_injection,
+        bool* p_enable_shadow_view_removal)
     {
         ImGui::SetNextItemOpen(true, ImGuiCond_Once);
         if (ImGui::CollapsingHeader("Srvs"))
@@ -148,8 +156,33 @@ namespace ngl::render::app
             NGL_IMGUI_SCOPED_INDENT(10.0f);
 
             // 右クリックで個別リセット. BeginPopupContextItem は直前のウィジェットを対象とする.
-            ImGui::Checkbox("Bbv Injection", p_enable_injection);
-            ImGui::Checkbox("Bbv Rejection", p_enable_rejection);
+            ImGui::Checkbox("All Injection (AND)", p_enable_all_injection);
+            ImGui::Checkbox("All Removal (AND)", p_enable_all_removal);
+            ImGui::Checkbox("MainView Injection", p_enable_main_view_injection);
+            ImGui::Checkbox("MainView Removal", p_enable_main_view_removal);
+            ImGui::Checkbox("ShadowView Injection", p_enable_shadow_view_injection);
+            ImGui::Checkbox("ShadowView Removal", p_enable_shadow_view_removal);
+            ImGui::SeparatorText("BBV Update Flow");
+            if(ImGui::RadioButton("Legacy", ScreenReconstructedVoxelStructure::dbg_bbv_update_flow_mode_ == k_bbv_update_flow_legacy))
+            {
+                ScreenReconstructedVoxelStructure::dbg_bbv_update_flow_mode_ = k_bbv_update_flow_legacy;
+            }
+            if(ImGui::RadioButton("DepthTest", ScreenReconstructedVoxelStructure::dbg_bbv_update_flow_mode_ == k_bbv_update_flow_depthtest))
+            {
+                ScreenReconstructedVoxelStructure::dbg_bbv_update_flow_mode_ = k_bbv_update_flow_depthtest;
+            }
+            if (ImGui::BeginPopupContextItem()) {
+                if (ImGui::MenuItem("Reset to Default"))
+                    ScreenReconstructedVoxelStructure::dbg_bbv_update_flow_mode_ = k_default_srvs_param.bbv_update_flow_mode;
+                ImGui::EndPopup();
+            }
+            ImGui::SliderFloat("DepthTest Injection World Offset", &ScreenReconstructedVoxelStructure::dbg_bbv_depthtest_injection_world_offset_, 0.0f, 5.0f, "%.3f");
+            if (ImGui::BeginPopupContextItem()) {
+                if (ImGui::MenuItem("Reset to Default"))
+                    ScreenReconstructedVoxelStructure::dbg_bbv_depthtest_injection_world_offset_ = k_default_srvs_param.bbv_depthtest_injection_world_offset;
+                ImGui::EndPopup();
+            }
+            ImGui::TextDisabled("Recommended start: %.2f", k_default_srvs_param.bbv_depthtest_injection_world_offset);
             ImGui::Text("GI Update Target (linked): %s", SrvsGiSolutionModeName(dbg_gi_update_sample_mode_));
 
             
@@ -839,10 +872,11 @@ namespace ngl::render::app
             pso_bbv_radiance_resolve_ = CreateComputePSO("srvs/bbv/bbv_radiance_resolve_cs.hlsl");
             pso_bbv_brick_count_aggregate_ = CreateComputePSO("srvs/bbv/bbv_brick_count_aggregate_cs.hlsl");
             pso_bbv_hibrick_count_aggregate_ = CreateComputePSO("srvs/bbv/bbv_hibrick_count_aggregate_cs.hlsl");
-            pso_bbv_generate_visible_voxel_indirect_arg_ = CreateComputePSO("srvs/bbv/bbv_generate_visible_surface_list_indirect_arg_cs.hlsl");
             pso_bbv_removal_indirect_arg_build_ = CreateComputePSO("srvs/bbv/bbv_removal_indirect_arg_build_cs.hlsl");
             pso_bbv_element_update_ = CreateComputePSO("srvs/bbv/bbv_element_update_cs.hlsl");
-            pso_bbv_visible_surface_element_update_ = CreateComputePSO("srvs/bbv/bbv_visible_surface_element_update_cs.hlsl");
+            pso_bbv_depthtest_frustum_cull_ = CreateComputePSO("srvs/bbv/bbv_depthtest_frustum_cull_cs.hlsl");
+            pso_bbv_depthtest_injection_apply_ = CreateComputePSO("srvs/bbv/bbv_depthtest_injection_apply_cs.hlsl");
+            pso_bbv_depthtest_coarse_removal_ = CreateComputePSO("srvs/bbv/bbv_depthtest_coarse_removal_cs.hlsl");
 
             pso_fsp_clear_ = CreateComputePSO("srvs/fsp/fsp_clear_voxel_cs.hlsl");
             pso_fsp_begin_update_ = CreateComputePSO("srvs/fsp/fsp_begin_update_cs.hlsl");
@@ -972,41 +1006,6 @@ namespace ngl::render::app
                                         ,   "Srvs_BbvBuffer");
         }
         {
-            bbv_fine_update_voxel_list_.InitializeAsTyped(p_device,
-                                           rhi::BufferDep::Desc{
-                                               .element_byte_size = sizeof(uint32_t),
-                                               .element_count     = bbv_fine_update_voxel_count_max_+1,// 0番目にアトミックカウンタ用途.
-
-                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
-                                               .heap_type = rhi::EResourceHeapType::Default},
-                                           rhi::EResourceFormat::Format_R32_UINT
-                                        ,   "Srvs_BbvFineUpdateVoxelList");
-        }
-        {
-            bbv_fine_update_voxel_indirect_arg_.InitializeAsTyped(p_device,
-                                           rhi::BufferDep::Desc{
-                                               .element_byte_size = sizeof(uint32_t),
-                                               .element_count     = 3,
-
-                                               .bind_flag = rhi::ResourceBindFlag::UnorderedAccess | rhi::ResourceBindFlag::IndirectArg,
-                                               .heap_type = rhi::EResourceHeapType::Default},
-                                           rhi::EResourceFormat::Format_R32_UINT
-                                        ,   "Srvs_BbvFineUpdateVoxelIndirectArg");
-        }
-        {
-            // 1F更新可能プローブ数分の k_fsp_probe_octmap_width*k_fsp_probe_octmap_width テクセル分バッファ.
-            bbv_fine_update_voxel_probe_buffer_.InitializeAsTyped(p_device,
-                                           rhi::BufferDep::Desc{
-                                               .element_byte_size = sizeof(float),
-                                               .element_count     = bbv_fine_update_voxel_count_max_ * (k_fsp_probe_octmap_width*k_fsp_probe_octmap_width),
-
-                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
-                                               .heap_type = rhi::EResourceHeapType::Default},
-                                           rhi::EResourceFormat::Format_R32_FLOAT
-                                        ,   "Srvs_BbvFineUpdateVoxelProbeBuffer");
-        }
-        
-        {
             bbv_removal_list_.InitializeAsTyped(p_device,
                                            rhi::BufferDep::Desc{
                                                .element_byte_size = sizeof(uint32_t),
@@ -1028,6 +1027,17 @@ namespace ngl::render::app
                                                .heap_type = rhi::EResourceHeapType::Default},
                                            rhi::EResourceFormat::Format_R32_UINT
                                         ,   "Srvs_BbvRemovalIndirectArg");
+        }
+        {
+            bbv_depthtest_frustum_brick_list_.InitializeAsTyped(p_device,
+                                           rhi::BufferDep::Desc{
+                                               .element_byte_size = sizeof(uint32_t),
+                                               .element_count     = bbv_grid_updater_.Get().total_count + 1,// 1..N に候補 index+1 を格納. 0 は無効.
+
+                                               .bind_flag = rhi::ResourceBindFlag::ShaderResource | rhi::ResourceBindFlag::UnorderedAccess,
+                                               .heap_type = rhi::EResourceHeapType::Default},
+                                           rhi::EResourceFormat::Format_R32_UINT
+                                        ,   "Srvs_BbvDepthTestFrustumBrickList");
         }
 
         {
@@ -1261,9 +1271,11 @@ namespace ngl::render::app
                 param.bbv.cell_size       = bbv_grid_updater_.Get().cell_size;
                 param.bbv.cell_size_inv    = 1.0f / bbv_grid_updater_.Get().cell_size;
 
-                param.bbv_indirect_cs_thread_group_size = math::Vec3i(pso_bbv_visible_surface_element_update_->GetThreadGroupSizeX(), pso_bbv_visible_surface_element_update_->GetThreadGroupSizeY(), pso_bbv_visible_surface_element_update_->GetThreadGroupSizeZ());
+                param.bbv_indirect_cs_thread_group_size = math::Vec3i(0, 0, 0);
                 param.bbv_visible_voxel_buffer_size = bbv_fine_update_voxel_count_max_;
                 param.bbv_hollow_voxel_buffer_size = bbv_hollow_voxel_list_count_max_;
+                param.bbv_update_flow_mode = ScreenReconstructedVoxelStructure::dbg_bbv_update_flow_mode_;
+                param.bbv_depthtest_injection_world_offset = ScreenReconstructedVoxelStructure::dbg_bbv_depthtest_injection_world_offset_;
             }
             // Fsp
             {
@@ -1474,14 +1486,12 @@ namespace ngl::render::app
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_bbv_begin_view_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-                pso_bbv_begin_view_update_->SetView(&desc_set, "RWVisibleVoxelList", bbv_fine_update_voxel_list_.uav.Get());
                 pso_bbv_begin_view_update_->SetView(&desc_set, "RWRemoveVoxelList", bbv_removal_list_.uav.Get());
 
                 p_command_list->SetPipelineState(pso_bbv_begin_view_update_.Get());
                 p_command_list->SetDescriptorSet(pso_bbv_begin_view_update_.Get(), &desc_set);
                 pso_bbv_begin_view_update_->DispatchHelper(p_command_list, 1, 1, 1);
 
-                p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_list_.buffer.Get());
                 p_command_list->ResourceUavBarrier(bbv_removal_list_.buffer.Get());
             }
 
@@ -1568,26 +1578,93 @@ namespace ngl::render::app
                     pso_bbv_injection_apply_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
 
                     pso_bbv_injection_apply_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
-                    pso_bbv_injection_apply_->SetView(&desc_set, "RWVisibleVoxelList", bbv_fine_update_voxel_list_.uav.Get());
 
                     p_command_list->SetPipelineState(pso_bbv_injection_apply_.Get());
                     p_command_list->SetDescriptorSet(pso_bbv_injection_apply_.Get(), &desc_set);
                     pso_bbv_injection_apply_->DispatchHelper(p_command_list, target_depth_info.atlas_resolution.x, target_depth_info.atlas_resolution.y, 1);  // Screen処理でDispatch.
 
                     p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
-                    p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_list_.buffer.Get());
                 }
             };
+            auto func_call_depthtest_frustum_pass = [this](
+                rhi::GraphicsCommandListDep* p_command_list,
+                rhi::ConstantBufferPooledHandle cbh_injection_view_info
+            )
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvDepthTestFrustumCull");
 
-            #if 1
-                // Removal Pass -> Injection Pass の順序.
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_bbv_depthtest_frustum_cull_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+                pso_bbv_depthtest_frustum_cull_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv);
+                pso_bbv_depthtest_frustum_cull_->SetView(&desc_set, "RWFrustumBrickList", bbv_depthtest_frustum_brick_list_.uav.Get());
+
+                p_command_list->SetPipelineState(pso_bbv_depthtest_frustum_cull_.Get());
+                p_command_list->SetDescriptorSet(pso_bbv_depthtest_frustum_cull_.Get(), &desc_set);
+                pso_bbv_depthtest_frustum_cull_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
+                p_command_list->ResourceUavBarrier(bbv_depthtest_frustum_brick_list_.buffer.Get());
+            };
+            auto func_call_depthtest_injection_pass = [this](
+                rhi::GraphicsCommandListDep* p_command_list,
+                rhi::ConstantBufferPooledHandle scene_cbv,
+                rhi::ConstantBufferPooledHandle cbh_injection_view_info,
+                const InjectionSourceDepthBufferViewInfo& target_depth_info
+            )
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvDepthTestInjection");
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_bbv_depthtest_injection_apply_->SetView(&desc_set, "TexHardwareDepth", target_depth_info.hw_depth_srv.Get());
+                pso_bbv_depthtest_injection_apply_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
+                pso_bbv_depthtest_injection_apply_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv);
+                pso_bbv_depthtest_injection_apply_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+                pso_bbv_depthtest_injection_apply_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
+
+                p_command_list->SetPipelineState(pso_bbv_depthtest_injection_apply_.Get());
+                p_command_list->SetDescriptorSet(pso_bbv_depthtest_injection_apply_.Get(), &desc_set);
+                pso_bbv_depthtest_injection_apply_->DispatchHelper(p_command_list, target_depth_info.atlas_resolution.x, target_depth_info.atlas_resolution.y, 1);  // Screen処理でDispatch.
+                p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
+            };
+            auto func_call_depthtest_coarse_removal_pass = [this](
+                rhi::GraphicsCommandListDep* p_command_list,
+                rhi::ConstantBufferPooledHandle cbh_injection_view_info,
+                const InjectionSourceDepthBufferViewInfo& target_depth_info
+            )
+            {
+                NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvDepthTestCoarseRemoval");
+
+                ngl::rhi::DescriptorSetDep desc_set = {};
+                pso_bbv_depthtest_coarse_removal_->SetView(&desc_set, "TexHardwareDepth", target_depth_info.hw_depth_srv.Get());
+                pso_bbv_depthtest_coarse_removal_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
+                pso_bbv_depthtest_coarse_removal_->SetView(&desc_set, "cb_injection_src_view_info", &cbh_injection_view_info->cbv);
+                pso_bbv_depthtest_coarse_removal_->SetView(&desc_set, "FrustumBrickList", bbv_depthtest_frustum_brick_list_.srv.Get());
+                pso_bbv_depthtest_coarse_removal_->SetView(&desc_set, "RWBitmaskBrickVoxel", bbv_buffer_.uav.Get());
+
+                p_command_list->SetPipelineState(pso_bbv_depthtest_coarse_removal_.Get());
+                p_command_list->SetDescriptorSet(pso_bbv_depthtest_coarse_removal_.Get(), &desc_set);
+                pso_bbv_depthtest_coarse_removal_->DispatchHelper(p_command_list, bbv_grid_updater_.Get().total_count, 1, 1);
+                p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
+            };
+
+            if(dispatch_param_cache_.bbv_update_flow_mode == k_bbv_update_flow_depthtest)
+            {
+                // DepthTest flow は Injection -> Removal の順序で実行する。
+                // Legacyフローは保持し、デバッグメニュー切替で比較可能にする。
+                func_call_depthtest_frustum_pass(p_command_list, cbh_injection_view_info);
+                if(target_depth_info.is_enable_injection_pass)
+                {
+                    func_call_depthtest_injection_pass(p_command_list, scene_cbv, cbh_injection_view_info, target_depth_info);
+                }
+                if(target_depth_info.is_enable_removal_pass)
+                {
+                    func_call_depthtest_coarse_removal_pass(p_command_list, cbh_injection_view_info, target_depth_info);
+                }
+            }
+            else
+            {
+                // Legacy: Removal Pass -> Injection Pass の順序.
                 func_call_removal_pass(p_command_list, scene_cbv, cbh_injection_view_info, target_depth_info);
                 func_call_injection_pass(p_command_list, scene_cbv, cbh_injection_view_info, target_depth_info);
-            #else
-                // Injection Pass -> Removal Pass の順序.
-                func_call_injection_pass(p_command_list, scene_cbv, cbh_injection_view_info, target_depth_info);
-                func_call_removal_pass(p_command_list, scene_cbv, cbh_injection_view_info, target_depth_info);
-            #endif
+            }
         }
 
         // BBV count rebuild pass.
@@ -1627,48 +1704,6 @@ namespace ngl::render::app
             p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
         }
 
-        // ここから先はDebugBuffer数に依らず実行.
-        // 可視表面VoxelリストはPrimary優先で詰め込まれている.
-
-        // VisibleVoxel IndirectArg生成.
-        {
-            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "GenerateVisibleElementIndirectArg");
-            
-            bbv_fine_update_voxel_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
-
-            ngl::rhi::DescriptorSetDep desc_set = {};
-            pso_bbv_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-            pso_bbv_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
-            pso_bbv_generate_visible_voxel_indirect_arg_->SetView(&desc_set, "RWVisibleVoxelIndirectArg", bbv_fine_update_voxel_indirect_arg_.uav.Get());
-
-            p_command_list->SetPipelineState(pso_bbv_generate_visible_voxel_indirect_arg_.Get());
-            p_command_list->SetDescriptorSet(pso_bbv_generate_visible_voxel_indirect_arg_.Get(), &desc_set);
-            pso_bbv_generate_visible_voxel_indirect_arg_->DispatchHelper(p_command_list, 1, 1, 1);
-
-            bbv_fine_update_voxel_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::IndirectArgument);
-        }
-
-        // Visible Surface Voxel Update Pass.
-        {
-            NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvVisibleSurfaceVoxelUpdate");
-
-            ngl::rhi::DescriptorSetDep desc_set = {};
-            pso_bbv_visible_surface_element_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
-                pso_bbv_visible_surface_element_update_->SetView(&desc_set, "cb_srvs", &cbh_dispatch_->cbv);
-            pso_bbv_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-            pso_bbv_visible_surface_element_update_->SetView(&desc_set, "VisibleVoxelList", bbv_fine_update_voxel_list_.srv.Get());
-
-            pso_bbv_visible_surface_element_update_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
-
-            pso_bbv_visible_surface_element_update_->SetView(&desc_set, "RWUpdateProbeWork", bbv_fine_update_voxel_probe_buffer_.uav.Get());
-
-            p_command_list->SetPipelineState(pso_bbv_visible_surface_element_update_.Get());
-            p_command_list->SetDescriptorSet(pso_bbv_visible_surface_element_update_.Get(), &desc_set);
-
-            p_command_list->DispatchIndirect(bbv_fine_update_voxel_indirect_arg_.buffer.Get());// こちらは可視VoxelのIndirect.
-
-            p_command_list->ResourceUavBarrier(bbv_fine_update_voxel_probe_buffer_.buffer.Get());
-        }
     }
 
     void BitmaskBrickVoxelGi::Dispatch_Bbv_RadianceInjection_View(rhi::GraphicsCommandListDep* p_command_list,
