@@ -173,59 +173,36 @@ bool FspIsWorldPosInsideDenseIrradianceVolumeCascade(float3 sample_pos_ws, uint 
     return all(grid_coordf >= 0.0.xxx) && all(grid_coordf < float3(cascade.grid.grid_resolution));
 }
 
-// CPU側で検証済みの「全cascade同一解像度」「cell sizeが1段ごとに2倍」
-// 「同じimportant pointを中心に各scaleでgrid snapする」という前提で候補levelを解析的に求める。
-// cascadeごとのgrid snap差は候補の前後1levelだけ実boundsを確認して吸収し、
-// 想定を超えるsnap差には最上位cascadeの追加判定で安全側へ倒す。
-// 2^3 gridでは±1補正で足りない配置があるため、CPU側で各軸4以上に制限する。
+// グリッドの量子化により、実際の中心は各軸で1セル未満ずれる。
+// カメラの連続位置を中心とする選択範囲を1セル分内側に縮め、実グリッド内に収める。
+// CPUがゼロ方向に切り捨てる負のカメラ座標でも、この余白でずれを吸収する。
+float FspDenseIrradianceVolumeSelectionHalfExtent(uint cascade_index)
+{
+    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    return (float(cascade.grid.grid_resolution.x) * 0.5 - 1.0) * cascade.grid.cell_size;
+}
+
+float FspDenseIrradianceVolumeCameraDistance(float3 sample_pos_ws)
+{
+    const float3 camera_pos_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
+    const float3 distance_ws = abs(sample_pos_ws - camera_pos_ws);
+    return max(max(distance_ws.x, distance_ws.y), distance_ws.z);
+}
+
+// 全カスケードの解像度が同じ立方体で、セルサイズが段ごとに2倍になることはCPU側で検証済み。
+// カスケード選択とディザ補間には、どちらもカメラの連続位置を中心とする境界を使う。
 bool FspTrySelectFinestDenseIrradianceVolumeCascade(out uint cascade_index, float3 sample_pos_ws)
 {
     const uint cascade_count = FspCascadeCount();
-    const FspCascadeGridParam finest_cascade = FspGetCascadeParam(0);
-    const float3 finest_center_ws =
-        finest_cascade.grid.grid_min_pos +
-        float3(finest_cascade.grid.grid_resolution) * finest_cascade.grid.cell_size * 0.5;
-    const float max_dist_in_finest_cells =
-        max(max(abs(sample_pos_ws.x - finest_center_ws.x), abs(sample_pos_ws.y - finest_center_ws.y)),
-            abs(sample_pos_ws.z - finest_center_ws.z)) *
-        finest_cascade.grid.cell_size_inv;
-    const uint half_resolution = uint(finest_cascade.grid.grid_resolution.x >> 1);
-    const uint required_scale = max(
-        1u,
-        (uint)ceil(max_dist_in_finest_cells / max(float(half_resolution), 1.0)));
-    const uint estimated_cascade = min(
+    const float distance_ws = FspDenseIrradianceVolumeCameraDistance(sample_pos_ws);
+    const float finest_half_extent = FspDenseIrradianceVolumeSelectionHalfExtent(0u);
+    const uint required_scale = max(1u, (uint)ceil(distance_ws / finest_half_extent));
+    cascade_index = min(
         (required_scale <= 1u) ? 0u : uint(firstbithigh(required_scale - 1u) + 1),
         cascade_count - 1u);
-    const uint first_candidate = (estimated_cascade > 0u) ? estimated_cascade - 1u : 0u;
 
-    [unroll]
-    for(uint candidate_offset = 0u; candidate_offset < 3u; ++candidate_offset)
-    {
-        const uint candidate_cascade = first_candidate + candidate_offset;
-        if(candidate_cascade >= cascade_count)
-        {
-            break;
-        }
-        if(FspIsWorldPosInsideDenseIrradianceVolumeCascade(sample_pos_ws, candidate_cascade))
-        {
-            cascade_index = candidate_cascade;
-            return true;
-        }
-    }
-
-    // Nested volumeの最上位は全有効領域を覆う。snap誤差が想定を超えた場合も1回の追加判定で欠損を避ける。
-    const uint coarsest_cascade = cascade_count - 1u;
-    if(coarsest_cascade < first_candidate || coarsest_cascade >= (first_candidate + 3u))
-    {
-        if(FspIsWorldPosInsideDenseIrradianceVolumeCascade(sample_pos_ws, coarsest_cascade))
-        {
-            cascade_index = coarsest_cascade;
-            return true;
-        }
-    }
-
-    cascade_index = 0u;
-    return false;
+    // 親を持たない最終カスケードでは、実グリッドの全範囲を維持する。
+    return FspIsWorldPosInsideDenseIrradianceVolumeCascade(sample_pos_ws, cascade_index);
 }
 
 float FspCalcDenseIrradianceVolumeCascadeBoundaryDitherRate(float3 sample_pos_ws, uint cascade_index)
@@ -235,16 +212,13 @@ float FspCalcDenseIrradianceVolumeCascadeBoundaryDitherRate(float3 sample_pos_ws
         return 0.0;
     }
 
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-    const float3 cascade_max_pos =
-        cascade.grid.grid_min_pos + float3(cascade.grid.grid_resolution) * cascade.grid.cell_size;
-    const float3 dist_to_min = sample_pos_ws - cascade.grid.grid_min_pos;
-    const float3 dist_to_max = cascade_max_pos - sample_pos_ws;
-    const float boundary_dist = min(
-        min(dist_to_min.x, dist_to_max.x),
-        min(min(dist_to_min.y, dist_to_max.y), min(dist_to_min.z, dist_to_max.z)));
+    const float half_extent = FspDenseIrradianceVolumeSelectionHalfExtent(cascade_index);
+    const float boundary_dist = half_extent - FspDenseIrradianceVolumeCameraDistance(sample_pos_ws);
     const float coarse_cell_size = FspGetCascadeParam(cascade_index + 1u).grid.cell_size;
-    return 1.0 - saturate(boundary_dist / max(coarse_cell_size, 1e-5));
+    // 小さいグリッドでも補間帯が重ならないようにする。
+    // 子から親への遷移率が1になる境界では、親からさらに上位への遷移率を0に保つ。
+    const float dither_width = min(coarse_cell_size, half_extent * 0.5);
+    return 1.0 - saturate(boundary_dist / max(dither_width, 1e-5));
 }
 
 // ライティング時に使うcascadeを1本だけ選ぶ。境界では親cascadeとの確率的遷移だけを行う。
