@@ -12,8 +12,6 @@ fsp_pre_update_cs.hlsl
 #include "../../include/scene_view_struct.hlsli"
 
 
-#define RAY_SAMPLE_COUNT_PER_VOXEL 8
-#define PROBE_UPDATE_TEMPORAL_RATE (0.025)
 
 ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 Texture2D<float4> TexReducedSurfaceBuffer;
@@ -474,7 +472,7 @@ void main_cs(
     const float3 normalized_probe_offset = clamp((probe_sample_pos_ws - probe_cell_center) / relocation_offset_limit, -1.0.xxx, 1.0.xxx);
     probe_sample_pos_ws = probe_cell_center + normalized_probe_offset * relocation_offset_limit;
     const uint encoded_probe_offset = encode_range1_vec3_to_uint(normalized_probe_offset);
-    // Probe位置更新. Cellサイズの半分で正規化.
+    // セルサイズと再配置スケールの積で正規化したオフセットを保存する。
     probe_pool_data.probe_offset_v3 = encoded_probe_offset;
 
     if(is_new_probe)

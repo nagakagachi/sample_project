@@ -32,8 +32,6 @@ namespace ngl::render::app
     #undef NGL_SHADER_CPP_INCLUDE
 
 
-    static constexpr size_t k_sizeof_BbvOptionalData = sizeof(BbvOptionalData);
-    static constexpr size_t k_sizeof_FspProbePoolData  = sizeof(FspProbePoolData);
     static constexpr u32 k_max_update_probe_work_count = 1024;
     static constexpr float k_occupancy_injection_default_fine_cells = 2.0f;
     static constexpr size_t k_bbv_depth_cull_plane_count = 6;
@@ -1627,7 +1625,6 @@ namespace ngl::render::app
     {
         NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "InstantRdv_Dispatch_Begin");
 
-        auto& global_res = gfx::GlobalRenderResource::Instance();
 
         const math::Vec2i desired_probe_resolution(std::max(render_resolution.x, 1), std::max(render_resolution.y, 1));
         const bool needs_screen_probe_resize =
@@ -1894,7 +1891,6 @@ namespace ngl::render::app
     )
     {
         NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "Dispatch_Bbv_OccupancyUpdate_View");
-        auto& global_res = gfx::GlobalRenderResource::Instance();
 
         // FSP SurfaceCellのフレーム内重複排除マスクを消去する。
         {
@@ -2299,7 +2295,6 @@ namespace ngl::render::app
     {
         NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "InstantRdv_Dispatch_Bbv_Main");
 
-        auto& global_res = gfx::GlobalRenderResource::Instance();
 
         // Voxel Update.
         {

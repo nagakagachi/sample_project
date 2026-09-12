@@ -12,7 +12,9 @@ InstantRdv の実装メモと参考文献をまとめる。
 現在の FSP OctahedralMap atlas は **point sample / `Load` 前提**で使っており、
 border copy pass は削除済み。
 
-#### 対応の考え方
+以下は削除済みのborder copy方式の検証記録であり、現在の実装手順ではない。
+
+#### 過去の検証：対応の考え方
 
 - **corner** は対角の内側 texel をコピーする
 - **edge** は反対側の 1 texel 内側を、**左右 / 上下反転つき**でコピーする

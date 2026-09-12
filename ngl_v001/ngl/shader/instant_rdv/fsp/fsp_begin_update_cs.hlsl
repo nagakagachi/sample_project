@@ -4,8 +4,8 @@
 fsp_begin_update_cs.hlsl
 
 各種バッファクリアや, 移動によって発生した領域のInValidateをする.
-Dispatchは全域としているが, 最適化としてはInvalidate領域サイズ分だけにしたい.
-無効化されたcellのIrradianceVolume SHも同時にクリアする。
+前回のActiveProbeリストを対象にDispatchし、範囲外・期限切れのProbeを解放する。
+解放するProbeの所有セルのIrradianceVolume SHもクリアする。非Activeセルは対象外。
 
 #endif
 

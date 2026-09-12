@@ -63,9 +63,6 @@ bool ballot_any(uint4 ballot)
 #define PROBE_UPDATE_THREAD_GROUP_SIZE 96
 
 
-
-
-
 // ------------------------------------------------------------------------------------------------------------------------
 // Bbv. bbv.
 // 1. Voxel bit data region
@@ -361,27 +358,6 @@ bool FspTryGetGlobalCellIndexFromWorldPos(float3 pos_ws, uint cascade_index, out
     return false;
 }
 
-// 指定位置を含む最も細かいcascadeと、そのglobal cell indexを返す。
-bool FspTryGetFinestCascadeCellFromWorldPos(
-    float3 pos_ws,
-    out uint cascade_index,
-    out uint global_cell_index)
-{
-    const uint cascade_count = FspCascadeCount();
-    [loop]
-    for(uint ci = 0u; ci < cascade_count; ++ci)
-    {
-        if(FspTryGetGlobalCellIndexFromWorldPos(pos_ws, ci, global_cell_index))
-        {
-            cascade_index = ci;
-            return true;
-        }
-    }
-
-    cascade_index = 0u;
-    global_cell_index = k_fsp_invalid_probe_index;
-    return false;
-}
 
 bool FspTryGetFinestCascadePhysicalCellFromWorldPos(
     float3 pos_ws,
@@ -411,37 +387,6 @@ bool FspTryGetFinestCascadePhysicalCellFromWorldPos(
     return false;
 }
 
-// fine/coarse境界でLightingがcoarseを選択する確率を返す。
-// SurfacePassは0より大きい領域で両cascadeを登録し、確率選択時の欠損を防ぐ。
-float FspCalcCascadeBoundaryDitherRate(float3 sample_pos_ws, uint cascade_index)
-{
-    if((cascade_index + 1u) >= FspCascadeCount())
-    {
-        return 0.0;
-    }
-
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-    const FspCascadeGridParam coarse_cascade = FspGetCascadeParam(cascade_index + 1u);
-    const float3 cascade_max_pos =
-        cascade.grid.grid_min_pos + float3(cascade.grid.grid_resolution) * cascade.grid.cell_size;
-    const float3 dist_to_min = sample_pos_ws - cascade.grid.grid_min_pos;
-    const float3 dist_to_max = cascade_max_pos - sample_pos_ws;
-    const float boundary_dist = min(
-        min(dist_to_min.x, dist_to_max.x),
-        min(min(dist_to_min.y, dist_to_max.y), min(dist_to_min.z, dist_to_max.z)));
-    const float dither_width = max(coarse_cascade.grid.cell_size, cascade.grid.cell_size);
-    const float dither_rate = 1.0 - saturate(boundary_dist / max(dither_width, 1e-5));
-    if(dither_rate <= 0.0)
-    {
-        return 0.0;
-    }
-
-    uint coarse_global_cell_index = k_fsp_invalid_probe_index;
-    return FspTryGetGlobalCellIndexFromWorldPos(
-        sample_pos_ws,
-        cascade_index + 1u,
-        coarse_global_cell_index) ? dither_rate : 0.0;
-}
 
 // Surface ownerのCell indexとMask addressを同じ座標変換から生成する。
 // 境界帯では隣接coarse cascadeも返す。
@@ -573,11 +518,6 @@ int3 FspIrradianceVolumeToroidalPhysicalCoord(int3 linear_coord, InstantRdvToroi
     return (linear_coord + grid.grid_toroidal_offset) & (grid.grid_resolution - 1);
 }
 
-uint FspIrradianceVolumeCellIndexFromPhysicalCoord(uint cascade_index, int3 physical_coord)
-{
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-    return cascade.cell_offset + FspPhysicalCellCoordToLocalIndex(physical_coord, cascade.grid.grid_resolution);
-}
 
 uint FspIrradianceVolumeCellIndexFromLinearCoord(uint cascade_index, int3 linear_coord)
 {
@@ -710,7 +650,6 @@ float3 OctahedralDecodeSphereDirWs(float2 oct_uv)
 }
 
 
-
 // OctahedralMapストレージ向け.
 // 球面/半球切り替え用. ワールド空間方向->OctahedralMapエンコード.
 float2 SspEncodeDirByNormal(float3 dir_ws, float3 base_normal_ws)
@@ -796,11 +735,7 @@ uint bbv_voxel_coarse_occupancy_info_addr(uint voxel_index)
 {
     return bbv_voxel_unique_data_addr(voxel_index) + 0;
 }
-// Brick毎の作業用データ部アドレス.
-uint bbv_voxel_brick_work_addr(uint voxel_index)
-{
-    return bbv_voxel_unique_data_addr(voxel_index) + 1;
-}
+
 #if NGL_INSTANT_RDV_ENABLE_BRICK_LOCAL_AABB
 // BrickLocalAABB の packed min/max アドレス.
 uint bbv_voxel_brick_local_aabb_min_addr(uint voxel_index)
@@ -1034,17 +969,12 @@ void bbv_load_brick_local_aabb(
 // BbvのBrickデータレイアウト.
 
 // uint[0]      : Brick内 occupied voxel count.
-// uint[1].8bit : 最後に可視状態になったフレーム番号. 0-255でループ.
+// uint[1]      : 旧最終可視フレーム用の予約ワード。現在はクリア以外に使用しない。
 #if NGL_INSTANT_RDV_ENABLE_BRICK_LOCAL_AABB
 // uint[2]      : BrickLocalAABB min (packed xyz, 3bit each).
 // uint[3]      : BrickLocalAABB max inclusive (packed xyz, 3bit each).
 #endif
 
-// ユニークデータに埋め込むためのフレーム番号マスク処理.
-uint mask_bbv_voxel_unique_data_last_visible_frame(uint last_visible_frame)
-{
-    return (last_visible_frame & 0xff);
-}
 
 // ------------------------------------------------------------------------------------------------------------------------
 // Bbv. Brickデータクリア.
@@ -1097,10 +1027,7 @@ uint read_bbv_voxel_from_world_pos(Buffer<uint> bbv_buffer, int3 grid_resolution
 // Bbvレイキャスト.
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
-// 呼び出し側で引数の符号なし uint3 pos に符号付きint3を渡すことでオーバーフローして最大値になるため, 0 <= pos < size の範囲内にあるかをチェックとなる.
-bool check_grid_bound(uint3 pos, uint sizeX, uint sizeY, uint sizeZ) {
-    return pos.x < sizeX && pos.y < sizeY && pos.z < sizeZ;
-}
+
 // ray dir の逆数による次の境界への距離からdda用のステップ用の最小距離の軸選択boolマスクを計算.
 bool3 calc_dda_trace_step_mask(float3 ray_side_distance) {
     bool3 mask;
@@ -1211,21 +1138,15 @@ float4 trace_bbv_core(
     const bool is_brick_mode
 );
 
-// BBV trace 用の ray_dir reciprocal。
-// もともとは ray_dir の 0 軸を巨大値へ置き換える safe reciprocal を試したが、
-// Bbv デバッグ表示で特定カメラ角度に 1px の横線欠けが発生した。
-// DDA 側を切り分けた結果 reciprocal の扱いが原因と分かり、旧来実装の 1.0 / ray_dir に戻している。
-// 現状は運用実績のある旧挙動を優先し、境界判定の安定性を保つ。
+// BBV trace用の逆方向成分。軸並行に近い成分は正の1e6へ置き換える。
+// 境界挙動を維持するため、単純な逆数計算への変更は別途検証する。
 float3 calc_safe_trace_ray_dir_inv(float3 ray_dir)
 {
-    #if 0
-        return 1.0 / ray_dir;
-    #else
-        // 軸並行の問題の対処. OctahedralMapセル中心レイ等で発生しやすいため対処.
-        const float3 inv_ray_dir = 1.0 / ray_dir;
-        const float3 safe_inv_ray_dir = select(abs(ray_dir) < 1e-6, float3(1e6, 1e6, 1e6), inv_ray_dir);
-        return safe_inv_ray_dir;
-    #endif
+    // 軸並行の問題の対処。OctahedralMapセル中心レイ等で発生しやすいため対処。
+    const float3 inv_ray_dir = 1.0 / ray_dir;
+    const float3 safe_inv_ray_dir = select(abs(ray_dir) < 1e-6, float3(1e6, 1e6, 1e6), inv_ray_dir);
+    return safe_inv_ray_dir;
+
 }
 
 // レイ上の現在 t 位置から、次のセル内側を確実にサンプルするための t を計算.
@@ -1235,42 +1156,6 @@ float calc_trace_sample_t(float curr_t, float end_t)
     return min(curr_t + k_trace_t_epsilon, max(curr_t, end_t - k_trace_t_epsilon));
 }
 
-// 等間隔グリッドのセル境界を取得.
-void calc_trace_grid_cell_bounds(out float3 out_cell_min, out float3 out_cell_max, int3 cell_coord, int cell_span, int3 full_grid_resolution)
-{
-    const int3 cell_coord_min = cell_coord * cell_span;
-    const int3 cell_coord_max = min(cell_coord_min + int3(cell_span, cell_span, cell_span), full_grid_resolution);
-    out_cell_min = float3(cell_coord_min);
-    out_cell_max = float3(cell_coord_max);
-}
-
-// レイ上 current_t 以降でセルと交差する区間を計算.
-bool calc_trace_cell_t_range(
-    out float out_cell_begin_t,
-    out float out_cell_end_t,
-    float3 ray_origin,
-    float3 ray_dir,
-    float3 ray_dir_inv,
-    float ray_end_t,
-    float3 cell_min,
-    float3 cell_max,
-    float current_t
-)
-{
-    out_cell_begin_t = 0.0;
-    out_cell_end_t = 0.0;
-
-    float cell_begin_t;
-    float cell_end_t;
-    if(!calc_ray_t_offset_for_aabb(cell_begin_t, cell_end_t, cell_min, cell_max, ray_origin, ray_dir, ray_dir_inv, ray_end_t))
-    {
-        return false;
-    }
-
-    out_cell_begin_t = max(cell_begin_t, current_t);
-    out_cell_end_t = min(cell_end_t, ray_end_t);
-    return out_cell_begin_t <= out_cell_end_t;
-}
 
 // 現在セルから見た各軸の次境界までの t を計算.
 float3 calc_trace_grid_next_boundary_t(
@@ -1295,12 +1180,6 @@ int3 calc_trace_grid_coord_from_t(float3 ray_origin, float3 ray_dir, float sampl
     return clamp(coord, int3(0, 0, 0), grid_resolution - 1);
 }
 
-// DDA で訪れるセル数の理論上限を、始点セルと終点セルの差から見積もる。
-int calc_trace_grid_max_iteration_count(int3 begin_coord, int3 end_coord)
-{
-    const int3 trace_extent = abs(end_coord - begin_coord) + 1;
-    return max(1, trace_extent.x + trace_extent.y + trace_extent.z) + 2;
-}
 
 // BBV の Brick 単位 DDA を走らせる共通処理.
 bool trace_bbv_brick_dda_range(
@@ -1446,89 +1325,6 @@ bool trace_bbv_brick_dda_range(
     return false;
 }
 
-// Brick 範囲だけを DDA で走査し、occupied Brick の充填率を使って透過率を積分する。
-// fine voxel の詳細 hit は取らず、Brick occupancy ratio を区間長へ掛けて optical depth を近似する。
-// transmittance_stop_threshold 以下まで透過率が落ちたら、十分不透明とみなして早期終了する。
-// 戻り値 true は「十分不透明になったので外側ループを打ち切ってよい」を意味する。
-bool trace_bbv_brick_transmittance_range(
-    inout float inout_transmittance,
-    inout float inout_accumulated_optical_depth,
-    inout uint inout_brick_trace_count,
-    inout float inout_brick_occupancy_ratio_sum,
-    float3 clampled_start_pos,
-    float3 ray_dir_ws,
-    float3 ray_dir_inv,
-    int3 ray_step,
-    float3 ray_step_offset,
-    float trace_begin_t,
-    float trace_end_t,
-    int3 brick_coord_min,
-    int3 brick_coord_max,
-    int3 grid_resolution,
-    int3 bbv_grid_toroidal_offset,
-    Buffer<uint> bbv_buffer,
-    const float transmittance_stop_threshold
-)
-{
-    const float k_trace_t_epsilon = 1e-4;
-
-    const int3 brick_extent = brick_coord_max - brick_coord_min;
-    const int max_brick_iteration_count = max(1, brick_extent.x + brick_extent.y + brick_extent.z) + 2;
-
-    float brick_curr_t = trace_begin_t;
-    int3 map_pos = clamp(calc_trace_grid_coord_from_t(clampled_start_pos, ray_dir_ws, calc_trace_sample_t(brick_curr_t, trace_end_t), 1, grid_resolution), brick_coord_min, brick_coord_max - 1);
-    float3 brick_next_t = calc_trace_grid_next_boundary_t(
-        clampled_start_pos,
-        ray_dir_inv,
-        ray_step_offset,
-        map_pos,
-        1,
-        grid_resolution);
-    [loop]
-    for(int brick_iter = 0; brick_iter < max_brick_iteration_count && brick_curr_t <= trace_end_t; ++brick_iter)
-    {
-        const float brick_begin_t = brick_curr_t;
-        const float brick_end_t = min(Min3(brick_next_t), trace_end_t);
-        const float brick_segment_t = max(0.0, brick_end_t - brick_begin_t);
-
-        const int3 toroidal_map_pos = voxel_coord_toroidal_mapping(map_pos, bbv_grid_toroidal_offset, grid_resolution);
-        const uint voxel_index = BbvPhysicalVoxelCoordToMortonIndex(toroidal_map_pos, grid_resolution);
-        const uint brick_occupied_voxel_count = bbv_buffer[bbv_voxel_coarse_occupancy_info_addr(voxel_index)];
-        if(0 != brick_occupied_voxel_count)
-        {
-            const float brick_occupancy_ratio = bbv_brick_occupancy_ratio_from_count(brick_occupied_voxel_count);
-            // Brick 区間全体が一様密度だったとみなして optical depth を積む。
-            const float brick_optical_depth = brick_occupancy_ratio * brick_segment_t;
-            inout_accumulated_optical_depth += brick_optical_depth;
-            inout_transmittance *= exp(-brick_optical_depth);
-            inout_brick_trace_count++;
-            inout_brick_occupancy_ratio_sum += brick_occupancy_ratio;
-            if(inout_transmittance <= transmittance_stop_threshold)
-            {
-                inout_transmittance = 0.0;
-                return true;
-            }
-        }
-
-        const bool3 brick_step_mask = calc_dda_trace_step_mask(brick_next_t);
-        const int3 map_pos_delta = select(brick_step_mask, ray_step, 0);
-        map_pos += map_pos_delta;
-        brick_curr_t = max(brick_curr_t + k_trace_t_epsilon, brick_end_t + k_trace_t_epsilon);
-        if((any(map_pos < brick_coord_min) || any(map_pos >= brick_coord_max)) || all(map_pos_delta == 0))
-        {
-            break;
-        }
-        brick_next_t = calc_trace_grid_next_boundary_t(
-            clampled_start_pos,
-            ray_dir_inv,
-            ray_step_offset,
-            map_pos,
-            1,
-            grid_resolution);
-    }
-
-    return false;
-}
 
 float4 trace_bbv_build_hit_result(
     out int out_hit_voxel_index,
@@ -1657,8 +1453,6 @@ float4 trace_bbv_core(
 
     return float4(-1.0, -1.0, -1.0, -1.0);
 }
-
-
 
 
 // 標準の BBV トレース入口. 従来どおり Brick / bitmask を全域走査する。

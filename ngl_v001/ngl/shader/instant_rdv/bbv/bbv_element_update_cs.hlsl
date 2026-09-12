@@ -24,16 +24,9 @@ void main_cs(
 	uint gindex : SV_GroupIndex
 )
 {
-	const float3 camera_pos = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
 
     const uint elem_count = cb_instant_rdv.bbv.grid_resolution.x * cb_instant_rdv.bbv.grid_resolution.y * cb_instant_rdv.bbv.grid_resolution.z;
 
-    /*
-    // 全Voxelを毎フレーム更新する方式.
-    const uint update_element_id = dtid.x;
-    if(elem_count <= update_element_id)
-        return;
-    */
     // 更新対象インデックスをフレーム毎のブロックに分けて採用する方式. こちらのほうがキャッシュ効率は有利なはず.
     const uint per_frame_loop_cnt = BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT+1;
     const uint per_frame_update_elem_count = (elem_count + (per_frame_loop_cnt - 1)) / per_frame_loop_cnt;
@@ -48,52 +41,8 @@ void main_cs(
     const uint voxel_index =
         BbvPhysicalVoxelCoordToMortonIndex(voxel_coord_toroidal, cb_instant_rdv.bbv.grid_resolution);
 
-    const uint bbv_addr = bbv_voxel_bitmask_data_addr(voxel_index);
-    const uint bbv_occupied_voxel_count = BitmaskBrickVoxel[bbv_voxel_coarse_occupancy_info_addr(voxel_index)];
     
     BbvOptionalData voxel_optional_data = RWBitmaskBrickVoxelOptionData[voxel_index];
-
-
-    // Probe位置探索. 埋まり対策のために空Bitcell位置を探す.
-    int candidate_probe_bitcell_index = -1;
-    if(0 != bbv_occupied_voxel_count)
-    {
-        // Voxel内のProbe位置の更新.
-        // Bbvセルを参照して空のセルから選択する. Bitmaskが変化したVoxelだけ更新するようにしたいところ.
-        float candidate_probe_pos_dist_sq = 1e20;
-        const float3 camera_pos_in_bit_cell_space = ((camera_pos - cb_instant_rdv.bbv.grid_min_pos) * cb_instant_rdv.bbv.cell_size_inv - float3(voxel_coord)) * float(k_bbv_per_voxel_resolution);
-        for(int i = 0; i < bbv_voxel_bitmask_uint_count(); ++i)
-        {
-            // 0のbitcellを探す.
-            uint bit_block = (~BitmaskBrickVoxel[bbv_addr + i]);
-            for(int bi = 0; bi < 32 && 0 != bit_block; ++bi)
-            {
-                if(bit_block & 1)
-                {
-                    const uint bit_index = i * 32 + bi;
-                    const uint3 bitcell_pos_in_voxel = calc_bbv_bitcell_pos_from_bit_index(bit_index);
-                    
-                    // Voxel中心に近いセルを選択.
-                    const float3 score_vec = float3(bitcell_pos_in_voxel) - (float3(k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution) * 0.5);
-                    // カメラに一番近いセルを選択.
-                    //const float3 score_vec = float3(bitcell_pos_in_voxel) - camera_pos_in_bit_cell_space;
-
-                    const float dist_sq = dot(score_vec, score_vec);
-                    if(dist_sq < candidate_probe_pos_dist_sq)
-                    {
-                        candidate_probe_pos_dist_sq = dist_sq;
-                        candidate_probe_bitcell_index = bit_index;
-                    }
-                }
-                bit_block >>= 1;
-            }
-        }
-    }
-    else
-    {
-        // 空Voxelの場合は中心.
-        candidate_probe_bitcell_index = calc_bbv_bitcell_index(k_bbv_per_voxel_resolution.xxx * 0.5);
-    }
 
 
     // BBVにSDF的な距離情報を持たせる検証。Probe Relocationとは独立した実験である。

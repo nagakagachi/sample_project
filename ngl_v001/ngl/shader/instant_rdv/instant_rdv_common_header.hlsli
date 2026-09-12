@@ -131,8 +131,6 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     #define k_fsp_surface_mask_brick_resolution (8)
     #define k_fsp_surface_mask_brick_bit_count (k_fsp_surface_mask_brick_resolution * k_fsp_surface_mask_brick_resolution * k_fsp_surface_mask_brick_resolution)
     #define k_fsp_surface_mask_brick_word_count ((k_fsp_surface_mask_brick_bit_count + 31) / 32)
-    // 旧 border 前提コード互換用エイリアス。現在は border なし。
-    #define k_fsp_probe_octmap_width_with_border (k_fsp_probe_octmap_width)
     // fsp
     #define k_fsp_probe_distance_max (50.0)
     // fsp
@@ -142,13 +140,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     
     // Bbv 全体更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
     #define BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT 60
-    // Bbv 可視Fsp要素更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
-    #define BBV_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT 0
     
-    // Fsp 全体更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
-    #define FSP_ALL_ELEMENT_UPDATE_SKIP_COUNT 60
-    // Fsp 可視Fsp要素更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
-    #define FSP_VISIBLE_SURFACE_ELEMENT_UPDATE_SKIP_COUNT 1
 
     // Adaptive ScreenSpaceProbe は 4x4 texel の OctahedralMap を 1 probe として扱う。
     #define ADAPTIVE_SCREEN_SPACE_PROBE_INFO_DOWNSCALE 4
