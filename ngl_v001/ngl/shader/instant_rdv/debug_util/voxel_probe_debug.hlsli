@@ -149,6 +149,8 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
 
     if(0 == cb_instant_rdv.debug_bbv_probe_mode)
     {
+        // BBVのSDF的な距離情報の検証用表示。FSPのRelocation位置を可視化するものではない。
+        // 描画経路は有効だが距離伝播は停止中。初期化値0は黒、更新時の固定値は白に飽和する。
         const float surface_distance = length_int_vector3(voxel_optional_data.to_surface_vector);
         float distance_color = saturate(surface_distance / 8.0);
         distance_color = pow(distance_color, 2.0);

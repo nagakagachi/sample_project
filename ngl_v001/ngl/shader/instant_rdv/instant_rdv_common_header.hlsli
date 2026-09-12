@@ -182,7 +182,11 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     // 値域によって圧縮表現可能なものがあるが, 現状は簡単のため圧縮せず.
     struct BbvOptionalData
     {
-        // ジオメトリ表面を含むBrickまでの相対ベクトル. ジオメトリ表面を含むBrickは0, それ以外はマンハッタン距離.
+        // BBVにSDF的な距離情報を持たせる検証用。表面を含むBrickへの相対ベクトルを
+        // Brick単位で保持し、そのマンハッタン長を距離として扱う。符号付き距離そのものではない。
+        // FSPのProbe Relocation用ではなく、ReducedSurface方式のRelocationも参照しない。
+        // 現在は距離伝播を無効化しており、BbvCommonUpdateは固定値(1024,1024,1024)を書く。
+        // Bbv Probe Mode 0の距離可視化は残っているが、現在の値は実際の表面距離を表さない。
         int3 to_surface_vector;
         // Screen-space から Resolve した Brick radiance.
         float3 resolved_radiance;
