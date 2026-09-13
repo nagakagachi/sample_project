@@ -2244,9 +2244,6 @@ namespace ngl::render::app
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 if(use_reduced_surface)
                 {
-                    reduced_surface_buffer_tex_.ResourceBarrier(
-                        p_command_list,
-                        rhi::EResourceState::ShaderRead);
                     pso_bbv_radiance_injection->SetView(
                         &desc_set,
                         "TexReducedSurfaceBuffer",
@@ -2604,9 +2601,6 @@ namespace ngl::render::app
                         p_command_list,
                         "FspReducedSurfaceDetection");
 
-                    reduced_surface_buffer_tex_.ResourceBarrier(
-                        p_command_list,
-                        rhi::EResourceState::ShaderRead);
                     fsp_surface_cell_mask_buffer_.ResourceBarrier(
                         p_command_list,
                         rhi::EResourceState::UnorderedAccess);
@@ -2735,9 +2729,6 @@ namespace ngl::render::app
                 pso_fsp_pre_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_fsp_pre_update_->SetView(&desc_set, "cb_instant_rdv", &cbh_dispatch_->cbv);
                 pso_fsp_pre_update_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
-                reduced_surface_buffer_tex_.ResourceBarrier(
-                    p_command_list,
-                    rhi::EResourceState::ShaderRead);
                 pso_fsp_pre_update_->SetView(
                     &desc_set,
                     "TexReducedSurfaceBuffer",
@@ -2979,9 +2970,6 @@ namespace ngl::render::app
             pso_bbv_debug_visualize_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
             pso_bbv_debug_visualize_->SetView(&desc_set, "cb_instant_rdv", &cbh_dispatch_->cbv);
             pso_bbv_debug_visualize_->SetView(&desc_set, "TexHardwareDepth", hw_depth_srv.Get());
-            reduced_surface_buffer_tex_.ResourceBarrier(
-                p_command_list,
-                rhi::EResourceState::ShaderRead);
             pso_bbv_debug_visualize_->SetView(
                 &desc_set,
                 "TexReducedSurfaceBuffer",
