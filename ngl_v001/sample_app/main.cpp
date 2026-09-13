@@ -1219,6 +1219,24 @@ void AppGame::LaunchRender()
     // RenderParam同期.
     SyncRenderParam();
 
+    // 前フレームのRenderThread完了後に、RDVのフレーム情報とリソースを確定する。
+    if(instant_rdv_.IsValid())
+    {
+        const bool prepare_success = instant_rdv_.PrepareFrame(
+            &gfxfw_.device_,
+            render_param_->camera_pos,
+            render_param_->camera_pose.GetColumn2(),
+            render_param_->dlight_dir,
+            ngl::math::Vec2i(
+                static_cast<int>(gfxfw_.swapchain_->GetWidth()),
+                static_cast<int>(gfxfw_.swapchain_->GetHeight())));
+        assert(prepare_success);
+        if(!prepare_success)
+        {
+            return;
+        }
+    }
+
     // フレームワークのRenderThreadにAppの描画処理実行を依頼.
     gfxfw_.BeginFrameRender([this](ngl::fwk::RtgFrameRenderSubmitCommandBuffer& app_rtg_command_list_set)
                             {

@@ -114,10 +114,17 @@ namespace ngl::render::app
         bool Initialize(ngl::rhi::DeviceDep* p_device, const InitArg& init_arg);
 
         
+        // RenderThread起動前の同期タイミングで、フレーム値の確定と必要なリソース再確保を行う。
+        bool PrepareFrame(rhi::DeviceDep* p_device,
+            const math::Vec3& important_pos,
+            const math::Vec3& important_dir,
+            const math::Vec3& main_light_dir,
+            const math::Vec2i& render_resolution);
+        // RTG Setupでフレーム用定数バッファを確保し、確定済みの値を書き込む。
+        void UploadFrameConstants(rhi::DeviceDep* p_device);
+
         void Dispatch_Begin(rhi::GraphicsCommandListDep* p_command_list,
-            rhi::ConstantBufferPooledHandle scene_cbv, 
-            const ngl::render::task::RenderPassViewInfo& main_view_info, const math::Vec2i& render_resolution
-            );
+            rhi::ConstantBufferPooledHandle scene_cbv);
 
         void Dispatch_Bbv_OccupancyUpdate_View(rhi::GraphicsCommandListDep* p_command_list,
             const ngl::render::task::RenderPassViewInfo& main_view_info, const InjectionSourceDepthBufferInfo& depth_buffer_info
@@ -153,10 +160,6 @@ namespace ngl::render::app
         void UpdateFspDebugReadback();
         void UpdateAsspDebugReadback();
 
-
-        void SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir);
-
-
         ngl::rhi::ConstantBufferPooledHandle GetDispatchCbh() const { return cbh_dispatch_; }
         rhi::RefSrvDep GetFspProbeAtlasTex() const { return fsp_probe_atlas_tex_.srv; }
         rhi::RefSrvDep GetFspIrradianceVolumeSHBuffer() const { return fsp_irradiance_volume_sh_buffer_.srv; }
@@ -170,6 +173,7 @@ namespace ngl::render::app
         bool ResizeScreenProbeResources(ngl::rhi::DeviceDep* p_device, const math::Vec2i& render_resolution);
 
         bool is_first_dispatch_ = true;
+        bool dispatch_requires_initial_clear_ = true;
         u32 frame_count_{};
 
         math::Vec3 important_point_ = {0,0,0};
@@ -375,9 +379,16 @@ namespace ngl::render::app
         // 破棄
         void Finalize();
 
+        // RenderThread起動前の同期タイミングで呼び出す。
+        bool PrepareFrame(rhi::DeviceDep* p_device,
+            const math::Vec3& important_pos,
+            const math::Vec3& important_dir,
+            const math::Vec3& main_light_dir,
+            const math::Vec2i& render_resolution);
+        void UploadFrameConstants(rhi::DeviceDep* p_device);
+
         void DispatchBegin(rhi::GraphicsCommandListDep* p_command_list,
-            rhi::ConstantBufferPooledHandle scene_cbv, 
-            const ngl::render::task::RenderPassViewInfo& main_view_info, const math::Vec2i& render_resolution);
+            rhi::ConstantBufferPooledHandle scene_cbv);
             
 
         void DispatchViewBbvOccupancyUpdate(rhi::GraphicsCommandListDep* p_command_list,
@@ -403,10 +414,6 @@ namespace ngl::render::app
             rhi::ConstantBufferPooledHandle scene_cbv, 
             rhi::RefTextureDep hw_depth_tex, rhi::RefDsvDep hw_depth_dsv,
             rhi::RefTextureDep lighting_tex, rhi::RefRtvDep lighting_rtv);
-
-
-        void SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir);
-
         void SetDescriptor(rhi::PipelineStateBaseDep* p_pso, rhi::DescriptorSetDep* p_desc_set) const;
 
     private:
@@ -439,19 +446,18 @@ namespace ngl::render::app
 
 			desc_ = desc;
             
-            // instant_rdvへの情報直接設定をBeginで実行.
-            desc_.p_instant_rdv->SetImportantPointInfo(view_info.camera_pos, view_info.camera_pose.GetColumn2());
+			// 定数値とリソースはMainThread側で確定済み。RTG側ではフレーム用CBだけを確保する。
+			desc_.p_instant_rdv->UploadFrameConstants(p_device);
 
 			// Render処理のLambdaをRTGに登録.
 			builder.RegisterTaskNodeRenderFunction(this,
-				[this, view_info](ngl::rtg::RenderTaskGraphBuilder& builder, ngl::rtg::TaskGraphicsCommandListAllocator command_list_allocator)
+				[this](ngl::rtg::RenderTaskGraphBuilder& builder, ngl::rtg::TaskGraphicsCommandListAllocator command_list_allocator)
 				{
 					command_list_allocator.Alloc(1);
 					auto gfx_commandlist = command_list_allocator.GetOrCreate(0);
 					NGL_RHI_GPU_SCOPED_EVENT_MARKER(gfx_commandlist, "RenderTaskInstantRdvBegin");
 
-                    desc_.p_instant_rdv->DispatchBegin(gfx_commandlist, desc_.scene_cbv, 
-                        view_info, math::Vec2i(desc_.w, desc_.h));
+                    desc_.p_instant_rdv->DispatchBegin(gfx_commandlist, desc_.scene_cbv);
 				}
 			);
 		}

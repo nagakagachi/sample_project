@@ -1611,20 +1611,15 @@ namespace ngl::render::app
         return true;
     }
 
-    void BitmaskBrickVoxelGi::SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir)
+    bool BitmaskBrickVoxelGi::PrepareFrame(
+        rhi::DeviceDep* p_device,
+        const math::Vec3& important_pos,
+        const math::Vec3& important_dir,
+        const math::Vec3& main_light_dir,
+        const math::Vec2i& render_resolution)
     {
-        important_point_ = pos;
-        important_dir_   = dir;
-    }
-
-    
-    void BitmaskBrickVoxelGi::Dispatch_Begin(rhi::GraphicsCommandListDep* p_command_list,
-                        rhi::ConstantBufferPooledHandle scene_cbv,
-                        const ngl::render::task::RenderPassViewInfo& main_view_info, const math::Vec2i& render_resolution
-                        )
-    {
-        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "InstantRdv_Dispatch_Begin");
-
+        important_point_ = important_pos;
+        important_dir_ = important_dir;
 
         const math::Vec2i desired_probe_resolution(std::max(render_resolution.x, 1), std::max(render_resolution.y, 1));
         const bool needs_screen_probe_resize =
@@ -1633,11 +1628,11 @@ namespace ngl::render::app
             (static_cast<int>(assp_probe_tex_[0].texture->GetHeight()) != desired_probe_resolution.y);
         if(needs_screen_probe_resize)
         {
-            const bool resize_success = ResizeScreenProbeResources(p_command_list->GetDevice(), desired_probe_resolution);
+            const bool resize_success = ResizeScreenProbeResources(p_device, desired_probe_resolution);
             assert(resize_success);
             if(!resize_success)
             {
-                return;
+                return false;
             }
 
             is_first_dispatch_ = true;
@@ -1675,7 +1670,6 @@ namespace ngl::render::app
 
         const math::Vec2i hw_depth_size = render_resolution;
 
-        cbh_dispatch_ = p_command_list->GetDevice()->GetConstantBufferPool()->Alloc(sizeof(InstantRdvParam));
         {
             // メンバデフォルト値で初期化し、ランタイム可変値のみ上書き.
             InstantRdvParam param{};
@@ -1761,7 +1755,7 @@ namespace ngl::render::app
             param.ss_probe_temporal_filter_normal_cos_threshold = k_default_instant_rdv_param.ss_probe_temporal_filter_normal_cos_threshold;
             param.ss_probe_temporal_filter_plane_dist_threshold = k_default_instant_rdv_param.ss_probe_temporal_filter_plane_dist_threshold;
 
-            param.main_light_dir_ws = main_view_info.main_light_dir_ws;
+            param.main_light_dir_ws = main_light_dir;
 
             param.debug_view_category = InstantRasterDerivedVoxelScene::dbg_view_category_;
             param.debug_view_sub_mode = InstantRasterDerivedVoxelScene::dbg_view_sub_mode_;
@@ -1790,13 +1784,28 @@ namespace ngl::render::app
             param.assp_debug_freeze_frame_random_enable = InstantRasterDerivedVoxelScene::assp_debug_freeze_frame_random_enable_;
 
             dispatch_param_cache_ = param;
-            // ローカル変数からマップ先バッファへコピー.
-            auto* p_mapped = cbh_dispatch_->buffer.MapAs<InstantRdvParam>();
-            std::memcpy(p_mapped, &dispatch_param_cache_, sizeof(InstantRdvParam));
-            cbh_dispatch_->buffer.Unmap();
         }
+
+        dispatch_requires_initial_clear_ = is_first_dispatch;
+        return true;
+    }
+
+    void BitmaskBrickVoxelGi::UploadFrameConstants(rhi::DeviceDep* p_device)
+    {
+        cbh_dispatch_ = p_device->GetConstantBufferPool()->Alloc(sizeof(InstantRdvParam));
+        auto* p_mapped = cbh_dispatch_->buffer.MapAs<InstantRdvParam>();
+        std::memcpy(p_mapped, &dispatch_param_cache_, sizeof(InstantRdvParam));
+        cbh_dispatch_->buffer.Unmap();
+    }
+
+    void BitmaskBrickVoxelGi::Dispatch_Begin(
+        rhi::GraphicsCommandListDep* p_command_list,
+        rhi::ConstantBufferPooledHandle scene_cbv)
+    {
+        NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "InstantRdv_Dispatch_Begin");
+
         // 初回クリア.
-        if (is_first_dispatch)
+        if (dispatch_requires_initial_clear_)
         {
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvInitClear");
@@ -1862,6 +1871,8 @@ namespace ngl::render::app
                 p_command_list->ResourceBarrier(assp_probe_best_prev_tile_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
 
             }
+
+            dispatch_requires_initial_clear_ = false;
         }
         // Bbv Begin Update Pass.
         {
@@ -3151,9 +3162,12 @@ namespace ngl::render::app
         InstantRasterDerivedVoxelScene::dbg_assp_total_ray_count_ = 0;
     }
 
-    void InstantRasterDerivedVoxelScene::DispatchBegin(rhi::GraphicsCommandListDep* p_command_list,
-        rhi::ConstantBufferPooledHandle scene_cbv, 
-        const ngl::render::task::RenderPassViewInfo& main_view_info, const math::Vec2i& render_resolution)
+    bool InstantRasterDerivedVoxelScene::PrepareFrame(
+        rhi::DeviceDep* p_device,
+        const math::Vec3& important_pos,
+        const math::Vec3& important_dir,
+        const math::Vec3& main_light_dir,
+        const math::Vec2i& render_resolution)
     {
         if(bbvgi_instance_)
         {
@@ -3162,7 +3176,31 @@ namespace ngl::render::app
                 bbvgi_instance_->UpdateFspDebugReadback();
             }
             bbvgi_instance_->UpdateAsspDebugReadback();
-            bbvgi_instance_->Dispatch_Begin(p_command_list, scene_cbv, main_view_info, render_resolution);
+            return bbvgi_instance_->PrepareFrame(
+                p_device,
+                important_pos,
+                important_dir,
+                main_light_dir,
+                render_resolution);
+        }
+        return false;
+    }
+
+    void InstantRasterDerivedVoxelScene::UploadFrameConstants(rhi::DeviceDep* p_device)
+    {
+        if(bbvgi_instance_)
+        {
+            bbvgi_instance_->UploadFrameConstants(p_device);
+        }
+    }
+
+    void InstantRasterDerivedVoxelScene::DispatchBegin(
+        rhi::GraphicsCommandListDep* p_command_list,
+        rhi::ConstantBufferPooledHandle scene_cbv)
+    {
+        if(bbvgi_instance_)
+        {
+            bbvgi_instance_->Dispatch_Begin(p_command_list, scene_cbv);
         }
     }
     void InstantRasterDerivedVoxelScene::DispatchViewBbvOccupancyUpdate(rhi::GraphicsCommandListDep* p_command_list,
@@ -3224,14 +3262,6 @@ namespace ngl::render::app
         if(bbvgi_instance_)
         {
             bbvgi_instance_->DebugDraw(p_command_list, scene_cbv, hw_depth_tex, hw_depth_dsv, lighting_tex, lighting_rtv);
-        }
-    }
-
-    void InstantRasterDerivedVoxelScene::SetImportantPointInfo(const math::Vec3& pos, const math::Vec3& dir)
-    {
-        if(bbvgi_instance_)
-        {
-            bbvgi_instance_->SetImportantPointInfo(pos, dir);
         }
     }
 
