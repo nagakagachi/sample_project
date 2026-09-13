@@ -25,6 +25,24 @@ https://nagakagachi.notion.site/RenderGraph-54f0cf4284c7466697b99cc0df81be80
     - auto-restore depends on Visual Studio settings (NuGet Package Restore enabled)
   - build ngl_v001.sln (Visual Studio 2022)
 
+## サンプルシーンモデル
+
+サンプルアプリは、既定でリポジトリに含まれるSponzaシーンを読み込みます。ローカル環境で継続的に別のモデルを使用する場合は、Git管理外の`ngl_v001/sample_app/sample_app_local_config.h`を作成します。
+
+```cpp
+#pragma once
+#define NGL_SAMPLE_APP_DEFAULT_SCENE_MODEL "../ngl/data/model/Bistro_v5_2/BistroExterior.fbx"
+#define NGL_SAMPLE_APP_DEFAULT_SCENE_SCALE 1.0f
+```
+
+この設定は、Visual StudioとVS Codeの標準実行設定の両方で使用できます。一時的にモデルを変更する場合は、コマンドラインでモデルのパスと任意のスケールを指定します。
+
+```text
+sample_app.exe --scene-model "../ngl/data/model/Bistro_v5_2/BistroExterior.fbx" --scene-scale 1.0
+```
+
+Visual Studioでは、プロジェクトのデバッグ設定へ同じ引数を記述することもできます。生成される`.vcxproj.user`はGit管理外です。
+
 # Render Task Graph
 マルチスレッド/非同期Compute対応レンダリングパイプラインを構築するためにRenderTaskGraph(RTG)を実装しています.<br/>
 UE5のRDGに類似したシンプルなRenderGraphです.<br/>

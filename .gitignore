@@ -43,6 +43,9 @@ Generated\ Files/
 # Project cache data
 ngl_v001/ngl/data/cache/
 
+# サンプルアプリのローカル設定
+/ngl_v001/sample_app/sample_app_local_config.h
+
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*

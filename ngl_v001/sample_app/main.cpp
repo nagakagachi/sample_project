@@ -195,6 +195,25 @@ struct BenchmarkCliOptions
 };
 static BenchmarkCliOptions g_benchmark_cli = {};
 
+#if __has_include("sample_app_local_config.h")
+#include "sample_app_local_config.h"
+#endif
+
+#if !defined(NGL_SAMPLE_APP_DEFAULT_SCENE_MODEL)
+#define NGL_SAMPLE_APP_DEFAULT_SCENE_MODEL "../ngl/data/model/sponza_gltf/glTF/Sponza.gltf"
+#endif
+#if !defined(NGL_SAMPLE_APP_DEFAULT_SCENE_SCALE)
+#define NGL_SAMPLE_APP_DEFAULT_SCENE_SCALE 1.0f
+#endif
+
+// 公開時はリポジトリに含まれるSponzaを使用し、ローカル設定またはCLIで上書きする。
+struct SceneCliOptions
+{
+    std::string model_path = NGL_SAMPLE_APP_DEFAULT_SCENE_MODEL;
+    float model_scale = NGL_SAMPLE_APP_DEFAULT_SCENE_SCALE;
+};
+static SceneCliOptions g_scene_cli = {};
+
 // SwTessellation.
 static float sw_tess_important_point_offset_in_view  = 7.0;
 static int sw_tess_fixed_subdivision_level           = -1;     // -1で無効、0以上で固定分割レベルを指定
@@ -495,6 +514,24 @@ static void ParseCommandLineArgs(int argc, char** argv)
                 g_benchmark_cli.main_view_reduced_surface = 0;
             }
         }
+        else if (arg == "--scene-model" && (i + 1) < argc)
+        {
+            g_scene_cli.model_path = argv[++i] ? argv[i] : "";
+        }
+        else if (arg == "--scene-scale" && (i + 1) < argc)
+        {
+            try
+            {
+                const float parsed_scale = std::stof(argv[++i]);
+                if(std::isfinite(parsed_scale) && parsed_scale > 0.0f)
+                {
+                    g_scene_cli.model_scale = parsed_scale;
+                }
+            }
+            catch (...)
+            {
+            }
+        }
         else if (arg == "--help" || arg == "-h")
         {
             std::cout
@@ -503,6 +540,7 @@ static void ParseCommandLineArgs(int argc, char** argv)
                 << "[--benchmark-output PATH] [--benchmark-tag LABEL] [--benchmark-view startup|gbuffer]" << std::endl
                 << "       [--benchmark-ready-delta-frames N] "
                 << "[--main-view-reduced-surface on|off]" << std::endl
+                << "       [--scene-model PATH] [--scene-scale SCALE]" << std::endl
                 << "  benchmark aliases: benchmark / bench / perf-run / ベンチマーク" << std::endl;
         }
     }
@@ -659,32 +697,16 @@ bool AppGame::Initialize()
         //const char* mesh_file_box = "K:\\GitHub\\sample_projct_lib\\ngl_v001\\ngl\\external\\assimp\\test\\models\\FBX\\box.fbx";
         const char* mesh_file_box = "../ngl/data/model/assimp/FBX/box.fbx";
 
-        // シーンモデル.
-#if 0
-        // Sponza.
-        const char* mesh_file_sponza = "../ngl/data/model/sponza_gltf/glTF/Sponza.gltf";
-        const float sponza_scale     = 1.0f;
-
-        const char* mesh_target_scene       = mesh_file_sponza;
-        const float target_scene_base_scale = sponza_scale;
-#else
-        // Amazon Lumberyard Bistro.
-        const char* mesh_file_bistro = "../ngl/data/model/Bistro_v5_2/BistroExterior.fbx";
-        const float bistro_scale     = 1.0f;
-
-        const char* mesh_target_scene       = mesh_file_bistro;
-        const float target_scene_base_scale = bistro_scale;
+        // 既定ではコミット済みのSponzaを使用する。ローカル設定またはCLIで上書きできる。
+        const char* mesh_target_scene = g_scene_cli.model_path.c_str();
+        const float target_scene_base_scale = g_scene_cli.model_scale;
         {
-            // BistroExterior はリポジトリ外配布のため、ローカル配置をチェックする。
             std::error_code ec;
             const bool is_mesh_target_scene_exists = std::filesystem::exists(mesh_target_scene, ec);
             if (!is_mesh_target_scene_exists)
             {
-                std::cout << "[ERROR] Required model file was not found: " << mesh_target_scene << std::endl;
-                std::cout << "Please download/checkout BistroExterior and place it under:" << std::endl;
-                std::cout << "  ../ngl/data/model/Bistro_v5_2" << std::endl;
-                std::cout << "Expected file:" << std::endl;
-                std::cout << "  ../ngl/data/model/Bistro_v5_2/BistroExterior.fbx" << std::endl;
+                std::cout << "[ERROR] Scene model file was not found: " << mesh_target_scene << std::endl;
+                std::cout << "Use --scene-model PATH to select a local model." << std::endl;
                 if(ec)
                 {
                     std::cout << "filesystem error: " << ec.message() << std::endl;
@@ -692,7 +714,6 @@ bool AppGame::Initialize()
                 return false;
             }
         }
-#endif
 
         std::shared_ptr<ngl::gfx::MeshData> procedural_mesh_data = std::make_shared<ngl::gfx::MeshData>();
         {
