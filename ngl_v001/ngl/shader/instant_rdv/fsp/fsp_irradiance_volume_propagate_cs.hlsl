@@ -44,10 +44,12 @@ bool FspTryLoadNeighborSH(
 
     const uint neighbor_irradiance_volume_cell_index =
         FspIrradianceVolumeCellIndexFromLinearCoord(cascade_index, neighbor_linear_coord);
-    out_coeff0 = RWFspIrradianceVolumeSHBuffer[FspIrradianceVolumeSHAddress(neighbor_irradiance_volume_cell_index, 0)];
-    out_coeff1 = RWFspIrradianceVolumeSHBuffer[FspIrradianceVolumeSHAddress(neighbor_irradiance_volume_cell_index, 1)];
-    out_coeff2 = RWFspIrradianceVolumeSHBuffer[FspIrradianceVolumeSHAddress(neighbor_irradiance_volume_cell_index, 2)];
-    out_coeff3 = RWFspIrradianceVolumeSHBuffer[FspIrradianceVolumeSHAddress(neighbor_irradiance_volume_cell_index, 3)];
+    FspIrradianceVolumeLoadPackedCoeffsRw(
+        neighbor_irradiance_volume_cell_index,
+        out_coeff0,
+        out_coeff1,
+        out_coeff2,
+        out_coeff3);
     return FspIrradianceVolumeHasValidSHCoeff(out_coeff0, out_coeff1, out_coeff2, out_coeff3);
 }
 
@@ -146,8 +148,10 @@ void main_cs(
     }
 
     const float inv_count = rcp(float(valid_neighbor_count));
-    RWFspIrradianceVolumeSHBuffer[FspIrradianceVolumeSHAddress(irradiance_volume_cell_index, 0)] = accum_coeff0 * inv_count;
-    RWFspIrradianceVolumeSHBuffer[FspIrradianceVolumeSHAddress(irradiance_volume_cell_index, 1)] = accum_coeff1 * inv_count;
-    RWFspIrradianceVolumeSHBuffer[FspIrradianceVolumeSHAddress(irradiance_volume_cell_index, 2)] = accum_coeff2 * inv_count;
-    RWFspIrradianceVolumeSHBuffer[FspIrradianceVolumeSHAddress(irradiance_volume_cell_index, 3)] = accum_coeff3 * inv_count;
+    FspIrradianceVolumeStorePackedCoeffs(
+        irradiance_volume_cell_index,
+        accum_coeff0 * inv_count,
+        accum_coeff1 * inv_count,
+        accum_coeff2 * inv_count,
+        accum_coeff3 * inv_count);
 }

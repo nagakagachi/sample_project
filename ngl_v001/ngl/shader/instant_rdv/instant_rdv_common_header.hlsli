@@ -135,8 +135,15 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     #define k_fsp_probe_distance_max (50.0)
     // fsp
     #define k_fsp_probe_distance_max_inv (1.0 / k_fsp_probe_distance_max)
-    // FSP IrradianceVolume SH payload. 1 cell = RGBA * 4.
-    #define k_fsp_irradiance_volume_sh_float4_count (4)
+    // FSP IrradianceVolumeはSkyVisibilityとIrradiance RGBを4つの3Dサブボリュームへ格納する.
+    // 各RGBAはL1 SHの4係数(Y00, Y1-1, Y10, Y1+1)に対応する.
+    #define k_fsp_irradiance_volume_sh_texture_count (4)
+    #define k_fsp_irradiance_volume_sky_visibility_texture_index (0)
+    #define k_fsp_irradiance_volume_irradiance_r_texture_index (1)
+    #define k_fsp_irradiance_volume_irradiance_g_texture_index (2)
+    #define k_fsp_irradiance_volume_irradiance_b_texture_index (3)
+    // Toroidal境界をハードウェアTrilinear補間するため、各サブボリュームの正側に折り返し用Texelを1層持つ。
+    #define k_fsp_irradiance_volume_guard_texel_count (1)
     
     // Bbv 全体更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
     #define BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT 60
@@ -263,7 +270,8 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         // BBVだけは独立したMorton voxel index空間であり、このoffsetを使用しない。
         uint cell_offset;
         uint cell_count;
-        uint dummy0;
+        // 3D Texture内でこのCascadeのSkyVisibilityサブボリュームが始まるZ座標.
+        uint irradiance_volume_texture_z_offset;
         uint dummy1;
     };
     // Dispatchパラメータ.
@@ -351,6 +359,10 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         float3 main_light_dir_ws NGL_CPP_MEMBER_INIT({});
 
         int debug_view_category NGL_CPP_MEMBER_INIT({-1});
+        int debug_fsp_irradiance_volume_slice_scale NGL_CPP_MEMBER_INIT({2});
+        int debug_fsp_irradiance_volume_slice_scroll_x NGL_CPP_MEMBER_INIT({0});
+        int debug_fsp_irradiance_volume_slice_scroll_y NGL_CPP_MEMBER_INIT({0});
+        int debug_fsp_irradiance_volume_slice_padding NGL_CPP_MEMBER_INIT({0});
         
         int debug_bbv_probe_mode NGL_CPP_MEMBER_INIT({-1});
         int debug_bbv_depth_test_enable NGL_CPP_MEMBER_INIT({0});

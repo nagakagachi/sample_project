@@ -119,9 +119,9 @@ void EvalIblDiffuseStandard
 struct FspProbePackedShL1Sample
 {
     float4 sky_visibility_sh;
-    float4 radiance_sh_r;
-    float4 radiance_sh_g;
-    float4 radiance_sh_b;
+    float4 irradiance_sh_r;
+    float4 irradiance_sh_g;
+    float4 irradiance_sh_b;
 };
 
 // FSP SH のゼロ値を返す簡易コンストラクタ。
@@ -129,9 +129,9 @@ FspProbePackedShL1Sample MakeZeroFspProbePackedShL1Sample()
 {
     FspProbePackedShL1Sample result;
     result.sky_visibility_sh = 0.0.xxxx;
-    result.radiance_sh_r = 0.0.xxxx;
-    result.radiance_sh_g = 0.0.xxxx;
-    result.radiance_sh_b = 0.0.xxxx;
+    result.irradiance_sh_r = 0.0.xxxx;
+    result.irradiance_sh_g = 0.0.xxxx;
+    result.irradiance_sh_b = 0.0.xxxx;
     return result;
 }
 
@@ -139,30 +139,10 @@ FspProbePackedShL1Sample MakeZeroFspProbePackedShL1Sample()
 FspProbePackedShL1Sample FspLoadPackedShL1FromCellIndexUnchecked(uint irradiance_volume_cell_index)
 {
     FspProbePackedShL1Sample result;
-    const float4 coeff0 = FspIrradianceVolumeLoadCoeff(irradiance_volume_cell_index, 0);
-    const float4 coeff1 = FspIrradianceVolumeLoadCoeff(irradiance_volume_cell_index, 1);
-    const float4 coeff2 = FspIrradianceVolumeLoadCoeff(irradiance_volume_cell_index, 2);
-    const float4 coeff3 = FspIrradianceVolumeLoadCoeff(irradiance_volume_cell_index, 3);
-    result.sky_visibility_sh = float4(
-        coeff0.r,
-        coeff1.r,
-        coeff2.r,
-        coeff3.r);
-    result.radiance_sh_r = float4(
-        coeff0.g,
-        coeff1.g,
-        coeff2.g,
-        coeff3.g);
-    result.radiance_sh_g = float4(
-        coeff0.b,
-        coeff1.b,
-        coeff2.b,
-        coeff3.b);
-    result.radiance_sh_b = float4(
-        coeff0.a,
-        coeff1.a,
-        coeff2.a,
-        coeff3.a);
+    result.sky_visibility_sh = FspIrradianceVolumeLoadSignal(irradiance_volume_cell_index, 0u);
+    result.irradiance_sh_r = FspIrradianceVolumeLoadSignal(irradiance_volume_cell_index, 1u);
+    result.irradiance_sh_g = FspIrradianceVolumeLoadSignal(irradiance_volume_cell_index, 2u);
+    result.irradiance_sh_b = FspIrradianceVolumeLoadSignal(irradiance_volume_cell_index, 3u);
     return result;
 }
 
@@ -261,37 +241,30 @@ bool TrySampleFspPackedShL1Nearest(out FspProbePackedShL1Sample result, float3 s
     return true;
 }
 
-float4 FspTrilinearLoadIrradianceVolumeCoeff(
-    uint4 sh_address_z0,
-    uint4 sh_address_z1,
-    uint coeff_index,
+float4 FspTrilinearSampleIrradianceVolumeSignal(
+    FspCascadeGridParam cascade,
+    uint3 physical_coord0,
+    uint texture_index,
     float3 lerp_rate)
 {
-    const float4 z0_y0 = lerp(
-        FspIrradianceVolumeSHBuffer[sh_address_z0.x + coeff_index],
-        FspIrradianceVolumeSHBuffer[sh_address_z0.y + coeff_index],
-        lerp_rate.x);
-    const float4 z0_y1 = lerp(
-        FspIrradianceVolumeSHBuffer[sh_address_z0.z + coeff_index],
-        FspIrradianceVolumeSHBuffer[sh_address_z0.w + coeff_index],
-        lerp_rate.x);
-    const float4 z1_y0 = lerp(
-        FspIrradianceVolumeSHBuffer[sh_address_z1.x + coeff_index],
-        FspIrradianceVolumeSHBuffer[sh_address_z1.y + coeff_index],
-        lerp_rate.x);
-    const float4 z1_y1 = lerp(
-        FspIrradianceVolumeSHBuffer[sh_address_z1.z + coeff_index],
-        FspIrradianceVolumeSHBuffer[sh_address_z1.w + coeff_index],
-        lerp_rate.x);
-    return lerp(
-        lerp(z0_y0, z0_y1, lerp_rate.y),
-        lerp(z1_y0, z1_y1, lerp_rate.y),
-        lerp_rate.z);
+    const uint3 padded_resolution = cascade.grid.grid_resolution +
+        k_fsp_irradiance_volume_guard_texel_count;
+    const uint texture_z_offset = cascade.irradiance_volume_texture_z_offset +
+        texture_index * padded_resolution.z;
+    const float texture_depth = float(
+        padded_resolution.z * cb_instant_rdv.fsp_cascade_count *
+        k_fsp_irradiance_volume_sh_texture_count);
+    const float3 sample_texel = float3(
+        float2(physical_coord0.xy) + 0.5.xx + lerp_rate.xy,
+        float(texture_z_offset + physical_coord0.z) + 0.5 + lerp_rate.z);
+    const float3 sample_uvw = sample_texel /
+        float3(float2(padded_resolution.xy), texture_depth);
+    return FspIrradianceVolumeSHTexture.SampleLevel(samp, sample_uvw, 0.0);
 }
 
 // Dense IrradianceVolume 前提の固定コスト Trilinear 参照。
-// CPU検証済みのcubic power-of-two解像度を使い、ToroidalMappingはx/y/z各軸の2座標だけ事前計算する。
-// 8セルごとのmodulo/Morton encodeは行わず、X-majorのrow/slice stride加算だけでaddressを構築する。
+// 論理座標をToroidalな物理座標へ変換し、正側Guardを含む各SHサブボリュームをハードウェア補間する。
+// Guardには物理座標0の値を複製しているため、境界でも隣の信号やCascadeへフィルタが漏れない。
 bool TrySampleFspPackedShL1Interpolated(out FspProbePackedShL1Sample result, float3 sample_pos_ws, float2 dither_seed)
 {
     uint cascade_index = 0;
@@ -307,38 +280,11 @@ bool TrySampleFspPackedShL1Interpolated(out FspProbePackedShL1Sample result, flo
 
     const int3 physical_coord0 =
         FspIrradianceVolumeToroidalPhysicalCoord(base_coord, cascade.grid);
-    const int3 physical_coord1 =
-        (physical_coord0 + 1) & (cascade.grid.grid_resolution - 1);
-    const uint row_stride = uint(cascade.grid.grid_resolution.x);
-    const uint slice_stride = uint(cascade.grid.grid_resolution.x * cascade.grid.grid_resolution.y);
-    const uint x0 = uint(physical_coord0.x);
-    const uint x1 = uint(physical_coord1.x);
-    const uint y0 = uint(physical_coord0.y) * row_stride;
-    const uint y1 = uint(physical_coord1.y) * row_stride;
-    const uint z0 = uint(physical_coord0.z) * slice_stride;
-    const uint z1 = uint(physical_coord1.z) * slice_stride;
-    const uint cascade_offset = cascade.cell_offset;
-    const uint4 cell_index_z0 = cascade_offset + uint4(
-        x0 + y0 + z0,
-        x1 + y0 + z0,
-        x0 + y1 + z0,
-        x1 + y1 + z0);
-    const uint4 cell_index_z1 = cascade_offset + uint4(
-        x0 + y0 + z1,
-        x1 + y0 + z1,
-        x0 + y1 + z1,
-        x1 + y1 + z1);
-    const uint4 sh_address_z0 = cell_index_z0 * k_fsp_irradiance_volume_sh_float4_count;
-    const uint4 sh_address_z1 = cell_index_z1 * k_fsp_irradiance_volume_sh_float4_count;
-
-    const float4 coeff0 = FspTrilinearLoadIrradianceVolumeCoeff(sh_address_z0, sh_address_z1, 0u, lerp_rate);
-    const float4 coeff1 = FspTrilinearLoadIrradianceVolumeCoeff(sh_address_z0, sh_address_z1, 1u, lerp_rate);
-    const float4 coeff2 = FspTrilinearLoadIrradianceVolumeCoeff(sh_address_z0, sh_address_z1, 2u, lerp_rate);
-    const float4 coeff3 = FspTrilinearLoadIrradianceVolumeCoeff(sh_address_z0, sh_address_z1, 3u, lerp_rate);
-    result.sky_visibility_sh = float4(coeff0.r, coeff1.r, coeff2.r, coeff3.r);
-    result.radiance_sh_r = float4(coeff0.g, coeff1.g, coeff2.g, coeff3.g);
-    result.radiance_sh_g = float4(coeff0.b, coeff1.b, coeff2.b, coeff3.b);
-    result.radiance_sh_b = float4(coeff0.a, coeff1.a, coeff2.a, coeff3.a);
+    // 各信号は正側Guardを含むサブボリュームから1回だけハードウェアTrilinearサンプルする。
+    result.sky_visibility_sh = FspTrilinearSampleIrradianceVolumeSignal(cascade, physical_coord0, 0u, lerp_rate);
+    result.irradiance_sh_r = FspTrilinearSampleIrradianceVolumeSignal(cascade, physical_coord0, 1u, lerp_rate);
+    result.irradiance_sh_g = FspTrilinearSampleIrradianceVolumeSignal(cascade, physical_coord0, 2u, lerp_rate);
+    result.irradiance_sh_b = FspTrilinearSampleIrradianceVolumeSignal(cascade, physical_coord0, 3u, lerp_rate);
 
     return true;
 }
@@ -353,12 +299,12 @@ bool TrySampleFspPackedShL1(out FspProbePackedShL1Sample result, float3 sample_p
     return TrySampleFspPackedShL1Nearest(result, sample_pos_ws);
 }
 
-float3 EvalFspRadianceL1DiffuseIrradiance(FspProbePackedShL1Sample fsp_probe_sh, float4 sh_basis)
+float3 EvalFspL1DiffuseIrradiance(FspProbePackedShL1Sample fsp_probe_sh, float4 sh_basis)
 {
     return float3(
-        dot(ConvolveL1ShByClampedCosine(fsp_probe_sh.radiance_sh_r), sh_basis),
-        dot(ConvolveL1ShByClampedCosine(fsp_probe_sh.radiance_sh_g), sh_basis),
-        dot(ConvolveL1ShByClampedCosine(fsp_probe_sh.radiance_sh_b), sh_basis));
+        dot(fsp_probe_sh.irradiance_sh_r, sh_basis),
+        dot(fsp_probe_sh.irradiance_sh_g, sh_basis),
+        dot(fsp_probe_sh.irradiance_sh_b, sh_basis));
 }
 
 float EvalFspSkyVisibilityL1IblOcclusion(float4 sky_visibility_sh_coeff, float4 sh_basis)
@@ -705,7 +651,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
                 {
                     gi_probe_diffuse_irradiance = max(
                         float3(0.0, 0.0, 0.0),
-                    EvalFspRadianceL1DiffuseIrradiance(fsp_probe_sh, sh_basis));
+                    EvalFspL1DiffuseIrradiance(fsp_probe_sh, sh_basis));
                 }
             }
         }

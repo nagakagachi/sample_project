@@ -75,9 +75,24 @@ void main_cs(
 
     const float texel_solid_angle = (4.0 * 3.14159265359) / float(k_fsp_probe_octmap_width * k_fsp_probe_octmap_width);
     // Probe atlas はRT resolve用の中間履歴で、最終シェーディング用SHはowner cellのdense volumeへ集約する。
+    // RGBは書き込み時にLambertのclamped-cosineを畳み込み、サンプリング側の評価を軽くする。
     const uint global_cell_index = probe_pool_data.owner_cell_index;
-    RWFspIrradianceVolumeSHBuffer[FspIrradianceVolumeSHAddress(global_cell_index, 0)] = packed_sh_coeff0 * texel_solid_angle;
-    RWFspIrradianceVolumeSHBuffer[FspIrradianceVolumeSHAddress(global_cell_index, 1)] = packed_sh_coeff1 * texel_solid_angle;
-    RWFspIrradianceVolumeSHBuffer[FspIrradianceVolumeSHAddress(global_cell_index, 2)] = packed_sh_coeff2 * texel_solid_angle;
-    RWFspIrradianceVolumeSHBuffer[FspIrradianceVolumeSHAddress(global_cell_index, 3)] = packed_sh_coeff3 * texel_solid_angle;
+    packed_sh_coeff0 *= texel_solid_angle;
+    packed_sh_coeff1 *= texel_solid_angle;
+    packed_sh_coeff2 *= texel_solid_angle;
+    packed_sh_coeff3 *= texel_solid_angle;
+    const float4 sky_visibility_sh = float4(
+        packed_sh_coeff0.r, packed_sh_coeff1.r, packed_sh_coeff2.r, packed_sh_coeff3.r);
+    const float4 irradiance_sh_r = ConvolveL1ShByClampedCosine(float4(
+        packed_sh_coeff0.g, packed_sh_coeff1.g, packed_sh_coeff2.g, packed_sh_coeff3.g));
+    const float4 irradiance_sh_g = ConvolveL1ShByClampedCosine(float4(
+        packed_sh_coeff0.b, packed_sh_coeff1.b, packed_sh_coeff2.b, packed_sh_coeff3.b));
+    const float4 irradiance_sh_b = ConvolveL1ShByClampedCosine(float4(
+        packed_sh_coeff0.a, packed_sh_coeff1.a, packed_sh_coeff2.a, packed_sh_coeff3.a));
+    FspIrradianceVolumeStoreSignals(
+        global_cell_index,
+        sky_visibility_sh,
+        irradiance_sh_r,
+        irradiance_sh_g,
+        irradiance_sh_b);
 }

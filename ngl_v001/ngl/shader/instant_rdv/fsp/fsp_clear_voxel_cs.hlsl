@@ -38,11 +38,8 @@ void main_cs(
         RWFspCellProbeIndexBuffer[dtid.x] = k_fsp_invalid_probe_index;
 
         // Dense IrradianceVolume SH は global cell index 直結の最終シェーディング参照先。
-        [unroll]
-        for(uint coeff_index = 0; coeff_index < k_fsp_irradiance_volume_sh_float4_count; ++coeff_index)
-        {
-            RWFspIrradianceVolumeSHBuffer[FspIrradianceVolumeSHAddress(dtid.x, coeff_index)] = 0.0.xxxx;
-        }
+        FspIrradianceVolumeStorePackedCoeffs(
+            dtid.x, 0.0.xxxx, 0.0.xxxx, 0.0.xxxx, 0.0.xxxx);
     }
 
     if(dtid.x < probe_pool_size)

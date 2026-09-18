@@ -45,11 +45,8 @@ void FspPushCurrActiveProbeIndex(uint probe_index)
 
 void FspClearIrradianceVolumeCell(uint global_cell_index)
 {
-    [unroll]
-    for(uint coeff_index = 0; coeff_index < k_fsp_irradiance_volume_sh_float4_count; ++coeff_index)
-    {
-        RWFspIrradianceVolumeSHBuffer[FspIrradianceVolumeSHAddress(global_cell_index, coeff_index)] = 0.0.xxxx;
-    }
+    FspIrradianceVolumeStorePackedCoeffs(
+        global_cell_index, 0.0.xxxx, 0.0.xxxx, 0.0.xxxx, 0.0.xxxx);
 }
 
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]

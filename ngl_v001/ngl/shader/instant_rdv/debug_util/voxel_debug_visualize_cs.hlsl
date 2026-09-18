@@ -283,18 +283,62 @@ void main_cs(
 
             RWTexWork[dtid.xy] = FspProbeAtlasTex.Load(uint3(texel_pos, 0));
         }
-        else if(1 == debug_sub_mode)
+        else if(1 <= debug_sub_mode && debug_sub_mode <= 5)
         {
-            // Dense IrradianceVolume SH をX-major cell index順に2Dへ展開して表示する。
-            const uint irradiance_volume_cell_index =
-                dtid.x + dtid.y * uint(cb_instant_rdv.fsp_cascade[0].grid.flatten_2d_width);
-            if(irradiance_volume_cell_index >= (uint)cb_instant_rdv.fsp_total_cell_count)
+            // 各Cascadeを縦方向の1行とし、物理Zスライスを横方向へ並べる。
+            // 表示座標を拡大率で戻してからスクロールを加え、仮想キャンバス上のセルを求める。
+            const uint3 grid_resolution = uint3(cb_instant_rdv.fsp_cascade[0].grid.grid_resolution);
+            const uint2 tile_stride = grid_resolution.xy + 1u;
+            const uint display_scale = uint(max(
+                cb_instant_rdv.debug_fsp_irradiance_volume_slice_scale,
+                1));
+            const uint2 scroll_offset = uint2(
+                max(cb_instant_rdv.debug_fsp_irradiance_volume_slice_scroll_x, 0),
+                max(cb_instant_rdv.debug_fsp_irradiance_volume_slice_scroll_y, 0));
+            const uint2 virtual_coord = dtid.xy / display_scale + scroll_offset;
+            const uint slice_z = virtual_coord.x / tile_stride.x;
+            const uint cascade_index = virtual_coord.y / tile_stride.y;
+            const uint2 physical_coord_xy = virtual_coord % tile_stride;
+            if(any(physical_coord_xy >= grid_resolution.xy) ||
+                slice_z >= grid_resolution.z ||
+                cascade_index >= uint(cb_instant_rdv.fsp_cascade_count))
             {
+                RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
                 return;
             }
 
-            // FSP IrradianceVolume SH texture raw RGBA.
-            RWTexWork[dtid.xy] = FspIrradianceVolumeLoadCoeff(irradiance_volume_cell_index, 0);
+            const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+            const uint irradiance_volume_cell_index = cascade.cell_offset +
+                FspPhysicalCellCoordToLocalIndex(
+                    int3(physical_coord_xy, slice_z),
+                    cascade.grid.grid_resolution);
+
+            if(1 == debug_sub_mode)
+            {
+                // 旧Buffer表示との比較用に、各信号のL0係数をRGBAへ再構成する。
+                float4 sky_visibility;
+                float4 irradiance_r;
+                float4 irradiance_g;
+                float4 irradiance_b;
+                FspIrradianceVolumeLoadSignals(
+                    irradiance_volume_cell_index,
+                    sky_visibility,
+                    irradiance_r,
+                    irradiance_g,
+                    irradiance_b);
+                RWTexWork[dtid.xy] = float4(
+                    sky_visibility.x,
+                    irradiance_r.x,
+                    irradiance_g.x,
+                    irradiance_b.x);
+            }
+            else
+            {
+                // 新3D Textureの信号サブボリュームを格納RGBAのまま表示する。
+                RWTexWork[dtid.xy] = FspIrradianceVolumeLoadSignal(
+                    irradiance_volume_cell_index,
+                    uint(debug_sub_mode - 2));
+            }
         }
     }
     // Category 2: ASSP.

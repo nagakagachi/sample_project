@@ -174,26 +174,22 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     }
     const uint global_cell_index = input.global_cell_index;
     const float4 sh_basis = EvaluateL1ShBasis(normal_ws);
-    const float4 sh_sky_vis = float4(
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 0).r,
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 1).r,
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 2).r,
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 3).r);
-    const float4 sh_radiance_r = float4(
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 0).g,
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 1).g,
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 2).g,
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 3).g);
-    const float4 sh_radiance_g = float4(
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 0).b,
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 1).b,
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 2).b,
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 3).b);
-    const float4 sh_radiance_b = float4(
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 0).a,
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 1).a,
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 2).a,
-        FspIrradianceVolumeLoadCoeff(global_cell_index, 3).a);
+    float4 sh_sky_vis;
+    float4 sh_irradiance_r;
+    float4 sh_irradiance_g;
+    float4 sh_irradiance_b;
+    FspIrradianceVolumeLoadSignals(
+        global_cell_index,
+        sh_sky_vis,
+        sh_irradiance_r,
+        sh_irradiance_g,
+        sh_irradiance_b);
+    // TextureにはCos畳み込み済みDiffuse Irradianceを格納するため、Radiance表示では逆畳み込みする。
+    const float pi = 3.14159265359;
+    const float4 deconvolve_scale = float4(1.0 / pi, 3.0 / (2.0 * pi), 3.0 / (2.0 * pi), 3.0 / (2.0 * pi));
+    const float4 sh_radiance_r = sh_irradiance_r * deconvolve_scale;
+    const float4 sh_radiance_g = sh_irradiance_g * deconvolve_scale;
+    const float4 sh_radiance_b = sh_irradiance_b * deconvolve_scale;
 
 
     
