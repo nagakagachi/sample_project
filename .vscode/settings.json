@@ -2,5 +2,6 @@
     "editor.insertSpaces": true,
     "editor.detectIndentation": false,
     "editor.tabSize": 4,
-    "C_Cpp.errorSquiggles": "disabled"
+    "C_Cpp.errorSquiggles": "disabled",
+    "cmake.sourceDirectory": "${workspaceFolder}/ngl_v001/deps"
 }
