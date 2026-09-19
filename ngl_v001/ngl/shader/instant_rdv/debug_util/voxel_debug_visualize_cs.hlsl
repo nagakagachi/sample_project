@@ -315,7 +315,7 @@ void main_cs(
 
             if(1 == debug_sub_mode)
             {
-                // 旧Buffer表示との比較用に、各信号のL0係数をRGBAへ再構成する。
+                // legacy形式のRGBA表示用に、各信号のL0係数を再構成する。
                 float4 sky_visibility;
                 float4 irradiance_r;
                 float4 irradiance_g;

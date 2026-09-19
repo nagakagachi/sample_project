@@ -101,8 +101,13 @@ VS_OUTPUT main_vs(VS_INPUT input)
     // 表示位置.
     const float3 instance_pos = probe_pos_ws;
     const bool is_selected_cascade = (cb_instant_rdv.debug_fsp_probe_cascade < 0) || (cb_instant_rdv.debug_fsp_probe_cascade == int(cascade_index));
-    const bool has_volume_sh = FspIrradianceVolumeHasValidSH(global_cell_index);
-    float draw_scale = (is_selected_cascade && ((is_irradiance_volume_debug && has_volume_sh) || ((!is_irradiance_volume_debug) && is_allocated))) ? cb_instant_rdv.debug_probe_radius : 0.0;
+    bool is_drawable = is_selected_cascade && is_allocated;
+    if(is_irradiance_volume_debug)
+    {
+        // IrradianceVolume表示だけが有効SH判定を必要とする。通常のProbe表示での4回のTexture loadを避ける。
+        is_drawable = is_selected_cascade && FspIrradianceVolumeHasValidSignals(global_cell_index);
+    }
+    const float draw_scale = is_drawable ? cb_instant_rdv.debug_probe_radius : 0.0;
 
     const int vtx_index = particle_quad_index[ instance_vtx_id ];
     float3 quad_vtx_pos = particle_quad_pos[vtx_index] * draw_scale;
@@ -173,60 +178,75 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
         octmap_sample = FspProbeAtlasTex.Load(int3(octmap_texel_pos, 0));
     }
     const uint global_cell_index = input.global_cell_index;
+    const int debug_mode = cb_instant_rdv.debug_fsp_probe_mode;
+    const int irradiance_volume_mode = cb_instant_rdv.debug_fsp_irradiance_volume_mode;
+    const bool needs_volume_sh =
+        is_irradiance_volume_debug || debug_mode == 6 || debug_mode == 7;
+    const bool needs_radiance_sh = debug_mode == 6 || irradiance_volume_mode == 0;
+    float4 sh_sky_vis = 0.0.xxxx;
+    float4 sh_radiance_r = 0.0.xxxx;
+    float4 sh_radiance_g = 0.0.xxxx;
+    float4 sh_radiance_b = 0.0.xxxx;
+    if(needs_volume_sh)
+    {
+        float4 sh_irradiance_r;
+        float4 sh_irradiance_g;
+        float4 sh_irradiance_b;
+        FspIrradianceVolumeLoadSignals(
+            global_cell_index,
+            sh_sky_vis,
+            sh_irradiance_r,
+            sh_irradiance_g,
+            sh_irradiance_b);
+
+        if(needs_radiance_sh)
+        {
+            // TextureにはCos畳み込み済みDiffuse Irradianceを格納するため、Radiance表示だけ逆畳み込みする。
+            const float pi = 3.14159265359;
+            const float4 deconvolve_scale = float4(1.0 / pi, 3.0 / (2.0 * pi), 3.0 / (2.0 * pi), 3.0 / (2.0 * pi));
+            sh_radiance_r = sh_irradiance_r * deconvolve_scale;
+            sh_radiance_g = sh_irradiance_g * deconvolve_scale;
+            sh_radiance_b = sh_irradiance_b * deconvolve_scale;
+        }
+    }
     const float4 sh_basis = EvaluateL1ShBasis(normal_ws);
-    float4 sh_sky_vis;
-    float4 sh_irradiance_r;
-    float4 sh_irradiance_g;
-    float4 sh_irradiance_b;
-    FspIrradianceVolumeLoadSignals(
-        global_cell_index,
-        sh_sky_vis,
-        sh_irradiance_r,
-        sh_irradiance_g,
-        sh_irradiance_b);
-    // TextureにはCos畳み込み済みDiffuse Irradianceを格納するため、Radiance表示では逆畳み込みする。
-    const float pi = 3.14159265359;
-    const float4 deconvolve_scale = float4(1.0 / pi, 3.0 / (2.0 * pi), 3.0 / (2.0 * pi), 3.0 / (2.0 * pi));
-    const float4 sh_radiance_r = sh_irradiance_r * deconvolve_scale;
-    const float4 sh_radiance_g = sh_irradiance_g * deconvolve_scale;
-    const float4 sh_radiance_b = sh_irradiance_b * deconvolve_scale;
 
 
     
     float4 color = float4(normal_ws * 0.5 + 0.5, 1.0);// デフォルトでは法線を仮表示.
 
     // 可視化.
-    if(0 == cb_instant_rdv.debug_fsp_probe_mode)
+    if(0 == debug_mode)
     {
         const bool observed_this_frame = (probe_pool_data.last_seen_frame == cb_instant_rdv.frame_count);
         color = observed_this_frame ? float4(0.2, 1.0, 0.3, 1.0) : float4(1.0, 0.85, 0.2, 1.0);
     }
-    else if(1 == cb_instant_rdv.debug_fsp_probe_mode)
+    else if(1 == debug_mode)
     {
         const float hashed = frac(float(input.probe_index) * 0.61803398875);
         color = float4(hashed, frac(hashed * 1.37), frac(hashed * 2.11), 1.0);
     }
-    else if(2 == cb_instant_rdv.debug_fsp_probe_mode)
+    else if(2 == debug_mode)
     {
         const float age = float(cb_instant_rdv.frame_count - probe_pool_data.last_seen_frame);
         const float age_norm = saturate(age / 30.0);
         color = lerp(float4(0.2, 1.0, 0.3, 1.0), float4(1.0, 0.2, 0.1, 1.0), age_norm);
     }
-    else if(3 == cb_instant_rdv.debug_fsp_probe_mode)
+    else if(3 == debug_mode)
     {
         const float hashed = frac(float(input.cascade_index) * 0.38196601125);
         color = float4(hashed, frac(hashed * 1.71), frac(hashed * 2.37), 1.0);
     }
-    else if(4 == cb_instant_rdv.debug_fsp_probe_mode)
+    else if(4 == debug_mode)
     {
         const float3 radiance = octmap_sample.rgb / (1.0 + octmap_sample.rgb);
         color = float4(pow(max(radiance, 0.0.xxx), 1.0 / 2.2), 1.0);
     }
-    else if(5 == cb_instant_rdv.debug_fsp_probe_mode)
+    else if(5 == debug_mode)
     {
         color = octmap_sample.aaaa;
     }
-    else if(6 == cb_instant_rdv.debug_fsp_probe_mode)
+    else if(6 == debug_mode)
     {
         const float3 sh_radiance = max(0.0.xxx, float3(
             dot(sh_radiance_r, sh_basis),
@@ -235,12 +255,12 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
         const float3 mapped_radiance = sh_radiance / (1.0 + sh_radiance);
         color = float4(pow(mapped_radiance, 1.0 / 2.2), 1.0);
     }
-    else if(7 == cb_instant_rdv.debug_fsp_probe_mode)
+    else if(7 == debug_mode)
     {
         const float sh_sky_visibility = max(0.0, dot(sh_sky_vis, sh_basis));
         color = sh_sky_visibility.xxxx;
     }
-    else if(8 == cb_instant_rdv.debug_fsp_probe_mode)
+    else if(8 == debug_mode)
     {
         const float3 bbv_voxel_coord_f =
             (input.voxel_probe_pos_ws - cb_instant_rdv.bbv.grid_min_pos) * cb_instant_rdv.bbv.cell_size_inv;
@@ -259,7 +279,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
             ? float4(0.2, 0.5, 1.0, 1.0)
             : (embedded_in_bbv ? float4(1.0, 0.15, 0.1, 1.0) : float4(0.2, 1.0, 0.3, 1.0));
     }
-    else if(9 == cb_instant_rdv.debug_fsp_probe_mode)
+    else if(9 == debug_mode)
     {
         const float3 camera_position_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
         const float3 segment = input.relocated_probe_pos_ws - camera_position_ws;
@@ -286,7 +306,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
             ? float4(0.2, 0.5, 1.0, 1.0)
             : (blocked ? float4(1.0, 0.15, 0.1, 1.0) : float4(0.2, 1.0, 0.3, 1.0));
     }
-    else if(0 == cb_instant_rdv.debug_fsp_irradiance_volume_mode)
+    else if(0 == irradiance_volume_mode)
     {
         const float3 sh_radiance = max(0.0.xxx, float3(
             dot(sh_radiance_r, sh_basis),
@@ -295,7 +315,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
         const float3 mapped_radiance = sh_radiance / (1.0 + sh_radiance);
         color = float4(pow(mapped_radiance, 1.0 / 2.2), 1.0);
     }
-    else if(1 == cb_instant_rdv.debug_fsp_irradiance_volume_mode)
+    else if(1 == irradiance_volume_mode)
     {
         const float sh_sky_visibility = max(0.0, dot(sh_sky_vis, sh_basis));
         color = sh_sky_visibility.xxxx;

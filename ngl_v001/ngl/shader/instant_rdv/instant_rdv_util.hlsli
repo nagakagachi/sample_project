@@ -559,41 +559,33 @@ void FspIrradianceVolumeLoadSignals(
     out float4 irradiance_g,
     out float4 irradiance_b)
 {
-    sky_visibility = FspIrradianceVolumeLoadSignal(
-        irradiance_volume_cell_index, k_fsp_irradiance_volume_sky_visibility_texture_index);
-    irradiance_r = FspIrradianceVolumeLoadSignal(
-        irradiance_volume_cell_index, k_fsp_irradiance_volume_irradiance_r_texture_index);
-    irradiance_g = FspIrradianceVolumeLoadSignal(
-        irradiance_volume_cell_index, k_fsp_irradiance_volume_irradiance_g_texture_index);
-    irradiance_b = FspIrradianceVolumeLoadSignal(
-        irradiance_volume_cell_index, k_fsp_irradiance_volume_irradiance_b_texture_index);
+    const uint cascade_index = FspIrradianceVolumeCascadeIndex(irradiance_volume_cell_index);
+    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const uint local_cell_index = irradiance_volume_cell_index - cascade.cell_offset;
+    const uint3 physical_coord = uint3(FspLocalCellIndexToPhysicalCoord(
+        local_cell_index, cascade.grid.grid_resolution));
+    const uint texture_slice_depth =
+        cascade.grid.grid_resolution.z + k_fsp_irradiance_volume_guard_texel_count;
+    uint3 texture_coord = uint3(
+        physical_coord.xy,
+        cascade.irradiance_volume_texture_z_offset + physical_coord.z);
+
+    sky_visibility = FspIrradianceVolumeSHTexture.Load(int4(texture_coord, 0));
+    texture_coord.z += texture_slice_depth;
+    irradiance_r = FspIrradianceVolumeSHTexture.Load(int4(texture_coord, 0));
+    texture_coord.z += texture_slice_depth;
+    irradiance_g = FspIrradianceVolumeSHTexture.Load(int4(texture_coord, 0));
+    texture_coord.z += texture_slice_depth;
+    irradiance_b = FspIrradianceVolumeSHTexture.Load(int4(texture_coord, 0));
 }
 
-void FspIrradianceVolumeLoadPackedCoeffsRw(
+// 伝播pass用のUAV読み出し。格納済み信号を転置せず、そのまま返す。
+void FspIrradianceVolumeLoadSignalsRw(
     uint irradiance_volume_cell_index,
-    out float4 coeff0,
-    out float4 coeff1,
-    out float4 coeff2,
-    out float4 coeff3)
-{
-    const float4 sky_visibility = RWFspIrradianceVolumeSHTexture[
-        FspIrradianceVolumeTextureCoord(irradiance_volume_cell_index, 0)];
-    const float4 irradiance_r = RWFspIrradianceVolumeSHTexture[
-        FspIrradianceVolumeTextureCoord(irradiance_volume_cell_index, 1)];
-    const float4 irradiance_g = RWFspIrradianceVolumeSHTexture[
-        FspIrradianceVolumeTextureCoord(irradiance_volume_cell_index, 2)];
-    const float4 irradiance_b = RWFspIrradianceVolumeSHTexture[
-        FspIrradianceVolumeTextureCoord(irradiance_volume_cell_index, 3)];
-    coeff0 = float4(sky_visibility.x, irradiance_r.x, irradiance_g.x, irradiance_b.x);
-    coeff1 = float4(sky_visibility.y, irradiance_r.y, irradiance_g.y, irradiance_b.y);
-    coeff2 = float4(sky_visibility.z, irradiance_r.z, irradiance_g.z, irradiance_b.z);
-    coeff3 = float4(sky_visibility.w, irradiance_r.w, irradiance_g.w, irradiance_b.w);
-}
-
-void FspIrradianceVolumeStoreSignal(
-    uint irradiance_volume_cell_index,
-    uint texture_index,
-    float4 value)
+    out float4 sky_visibility,
+    out float4 irradiance_r,
+    out float4 irradiance_g,
+    out float4 irradiance_b)
 {
     const uint cascade_index = FspIrradianceVolumeCascadeIndex(irradiance_volume_cell_index);
     const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
@@ -602,8 +594,36 @@ void FspIrradianceVolumeStoreSignal(
         local_cell_index, cascade.grid.grid_resolution));
     const uint texture_slice_depth =
         cascade.grid.grid_resolution.z + k_fsp_irradiance_volume_guard_texel_count;
-    const uint texture_z_offset = cascade.irradiance_volume_texture_z_offset +
-        texture_index * texture_slice_depth;
+    uint3 texture_coord = uint3(
+        physical_coord.xy,
+        cascade.irradiance_volume_texture_z_offset + physical_coord.z);
+
+    sky_visibility = RWFspIrradianceVolumeSHTexture[texture_coord];
+    texture_coord.z += texture_slice_depth;
+    irradiance_r = RWFspIrradianceVolumeSHTexture[texture_coord];
+    texture_coord.z += texture_slice_depth;
+    irradiance_g = RWFspIrradianceVolumeSHTexture[texture_coord];
+    texture_coord.z += texture_slice_depth;
+    irradiance_b = RWFspIrradianceVolumeSHTexture[texture_coord];
+}
+
+// 同一cellの4信号をまとめて書き込む。正側Guardを含む座標計算を4信号で共有する。
+void FspIrradianceVolumeStoreSignals(
+    uint irradiance_volume_cell_index,
+    float4 sky_visibility,
+    float4 irradiance_r,
+    float4 irradiance_g,
+    float4 irradiance_b)
+{
+    const uint cascade_index = FspIrradianceVolumeCascadeIndex(irradiance_volume_cell_index);
+    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const uint local_cell_index = irradiance_volume_cell_index - cascade.cell_offset;
+    const uint3 physical_coord = uint3(FspLocalCellIndexToPhysicalCoord(
+        local_cell_index, cascade.grid.grid_resolution));
+    const uint texture_slice_depth =
+        cascade.grid.grid_resolution.z + k_fsp_irradiance_volume_guard_texel_count;
+    const uint texture_z_offset =
+        cascade.irradiance_volume_texture_z_offset + physical_coord.z;
 
     // 正側Guardには物理座標0の値を複製する。辺と角も複製し、Linear Clampの8点補間を成立させる。
     const uint duplicate_x = physical_coord.x == 0u ? 1u : 0u;
@@ -618,50 +638,23 @@ void FspIrradianceVolumeStoreSignal(
             [unroll]
             for(uint x = 0u; x <= duplicate_x; ++x)
             {
-                const uint3 store_coord = uint3(
+                uint3 store_coord = uint3(
                     x == 0u ? physical_coord.x : cascade.grid.grid_resolution.x,
                     y == 0u ? physical_coord.y : cascade.grid.grid_resolution.y,
-                    texture_z_offset +
-                        (z == 0u ? physical_coord.z : cascade.grid.grid_resolution.z));
-                RWFspIrradianceVolumeSHTexture[store_coord] = value;
+                    texture_z_offset + (z == 0u ? 0u : cascade.grid.grid_resolution.z));
+                RWFspIrradianceVolumeSHTexture[store_coord] = sky_visibility;
+                store_coord.z += texture_slice_depth;
+                RWFspIrradianceVolumeSHTexture[store_coord] = irradiance_r;
+                store_coord.z += texture_slice_depth;
+                RWFspIrradianceVolumeSHTexture[store_coord] = irradiance_g;
+                store_coord.z += texture_slice_depth;
+                RWFspIrradianceVolumeSHTexture[store_coord] = irradiance_b;
             }
         }
     }
 }
 
-void FspIrradianceVolumeStoreSignals(
-    uint irradiance_volume_cell_index,
-    float4 sky_visibility,
-    float4 irradiance_r,
-    float4 irradiance_g,
-    float4 irradiance_b)
-{
-    FspIrradianceVolumeStoreSignal(
-        irradiance_volume_cell_index, k_fsp_irradiance_volume_sky_visibility_texture_index, sky_visibility);
-    FspIrradianceVolumeStoreSignal(
-        irradiance_volume_cell_index, k_fsp_irradiance_volume_irradiance_r_texture_index, irradiance_r);
-    FspIrradianceVolumeStoreSignal(
-        irradiance_volume_cell_index, k_fsp_irradiance_volume_irradiance_g_texture_index, irradiance_g);
-    FspIrradianceVolumeStoreSignal(
-        irradiance_volume_cell_index, k_fsp_irradiance_volume_irradiance_b_texture_index, irradiance_b);
-}
-
-void FspIrradianceVolumeStorePackedCoeffs(
-    uint irradiance_volume_cell_index,
-    float4 coeff0,
-    float4 coeff1,
-    float4 coeff2,
-    float4 coeff3)
-{
-    FspIrradianceVolumeStoreSignals(
-        irradiance_volume_cell_index,
-        float4(coeff0.r, coeff1.r, coeff2.r, coeff3.r),
-        float4(coeff0.g, coeff1.g, coeff2.g, coeff3.g),
-        float4(coeff0.b, coeff1.b, coeff2.b, coeff3.b),
-        float4(coeff0.a, coeff1.a, coeff2.a, coeff3.a));
-}
-
-bool FspIrradianceVolumeHasValidSH(uint irradiance_volume_cell_index)
+bool FspIrradianceVolumeHasValidSignals(uint irradiance_volume_cell_index)
 {
     float4 sky_visibility;
     float4 irradiance_r;
@@ -679,12 +672,12 @@ bool FspIrradianceVolumeHasValidSH(uint irradiance_volume_cell_index)
         any(abs(irradiance_b) > 0.0.xxxx);
 }
 
-bool FspIrradianceVolumeHasValidSHCoeff(float4 coeff0, float4 coeff1, float4 coeff2, float4 coeff3)
+bool FspIrradianceVolumeHasValidSignals(float4 sky_visibility, float4 irradiance_r, float4 irradiance_g, float4 irradiance_b)
 {
-    return any(abs(coeff0) > 0.0.xxxx) ||
-        any(abs(coeff1) > 0.0.xxxx) ||
-        any(abs(coeff2) > 0.0.xxxx) ||
-        any(abs(coeff3) > 0.0.xxxx);
+    return any(abs(sky_visibility) > 0.0.xxxx) ||
+        any(abs(irradiance_r) > 0.0.xxxx) ||
+        any(abs(irradiance_g) > 0.0.xxxx) ||
+        any(abs(irradiance_b) > 0.0.xxxx);
 }
 
 bool FspTryGetActiveProbeForCell(out uint out_probe_index, out FspProbePoolData out_probe_pool_data, uint global_cell_index)

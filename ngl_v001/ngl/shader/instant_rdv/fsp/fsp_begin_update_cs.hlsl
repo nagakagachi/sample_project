@@ -45,7 +45,7 @@ void FspPushCurrActiveProbeIndex(uint probe_index)
 
 void FspClearIrradianceVolumeCell(uint global_cell_index)
 {
-    FspIrradianceVolumeStorePackedCoeffs(
+    FspIrradianceVolumeStoreSignals(
         global_cell_index, 0.0.xxxx, 0.0.xxxx, 0.0.xxxx, 0.0.xxxx);
 }
 
