@@ -1,4 +1,4 @@
-/*
+﻿/*
     instant_rdv.cpp
     Instant Raster Derived Voxel Sceneの描画パス実装。
 */
@@ -863,8 +863,8 @@ namespace ngl::render::app
                         }
                         else if (2 == dbg_fsp_shading_test_signal_)
                         {
-                            ImGui::TextDisabled("Green: updated this frame / Blue: older / Red: not updated / Black: no probe");
-                            ImGui::TextDisabled("Representative cell only; Trilinear does not affect this mode.");
+                            ImGui::TextDisabled("緑: 代表セルにActiveProbe / 黄: 近傍セルにのみActiveProbe / 黒: なし");
+                            ImGui::TextDisabled("代表セルと同一Cascadeの3x3x3近傍を確認。Trilinearはこのモードに影響しません。");
                         }
                         ImGui::TextDisabled("Depth-derived position and approximate normal.");
                     }

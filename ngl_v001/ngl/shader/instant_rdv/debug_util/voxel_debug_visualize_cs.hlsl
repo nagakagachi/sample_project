@@ -148,27 +148,61 @@ bool FspDebugSampleSignals(
     return true;
 }
 
-// ActiveProbe更新状態は補間せず、サーフェイス位置を含む代表セルだけを可視化する。
-bool FspDebugGetRepresentativeCellIndex(
-    out uint irradiance_volume_cell_index,
+// ActiveProbe可視化は補間せず、サーフェイス位置を含む代表セルと同一カスケードの近傍セルを確認する。
+bool FspDebugGetRepresentativeCell(
+    out uint cascade_index,
+    out int3 linear_coord,
     float3 sample_pos_ws,
     float2 dither_seed)
 {
-    irradiance_volume_cell_index = 0u;
-    uint cascade_index = 0u;
+    cascade_index = 0u;
+    linear_coord = 0;
     if(!FspDebugSelectCascade(cascade_index, sample_pos_ws, dither_seed))
     {
         return false;
     }
 
     const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-    const int3 linear_coord = clamp(
+    linear_coord = clamp(
         int3(floor((sample_pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv)),
         0,
         cascade.grid.grid_resolution - 1);
-    irradiance_volume_cell_index =
-        FspIrradianceVolumeCellIndexFromLinearCoord(cascade_index, linear_coord);
     return true;
+}
+
+bool FspDebugHasNeighborActiveProbe(uint cascade_index, int3 center_linear_coord)
+{
+    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    [unroll]
+    for(int z = -1; z <= 1; ++z)
+    {
+        [unroll]
+        for(int y = -1; y <= 1; ++y)
+        {
+            [unroll]
+            for(int x = -1; x <= 1; ++x)
+            {
+                if(0 == x && 0 == y && 0 == z)
+                {
+                    continue;
+                }
+
+                const int3 neighbor_linear_coord = center_linear_coord + int3(x, y, z);
+                if(any(neighbor_linear_coord < 0) || any(neighbor_linear_coord >= cascade.grid.grid_resolution))
+                {
+                    continue;
+                }
+
+                const uint neighbor_cell_index =
+                    FspIrradianceVolumeCellIndexFromLinearCoord(cascade_index, neighbor_linear_coord);
+                if(FspIsActiveProbeOwnedCell(neighbor_cell_index))
+                {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
 }
 
 bool FspDebugReconstructSurfacePosition(int2 texel_pos, uint2 depth_size, out float3 position_ws)
@@ -551,35 +585,39 @@ void main_cs(
 
             if(2 == cb_instant_rdv.debug_fsp_shading_test_signal)
             {
-                uint representative_cell_index = 0u;
-                FspProbePoolData probe_pool_data = (FspProbePoolData)0;
-                uint probe_index = k_fsp_invalid_probe_index;
-                if(!FspDebugGetRepresentativeCellIndex(
-                    representative_cell_index,
+                uint representative_cascade_index = 0u;
+                int3 representative_linear_coord = 0;
+                if(!FspDebugGetRepresentativeCell(
+                    representative_cascade_index,
+                    representative_linear_coord,
                     surface_pos_ws,
-                    screen_pos_f) ||
-                    !FspTryGetActiveProbeForCell(
-                        probe_index,
-                        probe_pool_data,
-                        representative_cell_index))
+                    screen_pos_f))
                 {
-                    // 黒はこの代表セルにActiveProbeが存在しない状態。
                     RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
                     return;
                 }
 
-                float3 update_color = float3(0.0, 0.1, 0.8);
-                if(probe_pool_data.last_update_frame == cb_instant_rdv.frame_count)
+                const uint representative_cell_index = FspIrradianceVolumeCellIndexFromLinearCoord(
+                    representative_cascade_index,
+                    representative_linear_coord);
+                if(FspIsActiveProbeOwnedCell(representative_cell_index))
                 {
-                    // 緑はこのフレームにRay Resolveまで完了した直接更新セル。
-                    update_color = float3(0.0, 1.0, 0.0);
+                    // 緑はサーフェイス位置を含む代表セルにActiveProbeがある状態。
+                    RWTexWork[dtid.xy] = float4(0.0, 1.0, 0.0, 1.0);
+                    return;
                 }
-                else if(probe_pool_data.last_update_frame == 0u)
+
+                if(FspDebugHasNeighborActiveProbe(
+                    representative_cascade_index,
+                    representative_linear_coord))
                 {
-                    // 赤は割当済みだが、まだ直接更新結果を持たないセル。
-                    update_color = float3(1.0, 0.0, 0.0);
+                    // 黄は代表セルにはないが、同一カスケードの3x3x3近傍にActiveProbeがある状態。
+                    RWTexWork[dtid.xy] = float4(1.0, 0.8, 0.0, 1.0);
+                    return;
                 }
-                RWTexWork[dtid.xy] = float4(update_color, 1.0);
+
+                // 黒は代表セルと近傍セルのいずれにもActiveProbeがない状態。
+                RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
                 return;
             }
 
