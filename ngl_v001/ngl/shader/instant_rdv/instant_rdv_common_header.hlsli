@@ -341,6 +341,9 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int fsp_probe_pool_size NGL_CPP_MEMBER_INIT({});
         int fsp_active_probe_buffer_size NGL_CPP_MEMBER_INIT({});
         int fsp_lighting_interpolation_enable NGL_CPP_MEMBER_INIT({1});
+        // IV伝播でActiveProbe近傍の重みを増やす比較用設定。
+        int fsp_irradiance_volume_propagate_active_probe_weight_enable NGL_CPP_MEMBER_INIT({0});
+        float fsp_irradiance_volume_propagate_active_probe_weight_scale NGL_CPP_MEMBER_INIT({4.0f});
         int fsp_warm_start_enable NGL_CPP_MEMBER_INIT({1});
         int fsp_dummy_padding1 NGL_CPP_MEMBER_INIT({});
         int fsp_probe_lifecycle_enable NGL_CPP_MEMBER_INIT({1});
@@ -350,6 +353,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int fsp_probe_atlas_tile_height NGL_CPP_MEMBER_INIT({0});
         int debug_fsp_probe_cascade NGL_CPP_MEMBER_INIT({-1});
         float fsp_relocation_offset_scale_for_cascade_cell_size NGL_CPP_MEMBER_INIT({0.9f});// Probe再配置オフセットの最大距離を, 該当カスケードプローブ間隔の何倍まで許容するか.
+        int2 fsp_dummy_padding2 NGL_CPP_MEMBER_INIT({});
 
         // MainViewのDepthBuffer解像度.
         int2 tex_main_view_depth_size NGL_CPP_MEMBER_INIT({});

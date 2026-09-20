@@ -73,6 +73,21 @@ bool FspDebugSelectCascade(out uint cascade_index, float3 sample_pos_ws, float2 
     return true;
 }
 
+float3 FspDebugCascadeColor(uint cascade_index)
+{
+    // 低いCascadeから赤、緑、青の順に識別し、以降も高彩度の色を循環させる。
+    const float3 colors[6] =
+    {
+        float3(1.0, 0.0, 0.0),
+        float3(0.0, 1.0, 0.0),
+        float3(0.0, 0.0, 1.0),
+        float3(1.0, 1.0, 0.0),
+        float3(1.0, 0.0, 1.0),
+        float3(0.0, 1.0, 1.0),
+    };
+    return colors[cascade_index % 6u];
+}
+
 void FspDebugSampleSignalsTrilinear(
     FspCascadeGridParam cascade,
     int3 base_coord,
@@ -618,6 +633,19 @@ void main_cs(
 
                 // 黒は代表セルと近傍セルのいずれにもActiveProbeがない状態。
                 RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
+                return;
+            }
+
+            if(3 == cb_instant_rdv.debug_fsp_shading_test_signal)
+            {
+                uint selected_cascade_index = 0u;
+                if(!FspDebugSelectCascade(selected_cascade_index, surface_pos_ws, screen_pos_f))
+                {
+                    RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
+                    return;
+                }
+
+                RWTexWork[dtid.xy] = float4(FspDebugCascadeColor(selected_cascade_index), 1.0);
                 return;
             }
 

@@ -28,6 +28,7 @@ bool FspTryLoadNeighborSignals(
     out float4 out_irradiance_r,
     out float4 out_irradiance_g,
     out float4 out_irradiance_b,
+    out bool out_is_active_probe,
     uint cascade_index,
     int3 neighbor_linear_coord)
 {
@@ -35,6 +36,7 @@ bool FspTryLoadNeighborSignals(
     out_irradiance_r = 0.0.xxxx;
     out_irradiance_g = 0.0.xxxx;
     out_irradiance_b = 0.0.xxxx;
+    out_is_active_probe = false;
 
     const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
     if(any(neighbor_linear_coord < 0) || any(neighbor_linear_coord >= cascade.grid.grid_resolution))
@@ -50,8 +52,19 @@ bool FspTryLoadNeighborSignals(
         out_irradiance_r,
         out_irradiance_g,
         out_irradiance_b);
-    return FspIrradianceVolumeHasValidSignals(
+    const bool has_valid_signals = FspIrradianceVolumeHasValidSignals(
         out_sky_visibility, out_irradiance_r, out_irradiance_g, out_irradiance_b);
+    if(!has_valid_signals)
+    {
+        return false;
+    }
+
+    if(0 != cb_instant_rdv.fsp_irradiance_volume_propagate_active_probe_weight_enable)
+    {
+        // OFF時は比較基準の伝播負荷を維持し、追加のActiveProbe参照を発行しない。
+        out_is_active_probe = FspIsActiveProbeOwnedCell(neighbor_irradiance_volume_cell_index);
+    }
+    return true;
 }
 
 [numthreads(PROBE_UPDATE_THREAD_GROUP_SIZE, 1, 1)]
@@ -116,7 +129,11 @@ void main_cs(
     float4 accum_irradiance_r = 0.0.xxxx;
     float4 accum_irradiance_g = 0.0.xxxx;
     float4 accum_irradiance_b = 0.0.xxxx;
-    uint valid_neighbor_count = 0u;
+    float valid_neighbor_weight_sum = 0.0f;
+    const float active_probe_neighbor_weight =
+        (0 != cb_instant_rdv.fsp_irradiance_volume_propagate_active_probe_weight_enable)
+        ? cb_instant_rdv.fsp_irradiance_volume_propagate_active_probe_weight_scale
+        : 1.0f;
 
     [unroll]
     for(uint neighbor_index = 0u; neighbor_index < 6u; ++neighbor_index)
@@ -125,30 +142,34 @@ void main_cs(
         float4 irradiance_r = 0.0.xxxx;
         float4 irradiance_g = 0.0.xxxx;
         float4 irradiance_b = 0.0.xxxx;
+        bool is_active_probe = false;
         if(!FspTryLoadNeighborSignals(
             sky_visibility,
             irradiance_r,
             irradiance_g,
             irradiance_b,
+            is_active_probe,
             cascade_index,
             linear_coord + neighbor_offsets[neighbor_index]))
         {
             continue;
         }
 
-        accum_sky_visibility += sky_visibility;
-        accum_irradiance_r += irradiance_r;
-        accum_irradiance_g += irradiance_g;
-        accum_irradiance_b += irradiance_b;
-        ++valid_neighbor_count;
+        // ActiveProbeの直接更新値は、伝播済み近傍より大きい重みで優先できる。
+        const float neighbor_weight = is_active_probe ? active_probe_neighbor_weight : 1.0f;
+        accum_sky_visibility += sky_visibility * neighbor_weight;
+        accum_irradiance_r += irradiance_r * neighbor_weight;
+        accum_irradiance_g += irradiance_g * neighbor_weight;
+        accum_irradiance_b += irradiance_b * neighbor_weight;
+        valid_neighbor_weight_sum += neighbor_weight;
     }
 
-    if(valid_neighbor_count == 0u)
+    if(valid_neighbor_weight_sum == 0.0f)
     {
         return;
     }
 
-    const float inv_count = rcp(float(valid_neighbor_count));
+    const float inv_count = rcp(valid_neighbor_weight_sum);
     FspIrradianceVolumeStoreSignals(
         irradiance_volume_cell_index,
         accum_sky_visibility * inv_count,

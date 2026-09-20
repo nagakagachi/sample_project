@@ -352,6 +352,8 @@ namespace ngl::render::app
     float InstantRasterDerivedVoxelScene::assp_ray_budget_scale_ = k_default_instant_rdv_param.assp_ray_budget_scale;
     int InstantRasterDerivedVoxelScene::assp_debug_freeze_frame_random_enable_ = k_default_instant_rdv_param.assp_debug_freeze_frame_random_enable;
     int InstantRasterDerivedVoxelScene::dbg_fsp_lighting_interpolation_enable_ = k_default_instant_rdv_param.fsp_lighting_interpolation_enable;
+    int InstantRasterDerivedVoxelScene::dbg_fsp_irradiance_volume_propagate_active_probe_weight_enable_ = k_default_instant_rdv_param.fsp_irradiance_volume_propagate_active_probe_weight_enable;
+    float InstantRasterDerivedVoxelScene::dbg_fsp_irradiance_volume_propagate_active_probe_weight_scale_ = k_default_instant_rdv_param.fsp_irradiance_volume_propagate_active_probe_weight_scale;
     int InstantRasterDerivedVoxelScene::dbg_fsp_probe_lifecycle_enable_ = k_default_instant_rdv_param.fsp_probe_lifecycle_enable;
     int InstantRasterDerivedVoxelScene::dbg_fsp_warm_start_enable_ = k_default_instant_rdv_param.fsp_warm_start_enable;
     int InstantRasterDerivedVoxelScene::dbg_fsp_probe_pool_size_ = 0;
@@ -550,6 +552,28 @@ namespace ngl::render::app
                             dbg_fsp_lighting_interpolation_enable_ = k_default_instant_rdv_param.fsp_lighting_interpolation_enable;
                         ImGui::EndPopup();
                     }
+                }
+                {
+                    bool v = (0 != dbg_fsp_irradiance_volume_propagate_active_probe_weight_enable_);
+                    if (ImGui::Checkbox("IV Propagate ActiveProbe Weight", &v))
+                        dbg_fsp_irradiance_volume_propagate_active_probe_weight_enable_ = v ? 1 : 0;
+                    if (ImGui::BeginPopupContextItem()) {
+                        if (ImGui::MenuItem("Reset to Default"))
+                            dbg_fsp_irradiance_volume_propagate_active_probe_weight_enable_ =
+                                k_default_instant_rdv_param.fsp_irradiance_volume_propagate_active_probe_weight_enable;
+                        ImGui::EndPopup();
+                    }
+                    ImGui::SliderFloat(
+                        "IV Propagate ActiveProbe Weight Scale",
+                        &dbg_fsp_irradiance_volume_propagate_active_probe_weight_scale_,
+                        1.0f,
+                        10.0f,
+                        "%.2f");
+                    dbg_fsp_irradiance_volume_propagate_active_probe_weight_scale_ = std::clamp(
+                        dbg_fsp_irradiance_volume_propagate_active_probe_weight_scale_,
+                        1.0f,
+                        10.0f);
+                    ImGui::TextDisabled("Weights direct ActiveProbe neighbors during IV propagation.");
                 }
                 {
                     bool v = (0 != dbg_fsp_update_ray_jitter_enable_);
@@ -818,13 +842,14 @@ namespace ngl::render::app
                             "Irradiance",
                             "SkyVisibility",
                             "ActiveProbe Update",
+                            "Cascade",
                         };
                         ImGui::Combo(
                             "Shading Test Target",
                             &dbg_fsp_shading_test_signal_,
                             shading_test_signal_labels,
-                            3);
-                        dbg_fsp_shading_test_signal_ = std::clamp(dbg_fsp_shading_test_signal_, 0, 2);
+                            4);
+                        dbg_fsp_shading_test_signal_ = std::clamp(dbg_fsp_shading_test_signal_, 0, 3);
 
                         const int shading_test_cascade_max = std::max(dbg_fsp_cascade_count_ - 1, 0);
                         ImGui::SliderInt(
@@ -863,8 +888,13 @@ namespace ngl::render::app
                         }
                         else if (2 == dbg_fsp_shading_test_signal_)
                         {
-                            ImGui::TextDisabled("緑: 代表セルにActiveProbe / 黄: 近傍セルにのみActiveProbe / 黒: なし");
-                            ImGui::TextDisabled("代表セルと同一Cascadeの3x3x3近傍を確認。Trilinearはこのモードに影響しません。");
+                            ImGui::TextDisabled("Green: ActiveProbe in representative cell / Yellow: ActiveProbe in neighbor / Black: None");
+                            ImGui::TextDisabled("Checks the representative cell and 3x3x3 neighbors in the same cascade. Trilinear does not affect this mode.");
+                        }
+                        else if (3 == dbg_fsp_shading_test_signal_)
+                        {
+                            ImGui::TextDisabled("Cascade 0: Red / 1: Green / 2: Blue / 3: Yellow / 4: Magenta / 5: Cyan");
+                            ImGui::TextDisabled("Shows the cascade selected after boundary dithering.");
                         }
                         ImGui::TextDisabled("Depth-derived position and approximate normal.");
                     }
@@ -873,7 +903,7 @@ namespace ngl::render::app
                         bool bbv_depth_test = (0 != dbg_bbv_depth_test_enable_);
                         if (ImGui::Checkbox("Depth Test", &bbv_depth_test))
                             dbg_bbv_depth_test_enable_ = bbv_depth_test ? 1 : 0;
-                        ImGui::TextDisabled("ON: MainView Depth SRVで遮蔽判定、OFF: 常に表示");
+                        ImGui::TextDisabled("ON: occlusion test with MainView Depth SRV / OFF: always visible");
                         if(dbg_view_sub_mode_ == 6 || dbg_view_sub_mode_ == 7)
                         {
                             ImGui::TextDisabled(
@@ -1838,6 +1868,12 @@ namespace ngl::render::app
                 param.fsp_probe_pool_size = static_cast<int>(fsp_probe_pool_size_);
                 param.fsp_active_probe_buffer_size = static_cast<int>(fsp_probe_pool_size_);
                 param.fsp_lighting_interpolation_enable = InstantRasterDerivedVoxelScene::dbg_fsp_lighting_interpolation_enable_;
+                param.fsp_irradiance_volume_propagate_active_probe_weight_enable =
+                    InstantRasterDerivedVoxelScene::dbg_fsp_irradiance_volume_propagate_active_probe_weight_enable_;
+                param.fsp_irradiance_volume_propagate_active_probe_weight_scale = std::clamp(
+                    InstantRasterDerivedVoxelScene::dbg_fsp_irradiance_volume_propagate_active_probe_weight_scale_,
+                    1.0f,
+                    10.0f);
                 param.fsp_probe_lifecycle_enable = InstantRasterDerivedVoxelScene::dbg_fsp_probe_lifecycle_enable_;
                 param.fsp_warm_start_enable = InstantRasterDerivedVoxelScene::dbg_fsp_warm_start_enable_;
                 param.fsp_relocation_offset_scale_for_cascade_cell_size = InstantRasterDerivedVoxelScene::dbg_fsp_relocation_offset_scale_for_cascade_cell_size_;
@@ -1904,7 +1940,7 @@ namespace ngl::render::app
             param.debug_fsp_irradiance_volume_slice_scroll_y =
                 InstantRasterDerivedVoxelScene::dbg_fsp_irradiance_volume_slice_scroll_y_;
             param.debug_fsp_shading_test_signal = std::clamp(
-                InstantRasterDerivedVoxelScene::dbg_fsp_shading_test_signal_, 0, 2);
+                InstantRasterDerivedVoxelScene::dbg_fsp_shading_test_signal_, 0, 3);
             param.debug_fsp_shading_test_cascade = std::clamp(
                 InstantRasterDerivedVoxelScene::dbg_fsp_shading_test_cascade_,
                 -1,
