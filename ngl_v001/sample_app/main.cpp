@@ -1342,8 +1342,7 @@ bool AppGame::ExecuteApp()
         ImGui::TextColored(ImColor(1.0f, 0.9f, 0.9f), "     (Unreal Engine Like)");
         ImGui::TextColored(ImColor(1.0f, 0.2f, 0.2f), " ");
 
-        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("View Info"))
+        if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/ViewInfo", "View Info"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::Text("Camera Dir:			%.3f, %.3f, %.3f", camera_pose_.GetColumn2().x, camera_pose_.GetColumn2().y, camera_pose_.GetColumn2().z);
@@ -1366,8 +1365,7 @@ bool AppGame::ExecuteApp()
             ImGui::SliderFloat("Camera Speed", &dbgw_camera_speed, 0.5f, 100.0f);
         }
 
-        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("Debug Perf"))
+        if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/DebugPerf", "Debug Perf"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::Text("Delta:			%f [ms]", delta_sec * 1000.0f);
@@ -1396,8 +1394,7 @@ bool AppGame::ExecuteApp()
 #endif
         }
 
-        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("Debug View"))
+        if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/DebugView", "Debug View"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::Checkbox("View GBuffer", &dbgw_view_gbuffer);
@@ -1424,23 +1421,22 @@ bool AppGame::ExecuteApp()
             ImGui::SliderFloat("Slider Rate", &dbgw_view_general_debug_rate, 0.0f, 1.0f);
         }
 
-        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("Lighting"))
+        if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/Lighting", "Lighting"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
-            if (ImGui::CollapsingHeader("Directional Light", ImGuiTreeNodeFlags_DefaultOpen))
+            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/Lighting/DirectionalLight", "Directional Light"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
                 ImGui::SliderFloat("Angle V", &dbgw_dlit_angle_v, 0.0f, ngl::math::k_pi_f * 2.0f);
                 ImGui::SliderFloat("Angle H", &dbgw_dlit_angle_h, 0.0f, ngl::math::k_pi_f * 2.0f);
                 ImGui::SliderFloat("Intensity", &dbgw_dlit_intensity, 0.0f, 50.0f);
             }
-            if (ImGui::CollapsingHeader("IBL", ImGuiTreeNodeFlags_DefaultOpen))
+            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/Lighting/Ibl", "IBL"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
                 ImGui::SliderFloat("Sky Light Intensity", &dbgw_skylight_intensity, 0.0f, 15.0f);
             }
-            if (ImGui::CollapsingHeader("GI##Lighting", ImGuiTreeNodeFlags_DefaultOpen))
+            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/Lighting/Gi", "GI##Lighting"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
                 ImGui::Text("Sample Mode");
@@ -1457,11 +1453,9 @@ bool AppGame::ExecuteApp()
             }
         }
 
-        ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("GI##InstantRdv"))
+        if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv", "GI##InstantRdv"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
-            ImGui::SetNextItemOpen(true, ImGuiCond_Once);
             ngl::render::app::InstantRasterDerivedVoxelScene::DrawDebugMenu(
                 &dbgw_enable_instant_rdv_all_injection_pass,
                 &dbgw_enable_instant_rdv_all_removal_pass,
@@ -1470,15 +1464,14 @@ bool AppGame::ExecuteApp()
                 &dbgw_enable_instant_rdv_shadow_view_injection_pass,
                 &dbgw_enable_instant_rdv_shadow_view_removal_pass);
 
-            if (ImGui::CollapsingHeader("GTAO Demo"))
+            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/GtaoDemo", "GTAO Demo"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
                 ImGui::Checkbox("enable", &dbgw_enable_gtao_demo);
             }
         }
 
-        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("Material Debug"))
+        if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/MaterialDebug", "Material Debug"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::Checkbox("Debug Emissive ON/OFF", &dbgw_material_debug_emissive_enable);
@@ -1487,11 +1480,10 @@ bool AppGame::ExecuteApp()
             ImGui::SliderFloat("Debug Emissive Mask Tolerance", &dbgw_material_debug_emissive_mask_tolerance, 0.0f, 1.7320508f, "%.3f");
         }
 
-        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("Sky"))
+        if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/Sky", "Sky"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
-            if (ImGui::CollapsingHeader("IBL"))
+            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/Sky/Ibl", "IBL"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
                 bool param_prevent_aliasing_mode_diffuse  = skybox_.GetParam_PreventAliasingModeDiffuse();
@@ -1513,8 +1505,7 @@ bool AppGame::ExecuteApp()
             ImGui::SliderFloat("sky debug mip bias", &dbgw_sky_debug_mip_bias, 0.0f, 12.0f);
         }
 
-        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("Pass Setting"))
+        if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/PassSetting", "Pass Setting"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::Checkbox("Enable Feedback Blur Test", &dbgw_enable_feedback_blur_test);
@@ -1522,8 +1513,7 @@ bool AppGame::ExecuteApp()
             ImGui::Checkbox("Enable SubView Render", &dbgw_enable_sub_view_path);
         }
 
-        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("SwTessellation Mesh"))
+        if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/SwTessellationMesh", "SwTessellation Mesh"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
             ImGui::Checkbox("Enable Tessellation Update", &sw_tess_update_tessellation);
@@ -1557,8 +1547,7 @@ bool AppGame::ExecuteApp()
             }
         }
 
-        ImGui::SetNextItemOpen(false, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("RHI"))
+        if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/Rhi", "RHI"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
             const auto free_dynamic_descriptor_count = gfxfw_.device_.GeDynamicDescriptorManager()->GetFreeDescriptorCount();

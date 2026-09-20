@@ -320,6 +320,11 @@ namespace ngl::render::app
         k_default_instant_rdv_param.debug_fsp_irradiance_volume_slice_scale;
     int InstantRasterDerivedVoxelScene::dbg_fsp_irradiance_volume_slice_scroll_x_ = 0;
     int InstantRasterDerivedVoxelScene::dbg_fsp_irradiance_volume_slice_scroll_y_ = 0;
+    int InstantRasterDerivedVoxelScene::dbg_fsp_shading_test_signal_ = 0;
+    int InstantRasterDerivedVoxelScene::dbg_fsp_shading_test_cascade_ = -1;
+    int InstantRasterDerivedVoxelScene::dbg_fsp_shading_test_trilinear_enable_ = 1;
+    int InstantRasterDerivedVoxelScene::dbg_fsp_shading_test_cascade_interpolation_enable_ = 1;
+    float InstantRasterDerivedVoxelScene::dbg_fsp_shading_test_irradiance_ev_ = 0.0f;
     math::Vec3u InstantRasterDerivedVoxelScene::dbg_fsp_resolution_ = math::Vec3u(1);
     int InstantRasterDerivedVoxelScene::dbg_bbv_probe_debug_mode_ = -1;
     int InstantRasterDerivedVoxelScene::dbg_bbv_depth_test_enable_ = 0;
@@ -370,8 +375,7 @@ namespace ngl::render::app
         bool* p_enable_shadow_view_injection,
         bool* p_enable_shadow_view_removal)
     {
-        ImGui::SetNextItemOpen(true, ImGuiCond_Once);
-        if (ImGui::CollapsingHeader("InstantRdv"))
+        if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/Settings", "InstantRdv"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
 
@@ -402,8 +406,7 @@ namespace ngl::render::app
             ImGui::Text("GI Update Target (linked): %s", InstantRdvGiSolutionModeName(dbg_gi_update_sample_mode_));
 
             
-            ImGui::SetNextItemOpen(false, ImGuiCond_FirstUseEver);
-            if (ImGui::CollapsingHeader("Adaptive Screen Space Probe"))
+            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/Settings/Assp", "Adaptive Screen Space Probe"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
                 NGL_IMGUI_SCOPED_ID("ASSP");
@@ -534,8 +537,7 @@ namespace ngl::render::app
                 }
             }
 
-            ImGui::SetNextItemOpen(true, ImGuiCond_FirstUseEver);
-            if (ImGui::CollapsingHeader("Frustum Space Probe"))
+            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/Settings/Fsp", "Frustum Space Probe"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
 
@@ -589,12 +591,11 @@ namespace ngl::render::app
                 }
             }
 
-            ImGui::SetNextItemOpen(true, ImGuiCond_FirstUseEver);
-            if (ImGui::CollapsingHeader("Probe Debug"))
+            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/Settings/ProbeDebug", "Probe Debug"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
 
-                if (ImGui::CollapsingHeader("Common", ImGuiTreeNodeFlags_DefaultOpen))
+                if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/Settings/ProbeDebug/Common", "Common"))
                 {
                     NGL_IMGUI_SCOPED_INDENT(10.0f);
 
@@ -613,11 +614,11 @@ namespace ngl::render::app
                     }
                 }
 
-                if (ImGui::CollapsingHeader("Frustum Surface Probe", ImGuiTreeNodeFlags_DefaultOpen))
+                if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/Settings/ProbeDebug/Fsp", "Frustum Surface Probe"))
                 {
                     NGL_IMGUI_SCOPED_INDENT(10.0f);
 
-                    if (ImGui::CollapsingHeader("Stats", ImGuiTreeNodeFlags_DefaultOpen))
+                    if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/Settings/ProbeDebug/Fsp/Stats", "Stats"))
                     {
                         NGL_IMGUI_SCOPED_INDENT(10.0f);
                         ImGui::Text("Cascade Count: %d", dbg_fsp_cascade_count_);
@@ -628,7 +629,7 @@ namespace ngl::render::app
                         ImGui::Text("Visible Surface Cells: %d", dbg_fsp_visible_surface_cell_count_);
                     }
 
-                    if (ImGui::CollapsingHeader("Visualization", ImGuiTreeNodeFlags_DefaultOpen))
+                    if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/Settings/ProbeDebug/Fsp/Visualization", "Visualization"))
                     {
                         NGL_IMGUI_SCOPED_INDENT(10.0f);
                         if (ImGui::SliderInt("ActiveProbe Mode", &dbg_fsp_probe_debug_mode_, -1, 9))
@@ -679,7 +680,7 @@ namespace ngl::render::app
                     }
                 }
 
-                if (ImGui::CollapsingHeader("Bitmask Brick Voxel", ImGuiTreeNodeFlags_DefaultOpen))
+                if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/Settings/ProbeDebug/Bbv", "Bitmask Brick Voxel"))
                 {
                     NGL_IMGUI_SCOPED_INDENT(10.0f);
                     ImGui::SliderInt("Bbv Probe Mode", &dbg_bbv_probe_debug_mode_, -1, 10);
@@ -692,8 +693,7 @@ namespace ngl::render::app
                 }
             }
             
-            ImGui::SetNextItemOpen(false, ImGuiCond_FirstUseEver);
-            if (ImGui::CollapsingHeader("Voxel Debug"))
+            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/Settings/VoxelDebug", "Voxel Debug"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
 
@@ -710,7 +710,7 @@ namespace ngl::render::app
                 // カテゴリ別サブモードスライダ.
                 if (0 <= dbg_view_category_)
                 {
-                    const int k_sub_mode_max[] = { 7, 5, 7 };
+                    const int k_sub_mode_max[] = { 7, 6, 7 };
                     auto get_sub_mode_description = [](int category, int sub_mode) -> const char*
                     {
                         switch(category)
@@ -737,6 +737,7 @@ namespace ngl::render::app
                             case 3: return "FSP IrradianceVolume Z slices: Irradiance R SH";
                             case 4: return "FSP IrradianceVolume Z slices: Irradiance G SH";
                             case 5: return "FSP IrradianceVolume Z slices: Irradiance B SH";
+                            case 6: return "FSP ShadingTest (Surface)";
                             default: return "Unknown";
                             }
                         case 2: // ASSP
@@ -763,7 +764,7 @@ namespace ngl::render::app
                     ImGui::SliderInt("Sub Mode", &dbg_view_sub_mode_, 0, sub_max);
                     ImGui::TextDisabled("Sub Mode %d: %s", dbg_view_sub_mode_, get_sub_mode_description(dbg_view_category_, dbg_view_sub_mode_));
 
-                    if (1 == dbg_view_category_ && 1 <= dbg_view_sub_mode_)
+                    if (1 == dbg_view_category_ && 1 <= dbg_view_sub_mode_ && dbg_view_sub_mode_ <= 5)
                     {
                         ImGui::SliderInt(
                             "Slice Scale",
@@ -809,6 +810,63 @@ namespace ngl::render::app
                             dbg_fsp_irradiance_volume_slice_scroll_y_ = 0;
                         }
                         ImGui::TextDisabled("Z slices: left to right, Cascades: top to bottom");
+                    }
+                    else if (1 == dbg_view_category_ && 6 == dbg_view_sub_mode_)
+                    {
+                        const char* const shading_test_signal_labels[] =
+                        {
+                            "Irradiance",
+                            "SkyVisibility",
+                            "ActiveProbe Update",
+                        };
+                        ImGui::Combo(
+                            "Shading Test Target",
+                            &dbg_fsp_shading_test_signal_,
+                            shading_test_signal_labels,
+                            3);
+                        dbg_fsp_shading_test_signal_ = std::clamp(dbg_fsp_shading_test_signal_, 0, 2);
+
+                        const int shading_test_cascade_max = std::max(dbg_fsp_cascade_count_ - 1, 0);
+                        ImGui::SliderInt(
+                            "Shading Test Cascade",
+                            &dbg_fsp_shading_test_cascade_,
+                            -1,
+                            shading_test_cascade_max);
+                        dbg_fsp_shading_test_cascade_ = std::clamp(
+                            dbg_fsp_shading_test_cascade_,
+                            -1,
+                            shading_test_cascade_max);
+                        ImGui::TextDisabled("-1: All (continuous camera-relative selection)");
+
+                        bool trilinear_enable = (0 != dbg_fsp_shading_test_trilinear_enable_);
+                        if (ImGui::Checkbox("Trilinear", &trilinear_enable))
+                            dbg_fsp_shading_test_trilinear_enable_ = trilinear_enable ? 1 : 0;
+                        bool cascade_interpolation_enable =
+                            (0 != dbg_fsp_shading_test_cascade_interpolation_enable_);
+                        if (ImGui::Checkbox("Cascade Interpolation", &cascade_interpolation_enable))
+                            dbg_fsp_shading_test_cascade_interpolation_enable_ =
+                                cascade_interpolation_enable ? 1 : 0;
+                        ImGui::TextDisabled("Cascade Interpolation is used only with All.");
+
+                        if (0 == dbg_fsp_shading_test_signal_)
+                        {
+                            ImGui::SliderFloat(
+                                "Irradiance EV",
+                                &dbg_fsp_shading_test_irradiance_ev_,
+                                -16.0f,
+                                16.0f,
+                                "%.2f EV");
+                            dbg_fsp_shading_test_irradiance_ev_ = std::clamp(
+                                dbg_fsp_shading_test_irradiance_ev_,
+                                -16.0f,
+                                16.0f);
+                        }
+                        else if (2 == dbg_fsp_shading_test_signal_)
+                        {
+                            ImGui::TextDisabled("Green: updated this frame / Blue: older / Red: not updated / Black: no probe");
+                            ImGui::TextDisabled("Representative cell only; Trilinear does not affect this mode.");
+                        }
+                        ImGui::TextDisabled("Depth-derived position and approximate normal.");
                     }
                     else if (0 == dbg_view_category_)
                     {
@@ -1845,6 +1903,20 @@ namespace ngl::render::app
                 InstantRasterDerivedVoxelScene::dbg_fsp_irradiance_volume_slice_scroll_x_;
             param.debug_fsp_irradiance_volume_slice_scroll_y =
                 InstantRasterDerivedVoxelScene::dbg_fsp_irradiance_volume_slice_scroll_y_;
+            param.debug_fsp_shading_test_signal = std::clamp(
+                InstantRasterDerivedVoxelScene::dbg_fsp_shading_test_signal_, 0, 2);
+            param.debug_fsp_shading_test_cascade = std::clamp(
+                InstantRasterDerivedVoxelScene::dbg_fsp_shading_test_cascade_,
+                -1,
+                static_cast<int>(fsp_cascade_count_) - 1);
+            param.debug_fsp_shading_test_trilinear_enable =
+                InstantRasterDerivedVoxelScene::dbg_fsp_shading_test_trilinear_enable_ ? 1 : 0;
+            param.debug_fsp_shading_test_cascade_interpolation_enable =
+                InstantRasterDerivedVoxelScene::dbg_fsp_shading_test_cascade_interpolation_enable_ ? 1 : 0;
+            param.debug_fsp_shading_test_irradiance_ev = std::clamp(
+                InstantRasterDerivedVoxelScene::dbg_fsp_shading_test_irradiance_ev_,
+                -16.0f,
+                16.0f);
             param.debug_bbv_probe_mode = InstantRasterDerivedVoxelScene::dbg_bbv_probe_debug_mode_;
             param.debug_bbv_depth_test_enable = InstantRasterDerivedVoxelScene::dbg_bbv_depth_test_enable_;
             param.debug_fsp_probe_mode = InstantRasterDerivedVoxelScene::dbg_fsp_probe_debug_mode_;
@@ -1912,6 +1984,13 @@ namespace ngl::render::app
             }
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "FspInitClear");
+
+                fsp_cell_probe_index_buffer_.ResourceBarrier(
+                    p_command_list,
+                    rhi::EResourceState::UnorderedAccess);
+                fsp_probe_pool_buffer_.ResourceBarrier(
+                    p_command_list,
+                    rhi::EResourceState::UnorderedAccess);
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_fsp_clear_->SetView(&desc_set, "cb_instant_rdv", &cbh_dispatch_->cbv);
@@ -2660,6 +2739,13 @@ namespace ngl::render::app
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "FspBeginUpdate");
 
+                fsp_cell_probe_index_buffer_.ResourceBarrier(
+                    p_command_list,
+                    rhi::EResourceState::UnorderedAccess);
+                fsp_probe_pool_buffer_.ResourceBarrier(
+                    p_command_list,
+                    rhi::EResourceState::UnorderedAccess);
+
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_fsp_begin_update_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
                 pso_fsp_begin_update_->SetView(&desc_set, "cb_instant_rdv", &cbh_dispatch_->cbv);
@@ -2919,6 +3005,7 @@ namespace ngl::render::app
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "FspUpdate_Trace");
 
                     fsp_probe_ray_result_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
+                    fsp_probe_pool_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::ShaderRead);
 
                     ngl::rhi::DescriptorSetDep desc_set = {};
                     pso_fsp_probe_ray_trace_->SetView(&desc_set, "cb_ngl_sceneview", &scene_cbv->cbv);
@@ -2954,6 +3041,8 @@ namespace ngl::render::app
                 {
                     NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "FspUpdate_Resolve");
 
+                    fsp_probe_pool_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
+
                     ngl::rhi::DescriptorSetDep desc_set = {};
                     pso_fsp_probe_ray_resolve_->SetView(&desc_set, "cb_instant_rdv", &cbh_dispatch_->cbv);
                     pso_fsp_probe_ray_resolve_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
@@ -2975,6 +3064,9 @@ namespace ngl::render::app
                 fsp_probe_atlas_tex_.ResourceBarrier(
                     p_command_list,
                     rhi::EResourceState::ShaderRead);
+                fsp_probe_pool_buffer_.ResourceBarrier(
+                    p_command_list,
+                    rhi::EResourceState::ShaderRead);
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_fsp_sh_update_->SetView(&desc_set, "cb_instant_rdv", &cbh_dispatch_->cbv);
@@ -2991,6 +3083,13 @@ namespace ngl::render::app
             }
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "FspIrradianceVolumePropagate");
+
+                fsp_cell_probe_index_buffer_.ResourceBarrier(
+                    p_command_list,
+                    rhi::EResourceState::ShaderRead);
+                fsp_probe_pool_buffer_.ResourceBarrier(
+                    p_command_list,
+                    rhi::EResourceState::ShaderRead);
 
                 ngl::rhi::DescriptorSetDep desc_set = {};
                 pso_fsp_irradiance_volume_propagate_->SetView(&desc_set, "cb_instant_rdv", &cbh_dispatch_->cbv);
@@ -3080,9 +3179,17 @@ namespace ngl::render::app
                 &desc_set,
                 "SmpReducedSurfaceBuffer",
                 global_res.default_resource_.sampler_linear_clamp.Get());
+            pso_bbv_debug_visualize_->SetView(
+                &desc_set,
+                "SmpFspIrradianceVolume",
+                global_res.default_resource_.sampler_linear_clamp.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxelOptionData", bbv_optional_data_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_fsp_atlas_srv.Get(), fsp_probe_atlas_tex_.srv.Get());
+            fsp_cell_probe_index_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::ShaderRead);
+            fsp_probe_pool_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::ShaderRead);
+            pso_bbv_debug_visualize_->SetView(&desc_set, "FspCellProbeIndexBuffer", fsp_cell_probe_index_buffer_.srv.Get());
+            pso_bbv_debug_visualize_->SetView(&desc_set, "FspProbePoolBuffer", fsp_probe_pool_buffer_.srv.Get());
             fsp_irradiance_volume_sh_texture_.ResourceBarrier(p_command_list, rhi::EResourceState::ShaderRead);
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_fsp_irradiance_volume_sh_srv.Get(), fsp_irradiance_volume_sh_texture_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_srv.Get(), assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv.Get());

@@ -15,6 +15,12 @@
 namespace ngl::imgui
 {
 
+    // imgui.iniへ展開状態を保存する固定キー付きCollapsingHeader。
+    bool PersistentCollapsingHeader(
+        const char* settings_key,
+        const char* label,
+        ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_None);
+
     // Imgui マルチスレッド向けSnapshot.
     //  https://github.com/ocornut/imgui/issues/1860#issuecomment-1927630727
     struct ImDrawDataSnapshot;

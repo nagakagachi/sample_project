@@ -363,6 +363,13 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int debug_fsp_irradiance_volume_slice_scroll_x NGL_CPP_MEMBER_INIT({0});
         int debug_fsp_irradiance_volume_slice_scroll_y NGL_CPP_MEMBER_INIT({0});
         int debug_fsp_irradiance_volume_slice_padding NGL_CPP_MEMBER_INIT({0});
+        // Voxel DebugのFSP ShadingTest設定。Cascade -1は連続位置基準の自動選択。
+        int debug_fsp_shading_test_signal NGL_CPP_MEMBER_INIT({0});
+        int debug_fsp_shading_test_cascade NGL_CPP_MEMBER_INIT({-1});
+        int debug_fsp_shading_test_trilinear_enable NGL_CPP_MEMBER_INIT({1});
+        int debug_fsp_shading_test_cascade_interpolation_enable NGL_CPP_MEMBER_INIT({1});
+        float debug_fsp_shading_test_irradiance_ev NGL_CPP_MEMBER_INIT({0.0f});
+        float3 debug_fsp_shading_test_padding NGL_CPP_MEMBER_INIT({});
         
         int debug_bbv_probe_mode NGL_CPP_MEMBER_INIT({-1});
         int debug_bbv_depth_test_enable NGL_CPP_MEMBER_INIT({0});

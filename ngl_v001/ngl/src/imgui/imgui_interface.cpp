@@ -1,5 +1,9 @@
 ﻿#include "imgui/imgui_interface.h"
 
+#include <cstring>
+#include <map>
+#include <string>
+
 #if NGL_IMGUI_ENABLE
 // imgui.
 #include "imgui_internal.h"
@@ -15,6 +19,93 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg
 
 namespace  ngl::imgui
 {
+#if NGL_IMGUI_ENABLE
+    namespace
+    {
+        using PersistentCollapsingHeaderStateMap = std::map<std::string, bool>;
+        PersistentCollapsingHeaderStateMap g_persistent_collapsing_header_state;
+
+        void PersistentCollapsingHeaderSettingsClearAll(ImGuiContext*, ImGuiSettingsHandler*)
+        {
+            g_persistent_collapsing_header_state.clear();
+        }
+
+        void* PersistentCollapsingHeaderSettingsReadOpen(
+            ImGuiContext*, ImGuiSettingsHandler*, const char* name)
+        {
+            return (0 == std::strcmp(name, "State"))
+                ? &g_persistent_collapsing_header_state
+                : nullptr;
+        }
+
+        void PersistentCollapsingHeaderSettingsReadLine(
+            ImGuiContext*, ImGuiSettingsHandler*, void*, const char* line)
+        {
+            const char* const separator = std::strchr(line, '=');
+            if(nullptr == separator || separator == line)
+            {
+                return;
+            }
+
+            g_persistent_collapsing_header_state[std::string(line, separator)] =
+                ('1' == separator[1]);
+        }
+
+        void PersistentCollapsingHeaderSettingsWriteAll(
+            ImGuiContext*, ImGuiSettingsHandler*, ImGuiTextBuffer* out_buffer)
+        {
+            if(g_persistent_collapsing_header_state.empty())
+            {
+                return;
+            }
+
+            out_buffer->appendf("[NglCollapsingHeader][State]\n");
+            for(const auto& [settings_key, is_open] : g_persistent_collapsing_header_state)
+            {
+                out_buffer->appendf("%s=%d\n", settings_key.c_str(), is_open ? 1 : 0);
+            }
+            out_buffer->append("\n");
+        }
+
+        void RegisterPersistentCollapsingHeaderSettings()
+        {
+            ImGuiSettingsHandler settings_handler{};
+            settings_handler.TypeName = "NglCollapsingHeader";
+            settings_handler.TypeHash = ImHashStr(settings_handler.TypeName);
+            settings_handler.ClearAllFn = PersistentCollapsingHeaderSettingsClearAll;
+            settings_handler.ReadOpenFn = PersistentCollapsingHeaderSettingsReadOpen;
+            settings_handler.ReadLineFn = PersistentCollapsingHeaderSettingsReadLine;
+            settings_handler.WriteAllFn = PersistentCollapsingHeaderSettingsWriteAll;
+            ImGui::AddSettingsHandler(&settings_handler);
+        }
+    }
+
+    bool PersistentCollapsingHeader(
+        const char* settings_key,
+        const char* label,
+        ImGuiTreeNodeFlags flags)
+    {
+        const auto found = g_persistent_collapsing_header_state.find(settings_key);
+        const bool is_open =
+            (found != g_persistent_collapsing_header_state.end()) && found->second;
+        ImGui::SetNextItemOpen(is_open, ImGuiCond_Always);
+        const bool is_visible = ImGui::CollapsingHeader(
+            label,
+            flags & ~ImGuiTreeNodeFlags_DefaultOpen);
+        if(ImGui::IsItemToggledOpen())
+        {
+            g_persistent_collapsing_header_state[settings_key] = is_visible;
+            ImGui::MarkIniSettingsDirty();
+        }
+        return is_visible;
+    }
+#else
+    bool PersistentCollapsingHeader(const char*, const char*, ImGuiTreeNodeFlags)
+    {
+        return false;
+    }
+#endif
+
     // ImGui描画データSnapshot.
     struct ImDrawDataSnapshot
     {
@@ -100,6 +191,7 @@ namespace  ngl::imgui
         // Setup Dear ImGui context
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
+        RegisterPersistentCollapsingHeaderSettings();
         ImGuiIO& io = ImGui::GetIO();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls

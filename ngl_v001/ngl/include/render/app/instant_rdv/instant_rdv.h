@@ -320,6 +320,11 @@ namespace ngl::render::app
         static int dbg_fsp_irradiance_volume_slice_scale_;
         static int dbg_fsp_irradiance_volume_slice_scroll_x_;
         static int dbg_fsp_irradiance_volume_slice_scroll_y_;
+        static int dbg_fsp_shading_test_signal_;
+        static int dbg_fsp_shading_test_cascade_;
+        static int dbg_fsp_shading_test_trilinear_enable_;
+        static int dbg_fsp_shading_test_cascade_interpolation_enable_;
+        static float dbg_fsp_shading_test_irradiance_ev_;
         static math::Vec3u dbg_fsp_resolution_;
         
         
