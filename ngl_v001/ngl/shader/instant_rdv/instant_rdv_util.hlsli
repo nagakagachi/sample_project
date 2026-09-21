@@ -388,7 +388,14 @@ bool FspTryGetFinestCascadePhysicalCellFromWorldPos(
 }
 
 
-// 実グリッドの外縁までの距離。内部は正、外部は負になる。
+bool FspIsWorldPosInsideCascade(float3 pos_ws, uint cascade_index)
+{
+    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const float3 local_pos = (pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv;
+    return all(local_pos >= 0.0.xxx) && all(local_pos < float3(cascade.grid.grid_resolution));
+}
+
+// 実グリッドの外縁までの距離。SurfaceMaskの親Cascade登録帯を判定するために使用する。
 float FspCascadeBoundaryDistance(float3 pos_ws, FspCascadeGridParam cascade)
 {
     const float3 local_pos = pos_ws - cascade.grid.grid_min_pos;
@@ -397,32 +404,62 @@ float FspCascadeBoundaryDistance(float3 pos_ws, FspCascadeGridParam cascade)
     return min(min(face_dist.x, face_dist.y), face_dist.z);
 }
 
-bool FspIsWorldPosInsideCascade(float3 pos_ws, uint cascade_index)
+// カメラ位置に対して連続な、細かいCascadeから親Cascadeへのディザ遷移率を返す。
+// グリッドはカメラ位置をマイナス無限方向へ量子化するため、実外縁はセル内位相で最大1セル移動する。
+// 親CascadeのActiveProbeは細かい側の実外縁から2セルまで登録されるので、全位相でその帯に含まれる
+// 1セル幅だけを[0,1]の遷移帯として使用する。
+float FspCalcIrradianceVolumeCascadeDitherRate(
+    float3 camera_to_sample_ws, uint cascade_index)
 {
     const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-    const float3 local_pos = (pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv;
-    return all(local_pos >= 0.0.xxx) && all(local_pos < float3(cascade.grid.grid_resolution));
+    const float3 camera_to_sample_cell =
+        camera_to_sample_ws * cascade.grid.cell_size_inv;
+    const float3 half_extent_cell = float3(cascade.grid.grid_resolution) * 0.5;
+
+    // 正方向は全カメラ位相で実外縁から2セル以内となる[H-2, H-1)、
+    // 負方向は[H-1, H)を選ぶ。各軸の最外側を使い、角・辺も同じ規則で扱う。
+    const float3 safe_range_end_cell = select(
+        camera_to_sample_cell >= 0.0.xxx,
+        half_extent_cell - 1.0.xxx,
+        half_extent_cell);
+    const float3 border_gradient = max(
+        abs(camera_to_sample_cell) - (safe_range_end_cell - 1.0.xxx),
+        0.0.xxx);
+    return saturate(max(
+        border_gradient.x,
+        max(border_gradient.y, border_gradient.z)));
 }
 
-// 実グリッドの外縁から細かい側1セル内で親Cascadeへ遷移する。
-// グリッド量子化移動時には境界も移動するが、粗い側を選ぶ範囲を実際の登録帯に制限する。
+// カメラ距離に連続な安全帯で最も細かいCascadeを選び、帯域内だけ親へディザ遷移する。
 bool FspTrySelectIrradianceVolumeCascade(
-    out uint cascade_index, float3 pos_ws, bool interpolate, float dither_value)
+    out uint cascade_index,
+    float3 pos_ws,
+    float3 camera_pos_ws,
+    bool interpolate,
+    float dither_value)
 {
     const uint cascade_count = FspCascadeCount();
+    const float3 camera_to_sample_ws = pos_ws - camera_pos_ws;
     [loop]
     for(uint ci = 0u; ci < cascade_count; ++ci)
     {
+        const bool is_last_cascade = ci + 1u >= cascade_count;
+        const float coarse_rate = is_last_cascade
+            ? 0.0
+            : FspCalcIrradianceVolumeCascadeDitherRate(camera_to_sample_ws, ci);
+        if(!is_last_cascade && coarse_rate >= 1.0)
+        {
+            continue;
+        }
+
         if(!FspIsWorldPosInsideCascade(pos_ws, ci))
         {
             continue;
         }
+
         cascade_index = ci;
-        if(interpolate && ci + 1u < cascade_count)
+        if(interpolate && coarse_rate > 0.0)
         {
-            const FspCascadeGridParam cascade = FspGetCascadeParam(ci);
-            const float boundary_dist = FspCascadeBoundaryDistance(pos_ws, cascade);
-            const float coarse_rate = 1.0 - saturate(boundary_dist * cascade.grid.cell_size_inv);
             if(dither_value < coarse_rate && FspIsWorldPosInsideCascade(pos_ws, ci + 1u))
             {
                 cascade_index = ci + 1u;

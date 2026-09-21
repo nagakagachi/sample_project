@@ -24,7 +24,9 @@ bool FspDebugSelectCascade(out uint cascade_index, float3 sample_pos_ws, float2 
         return FspIsWorldPosInsideCascade(sample_pos_ws, cascade_index);
     }
     return FspTrySelectIrradianceVolumeCascade(
-        cascade_index, sample_pos_ws,
+        cascade_index,
+        sample_pos_ws,
+        GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx),
         cb_instant_rdv.debug_fsp_shading_test_cascade_interpolation_enable != 0,
         interleaved_gradient_noise(dither_seed));
 }
@@ -594,47 +596,15 @@ void main_cs(
 
             if(3 == cb_instant_rdv.debug_fsp_shading_test_signal)
             {
-                #if 1
-                    uint selected_cascade_index = 0u;
-                    if(!FspDebugSelectCascade(selected_cascade_index, surface_pos_ws, screen_pos_f))
-                    {
-                        RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
-                        return;
-                    }
-
-                    RWTexWork[dtid.xy] = float4(FspDebugCascadeColor(selected_cascade_index), 1.0);
+                uint selected_cascade_index = 0u;
+                if(!FspDebugSelectCascade(selected_cascade_index, surface_pos_ws, screen_pos_f))
+                {
+                    RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
                     return;
-                #else
-                    // ディザ補間の改善用.
-                    // グリッドセルの端の2セルの範囲で[0,1]変化する, カメラからサンプルへの距離によるグラデーションを計算. 上のカスケードとのオーバラップが保証された端2セルでカメラ位置連続な補間に利用予定.
-                    // ただし, 現在のグリッドのシフトがカメラ位置のXYZが0以上か未満かで1セルずれるため, それをこちらで考慮するか, グリッドセルの移動を修正するか検討中.
+                }
 
-                    // サンプル位置のカスケード0セル座標
-                    const float3 sample_pos_cascade0 = (surface_pos_ws - cb_instant_rdv.fsp_cascade[0].grid.grid_min_pos) * cb_instant_rdv.fsp_cascade[0].grid.cell_size_inv;
-                    // サンプル位置のCellが境界Nセルをマスク.
-                    float grid_border_mask_cascade0 = 0;
-                    const float grid_border_cell_range = 2.0;
-                    if(all(0.0 < sample_pos_cascade0) && all(sample_pos_cascade0 < cb_instant_rdv.fsp_cascade[0].grid.grid_resolution))
-                    {
-                        if(any(sample_pos_cascade0 < grid_border_cell_range) || any(sample_pos_cascade0 > cb_instant_rdv.fsp_cascade[0].grid.grid_resolution - grid_border_cell_range))
-                        {
-                            grid_border_mask_cascade0 = 1.0;
-                        }
-                    }
-
-                    // グラデーション計算.
-                    const float3 camera_to_sample_cascade0 = (surface_pos_ws - view_origin) * cb_instant_rdv.fsp_cascade[0].grid.cell_size_inv;
-                    const float3 grid_half_extent_min_cascade0 = floor(cb_instant_rdv.fsp_cascade[0].grid.grid_resolution / 2);
-                    // グリッドはカメラ位置をマイナス無限方向に丸めた量子化で配置されるため, 正方向のセル数は1つすくない. それ考慮してセル空間half_extentを計算.
-                    const float3 grid_axis_range_cascade0 = select(camera_to_sample_cascade0 >= 0.0, grid_half_extent_min_cascade0-1.0, grid_half_extent_min_cascade0 + 0.0);
-                    const float3 grid_border_grad_cascade0 = max(abs(camera_to_sample_cascade0) - (grid_axis_range_cascade0 - 1.0), 0.0);
-                    const float grid_border_grad_scalar_cascade0 = max(grid_border_grad_cascade0.x, max(grid_border_grad_cascade0.y, grid_border_grad_cascade0.z));
-                    // デバッグ用. grid_border_grad_scalar_cascade0が0より大きく1.0未満のマスク.
-                    const float grid_border_grad_mask_cascade0 = (0.0<grid_border_grad_scalar_cascade0 && grid_border_grad_scalar_cascade0<1.0)? 1.0 : 0.0;
-
-                    RWTexWork[dtid.xy] = float4(float3(grid_border_grad_scalar_cascade0*grid_border_grad_mask_cascade0, grid_border_mask_cascade0, 0.0), 1.0);
-                    return;
-                #endif
+                RWTexWork[dtid.xy] = float4(FspDebugCascadeColor(selected_cascade_index), 1.0);
+                return;
             }
 
             float3 surface_normal_ws;

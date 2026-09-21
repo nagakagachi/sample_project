@@ -971,9 +971,9 @@ namespace ngl::render::app
     }
     void ToroidalGridUpdater::UpdateGrid(const math::Vec3& important_pos)
     {
-        // 中心を離散CELLIDで保持.
+        // 中心をマイナス無限方向へ丸めた離散CELLIDで保持.
         grid_.center_cell_id_prev = grid_.center_cell_id;
-        grid_.center_cell_id      = (important_pos / grid_.cell_size).Cast<int>();
+        grid_.center_cell_id      = math::Vec3::Floor(important_pos / grid_.cell_size).Cast<int>();
 
         // 離散CELLIDからGridMin情報を復元.
         grid_.min_pos_prev = grid_.center_cell_id_prev.Cast<float>() * grid_.cell_size - grid_.resolution.Cast<float>() * 0.5f * grid_.cell_size;

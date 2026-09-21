@@ -148,11 +148,15 @@ FspIrradianceVolumeL1Sample FspLoadIrradianceVolumeL1FromCellIndexUnchecked(uint
     return result;
 }
 
-// 実グリッド境界を基準に、登録済みの粗いCascadeだけをディザで選ぶ。
+// カメラ距離に連続な安全帯を基準に、登録済みの粗いCascadeだけをディザで選ぶ。
 bool FspTrySelectLightingCascade(out uint cascade_index, float3 sample_pos_ws, float2 dither_seed)
 {
     return FspTrySelectIrradianceVolumeCascade(
-        cascade_index, sample_pos_ws, true, interleaved_gradient_noise(dither_seed));
+        cascade_index,
+        sample_pos_ws,
+        GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx),
+        true,
+        interleaved_gradient_noise(dither_seed));
 }
 
 // Dense IrradianceVolume の nearest 参照。
