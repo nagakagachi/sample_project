@@ -388,6 +388,52 @@ bool FspTryGetFinestCascadePhysicalCellFromWorldPos(
 }
 
 
+// 実グリッドの外縁までの距離。内部は正、外部は負になる。
+float FspCascadeBoundaryDistance(float3 pos_ws, FspCascadeGridParam cascade)
+{
+    const float3 local_pos = pos_ws - cascade.grid.grid_min_pos;
+    const float3 extent = float3(cascade.grid.grid_resolution) * cascade.grid.cell_size;
+    const float3 face_dist = min(local_pos, extent - local_pos);
+    return min(min(face_dist.x, face_dist.y), face_dist.z);
+}
+
+bool FspIsWorldPosInsideCascade(float3 pos_ws, uint cascade_index)
+{
+    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const float3 local_pos = (pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv;
+    return all(local_pos >= 0.0.xxx) && all(local_pos < float3(cascade.grid.grid_resolution));
+}
+
+// 実グリッドの外縁から細かい側1セル内で親Cascadeへ遷移する。
+// グリッド量子化移動時には境界も移動するが、粗い側を選ぶ範囲を実際の登録帯に制限する。
+bool FspTrySelectIrradianceVolumeCascade(
+    out uint cascade_index, float3 pos_ws, bool interpolate, float dither_value)
+{
+    const uint cascade_count = FspCascadeCount();
+    [loop]
+    for(uint ci = 0u; ci < cascade_count; ++ci)
+    {
+        if(!FspIsWorldPosInsideCascade(pos_ws, ci))
+        {
+            continue;
+        }
+        cascade_index = ci;
+        if(interpolate && ci + 1u < cascade_count)
+        {
+            const FspCascadeGridParam cascade = FspGetCascadeParam(ci);
+            const float boundary_dist = FspCascadeBoundaryDistance(pos_ws, cascade);
+            const float coarse_rate = 1.0 - saturate(boundary_dist * cascade.grid.cell_size_inv);
+            if(dither_value < coarse_rate && FspIsWorldPosInsideCascade(pos_ws, ci + 1u))
+            {
+                cascade_index = ci + 1u;
+            }
+        }
+        return true;
+    }
+    cascade_index = 0u;
+    return false;
+}
+
 // Surface ownerのCell indexとMask addressを同じ座標変換から生成する。
 // 境界帯では隣接coarse cascadeも返す。
 uint FspGetSurfaceOwnerCellData(
@@ -434,19 +480,7 @@ uint FspGetSurfaceOwnerCellData(
 
     const FspCascadeGridParam coarse_cascade =
         FspGetCascadeParam(coarse_cascade_index);
-    const float3 owner_cascade_max_pos =
-        owner_cascade.grid.grid_min_pos +
-        float3(owner_cascade.grid.grid_resolution) *
-            owner_cascade.grid.cell_size;
-    const float3 dist_to_min =
-        pos_ws - owner_cascade.grid.grid_min_pos;
-    const float3 dist_to_max =
-        owner_cascade_max_pos - pos_ws;
-    const float boundary_dist = min(
-        min(dist_to_min.x, dist_to_max.x),
-        min(
-            min(dist_to_min.y, dist_to_max.y),
-            min(dist_to_min.z, dist_to_max.z)));
+    const float boundary_dist = FspCascadeBoundaryDistance(pos_ws, owner_cascade);
     const float dither_width = max(
         coarse_cascade.grid.cell_size,
         owner_cascade.grid.cell_size);

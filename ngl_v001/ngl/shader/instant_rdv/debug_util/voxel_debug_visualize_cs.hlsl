@@ -13,27 +13,7 @@ SamplerState SmpFspIrradianceVolume;
 
 RWTexture2D<float4>	RWTexWork;
 
-// ShadingTest用に、ライティングと同じ連続カメラ位置基準のカスケード範囲を判定する。
-bool FspDebugIsWorldPosInsideCascade(float3 sample_pos_ws, uint cascade_index)
-{
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-    const float3 grid_coordf = (sample_pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv;
-    return all(grid_coordf >= 0.0.xxx) && all(grid_coordf < float3(cascade.grid.grid_resolution));
-}
-
-float FspDebugCascadeSelectionHalfExtent(uint cascade_index)
-{
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-    return (float(cascade.grid.grid_resolution.x) * 0.5 - 1.0) * cascade.grid.cell_size;
-}
-
-float FspDebugCameraDistance(float3 sample_pos_ws)
-{
-    const float3 camera_pos_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
-    const float3 distance_ws = abs(sample_pos_ws - camera_pos_ws);
-    return max(max(distance_ws.x, distance_ws.y), distance_ws.z);
-}
-
+// 固定Cascade指定以外は、ライティングと同じ実グリッド境界を使う。
 bool FspDebugSelectCascade(out uint cascade_index, float3 sample_pos_ws, float2 dither_seed)
 {
     const uint cascade_count = FspCascadeCount();
@@ -41,36 +21,12 @@ bool FspDebugSelectCascade(out uint cascade_index, float3 sample_pos_ws, float2 
     if(requested_cascade >= 0)
     {
         cascade_index = min(uint(requested_cascade), cascade_count - 1u);
-        return FspDebugIsWorldPosInsideCascade(sample_pos_ws, cascade_index);
+        return FspIsWorldPosInsideCascade(sample_pos_ws, cascade_index);
     }
-
-    const float distance_ws = FspDebugCameraDistance(sample_pos_ws);
-    const float finest_half_extent = FspDebugCascadeSelectionHalfExtent(0u);
-    const uint required_scale = max(1u, (uint)ceil(distance_ws / finest_half_extent));
-    cascade_index = min(
-        (required_scale <= 1u) ? 0u : uint(firstbithigh(required_scale - 1u) + 1),
-        cascade_count - 1u);
-    if(!FspDebugIsWorldPosInsideCascade(sample_pos_ws, cascade_index))
-    {
-        return false;
-    }
-
-    if(0 == cb_instant_rdv.debug_fsp_shading_test_cascade_interpolation_enable ||
-        cascade_index + 1u >= cascade_count)
-    {
-        return true;
-    }
-
-    const float half_extent = FspDebugCascadeSelectionHalfExtent(cascade_index);
-    const float boundary_dist = half_extent - distance_ws;
-    const float coarse_cell_size = FspGetCascadeParam(cascade_index + 1u).grid.cell_size;
-    const float dither_width = min(coarse_cell_size, half_extent * 0.5);
-    const float coarse_select_rate = 1.0 - saturate(boundary_dist / max(dither_width, 1e-5));
-    if(coarse_select_rate > 0.0 && interleaved_gradient_noise(dither_seed) < coarse_select_rate)
-    {
-        cascade_index++;
-    }
-    return true;
+    return FspTrySelectIrradianceVolumeCascade(
+        cascade_index, sample_pos_ws,
+        cb_instant_rdv.debug_fsp_shading_test_cascade_interpolation_enable != 0,
+        interleaved_gradient_noise(dither_seed));
 }
 
 float3 FspDebugCascadeColor(uint cascade_index)
@@ -638,15 +594,47 @@ void main_cs(
 
             if(3 == cb_instant_rdv.debug_fsp_shading_test_signal)
             {
-                uint selected_cascade_index = 0u;
-                if(!FspDebugSelectCascade(selected_cascade_index, surface_pos_ws, screen_pos_f))
-                {
-                    RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
-                    return;
-                }
+                #if 1
+                    uint selected_cascade_index = 0u;
+                    if(!FspDebugSelectCascade(selected_cascade_index, surface_pos_ws, screen_pos_f))
+                    {
+                        RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
+                        return;
+                    }
 
-                RWTexWork[dtid.xy] = float4(FspDebugCascadeColor(selected_cascade_index), 1.0);
-                return;
+                    RWTexWork[dtid.xy] = float4(FspDebugCascadeColor(selected_cascade_index), 1.0);
+                    return;
+                #else
+                    // ディザ補間の改善用.
+                    // グリッドセルの端の2セルの範囲で[0,1]変化する, カメラからサンプルへの距離によるグラデーションを計算. 上のカスケードとのオーバラップが保証された端2セルでカメラ位置連続な補間に利用予定.
+                    // ただし, 現在のグリッドのシフトがカメラ位置のXYZが0以上か未満かで1セルずれるため, それをこちらで考慮するか, グリッドセルの移動を修正するか検討中.
+
+                    // サンプル位置のカスケード0セル座標
+                    const float3 sample_pos_cascade0 = (surface_pos_ws - cb_instant_rdv.fsp_cascade[0].grid.grid_min_pos) * cb_instant_rdv.fsp_cascade[0].grid.cell_size_inv;
+                    // サンプル位置のCellが境界Nセルをマスク.
+                    float grid_border_mask_cascade0 = 0;
+                    const float grid_border_cell_range = 2.0;
+                    if(all(0.0 < sample_pos_cascade0) && all(sample_pos_cascade0 < cb_instant_rdv.fsp_cascade[0].grid.grid_resolution))
+                    {
+                        if(any(sample_pos_cascade0 < grid_border_cell_range) || any(sample_pos_cascade0 > cb_instant_rdv.fsp_cascade[0].grid.grid_resolution - grid_border_cell_range))
+                        {
+                            grid_border_mask_cascade0 = 1.0;
+                        }
+                    }
+
+                    // グラデーション計算.
+                    const float3 camera_to_sample_cascade0 = (surface_pos_ws - view_origin) * cb_instant_rdv.fsp_cascade[0].grid.cell_size_inv;
+                    const float3 grid_half_extent_min_cascade0 = floor(cb_instant_rdv.fsp_cascade[0].grid.grid_resolution / 2);
+                    // グリッドはカメラ位置をマイナス無限方向に丸めた量子化で配置されるため, 正方向のセル数は1つすくない. それ考慮してセル空間half_extentを計算.
+                    const float3 grid_axis_range_cascade0 = select(camera_to_sample_cascade0 >= 0.0, grid_half_extent_min_cascade0-1.0, grid_half_extent_min_cascade0 + 0.0);
+                    const float3 grid_border_grad_cascade0 = max(abs(camera_to_sample_cascade0) - (grid_axis_range_cascade0 - 1.0), 0.0);
+                    const float grid_border_grad_scalar_cascade0 = max(grid_border_grad_cascade0.x, max(grid_border_grad_cascade0.y, grid_border_grad_cascade0.z));
+                    // デバッグ用. grid_border_grad_scalar_cascade0が0より大きく1.0未満のマスク.
+                    const float grid_border_grad_mask_cascade0 = (0.0<grid_border_grad_scalar_cascade0 && grid_border_grad_scalar_cascade0<1.0)? 1.0 : 0.0;
+
+                    RWTexWork[dtid.xy] = float4(float3(grid_border_grad_scalar_cascade0*grid_border_grad_mask_cascade0, grid_border_mask_cascade0, 0.0), 1.0);
+                    return;
+                #endif
             }
 
             float3 surface_normal_ws;

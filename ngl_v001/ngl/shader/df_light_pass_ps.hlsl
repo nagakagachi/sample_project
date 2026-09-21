@@ -148,86 +148,20 @@ FspIrradianceVolumeL1Sample FspLoadIrradianceVolumeL1FromCellIndexUnchecked(uint
     return result;
 }
 
-bool FspIsWorldPosInsideDenseIrradianceVolumeCascade(float3 sample_pos_ws, uint cascade_index)
-{
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-    const float3 grid_coordf = (sample_pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv;
-    return all(grid_coordf >= 0.0.xxx) && all(grid_coordf < float3(cascade.grid.grid_resolution));
-}
-
-// グリッドの量子化により、実際の中心は各軸で1セル未満ずれる。
-// カメラの連続位置を中心とする選択範囲を1セル分内側に縮め、実グリッド内に収める。
-// CPUがゼロ方向に切り捨てる負のカメラ座標でも、この余白でずれを吸収する。
-float FspDenseIrradianceVolumeSelectionHalfExtent(uint cascade_index)
-{
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-    return (float(cascade.grid.grid_resolution.x) * 0.5 - 1.0) * cascade.grid.cell_size;
-}
-
-float FspDenseIrradianceVolumeCameraDistance(float3 sample_pos_ws)
-{
-    const float3 camera_pos_ws = GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx);
-    const float3 distance_ws = abs(sample_pos_ws - camera_pos_ws);
-    return max(max(distance_ws.x, distance_ws.y), distance_ws.z);
-}
-
-// 全カスケードの解像度が同じ立方体で、セルサイズが段ごとに2倍になることはCPU側で検証済み。
-// カスケード選択とディザ補間には、どちらもカメラの連続位置を中心とする境界を使う。
-bool FspTrySelectFinestDenseIrradianceVolumeCascade(out uint cascade_index, float3 sample_pos_ws)
-{
-    const uint cascade_count = FspCascadeCount();
-    const float distance_ws = FspDenseIrradianceVolumeCameraDistance(sample_pos_ws);
-    const float finest_half_extent = FspDenseIrradianceVolumeSelectionHalfExtent(0u);
-    const uint required_scale = max(1u, (uint)ceil(distance_ws / finest_half_extent));
-    cascade_index = min(
-        (required_scale <= 1u) ? 0u : uint(firstbithigh(required_scale - 1u) + 1),
-        cascade_count - 1u);
-
-    // 親を持たない最終カスケードでは、実グリッドの全範囲を維持する。
-    return FspIsWorldPosInsideDenseIrradianceVolumeCascade(sample_pos_ws, cascade_index);
-}
-
-float FspCalcDenseIrradianceVolumeCascadeBoundaryDitherRate(float3 sample_pos_ws, uint cascade_index)
-{
-    if((cascade_index + 1u) >= FspCascadeCount())
-    {
-        return 0.0;
-    }
-
-    const float half_extent = FspDenseIrradianceVolumeSelectionHalfExtent(cascade_index);
-    const float boundary_dist = half_extent - FspDenseIrradianceVolumeCameraDistance(sample_pos_ws);
-    const float coarse_cell_size = FspGetCascadeParam(cascade_index + 1u).grid.cell_size;
-    // 小さいグリッドでも補間帯が重ならないようにする。
-    // 子から親への遷移率が1になる境界では、親からさらに上位への遷移率を0に保つ。
-    const float dither_width = min(coarse_cell_size, half_extent * 0.5);
-    return 1.0 - saturate(boundary_dist / max(dither_width, 1e-5));
-}
-
-// ライティング時に使うcascadeを1本だけ選ぶ。境界では親cascadeとの確率的遷移だけを行う。
+// 実グリッド境界を基準に、登録済みの粗いCascadeだけをディザで選ぶ。
 bool FspTrySelectLightingCascade(out uint cascade_index, float3 sample_pos_ws, float2 dither_seed)
 {
-    if(!FspTrySelectFinestDenseIrradianceVolumeCascade(cascade_index, sample_pos_ws))
-    {
-        return false;
-    }
-
-    // 境界帯だけcoarse cascadeへ確率的に逃がし、ブレンドではなくディザで切り替える。
-    const float coarse_select_rate =
-        FspCalcDenseIrradianceVolumeCascadeBoundaryDitherRate(sample_pos_ws, cascade_index);
-    if(coarse_select_rate > 0.0 && interleaved_gradient_noise(dither_seed) < coarse_select_rate)
-    {
-        cascade_index = min(cascade_index + 1u, FspCascadeCount() - 1u);
-    }
-    return true;
+    return FspTrySelectIrradianceVolumeCascade(
+        cascade_index, sample_pos_ws, true, interleaved_gradient_noise(dither_seed));
 }
 
 // Dense IrradianceVolume の nearest 参照。
-bool TrySampleFspIrradianceVolumeL1Nearest(out FspIrradianceVolumeL1Sample result, float3 sample_pos_ws)
+bool TrySampleFspIrradianceVolumeL1Nearest(out FspIrradianceVolumeL1Sample result, float3 sample_pos_ws, float2 dither_seed)
 {
     result = MakeZeroFspIrradianceVolumeL1Sample();
 
     uint cascade_index = 0;
-    if(!FspTrySelectLightingCascade(cascade_index, sample_pos_ws, 0.0.xx))
+    if(!FspTrySelectLightingCascade(cascade_index, sample_pos_ws, dither_seed))
     {
         return false;
     }
@@ -312,7 +246,7 @@ bool TrySampleFspIrradianceVolumeL1(out FspIrradianceVolumeL1Sample result, floa
     {
         return TrySampleFspIrradianceVolumeL1Interpolated(result, sample_pos_ws, dither_seed);
     }
-    return TrySampleFspIrradianceVolumeL1Nearest(result, sample_pos_ws);
+    return TrySampleFspIrradianceVolumeL1Nearest(result, sample_pos_ws, dither_seed);
 }
 
 float3 EvalFspL1DiffuseIrradiance(FspIrradianceVolumeL1Sample fsp_probe_sh, float4 sh_basis)

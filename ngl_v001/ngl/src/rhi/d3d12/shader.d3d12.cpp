@@ -3,6 +3,10 @@
 
 // for wchar convert.
 #include <stdlib.h>
+#include <fstream>
+#include <filesystem>
+#include <limits>
+#include <vector>
 
 
 // for fxc
@@ -96,13 +100,54 @@ namespace rhi
 		}
 
 
+        // エントリとインクルードはBOMなしUTF-8のみ受け付ける。
+        // 同梱DXCのBOM付きLoadFileによるヒープ破損を避け、違反は変換せずエラーにする。
+        HRESULT LoadShaderSourceBlob(IDxcUtils* utils, LPCWSTR filename, IDxcBlobEncoding** output, bool& encoding_error)
+        {
+            *output = nullptr;
+            std::ifstream file(std::filesystem::path(filename), std::ios::binary | std::ios::ate);
+            if (!file)
+                return HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND);
+            const auto length = file.tellg();
+            if (length < 0 || static_cast<uint64_t>(length) > (std::numeric_limits<UINT32>::max)())
+                return E_FAIL;
+            std::vector<char> bytes(static_cast<size_t>(length));
+            file.seekg(0);
+            if (!bytes.empty() && !file.read(bytes.data(), static_cast<std::streamsize>(bytes.size())))
+                return E_FAIL;
+            const auto byte = [&bytes](size_t index) { return static_cast<unsigned char>(bytes[index]); };
+            const bool has_bom =
+                (bytes.size() >= 3 && byte(0) == 0xEF && byte(1) == 0xBB && byte(2) == 0xBF) ||
+                (bytes.size() >= 2 && ((byte(0) == 0xFF && byte(1) == 0xFE) || (byte(0) == 0xFE && byte(1) == 0xFF))) ||
+                (bytes.size() >= 4 && byte(0) == 0 && byte(1) == 0 && byte(2) == 0xFE && byte(3) == 0xFF);
+            if (has_bom)
+            {
+                std::wcerr << L"[ERROR] Shader source must be UTF-8 without BOM: " << filename << std::endl;
+                encoding_error = true;
+                return HRESULT_FROM_WIN32(ERROR_NO_UNICODE_TRANSLATION);
+            }
+            if (bytes.size() > static_cast<size_t>((std::numeric_limits<int>::max)()))
+                return E_FAIL;
+            if (!bytes.empty() && !MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS,
+                bytes.data(), static_cast<int>(bytes.size()), nullptr, 0))
+            {
+                std::wcerr << L"[ERROR] Invalid UTF-8 shader source: " << filename << std::endl;
+                encoding_error = true;
+                return HRESULT_FROM_WIN32(ERROR_NO_UNICODE_TRANSLATION);
+            }
+            // 検証した元のバイト列をそのまま渡す。BOM除去・文字コード変換は行わない。
+            const char* data = bytes.empty() ? "" : bytes.data();
+            return utils->CreateBlob(data, static_cast<UINT32>(bytes.size()), CP_UTF8, output);
+        }
+
 		// Shaderインクルード解決.
 		// 基底のIDxcIncludeHandlerではIncludeファイルされないようであるため実装.
 		class DefaultIncludeHandler
 			: public IDxcIncludeHandler
 		{
 		public:
-			DefaultIncludeHandler(Microsoft::WRL::ComPtr<IDxcUtils> dxc_library)
+			DefaultIncludeHandler(Microsoft::WRL::ComPtr<IDxcUtils> dxc_library, bool& encoding_error)
+                : encoding_error_(encoding_error)
 			{
 				dxc_library_ = dxc_library;
 			}
@@ -118,10 +163,9 @@ namespace rhi
 			{
 				// pFilename はパス解決されたものが渡されてくる.
 
-				uint32_t codePage = CP_UTF8;
-				IDxcBlobEncoding* sourceBlob;
-				// そのままロード.
-				auto result_blob = dxc_library_->LoadFile(pFilename, &codePage, &sourceBlob);
+				IDxcBlobEncoding* sourceBlob = nullptr;
+				// 文字コードを検証し、内容を変換せずロードする。
+				auto result_blob = LoadShaderSourceBlob(dxc_library_.Get(), pFilename, &sourceBlob, encoding_error_);
 				if (FAILED(result_blob))
 					return result_blob;
 				*ppIncludeSource = sourceBlob;
@@ -158,6 +202,7 @@ namespace rhi
 			}
 		private:
 			Microsoft::WRL::ComPtr<IDxcUtils>	dxc_library_;
+            bool& encoding_error_;
 			u32					ref_ = 0;
 		};
 
@@ -251,6 +296,7 @@ namespace rhi
 
 
 		bool result = true;
+        bool source_encoding_error = false;
 
 		// 先にdxcによるコンパイルを試みる.
 		{
@@ -290,13 +336,12 @@ namespace rhi
 
 			Microsoft::WRL::ComPtr<IDxcIncludeHandler> dxc_incHandler;
 			// 自前のハンドラ.
-			dxc_incHandler = new DefaultIncludeHandler(dxc_library);
+			dxc_incHandler = new DefaultIncludeHandler(dxc_library, source_encoding_error);
 
 			Microsoft::WRL::ComPtr<IDxcBlobEncoding> sourceBlob;
 			if (compile_success)
 			{
-				uint32_t codePage = CP_UTF8;
-				hr = dxc_library->LoadFile(shader_file_path_ws, &codePage, &sourceBlob);
+				hr = LoadShaderSourceBlob(dxc_library.Get(), shader_file_path_ws, &sourceBlob, source_encoding_error);
 				if (FAILED(hr))
 				{
 #ifdef _DEBUG
@@ -350,6 +395,10 @@ namespace rhi
 
 			result = compile_success;
 		}
+
+        // 文字コード違反は別コンパイラへのフォールバックで受理させない。
+        if (source_encoding_error)
+            return false;
 
 		// dxcでのコンパイルに失敗した場合はd3dcompilerでのコンパイルを試みる
 		if (!result)

@@ -246,7 +246,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int3 grid_resolution;
         float cell_size;
 
-        float3 grid_min_pos;
+        float3 grid_min_pos;// ワールド空間でのグリッドのMin位置.
         float cell_size_inv;
 
         int3 grid_min_voxel_coord;
