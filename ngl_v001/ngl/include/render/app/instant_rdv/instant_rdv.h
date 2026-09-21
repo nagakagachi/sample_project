@@ -36,6 +36,7 @@ namespace ngl::render::app
 
         math::Vec3u resolution = math::Vec3u(32);
         float       cell_size = 3.0f;
+        float       cell_size_inv = 1.0f / 3.0f;
 
         u32 total_count = {};
         

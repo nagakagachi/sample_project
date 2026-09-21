@@ -964,6 +964,7 @@ namespace ngl::render::app
     {
         grid_.resolution = grid_resolution;
         grid_.cell_size = bbv_cell_size;
+        grid_.cell_size_inv = 1.0f / bbv_cell_size;
 
         const u32 total_count = grid_.resolution.x * grid_.resolution.y * grid_.resolution.z;
         grid_.total_count = total_count;
@@ -973,7 +974,7 @@ namespace ngl::render::app
     {
         // 中心をマイナス無限方向へ丸めた離散CELLIDで保持.
         grid_.center_cell_id_prev = grid_.center_cell_id;
-        grid_.center_cell_id      = math::Vec3::Floor(important_pos / grid_.cell_size).Cast<int>();
+        grid_.center_cell_id      = math::Vec3::Floor(important_pos * grid_.cell_size_inv).Cast<int>();
 
         // 離散CELLIDからGridMin情報を復元.
         grid_.min_pos_prev = grid_.center_cell_id_prev.Cast<float>() * grid_.cell_size - grid_.resolution.Cast<float>() * 0.5f * grid_.cell_size;
@@ -1842,7 +1843,7 @@ namespace ngl::render::app
             {
                 param.bbv.grid_resolution = bbv_grid_updater_.Get().resolution.Cast<int>();
                 param.bbv.grid_min_pos     = bbv_grid_updater_.Get().min_pos;
-                param.bbv.grid_min_voxel_coord = math::Vec3::Floor(bbv_grid_updater_.Get().min_pos * (1.0f / bbv_grid_updater_.Get().cell_size)).Cast<int>();
+                param.bbv.grid_min_voxel_coord = math::Vec3::Floor(bbv_grid_updater_.Get().min_pos * bbv_grid_updater_.Get().cell_size_inv).Cast<int>();
 
                 param.bbv.grid_toroidal_offset =  bbv_grid_updater_.Get().toroidal_offset;
                 param.bbv.grid_toroidal_offset_prev =  bbv_grid_updater_.Get().toroidal_offset_prev;
@@ -1852,7 +1853,7 @@ namespace ngl::render::app
                 param.bbv.flatten_2d_width = bbv_grid_updater_.Get().flatten_2d_width;
 
                 param.bbv.cell_size       = bbv_grid_updater_.Get().cell_size;
-                param.bbv.cell_size_inv    = 1.0f / bbv_grid_updater_.Get().cell_size;
+                param.bbv.cell_size_inv    = bbv_grid_updater_.Get().cell_size_inv;
 
                 param.bbv_indirect_cs_thread_group_size = math::Vec3i(0, 0, 0);
                 param.bbv_visible_voxel_buffer_size = bbv_fine_update_voxel_count_max_;
@@ -1906,13 +1907,13 @@ namespace ngl::render::app
                     auto& cascade_param = param.fsp_cascade[cascade_index];
                     cascade_param.grid.grid_resolution = cascade_grid.resolution.Cast<int>();
                     cascade_param.grid.grid_min_pos = cascade_grid.min_pos;
-                    cascade_param.grid.grid_min_voxel_coord = math::Vec3::Floor(cascade_grid.min_pos * (1.0f / cascade_grid.cell_size)).Cast<int>();
+                    cascade_param.grid.grid_min_voxel_coord = math::Vec3::Floor(cascade_grid.min_pos * cascade_grid.cell_size_inv).Cast<int>();
                     cascade_param.grid.grid_toroidal_offset = cascade_grid.toroidal_offset;
                     cascade_param.grid.grid_toroidal_offset_prev = cascade_grid.toroidal_offset_prev;
                     cascade_param.grid.grid_move_cell_delta = cascade_grid.min_pos_delta_cell;
                     cascade_param.grid.flatten_2d_width = cascade_grid.flatten_2d_width;
                     cascade_param.grid.cell_size = cascade_grid.cell_size;
-                    cascade_param.grid.cell_size_inv = 1.0f / cascade_grid.cell_size;
+                    cascade_param.grid.cell_size_inv = cascade_grid.cell_size_inv;
                     cascade_param.cell_offset = fsp_cascade_cell_offset_array_[cascade_index];
                     cascade_param.cell_count = cascade_grid.total_count;
                     cascade_param.irradiance_volume_texture_z_offset =
@@ -1961,7 +1962,7 @@ namespace ngl::render::app
             param.debug_fsp_update_ray_jitter_enable = InstantRasterDerivedVoxelScene::dbg_fsp_update_ray_jitter_enable_;
             param.debug_fsp_probe_cascade = InstantRasterDerivedVoxelScene::dbg_fsp_probe_debug_cascade_;
 
-            param.debug_probe_radius = InstantRasterDerivedVoxelScene::dbg_probe_scale_ * 0.5f * bbv_grid_updater_.Get().cell_size / k_bbv_per_voxel_resolution;
+            param.debug_probe_radius = InstantRasterDerivedVoxelScene::dbg_probe_scale_ * 0.5f * bbv_grid_updater_.Get().cell_size * static_cast<float>(k_bbv_per_voxel_resolution_inv);
             param.debug_probe_near_geom_scale = InstantRasterDerivedVoxelScene::dbg_probe_near_geom_scale_;
             param.assp_spatial_filter_enable = InstantRasterDerivedVoxelScene::assp_spatial_filter_enable_;
             param.assp_spatial_filter_normal_cos_threshold = InstantRasterDerivedVoxelScene::assp_spatial_filter_normal_cos_threshold_;
