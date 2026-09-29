@@ -78,25 +78,25 @@ RWBuffer<uint>    RWBbvRadianceAccumBuffer;
 Buffer<uint>		FrustumBrickList;
 RWBuffer<uint>		RWFrustumBrickList;
 
-// FSP cell-addressed resources use one global address space:
+// VSP cell-addressed resources use one global address space:
 // cascade.cell_offset + X-major physical local index.
-Buffer<uint>                          FspCellProbeIndexBuffer;
-RWBuffer<uint>                        RWFspCellProbeIndexBuffer;
-StructuredBuffer<FspProbePoolData>    FspProbePoolBuffer;
-RWStructuredBuffer<FspProbePoolData>  RWFspProbePoolBuffer;
-Buffer<uint>                          FspProbeFreeStack;
-RWBuffer<uint>                        RWFspProbeFreeStack;
+Buffer<uint>                          VspCellProbeIndexBuffer;
+RWBuffer<uint>                        RWVspCellProbeIndexBuffer;
+StructuredBuffer<VspProbePoolData>    VspProbePoolBuffer;
+RWStructuredBuffer<VspProbePoolData>  RWVspProbePoolBuffer;
+Buffer<uint>                          VspProbeFreeStack;
+RWBuffer<uint>                        RWVspProbeFreeStack;
 // ActiveProbeListは他のcounter付きappend bufferと異なり、先頭2ワードを世代交代counterに使用する。
 // ワード2以降がProbe index listであり、Current/Previousのcounter slotは物理Bufferの世代ごとに交互利用する。
-Buffer<uint>                          FspActiveProbeListPrev;
-RWBuffer<uint>                        RWFspActiveProbeListPrev;
-Buffer<uint>                          FspActiveProbeListCurr;
-RWBuffer<uint>                        RWFspActiveProbeListCurr;
+Buffer<uint>                          VspActiveProbeListPrev;
+RWBuffer<uint>                        RWVspActiveProbeListPrev;
+Buffer<uint>                          VspActiveProbeListCurr;
+RWBuffer<uint>                        RWVspActiveProbeListCurr;
 // SurfaceMask path: Cascadeごとの8x8x8 Brick内16ワードへ並べ替えた一時検出マスク。
-Buffer<uint>                          FspSurfaceCellMaskBuffer;
-RWBuffer<uint>                        RWFspSurfaceCellMaskBuffer;
+Buffer<uint>                          VspSurfaceCellMaskBuffer;
+RWBuffer<uint>                        RWVspSurfaceCellMaskBuffer;
 
-void FspInjectCellMaskWave(bool has_cell, uint word_index, uint bit_mask)
+void VspInjectCellMaskWave(bool has_cell, uint word_index, uint bit_mask)
 {
     uint4 pending_lanes = WaveActiveBallot(has_cell);
     while(ballot_any(pending_lanes))
@@ -108,43 +108,43 @@ void FspInjectCellMaskWave(bool has_cell, uint word_index, uint bit_mask)
         const uint merged_mask = WaveActiveBitOr(is_same_word ? bit_mask : 0u);
         if(WaveGetLaneIndex() == leader_lane)
         {
-            InterlockedOr(RWFspSurfaceCellMaskBuffer[leader_word_index], merged_mask);
+            InterlockedOr(RWVspSurfaceCellMaskBuffer[leader_word_index], merged_mask);
         }
         pending_lanes &= ~same_word_lanes;
     }
 }
 
-// FSP update multipass (request/trace/resolve) 用のワークバッファ群。
-Buffer<uint>                          FspProbeRayRequestBuffer;
-RWBuffer<uint>                        RWFspProbeRayRequestBuffer;
-Buffer<uint>                          FspProbeTraceIndirectArg;
-RWBuffer<uint>                        RWFspProbeTraceIndirectArg;
-Buffer<uint>                          FspProbeRayResultBuffer;
-RWBuffer<uint>                        RWFspProbeRayResultBuffer;
+// VSP update multipass (request/trace/resolve) 用のワークバッファ群。
+Buffer<uint>                          VspProbeRayRequestBuffer;
+RWBuffer<uint>                        RWVspProbeRayRequestBuffer;
+Buffer<uint>                          VspProbeTraceIndirectArg;
+RWBuffer<uint>                        RWVspProbeTraceIndirectArg;
+Buffer<uint>                          VspProbeRayResultBuffer;
+RWBuffer<uint>                        RWVspProbeRayResultBuffer;
 
-Texture2D<float4>      FspProbeAtlasTex;
-RWTexture2D<float4>    RWFspProbeAtlasTex;
-Texture3D<float4>             FspIrradianceVolumeSHTexture;
-RWTexture3D<float4>           RWFspIrradianceVolumeSHTexture;
+Texture2D<float4>      VspProbeAtlasTex;
+RWTexture2D<float4>    RWVspProbeAtlasTex;
+Texture3D<float4>             VspIrradianceVolumeSHTexture;
+RWTexture3D<float4>           RWVspIrradianceVolumeSHTexture;
 
-// 0番目はアトミックカウンタ, それ以降はFSP X-major global cell index.
+// 0番目はアトミックカウンタ, それ以降はVSP X-major global cell index.
 Buffer<uint>		SurfaceProbeCellList;
 RWBuffer<uint>		RWSurfaceProbeCellList;
 
 // instant_rdvのメインパラメータ.
 ConstantBuffer<InstantRdvParam> cb_instant_rdv;
 
-static const uint k_fsp_active_probe_counter_slot_count = 2u;
-static const uint k_fsp_active_probe_list_data_offset = 2u;
+static const uint k_vsp_active_probe_counter_slot_count = 2u;
+static const uint k_vsp_active_probe_list_data_offset = 2u;
 
-uint FspActiveProbeCurrentCounterSlot()
+uint VspActiveProbeCurrentCounterSlot()
 {
     // frame_countはDispatch_Beginで1から始まる。各物理BufferがCurrentになるたびにslotを交互利用する。
     return ((cb_instant_rdv.frame_count - 1u) >> 1u) &
-           (k_fsp_active_probe_counter_slot_count - 1u);
+           (k_vsp_active_probe_counter_slot_count - 1u);
 }
 
-uint FspActiveProbePreviousCounterSlot()
+uint VspActiveProbePreviousCounterSlot()
 {
     // 初回フレームのPreviousは初期化済みcounter slot 0を読む。
     if(cb_instant_rdv.frame_count <= 1u)
@@ -152,41 +152,41 @@ uint FspActiveProbePreviousCounterSlot()
         return 0u;
     }
     return ((cb_instant_rdv.frame_count - 2u) >> 1u) &
-           (k_fsp_active_probe_counter_slot_count - 1u);
+           (k_vsp_active_probe_counter_slot_count - 1u);
 }
 
-uint FspActiveProbeListAddress(uint list_index)
+uint VspActiveProbeListAddress(uint list_index)
 {
-    return list_index + k_fsp_active_probe_list_data_offset;
+    return list_index + k_vsp_active_probe_list_data_offset;
 }
 
 uint BbvPhysicalVoxelCoordToMortonIndex(int3 coord, int3 resolution);
 int3 BbvMortonIndexToPhysicalVoxelCoord(uint index, int3 resolution);
 int3 voxel_coord_toroidal_mapping(int3 voxel_coord, int3 toroidal_offset, int3 resolution);
 
-uint FspCascadeCount()
+uint VspCascadeCount()
 {
-    return min((uint)cb_instant_rdv.fsp_cascade_count, k_fsp_max_cascade_count);
+    return min((uint)cb_instant_rdv.vsp_cascade_count, k_vsp_max_cascade_count);
 }
 
-FspCascadeGridParam FspGetCascadeParam(uint cascade_index)
+VspCascadeGridParam VspGetCascadeParam(uint cascade_index)
 {
-    return cb_instant_rdv.fsp_cascade[min(cascade_index, k_fsp_max_cascade_count - 1u)];
+    return cb_instant_rdv.vsp_cascade[min(cascade_index, k_vsp_max_cascade_count - 1u)];
 }
 
-uint FspEncodeGlobalCellIndex(uint cascade_index, uint local_cell_index)
+uint VspEncodeGlobalCellIndex(uint cascade_index, uint local_cell_index)
 {
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     return cascade.cell_offset + local_cell_index;
 }
 
-bool FspDecodeGlobalCellIndex(uint global_cell_index, out uint cascade_index, out uint local_cell_index)
+bool VspDecodeGlobalCellIndex(uint global_cell_index, out uint cascade_index, out uint local_cell_index)
 {
     // CPU初期化時に全cascadeのcell_count一致と連続offsetを検証している。
     // この前提によりcascade配列scanを行わず、除算1回でglobal indexを分解できる。
-    const uint cascade_count = FspCascadeCount();
-    const uint cell_count_per_cascade = cb_instant_rdv.fsp_cascade[0].cell_count;
-    if(cell_count_per_cascade == 0u || global_cell_index >= (uint)cb_instant_rdv.fsp_total_cell_count)
+    const uint cascade_count = VspCascadeCount();
+    const uint cell_count_per_cascade = cb_instant_rdv.vsp_cascade[0].cell_count;
+    if(cell_count_per_cascade == 0u || global_cell_index >= (uint)cb_instant_rdv.vsp_total_cell_count)
     {
         cascade_index = 0;
         local_cell_index = 0;
@@ -198,24 +198,24 @@ bool FspDecodeGlobalCellIndex(uint global_cell_index, out uint cascade_index, ou
     return cascade_index < cascade_count;
 }
 
-uint FspPhysicalCellCoordToLocalIndex(int3 physical_coord, int3 grid_resolution);
-int3 FspLocalCellIndexToPhysicalCoord(uint local_cell_index, int3 grid_resolution);
+uint VspPhysicalCellCoordToLocalIndex(int3 physical_coord, int3 grid_resolution);
+int3 VspLocalCellIndexToPhysicalCoord(uint local_cell_index, int3 grid_resolution);
 
-uint FspSurfaceMaskWordsPerCascade()
+uint VspSurfaceMaskWordsPerCascade()
 {
     return (uint)max(
-        cb_instant_rdv.fsp_surface_mask_words_per_cascade,
+        cb_instant_rdv.vsp_surface_mask_words_per_cascade,
         0);
 }
 
-uint FspSurfaceMaskWordCount()
+uint VspSurfaceMaskWordCount()
 {
     return (uint)max(
-        cb_instant_rdv.fsp_surface_mask_word_count,
+        cb_instant_rdv.vsp_surface_mask_word_count,
         0);
 }
 
-bool FspGetSurfaceMaskAddressFromCell(
+bool VspGetSurfaceMaskAddressFromCell(
     uint cascade_index,
     int3 cell_coord,
     out uint word_index,
@@ -223,50 +223,50 @@ bool FspGetSurfaceMaskAddressFromCell(
 {
     word_index = 0u;
     bit_mask = 0u;
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     if(any(cell_coord < 0) || any(cell_coord >= cascade.grid.grid_resolution))
     {
         return false;
     }
 
     const uint brick_axis =
-        (uint)max(cb_instant_rdv.fsp_surface_mask_brick_axis, 0);
-    const uint3 brick_coord = uint3(cell_coord) / k_fsp_surface_mask_brick_resolution;
+        (uint)max(cb_instant_rdv.vsp_surface_mask_brick_axis, 0);
+    const uint3 brick_coord = uint3(cell_coord) / k_vsp_surface_mask_brick_resolution;
     const uint brick_index =
         brick_coord.x +
         brick_coord.y * brick_axis +
         brick_coord.z * brick_axis * brick_axis;
     const uint local_cell_linear =
-        (uint(cell_coord.x) % k_fsp_surface_mask_brick_resolution) +
-        (uint(cell_coord.y) % k_fsp_surface_mask_brick_resolution) * k_fsp_surface_mask_brick_resolution +
-        (uint(cell_coord.z) % k_fsp_surface_mask_brick_resolution) * k_fsp_surface_mask_brick_resolution * k_fsp_surface_mask_brick_resolution;
+        (uint(cell_coord.x) % k_vsp_surface_mask_brick_resolution) +
+        (uint(cell_coord.y) % k_vsp_surface_mask_brick_resolution) * k_vsp_surface_mask_brick_resolution +
+        (uint(cell_coord.z) % k_vsp_surface_mask_brick_resolution) * k_vsp_surface_mask_brick_resolution * k_vsp_surface_mask_brick_resolution;
 
-    word_index = cascade_index * FspSurfaceMaskWordsPerCascade() +
-        brick_index * k_fsp_surface_mask_brick_word_count +
+    word_index = cascade_index * VspSurfaceMaskWordsPerCascade() +
+        brick_index * k_vsp_surface_mask_brick_word_count +
         local_cell_linear / 32u;
     bit_mask = 1u << (local_cell_linear & 31u);
     return true;
 }
 
-bool FspGetGlobalCellIndexFromSurfaceMaskBit(
+bool VspGetGlobalCellIndexFromSurfaceMaskBit(
     uint word_index,
     uint bit_index,
     out uint global_cell_index)
 {
-    global_cell_index = k_fsp_invalid_probe_index;
-    const uint words_per_cascade = FspSurfaceMaskWordsPerCascade();
+    global_cell_index = k_vsp_invalid_probe_index;
+    const uint words_per_cascade = VspSurfaceMaskWordsPerCascade();
     const uint cascade_index = word_index / words_per_cascade;
-    if(cascade_index >= FspCascadeCount())
+    if(cascade_index >= VspCascadeCount())
     {
         return false;
     }
 
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     const uint relative_word_index = word_index - cascade_index * words_per_cascade;
-    const uint brick_index = relative_word_index / k_fsp_surface_mask_brick_word_count;
-    const uint local_word_index = relative_word_index % k_fsp_surface_mask_brick_word_count;
+    const uint brick_index = relative_word_index / k_vsp_surface_mask_brick_word_count;
+    const uint local_word_index = relative_word_index % k_vsp_surface_mask_brick_word_count;
     const uint brick_axis =
-        (uint)max(cb_instant_rdv.fsp_surface_mask_brick_axis, 0);
+        (uint)max(cb_instant_rdv.vsp_surface_mask_brick_axis, 0);
     const uint3 brick_coord = uint3(
         brick_index % brick_axis,
         (brick_index / brick_axis) % brick_axis,
@@ -276,7 +276,7 @@ bool FspGetGlobalCellIndexFromSurfaceMaskBit(
         local_cell_linear & 7u,
         (local_cell_linear >> 3u) & 7u,
         local_cell_linear >> 6u);
-    const uint3 cell_coord = brick_coord * k_fsp_surface_mask_brick_resolution + local_coord;
+    const uint3 cell_coord = brick_coord * k_vsp_surface_mask_brick_resolution + local_coord;
     if(any(cell_coord >= uint3(cascade.grid.grid_resolution)))
     {
         return false;
@@ -290,33 +290,33 @@ bool FspGetGlobalCellIndexFromSurfaceMaskBit(
     return true;
 }
 
-// FSP multipass request/result の packed key ヘルパー.
+// VSP multipass request/result の packed key ヘルパー.
 // [31:8] probe index, [7:0] oct cell index
-static const uint k_fsp_ray_request_oct_cell_bits = 8u;
-static const uint k_fsp_ray_request_oct_cell_mask = (1u << k_fsp_ray_request_oct_cell_bits) - 1u;
-uint FspPackRayRequestKey(uint probe_index, uint oct_cell_index)
+static const uint k_vsp_ray_request_oct_cell_bits = 8u;
+static const uint k_vsp_ray_request_oct_cell_mask = (1u << k_vsp_ray_request_oct_cell_bits) - 1u;
+uint VspPackRayRequestKey(uint probe_index, uint oct_cell_index)
 {
-    return (probe_index << k_fsp_ray_request_oct_cell_bits) | (oct_cell_index & k_fsp_ray_request_oct_cell_mask);
+    return (probe_index << k_vsp_ray_request_oct_cell_bits) | (oct_cell_index & k_vsp_ray_request_oct_cell_mask);
 }
-uint FspUnpackRayRequestProbeIndex(uint packed_key)
+uint VspUnpackRayRequestProbeIndex(uint packed_key)
 {
-    return (packed_key >> k_fsp_ray_request_oct_cell_bits);
+    return (packed_key >> k_vsp_ray_request_oct_cell_bits);
 }
-uint FspUnpackRayRequestOctCellIndex(uint packed_key)
+uint VspUnpackRayRequestOctCellIndex(uint packed_key)
 {
-    return (packed_key & k_fsp_ray_request_oct_cell_mask);
+    return (packed_key & k_vsp_ray_request_oct_cell_mask);
 }
 
-// FSPの全cell-addressed resourceで共有するX-major local index。
+// VSPの全cell-addressed resourceで共有するX-major local index。
 // ActiveProbe lifecycle、SurfaceMask、IrradianceVolumeは必ずこのcodecを使う。
 // BBVだけはray traversalの空間局所性を優先して、下部のMorton codecを使い続ける。
-uint FspPhysicalCellCoordToLocalIndex(int3 physical_coord, int3 grid_resolution)
+uint VspPhysicalCellCoordToLocalIndex(int3 physical_coord, int3 grid_resolution)
 {
     return uint(physical_coord.x + physical_coord.y * grid_resolution.x +
         physical_coord.z * grid_resolution.x * grid_resolution.y);
 }
 
-int3 FspLocalCellIndexToPhysicalCoord(uint local_cell_index, int3 grid_resolution)
+int3 VspLocalCellIndexToPhysicalCoord(uint local_cell_index, int3 grid_resolution)
 {
     const uint slice_cell_count = uint(grid_resolution.x * grid_resolution.y);
     const uint z = local_cell_index / slice_cell_count;
@@ -326,49 +326,49 @@ int3 FspLocalCellIndexToPhysicalCoord(uint local_cell_index, int3 grid_resolutio
     return int3(x, y, z);
 }
 
-int3 FspLocalCellIndexToLinearCoord(uint local_cell_index, InstantRdvToroidalGridParam grid)
+int3 VspLocalCellIndexToLinearCoord(uint local_cell_index, InstantRdvToroidalGridParam grid)
 {
     const int3 voxel_coord_toroidal =
-        FspLocalCellIndexToPhysicalCoord(local_cell_index, grid.grid_resolution);
+        VspLocalCellIndexToPhysicalCoord(local_cell_index, grid.grid_resolution);
     return voxel_coord_toroidal_mapping(voxel_coord_toroidal, grid.grid_resolution - grid.grid_toroidal_offset, grid.grid_resolution);
 }
 
-float3 FspCalcCellCenterWs(uint cascade_index, uint local_cell_index)
+float3 VspCalcCellCenterWs(uint cascade_index, uint local_cell_index)
 {
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-    const int3 voxel_coord = FspLocalCellIndexToLinearCoord(local_cell_index, cascade.grid);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
+    const int3 voxel_coord = VspLocalCellIndexToLinearCoord(local_cell_index, cascade.grid);
     return (float3(voxel_coord) + 0.5) * cascade.grid.cell_size + cascade.grid.grid_min_pos;
 }
 
-bool FspTryGetGlobalCellIndexFromWorldPos(float3 pos_ws, uint cascade_index, out uint global_cell_index)
+bool VspTryGetGlobalCellIndexFromWorldPos(float3 pos_ws, uint cascade_index, out uint global_cell_index)
 {
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     const float3 voxel_coordf = (pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv;
     const int3 voxel_coord = floor(voxel_coordf);
     if(all(voxel_coord >= 0) && all(voxel_coord < cascade.grid.grid_resolution))
     {
         const int3 voxel_coord_toroidal = voxel_coord_toroidal_mapping(voxel_coord, cascade.grid.grid_toroidal_offset, cascade.grid.grid_resolution);
         const uint local_cell_index =
-            FspPhysicalCellCoordToLocalIndex(voxel_coord_toroidal, cascade.grid.grid_resolution);
+            VspPhysicalCellCoordToLocalIndex(voxel_coord_toroidal, cascade.grid.grid_resolution);
         global_cell_index = cascade.cell_offset + local_cell_index;
         return true;
     }
 
-    global_cell_index = k_fsp_invalid_probe_index;
+    global_cell_index = k_vsp_invalid_probe_index;
     return false;
 }
 
 
-bool FspTryGetFinestCascadePhysicalCellFromWorldPos(
+bool VspTryGetFinestCascadePhysicalCellFromWorldPos(
     float3 pos_ws,
     out uint cascade_index,
     out int3 physical_cell_coord)
 {
-    const uint cascade_count = FspCascadeCount();
+    const uint cascade_count = VspCascadeCount();
     [loop]
     for(uint ci = 0u; ci < cascade_count; ++ci)
     {
-        const FspCascadeGridParam cascade = FspGetCascadeParam(ci);
+        const VspCascadeGridParam cascade = VspGetCascadeParam(ci);
         const int3 voxel_coord = floor(
             (pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv);
         if(all(voxel_coord >= 0) && all(voxel_coord < cascade.grid.grid_resolution))
@@ -388,15 +388,15 @@ bool FspTryGetFinestCascadePhysicalCellFromWorldPos(
 }
 
 
-bool FspIsWorldPosInsideCascade(float3 pos_ws, uint cascade_index)
+bool VspIsWorldPosInsideCascade(float3 pos_ws, uint cascade_index)
 {
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     const float3 local_pos = (pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv;
     return all(local_pos >= 0.0.xxx) && all(local_pos < float3(cascade.grid.grid_resolution));
 }
 
 // 実グリッドの外縁までの距離。SurfaceMaskの親Cascade登録帯を判定するために使用する。
-float FspCascadeBoundaryDistance(float3 pos_ws, FspCascadeGridParam cascade)
+float VspCascadeBoundaryDistance(float3 pos_ws, VspCascadeGridParam cascade)
 {
     const float3 local_pos = pos_ws - cascade.grid.grid_min_pos;
     const float3 extent = float3(cascade.grid.grid_resolution) * cascade.grid.cell_size;
@@ -408,10 +408,10 @@ float FspCascadeBoundaryDistance(float3 pos_ws, FspCascadeGridParam cascade)
 // グリッドはカメラ位置をマイナス無限方向へ量子化するため、実外縁はセル内位相で最大1セル移動する。
 // 親CascadeのActiveProbeは細かい側の実外縁から2セルまで登録されるので、全位相でその帯に含まれる
 // 1セル幅だけを[0,1]の遷移帯として使用する。
-float FspCalcIrradianceVolumeCascadeDitherRate(
+float VspCalcIrradianceVolumeCascadeDitherRate(
     float3 camera_to_sample_ws, uint cascade_index)
 {
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     const float3 camera_to_sample_cell =
         camera_to_sample_ws * cascade.grid.cell_size_inv;
     const float3 half_extent_cell = float3(cascade.grid.grid_resolution) * 0.5;
@@ -431,14 +431,14 @@ float FspCalcIrradianceVolumeCascadeDitherRate(
 }
 
 // カメラ距離に連続な安全帯で最も細かいCascadeを選び、帯域内だけ親へディザ遷移する。
-bool FspTrySelectIrradianceVolumeCascade(
+bool VspTrySelectIrradianceVolumeCascade(
     out uint cascade_index,
     float3 pos_ws,
     float3 camera_pos_ws,
     bool interpolate,
     float dither_value)
 {
-    const uint cascade_count = FspCascadeCount();
+    const uint cascade_count = VspCascadeCount();
     const float3 camera_to_sample_ws = pos_ws - camera_pos_ws;
     [loop]
     for(uint ci = 0u; ci < cascade_count; ++ci)
@@ -446,13 +446,13 @@ bool FspTrySelectIrradianceVolumeCascade(
         const bool is_last_cascade = ci + 1u >= cascade_count;
         const float coarse_rate = is_last_cascade
             ? 0.0
-            : FspCalcIrradianceVolumeCascadeDitherRate(camera_to_sample_ws, ci);
+            : VspCalcIrradianceVolumeCascadeDitherRate(camera_to_sample_ws, ci);
         if(!is_last_cascade && coarse_rate >= 1.0)
         {
             continue;
         }
 
-        if(!FspIsWorldPosInsideCascade(pos_ws, ci))
+        if(!VspIsWorldPosInsideCascade(pos_ws, ci))
         {
             continue;
         }
@@ -460,7 +460,7 @@ bool FspTrySelectIrradianceVolumeCascade(
         cascade_index = ci;
         if(interpolate && coarse_rate > 0.0)
         {
-            if(dither_value < coarse_rate && FspIsWorldPosInsideCascade(pos_ws, ci + 1u))
+            if(dither_value < coarse_rate && VspIsWorldPosInsideCascade(pos_ws, ci + 1u))
             {
                 cascade_index = ci + 1u;
             }
@@ -473,19 +473,19 @@ bool FspTrySelectIrradianceVolumeCascade(
 
 // Surface ownerのCell indexとMask addressを同じ座標変換から生成する。
 // 境界帯では隣接coarse cascadeも返す。
-uint FspGetSurfaceOwnerCellData(
+uint VspGetSurfaceOwnerCellData(
     float3 pos_ws,
     out uint2 global_cell_indices,
     out uint2 word_indices,
     out uint2 bit_masks)
 {
-    global_cell_indices = k_fsp_invalid_probe_index.xx;
+    global_cell_indices = k_vsp_invalid_probe_index.xx;
     word_indices = 0u.xx;
     bit_masks = 0u.xx;
 
     uint owner_cascade_index = 0u;
     int3 owner_physical_cell_coord = 0.xxx;
-    if(!FspTryGetFinestCascadePhysicalCellFromWorldPos(
+    if(!VspTryGetFinestCascadePhysicalCellFromWorldPos(
         pos_ws,
         owner_cascade_index,
         owner_physical_cell_coord))
@@ -493,14 +493,14 @@ uint FspGetSurfaceOwnerCellData(
         return 0u;
     }
 
-    const FspCascadeGridParam owner_cascade =
-        FspGetCascadeParam(owner_cascade_index);
+    const VspCascadeGridParam owner_cascade =
+        VspGetCascadeParam(owner_cascade_index);
     global_cell_indices.x =
         owner_cascade.cell_offset +
-        FspPhysicalCellCoordToLocalIndex(
+        VspPhysicalCellCoordToLocalIndex(
             owner_physical_cell_coord,
             owner_cascade.grid.grid_resolution);
-    if(!FspGetSurfaceMaskAddressFromCell(
+    if(!VspGetSurfaceMaskAddressFromCell(
         owner_cascade_index,
         owner_physical_cell_coord,
         word_indices.x,
@@ -510,14 +510,14 @@ uint FspGetSurfaceOwnerCellData(
     }
 
     const uint coarse_cascade_index = owner_cascade_index + 1u;
-    if(coarse_cascade_index >= FspCascadeCount())
+    if(coarse_cascade_index >= VspCascadeCount())
     {
         return 1u;
     }
 
-    const FspCascadeGridParam coarse_cascade =
-        FspGetCascadeParam(coarse_cascade_index);
-    const float boundary_dist = FspCascadeBoundaryDistance(pos_ws, owner_cascade);
+    const VspCascadeGridParam coarse_cascade =
+        VspGetCascadeParam(coarse_cascade_index);
+    const float boundary_dist = VspCascadeBoundaryDistance(pos_ws, owner_cascade);
     const float dither_width = max(
         coarse_cascade.grid.cell_size,
         owner_cascade.grid.cell_size);
@@ -543,156 +543,156 @@ uint FspGetSurfaceOwnerCellData(
             coarse_cascade.grid.grid_resolution);
     global_cell_indices.y =
         coarse_cascade.cell_offset +
-        FspPhysicalCellCoordToLocalIndex(
+        VspPhysicalCellCoordToLocalIndex(
             coarse_physical_cell_coord,
             coarse_cascade.grid.grid_resolution);
-    if(!FspGetSurfaceMaskAddressFromCell(
+    if(!VspGetSurfaceMaskAddressFromCell(
         coarse_cascade_index,
         coarse_physical_cell_coord,
         word_indices.y,
         bit_masks.y))
     {
-        global_cell_indices.y = k_fsp_invalid_probe_index;
+        global_cell_indices.y = k_vsp_invalid_probe_index;
         return 1u;
     }
 
     return 2u;
 }
 
-uint FspGetSurfaceOwnerMaskAddresses(
+uint VspGetSurfaceOwnerMaskAddresses(
     float3 pos_ws,
     out uint2 word_indices,
     out uint2 bit_masks)
 {
-    uint2 global_cell_indices = k_fsp_invalid_probe_index.xx;
-    return FspGetSurfaceOwnerCellData(
+    uint2 global_cell_indices = k_vsp_invalid_probe_index.xx;
+    return VspGetSurfaceOwnerCellData(
         pos_ws,
         global_cell_indices,
         word_indices,
         bit_masks);
 }
 
-uint2 FspProbeAtlasMapPos(uint probe_index)
+uint2 VspProbeAtlasMapPos(uint probe_index)
 {
-    return uint2(probe_index % cb_instant_rdv.fsp_probe_atlas_tile_width, probe_index / cb_instant_rdv.fsp_probe_atlas_tile_width);
+    return uint2(probe_index % cb_instant_rdv.vsp_probe_atlas_tile_width, probe_index / cb_instant_rdv.vsp_probe_atlas_tile_width);
 }
 
-uint2 FspProbeAtlasTexelCoord(uint probe_index, uint2 oct_cell_id)
+uint2 VspProbeAtlasTexelCoord(uint probe_index, uint2 oct_cell_id)
 {
-    return FspProbeAtlasMapPos(probe_index) * k_fsp_probe_octmap_width + oct_cell_id;
+    return VspProbeAtlasMapPos(probe_index) * k_vsp_probe_octmap_width + oct_cell_id;
 }
 
-int3 FspIrradianceVolumeToroidalPhysicalCoord(int3 linear_coord, InstantRdvToroidalGridParam grid)
+int3 VspIrradianceVolumeToroidalPhysicalCoord(int3 linear_coord, InstantRdvToroidalGridParam grid)
 {
-    // FSP IVはCPU初期化時に各軸同一かつ2冪と検証する。これが崩れると `& (N - 1)` はmoduloにならず、
+    // VSP IVはCPU初期化時に各軸同一かつ2冪と検証する。これが崩れると `& (N - 1)` はmoduloにならず、
     // 誤ったcell参照や範囲外addressの原因になるため、任意解像度対応時はこの関数も同時に変更すること。
     return (linear_coord + grid.grid_toroidal_offset) & (grid.grid_resolution - 1);
 }
 
 
-uint FspIrradianceVolumeCellIndexFromLinearCoord(uint cascade_index, int3 linear_coord)
+uint VspIrradianceVolumeCellIndexFromLinearCoord(uint cascade_index, int3 linear_coord)
 {
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-    const int3 physical_coord = FspIrradianceVolumeToroidalPhysicalCoord(linear_coord, cascade.grid);
-    return cascade.cell_offset + FspPhysicalCellCoordToLocalIndex(physical_coord, cascade.grid.grid_resolution);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
+    const int3 physical_coord = VspIrradianceVolumeToroidalPhysicalCoord(linear_coord, cascade.grid);
+    return cascade.cell_offset + VspPhysicalCellCoordToLocalIndex(physical_coord, cascade.grid.grid_resolution);
 }
 
-uint FspIrradianceVolumeCascadeIndex(uint irradiance_volume_cell_index)
+uint VspIrradianceVolumeCascadeIndex(uint irradiance_volume_cell_index)
 {
-    return irradiance_volume_cell_index / FspGetCascadeParam(0).cell_count;
+    return irradiance_volume_cell_index / VspGetCascadeParam(0).cell_count;
 }
 
-uint3 FspIrradianceVolumeTextureCoord(uint irradiance_volume_cell_index, uint texture_index)
+uint3 VspIrradianceVolumeTextureCoord(uint irradiance_volume_cell_index, uint texture_index)
 {
-    const uint cascade_index = FspIrradianceVolumeCascadeIndex(irradiance_volume_cell_index);
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const uint cascade_index = VspIrradianceVolumeCascadeIndex(irradiance_volume_cell_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     const uint local_cell_index = irradiance_volume_cell_index - cascade.cell_offset;
-    const int3 physical_coord = FspLocalCellIndexToPhysicalCoord(local_cell_index, cascade.grid.grid_resolution);
+    const int3 physical_coord = VspLocalCellIndexToPhysicalCoord(local_cell_index, cascade.grid.grid_resolution);
     return uint3(
         physical_coord.xy,
         cascade.irradiance_volume_texture_z_offset +
             texture_index *
-                (cascade.grid.grid_resolution.z + k_fsp_irradiance_volume_guard_texel_count) +
+                (cascade.grid.grid_resolution.z + k_vsp_irradiance_volume_guard_texel_count) +
             physical_coord.z);
 }
 
-float4 FspIrradianceVolumeLoadSignal(uint irradiance_volume_cell_index, uint texture_index)
+float4 VspIrradianceVolumeLoadSignal(uint irradiance_volume_cell_index, uint texture_index)
 {
-    return FspIrradianceVolumeSHTexture.Load(int4(FspIrradianceVolumeTextureCoord(
+    return VspIrradianceVolumeSHTexture.Load(int4(VspIrradianceVolumeTextureCoord(
         irradiance_volume_cell_index,
         texture_index), 0));
 }
 
-void FspIrradianceVolumeLoadSignals(
+void VspIrradianceVolumeLoadSignals(
     uint irradiance_volume_cell_index,
     out float4 sky_visibility,
     out float4 irradiance_r,
     out float4 irradiance_g,
     out float4 irradiance_b)
 {
-    const uint cascade_index = FspIrradianceVolumeCascadeIndex(irradiance_volume_cell_index);
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const uint cascade_index = VspIrradianceVolumeCascadeIndex(irradiance_volume_cell_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     const uint local_cell_index = irradiance_volume_cell_index - cascade.cell_offset;
-    const uint3 physical_coord = uint3(FspLocalCellIndexToPhysicalCoord(
+    const uint3 physical_coord = uint3(VspLocalCellIndexToPhysicalCoord(
         local_cell_index, cascade.grid.grid_resolution));
     const uint texture_slice_depth =
-        cascade.grid.grid_resolution.z + k_fsp_irradiance_volume_guard_texel_count;
+        cascade.grid.grid_resolution.z + k_vsp_irradiance_volume_guard_texel_count;
     uint3 texture_coord = uint3(
         physical_coord.xy,
         cascade.irradiance_volume_texture_z_offset + physical_coord.z);
 
-    sky_visibility = FspIrradianceVolumeSHTexture.Load(int4(texture_coord, 0));
+    sky_visibility = VspIrradianceVolumeSHTexture.Load(int4(texture_coord, 0));
     texture_coord.z += texture_slice_depth;
-    irradiance_r = FspIrradianceVolumeSHTexture.Load(int4(texture_coord, 0));
+    irradiance_r = VspIrradianceVolumeSHTexture.Load(int4(texture_coord, 0));
     texture_coord.z += texture_slice_depth;
-    irradiance_g = FspIrradianceVolumeSHTexture.Load(int4(texture_coord, 0));
+    irradiance_g = VspIrradianceVolumeSHTexture.Load(int4(texture_coord, 0));
     texture_coord.z += texture_slice_depth;
-    irradiance_b = FspIrradianceVolumeSHTexture.Load(int4(texture_coord, 0));
+    irradiance_b = VspIrradianceVolumeSHTexture.Load(int4(texture_coord, 0));
 }
 
 // 伝播pass用のUAV読み出し。格納済み信号を転置せず、そのまま返す。
-void FspIrradianceVolumeLoadSignalsRw(
+void VspIrradianceVolumeLoadSignalsRw(
     uint irradiance_volume_cell_index,
     out float4 sky_visibility,
     out float4 irradiance_r,
     out float4 irradiance_g,
     out float4 irradiance_b)
 {
-    const uint cascade_index = FspIrradianceVolumeCascadeIndex(irradiance_volume_cell_index);
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const uint cascade_index = VspIrradianceVolumeCascadeIndex(irradiance_volume_cell_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     const uint local_cell_index = irradiance_volume_cell_index - cascade.cell_offset;
-    const uint3 physical_coord = uint3(FspLocalCellIndexToPhysicalCoord(
+    const uint3 physical_coord = uint3(VspLocalCellIndexToPhysicalCoord(
         local_cell_index, cascade.grid.grid_resolution));
     const uint texture_slice_depth =
-        cascade.grid.grid_resolution.z + k_fsp_irradiance_volume_guard_texel_count;
+        cascade.grid.grid_resolution.z + k_vsp_irradiance_volume_guard_texel_count;
     uint3 texture_coord = uint3(
         physical_coord.xy,
         cascade.irradiance_volume_texture_z_offset + physical_coord.z);
 
-    sky_visibility = RWFspIrradianceVolumeSHTexture[texture_coord];
+    sky_visibility = RWVspIrradianceVolumeSHTexture[texture_coord];
     texture_coord.z += texture_slice_depth;
-    irradiance_r = RWFspIrradianceVolumeSHTexture[texture_coord];
+    irradiance_r = RWVspIrradianceVolumeSHTexture[texture_coord];
     texture_coord.z += texture_slice_depth;
-    irradiance_g = RWFspIrradianceVolumeSHTexture[texture_coord];
+    irradiance_g = RWVspIrradianceVolumeSHTexture[texture_coord];
     texture_coord.z += texture_slice_depth;
-    irradiance_b = RWFspIrradianceVolumeSHTexture[texture_coord];
+    irradiance_b = RWVspIrradianceVolumeSHTexture[texture_coord];
 }
 
 // 同一cellの4信号をまとめて書き込む。正側Guardを含む座標計算を4信号で共有する。
-void FspIrradianceVolumeStoreSignals(
+void VspIrradianceVolumeStoreSignals(
     uint irradiance_volume_cell_index,
     float4 sky_visibility,
     float4 irradiance_r,
     float4 irradiance_g,
     float4 irradiance_b)
 {
-    const uint cascade_index = FspIrradianceVolumeCascadeIndex(irradiance_volume_cell_index);
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const uint cascade_index = VspIrradianceVolumeCascadeIndex(irradiance_volume_cell_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     const uint local_cell_index = irradiance_volume_cell_index - cascade.cell_offset;
-    const uint3 physical_coord = uint3(FspLocalCellIndexToPhysicalCoord(
+    const uint3 physical_coord = uint3(VspLocalCellIndexToPhysicalCoord(
         local_cell_index, cascade.grid.grid_resolution));
     const uint texture_slice_depth =
-        cascade.grid.grid_resolution.z + k_fsp_irradiance_volume_guard_texel_count;
+        cascade.grid.grid_resolution.z + k_vsp_irradiance_volume_guard_texel_count;
     const uint texture_z_offset =
         cascade.irradiance_volume_texture_z_offset + physical_coord.z;
 
@@ -713,25 +713,25 @@ void FspIrradianceVolumeStoreSignals(
                     x == 0u ? physical_coord.x : cascade.grid.grid_resolution.x,
                     y == 0u ? physical_coord.y : cascade.grid.grid_resolution.y,
                     texture_z_offset + (z == 0u ? 0u : cascade.grid.grid_resolution.z));
-                RWFspIrradianceVolumeSHTexture[store_coord] = sky_visibility;
+                RWVspIrradianceVolumeSHTexture[store_coord] = sky_visibility;
                 store_coord.z += texture_slice_depth;
-                RWFspIrradianceVolumeSHTexture[store_coord] = irradiance_r;
+                RWVspIrradianceVolumeSHTexture[store_coord] = irradiance_r;
                 store_coord.z += texture_slice_depth;
-                RWFspIrradianceVolumeSHTexture[store_coord] = irradiance_g;
+                RWVspIrradianceVolumeSHTexture[store_coord] = irradiance_g;
                 store_coord.z += texture_slice_depth;
-                RWFspIrradianceVolumeSHTexture[store_coord] = irradiance_b;
+                RWVspIrradianceVolumeSHTexture[store_coord] = irradiance_b;
             }
         }
     }
 }
 
-bool FspIrradianceVolumeHasValidSignals(uint irradiance_volume_cell_index)
+bool VspIrradianceVolumeHasValidSignals(uint irradiance_volume_cell_index)
 {
     float4 sky_visibility;
     float4 irradiance_r;
     float4 irradiance_g;
     float4 irradiance_b;
-    FspIrradianceVolumeLoadSignals(
+    VspIrradianceVolumeLoadSignals(
         irradiance_volume_cell_index,
         sky_visibility,
         irradiance_r,
@@ -743,7 +743,7 @@ bool FspIrradianceVolumeHasValidSignals(uint irradiance_volume_cell_index)
         any(abs(irradiance_b) > 0.0.xxxx);
 }
 
-bool FspIrradianceVolumeHasValidSignals(float4 sky_visibility, float4 irradiance_r, float4 irradiance_g, float4 irradiance_b)
+bool VspIrradianceVolumeHasValidSignals(float4 sky_visibility, float4 irradiance_r, float4 irradiance_g, float4 irradiance_b)
 {
     return any(abs(sky_visibility) > 0.0.xxxx) ||
         any(abs(irradiance_r) > 0.0.xxxx) ||
@@ -751,23 +751,23 @@ bool FspIrradianceVolumeHasValidSignals(float4 sky_visibility, float4 irradiance
         any(abs(irradiance_b) > 0.0.xxxx);
 }
 
-bool FspTryGetActiveProbeForCell(out uint out_probe_index, out FspProbePoolData out_probe_pool_data, uint global_cell_index)
+bool VspTryGetActiveProbeForCell(out uint out_probe_index, out VspProbePoolData out_probe_pool_data, uint global_cell_index)
 {
-    out_probe_index = k_fsp_invalid_probe_index;
-    out_probe_pool_data = (FspProbePoolData)0;
+    out_probe_index = k_vsp_invalid_probe_index;
+    out_probe_pool_data = (VspProbePoolData)0;
 
-    if(global_cell_index >= (uint)cb_instant_rdv.fsp_total_cell_count)
+    if(global_cell_index >= (uint)cb_instant_rdv.vsp_total_cell_count)
     {
         return false;
     }
 
-    const uint probe_index = FspCellProbeIndexBuffer[global_cell_index];
-    if(probe_index == k_fsp_invalid_probe_index || probe_index >= (uint)cb_instant_rdv.fsp_probe_pool_size)
+    const uint probe_index = VspCellProbeIndexBuffer[global_cell_index];
+    if(probe_index == k_vsp_invalid_probe_index || probe_index >= (uint)cb_instant_rdv.vsp_probe_pool_size)
     {
         return false;
     }
 
-    const FspProbePoolData probe_pool_data = FspProbePoolBuffer[probe_index];
+    const VspProbePoolData probe_pool_data = VspProbePoolBuffer[probe_index];
     if(probe_pool_data.owner_cell_index != global_cell_index)
     {
         return false;
@@ -778,11 +778,11 @@ bool FspTryGetActiveProbeForCell(out uint out_probe_index, out FspProbePoolData 
     return true;
 }
 
-bool FspIsActiveProbeOwnedCell(uint global_cell_index)
+bool VspIsActiveProbeOwnedCell(uint global_cell_index)
 {
-    uint probe_index = k_fsp_invalid_probe_index;
-    FspProbePoolData probe_pool_data = (FspProbePoolData)0;
-    return FspTryGetActiveProbeForCell(probe_index, probe_pool_data, global_cell_index);
+    uint probe_index = k_vsp_invalid_probe_index;
+    VspProbePoolData probe_pool_data = (VspProbePoolData)0;
+    return VspTryGetActiveProbeForCell(probe_index, probe_pool_data, global_cell_index);
 }
 
 
@@ -879,7 +879,7 @@ float3 SspDecodeDirByNormal(float2 oct_uv, float3 basis_t_ws, float3 basis_b_ws,
 
 // BBV専用Morton codec。ray traversal時の空間局所性を維持するため、BBVだけはZ-orderを使う。
 // 0..N^3-1を隙間なくMorton indexとして扱うには、BBV解像度がcubic power-of-twoである必要がある。
-// ActiveProbe/SurfaceMask/IrradianceVolumeはFSP X-major codecを使い、この関数を呼んではならない。
+// ActiveProbe/SurfaceMask/IrradianceVolumeはVSP X-major codecを使い、この関数を呼んではならない。
 uint BbvPhysicalVoxelCoordToMortonIndex(int3 coord, int3 resolution)
 {
     return EncodeMortonCodeX10Y10Z10(coord);
@@ -1692,7 +1692,7 @@ float4 trace_bbv_dev(
     );
 }
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-// Fsp.
+// Vsp.
 //------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 // 符号付き, 要素が-1:+1範囲のベクトルをuintにエンコード.

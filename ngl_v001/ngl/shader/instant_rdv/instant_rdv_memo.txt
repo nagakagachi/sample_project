@@ -7,9 +7,9 @@ InstantRdv の実装メモと参考文献をまとめる。
 
 ## 実装メモ
 
-### FSP OctahedralMap sampling
+### VSP OctahedralMap sampling
 
-現在の FSP OctahedralMap atlas は **point sample / `Load` 前提**で使っており、
+現在の VSP OctahedralMap atlas は **point sample / `Load` 前提**で使っており、
 border copy pass は削除済み。
 
 以下は削除済みのborder copy方式の検証記録であり、現在の実装手順ではない。
@@ -38,9 +38,9 @@ border copy pass は削除済み。
   - 反転方向
   を再確認すること
 
-### FSP ActiveProbe 駆動設計
+### VSP ActiveProbe 駆動設計
 
-FSP は **surface cell と probe の双方向リンク**を基本にし、
+VSP は **surface cell と probe の双方向リンク**を基本にし、
 フレームごとの動的集合は **ActiveProbeList** を正とする。
 
 この設計の狙いは次の通り。
@@ -53,23 +53,23 @@ FSP は **surface cell と probe の双方向リンク**を基本にし、
 #### データ契約
 
 - **surface cell**
-  - `FspCellProbeIndexBuffer[cell]`
-  - 値は `probe index` または `k_fsp_invalid_probe_index`
+  - `VspCellProbeIndexBuffer[cell]`
+  - 値は `probe index` または `k_vsp_invalid_probe_index`
 - **probe**
-  - `FspProbePoolBuffer[probe].owner_cell_index`
-  - 値は `global cell index` または `k_fsp_invalid_probe_index`
+  - `VspProbePoolBuffer[probe].owner_cell_index`
+  - 値は `global cell index` または `k_vsp_invalid_probe_index`
 - **free probe**
-  - `FspProbeFreeStack`
+  - `VspProbeFreeStack`
   - `0` 番はカウンタ、`1..N` が stack 本体
 - **active probe**
-  - `FspActiveProbeListPrev`
-  - `FspActiveProbeListCurr`
+  - `VspActiveProbeListPrev`
+  - `VspActiveProbeListCurr`
   - どちらも `0` 番はカウンタ、`1..N` が `probe index`
 - **visible surface cell**
   - `SurfaceProbeCellList`
   - `0` 番はカウンタ、`1..N` が `global cell index`
 - **cell 側 scratch / dedup**
-  - `FspCellStateBuffer[cell].atomic_work`
+  - `VspCellStateBuffer[cell].atomic_work`
   - screen-space visible cell dedup 用の atomic stamp
 
 #### probe metadata の最小要件
@@ -109,7 +109,7 @@ probe 側で最低限持つもの:
 
 ##### 0. 初期化時 clear
 
-- 全 cell の `FspCellProbeIndexBuffer` を invalid
+- 全 cell の `VspCellProbeIndexBuffer` を invalid
 - 全 probe の `owner_cell_index` を invalid
 - free stack を全 probe で初期化
 - active list prev/curr の counter を 0
@@ -156,7 +156,7 @@ probe 側で最低限持つもの:
 screen-space dispatch で:
 
 1. pixel world pos を復元
-2. 該当 cascade の FSP cell を求める
+2. 該当 cascade の VSP cell を求める
 3. cell ごとの `atomic_work` に現在 frame を書き込む
 4. 同一 frame に初めて観測された cell だけ visible list に push
 
@@ -174,9 +174,9 @@ visible cell list の count から `PrepareVisibleSurfaceCell` 用の indirect a
 
 - 入力:
   - `SurfaceProbeCellList`
-  - `FspProbeFreeStack`
-  - `FspCellProbeIndexBuffer`
-  - `FspProbePoolBuffer`
+  - `VspProbeFreeStack`
+  - `VspCellProbeIndexBuffer`
+  - `VspProbePoolBuffer`
   - `ActiveProbeListCurr`
 - 出力:
   - 既存 probe の refresh
@@ -219,7 +219,7 @@ main update / SH update 用。
 ##### 7. UpdateActiveProbe
 
 - 入力: `ActiveProbeListCurr`
-- 出力: `FspProbeAtlasTex`
+- 出力: `VspProbeAtlasTex`
 
 active probe ごとに:
 
@@ -241,7 +241,7 @@ active probe ごとに:
 ##### 8. UpdateProbeSh
 
 - 入力: `ActiveProbeListCurr`
-- 出力: `FspProbePackedSHTex`
+- 出力: `VspProbePackedSHTex`
 
 active probe ごとに:
 
@@ -257,13 +257,13 @@ active probe ごとに:
 必要な atomic は次だけに絞る。
 
 1. **visible cell dedup**
-   - `FspCellStateBuffer[cell].atomic_work`
+   - `VspCellStateBuffer[cell].atomic_work`
 2. **visible cell list push**
    - `SurfaceProbeCellList[0]`
 3. **free stack pop/push**
-   - `FspProbeFreeStack[0]`
+   - `VspProbeFreeStack[0]`
 4. **active list push**
-   - `FspActiveProbeListCurr[0]`
+   - `VspActiveProbeListCurr[0]`
 
 この構造だと、
 `PrepareVisibleSurfaceCell` は **dedup 済み cell list** を食うため、
@@ -281,7 +281,7 @@ cell 単位では基本的に 1 thread / 1 cell になる。
 
 と段階的に切り替わる。
 
-つまり FSP は次の構造になる。
+つまり VSP は次の構造になる。
 
 1. prev active 駆動の lifecycle
 2. screen-space 駆動の visible cell 観測

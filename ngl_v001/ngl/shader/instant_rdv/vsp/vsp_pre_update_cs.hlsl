@@ -1,7 +1,7 @@
 
 #if 0
 
-fsp_pre_update_cs.hlsl
+vsp_pre_update_cs.hlsl
 
 可視SurfaceProbeリストを元に、probe 割り当てと配置調整を行う.
 
@@ -19,8 +19,8 @@ Buffer<uint> SurfaceProbeSourceTexelList;
 
 // SurfaceCell検出時に保存したReduced texelから、そのCellをActivateした
 // 実Surfaceの位置と法線を復元する。Cell中心からの再探索は行わない。
-// Cell/sourceリストの同一slot対応はFSP Reduced経路のprovenance契約。
-bool FspTryGetReducedSurfaceAnchor(
+// Cell/sourceリストの同一slot対応はVSP Reduced経路のprovenance契約。
+bool VspTryGetReducedSurfaceAnchor(
     uint update_element_index,
     uint global_cell_index,
     uint cascade_index,
@@ -81,8 +81,8 @@ bool FspTryGetReducedSurfaceAnchor(
         cb_ngl_sceneview.cb_view_inv_mtx,
         float4(surface_pos_vs, 1.0));
 
-    uint sample_global_cell_index = k_fsp_invalid_probe_index;
-    if(!FspTryGetGlobalCellIndexFromWorldPos(
+    uint sample_global_cell_index = k_vsp_invalid_probe_index;
+    if(!VspTryGetGlobalCellIndexFromWorldPos(
             surface_pos_ws,
             cascade_index,
             sample_global_cell_index) ||
@@ -96,88 +96,88 @@ bool FspTryGetReducedSurfaceAnchor(
 }
 
 // free stack から 1 probe index を pop する。
-uint FspPopFreeProbeIndex()
+uint VspPopFreeProbeIndex()
 {
     for(;;)
     {
-        const uint observed_count = RWFspProbeFreeStack[0];
+        const uint observed_count = RWVspProbeFreeStack[0];
         if(observed_count == 0)
         {
-            return k_fsp_invalid_probe_index;
+            return k_vsp_invalid_probe_index;
         }
 
         uint cas_old_value = 0;
-        InterlockedCompareExchange(RWFspProbeFreeStack[0], observed_count, observed_count - 1, cas_old_value);
+        InterlockedCompareExchange(RWVspProbeFreeStack[0], observed_count, observed_count - 1, cas_old_value);
         if(cas_old_value == observed_count)
         {
-            return RWFspProbeFreeStack[observed_count];
+            return RWVspProbeFreeStack[observed_count];
         }
     }
 }
 
 // 現フレーム active list へ probe を追加する。
-void FspPushCurrActiveProbeIndex(uint probe_index)
+void VspPushCurrActiveProbeIndex(uint probe_index)
 {
     uint active_list_index = 0;
     InterlockedAdd(
-        RWFspActiveProbeListCurr[FspActiveProbeCurrentCounterSlot()],
+        RWVspActiveProbeListCurr[VspActiveProbeCurrentCounterSlot()],
         1,
         active_list_index);
-    if(active_list_index < cb_instant_rdv.fsp_active_probe_buffer_size)
+    if(active_list_index < cb_instant_rdv.vsp_active_probe_buffer_size)
     {
-        RWFspActiveProbeListCurr[FspActiveProbeListAddress(active_list_index)] = probe_index;
+        RWVspActiveProbeListCurr[VspActiveProbeListAddress(active_list_index)] = probe_index;
     }
 }
 
 // probe atlas 1 tile を明示的にゼロ初期化する。
-void FspClearProbeAtlas(uint probe_index)
+void VspClearProbeAtlas(uint probe_index)
 {
-    const uint2 probe_2d_map_pos = FspProbeAtlasMapPos(probe_index);
+    const uint2 probe_2d_map_pos = VspProbeAtlasMapPos(probe_index);
     [unroll]
-    for(int oct_j = 0; oct_j < k_fsp_probe_octmap_width; ++oct_j)
+    for(int oct_j = 0; oct_j < k_vsp_probe_octmap_width; ++oct_j)
     {
         [unroll]
-        for(int oct_i = 0; oct_i < k_fsp_probe_octmap_width; ++oct_i)
+        for(int oct_i = 0; oct_i < k_vsp_probe_octmap_width; ++oct_i)
         {
-            RWFspProbeAtlasTex[probe_2d_map_pos * k_fsp_probe_octmap_width + uint2(oct_i, oct_j)] = 0.0.xxxx;
+            RWVspProbeAtlasTex[probe_2d_map_pos * k_vsp_probe_octmap_width + uint2(oct_i, oct_j)] = 0.0.xxxx;
         }
     }
 }
 
 // 既存 probe の atlas 内容を新規 probe へコピーする。
-void FspCopyProbeAtlas(uint dst_probe_index, uint src_probe_index)
+void VspCopyProbeAtlas(uint dst_probe_index, uint src_probe_index)
 {
-    const uint2 dst_probe_2d_map_pos = FspProbeAtlasMapPos(dst_probe_index);
-    const uint2 src_probe_2d_map_pos = FspProbeAtlasMapPos(src_probe_index);
+    const uint2 dst_probe_2d_map_pos = VspProbeAtlasMapPos(dst_probe_index);
+    const uint2 src_probe_2d_map_pos = VspProbeAtlasMapPos(src_probe_index);
     [unroll]
-    for(int oct_j = 0; oct_j < k_fsp_probe_octmap_width; ++oct_j)
+    for(int oct_j = 0; oct_j < k_vsp_probe_octmap_width; ++oct_j)
     {
         [unroll]
-        for(int oct_i = 0; oct_i < k_fsp_probe_octmap_width; ++oct_i)
+        for(int oct_i = 0; oct_i < k_vsp_probe_octmap_width; ++oct_i)
         {
-            RWFspProbeAtlasTex[dst_probe_2d_map_pos * k_fsp_probe_octmap_width + uint2(oct_i, oct_j)] =
-                RWFspProbeAtlasTex[src_probe_2d_map_pos * k_fsp_probe_octmap_width + uint2(oct_i, oct_j)];
+            RWVspProbeAtlasTex[dst_probe_2d_map_pos * k_vsp_probe_octmap_width + uint2(oct_i, oct_j)] =
+                RWVspProbeAtlasTex[src_probe_2d_map_pos * k_vsp_probe_octmap_width + uint2(oct_i, oct_j)];
         }
     }
 }
 
-bool FspTrySeedProbeFromNearestActiveProbe(
+bool VspTrySeedProbeFromNearestActiveProbe(
     float3 sample_pos_ws,
     uint dst_cascade_index,
     uint dst_probe_index)
 {
-    const uint cascade_count = FspCascadeCount();
+    const uint cascade_count = VspCascadeCount();
     [loop]
     for(uint cascade_offset = 0; cascade_offset < cascade_count - dst_cascade_index; ++cascade_offset)
     {
         const uint src_cascade_index = dst_cascade_index + cascade_offset;
-        const FspCascadeGridParam src_cascade = FspGetCascadeParam(src_cascade_index);
+        const VspCascadeGridParam src_cascade = VspGetCascadeParam(src_cascade_index);
         const float3 continuous_coord =
             (sample_pos_ws - src_cascade.grid.grid_min_pos) *
             src_cascade.grid.cell_size_inv - 0.5.xxx;
         const int3 center_coord = int3(floor(continuous_coord));
         const int3 resolution = src_cascade.grid.grid_resolution;
-        uint best_probe_index = k_fsp_invalid_probe_index;
+        uint best_probe_index = k_vsp_invalid_probe_index;
         float best_distance_sq = 3.402823466e+38;
 
         [loop]
@@ -197,21 +197,21 @@ bool FspTrySeedProbeFromNearestActiveProbe(
                         logical_coord,
                         src_cascade.grid.grid_toroidal_offset,
                         resolution);
-                    const uint local_cell_index = FspPhysicalCellCoordToLocalIndex(
+                    const uint local_cell_index = VspPhysicalCellCoordToLocalIndex(
                         physical_coord,
                         resolution);
                     const uint src_global_cell_index =
-                        FspEncodeGlobalCellIndex(src_cascade_index, local_cell_index);
-                    const uint src_probe_index = RWFspCellProbeIndexBuffer[src_global_cell_index];
-                    if(src_probe_index == k_fsp_invalid_probe_index ||
-                       src_probe_index >= (uint)cb_instant_rdv.fsp_probe_pool_size ||
+                        VspEncodeGlobalCellIndex(src_cascade_index, local_cell_index);
+                    const uint src_probe_index = RWVspCellProbeIndexBuffer[src_global_cell_index];
+                    if(src_probe_index == k_vsp_invalid_probe_index ||
+                       src_probe_index >= (uint)cb_instant_rdv.vsp_probe_pool_size ||
                        src_probe_index == dst_probe_index)
                     {
                         continue;
                     }
 
-                    const FspProbePoolData src_probe_pool_data =
-                        RWFspProbePoolBuffer[src_probe_index];
+                    const VspProbePoolData src_probe_pool_data =
+                        RWVspProbePoolBuffer[src_probe_index];
                     if(src_probe_pool_data.owner_cell_index != src_global_cell_index ||
                        src_probe_pool_data.last_update_frame == 0)
                     {
@@ -219,10 +219,10 @@ bool FspTrySeedProbeFromNearestActiveProbe(
                     }
 
                     const float3 source_position_ws =
-                        FspCalcCellCenterWs(src_cascade_index, local_cell_index) +
+                        VspCalcCellCenterWs(src_cascade_index, local_cell_index) +
                         decode_uint_to_range1_vec3(src_probe_pool_data.probe_offset_v3) *
                         (src_cascade.grid.cell_size *
-                         cb_instant_rdv.fsp_relocation_offset_scale_for_cascade_cell_size);
+                         cb_instant_rdv.vsp_relocation_offset_scale_for_cascade_cell_size);
                     const float3 delta = source_position_ws - sample_pos_ws;
                     const float distance_sq = dot(delta, delta);
                     if(distance_sq < best_distance_sq)
@@ -234,9 +234,9 @@ bool FspTrySeedProbeFromNearestActiveProbe(
             }
         }
 
-        if(best_probe_index != k_fsp_invalid_probe_index)
+        if(best_probe_index != k_vsp_invalid_probe_index)
         {
-            FspCopyProbeAtlas(dst_probe_index, best_probe_index);
+            VspCopyProbeAtlas(dst_probe_index, best_probe_index);
             return true;
         }
     }
@@ -262,17 +262,17 @@ void main_cs(
     const uint global_cell_index = SurfaceProbeCellList[update_element_index+1]; // 1番目以降に有効Cellインデックスが入っている.
     uint cascade_index = 0;
     uint local_cell_index = 0;
-    if(!FspDecodeGlobalCellIndex(global_cell_index, cascade_index, local_cell_index))
+    if(!VspDecodeGlobalCellIndex(global_cell_index, cascade_index, local_cell_index))
     {
         return;
     }
 
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     const float3 probe_cell_center =
-        FspCalcCellCenterWs(cascade_index, local_cell_index);
+        VspCalcCellCenterWs(cascade_index, local_cell_index);
     const float relocation_offset_limit =
         cascade.grid.cell_size *
-        cb_instant_rdv.fsp_relocation_offset_scale_for_cascade_cell_size;
+        cb_instant_rdv.vsp_relocation_offset_scale_for_cascade_cell_size;
     float3 reduced_relocation_pos_ws = 0.0.xxx;
     if(cb_instant_rdv.main_view_reduced_surface_enable != 0)
     {
@@ -282,7 +282,7 @@ void main_cs(
         // ActiveProbeが床下などSurface裏側へRelocationすることを防ぐ。
         float3 surface_pos_ws = 0.0.xxx;
         float3 surface_normal_ws = 0.0.xxx;
-        if(!FspTryGetReducedSurfaceAnchor(
+        if(!VspTryGetReducedSurfaceAnchor(
             update_element_index,
             global_cell_index,
             cascade_index,
@@ -334,30 +334,30 @@ void main_cs(
         }
     }
 
-    uint probe_index = RWFspCellProbeIndexBuffer[global_cell_index];
-    const bool is_probe_lifecycle_enabled = (0 != cb_instant_rdv.fsp_probe_lifecycle_enable);
+    uint probe_index = RWVspCellProbeIndexBuffer[global_cell_index];
+    const bool is_probe_lifecycle_enabled = (0 != cb_instant_rdv.vsp_probe_lifecycle_enable);
     bool is_new_probe = false;
-    if(k_fsp_invalid_probe_index == probe_index)
+    if(k_vsp_invalid_probe_index == probe_index)
     {
         if(!is_probe_lifecycle_enabled)
         {
             return;
         }
-        probe_index = FspPopFreeProbeIndex();
-        if(k_fsp_invalid_probe_index == probe_index)
+        probe_index = VspPopFreeProbeIndex();
+        if(k_vsp_invalid_probe_index == probe_index)
         {
             return;
         }
-        RWFspCellProbeIndexBuffer[global_cell_index] = probe_index;
-        FspPushCurrActiveProbeIndex(probe_index);
+        RWVspCellProbeIndexBuffer[global_cell_index] = probe_index;
+        VspPushCurrActiveProbeIndex(probe_index);
         is_new_probe = true;
     }
 
-    FspProbePoolData probe_pool_data = RWFspProbePoolBuffer[probe_index];
+    VspProbePoolData probe_pool_data = RWVspProbePoolBuffer[probe_index];
     if(!is_probe_lifecycle_enabled)
     {
         probe_pool_data.last_seen_frame = cb_instant_rdv.frame_count;
-        RWFspProbePoolBuffer[probe_index] = probe_pool_data;
+        RWVspProbePoolBuffer[probe_index] = probe_pool_data;
 
         const uint owner_cell_index = probe_pool_data.owner_cell_index;
         return;
@@ -477,22 +477,22 @@ void main_cs(
 
     if(is_new_probe)
     {
-        if(cb_instant_rdv.fsp_warm_start_enable != 0)
+        if(cb_instant_rdv.vsp_warm_start_enable != 0)
         {
-            if(!FspTrySeedProbeFromNearestActiveProbe(
+            if(!VspTrySeedProbeFromNearestActiveProbe(
                 probe_sample_pos_ws,
                 cascade_index,
                 probe_index))
             {
                 // source が見つからない場合だけ新規割り当て時に明示的に初期化する。
-                FspClearProbeAtlas(probe_index);
+                VspClearProbeAtlas(probe_index);
             }
         }
         else
         {
-            FspClearProbeAtlas(probe_index);
+            VspClearProbeAtlas(probe_index);
         }
     }
 
-    RWFspProbePoolBuffer[probe_index] = probe_pool_data;
+    RWVspProbePoolBuffer[probe_index] = probe_pool_data;
 }

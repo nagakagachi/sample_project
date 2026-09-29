@@ -80,7 +80,7 @@ static float dbgw_view_general_debug_rate  = 0.5f;
 static bool dbgw_view_instant_rdv_sky_visibility               = false;
 static bool dbgw_enable_instant_rdv_sky_visibility_lighting    = true;
 static bool dbgw_enable_instant_rdv_radiance_lighting          = true;
-static int  dbgw_gi_sample_mode                         = ngl::test::EGiSampleMode_Fsp;
+static int  dbgw_gi_sample_mode                         = ngl::test::EGiSampleMode_Vsp;
 static float dbgw_gi_probe_sample_offset_view           = 0.2f;
 static float dbgw_gi_probe_sample_offset_surface_normal = 0.2f;
 static float dbgw_gi_probe_sample_offset_bent_normal    = 0.0f;
@@ -1169,13 +1169,13 @@ bool AppGame::SaveBenchmarkReport() const
                     ? "true"
                     : "false")
             << ",\n";
-        ofs << "  \"fsp_visible_surface_cell_count\": "
+        ofs << "  \"vsp_visible_surface_cell_count\": "
             << ngl::render::app::InstantRasterDerivedVoxelScene::
-                dbg_fsp_visible_surface_cell_count_
+                dbg_vsp_visible_surface_cell_count_
             << ",\n";
-        ofs << "  \"fsp_active_probe_count\": "
+        ofs << "  \"vsp_active_probe_count\": "
             << ngl::render::app::InstantRasterDerivedVoxelScene::
-                dbg_fsp_active_probe_count_
+                dbg_vsp_active_probe_count_
             << ",\n";
         ofs << "  \"markers\": [\n";
         for (size_t i = 0; i < summaries.size(); ++i)
@@ -1444,7 +1444,7 @@ bool AppGame::ExecuteApp()
                 ImGui::SameLine();
                 ImGui::RadioButton("ASSP##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Assp);
                 ImGui::SameLine();
-                ImGui::RadioButton("FSP##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Fsp);
+                ImGui::RadioButton("VSP##LightingGiSampleMode", &dbgw_gi_sample_mode, ngl::test::EGiSampleMode_Vsp);
                 ImGui::Checkbox("Enable SkyVisibility", &dbgw_enable_instant_rdv_sky_visibility_lighting);
                 ImGui::Checkbox("Enable Irradiance", &dbgw_enable_instant_rdv_radiance_lighting);
                 ImGui::SliderFloat("Sample Offset View", &dbgw_gi_probe_sample_offset_view, 0.0f, 10.0f);

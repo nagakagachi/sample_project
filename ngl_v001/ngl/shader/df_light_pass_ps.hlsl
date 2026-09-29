@@ -40,10 +40,10 @@ ConstantBuffer<CbLightingPass> cb_ngl_lighting_pass;
 
 // GI source selection:
 //   none = probe GI を使わない
-//   fsp  = Frustum Space Probe を使う
+//   vsp  = Visibility Surface Probe を使う
 //   assp = Adaptive Screen Space Probe を使う
 static const int k_gi_sample_mode_none = 0;
-static const int k_gi_sample_mode_fsp = 2;
+static const int k_gi_sample_mode_vsp = 2;
 static const int k_gi_sample_mode_assp = 3;
 
 Texture2D tex_lineardepth;// Linear View Depth.
@@ -116,7 +116,7 @@ void EvalIblDiffuseStandard
 	out_specular = irradiance_specular * (F * specular_dfg.x + specular_dfg.y);
 }
 
-struct FspIrradianceVolumeL1Sample
+struct VspIrradianceVolumeL1Sample
 {
     float4 sky_visibility_sh;
     float4 irradiance_sh_r;
@@ -124,10 +124,10 @@ struct FspIrradianceVolumeL1Sample
     float4 irradiance_sh_b;
 };
 
-// FSP SH のゼロ値を返す簡易コンストラクタ。
-FspIrradianceVolumeL1Sample MakeZeroFspIrradianceVolumeL1Sample()
+// VSP SH のゼロ値を返す簡易コンストラクタ。
+VspIrradianceVolumeL1Sample MakeZeroVspIrradianceVolumeL1Sample()
 {
-    FspIrradianceVolumeL1Sample result;
+    VspIrradianceVolumeL1Sample result;
     result.sky_visibility_sh = 0.0.xxxx;
     result.irradiance_sh_r = 0.0.xxxx;
     result.irradiance_sh_g = 0.0.xxxx;
@@ -136,10 +136,10 @@ FspIrradianceVolumeL1Sample MakeZeroFspIrradianceVolumeL1Sample()
 }
 
 // Dense IrradianceVolume は全セルが有効SHを持つ前提で、final shading hot pathではvalidity判定をしない。
-FspIrradianceVolumeL1Sample FspLoadIrradianceVolumeL1FromCellIndexUnchecked(uint irradiance_volume_cell_index)
+VspIrradianceVolumeL1Sample VspLoadIrradianceVolumeL1FromCellIndexUnchecked(uint irradiance_volume_cell_index)
 {
-    FspIrradianceVolumeL1Sample result;
-    FspIrradianceVolumeLoadSignals(
+    VspIrradianceVolumeL1Sample result;
+    VspIrradianceVolumeLoadSignals(
         irradiance_volume_cell_index,
         result.sky_visibility_sh,
         result.irradiance_sh_r,
@@ -149,9 +149,9 @@ FspIrradianceVolumeL1Sample FspLoadIrradianceVolumeL1FromCellIndexUnchecked(uint
 }
 
 // カメラ距離に連続な安全帯を基準に、登録済みの粗いCascadeだけをディザで選ぶ。
-bool FspTrySelectLightingCascade(out uint cascade_index, float3 sample_pos_ws, float2 dither_seed)
+bool VspTrySelectLightingCascade(out uint cascade_index, float3 sample_pos_ws, float2 dither_seed)
 {
-    return FspTrySelectIrradianceVolumeCascade(
+    return VspTrySelectIrradianceVolumeCascade(
         cascade_index,
         sample_pos_ws,
         GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx),
@@ -160,30 +160,30 @@ bool FspTrySelectLightingCascade(out uint cascade_index, float3 sample_pos_ws, f
 }
 
 // Dense IrradianceVolume の nearest 参照。
-bool TrySampleFspIrradianceVolumeL1Nearest(out FspIrradianceVolumeL1Sample result, float3 sample_pos_ws, float2 dither_seed)
+bool TrySampleVspIrradianceVolumeL1Nearest(out VspIrradianceVolumeL1Sample result, float3 sample_pos_ws, float2 dither_seed)
 {
-    result = MakeZeroFspIrradianceVolumeL1Sample();
+    result = MakeZeroVspIrradianceVolumeL1Sample();
 
     uint cascade_index = 0;
-    if(!FspTrySelectLightingCascade(cascade_index, sample_pos_ws, dither_seed))
+    if(!VspTrySelectLightingCascade(cascade_index, sample_pos_ws, dither_seed))
     {
         return false;
     }
 
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     const int3 linear_coord = clamp(
         int3(floor((sample_pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv)),
         0,
         cascade.grid.grid_resolution - 1);
     const uint irradiance_volume_cell_index =
-        FspIrradianceVolumeCellIndexFromLinearCoord(cascade_index, linear_coord);
-    result = FspLoadIrradianceVolumeL1FromCellIndexUnchecked(irradiance_volume_cell_index);
+        VspIrradianceVolumeCellIndexFromLinearCoord(cascade_index, linear_coord);
+    result = VspLoadIrradianceVolumeL1FromCellIndexUnchecked(irradiance_volume_cell_index);
     return true;
 }
 
 // 4信号は同じcell座標を使うため、正規化座標と信号間Z増分を共有する。
-void FspTrilinearSampleIrradianceVolumeSignals(
-    FspCascadeGridParam cascade,
+void VspTrilinearSampleIrradianceVolumeSignals(
+    VspCascadeGridParam cascade,
     uint3 physical_coord0,
     float3 lerp_rate,
     out float4 sky_visibility,
@@ -192,10 +192,10 @@ void FspTrilinearSampleIrradianceVolumeSignals(
     out float4 irradiance_b)
 {
     const uint3 padded_resolution = cascade.grid.grid_resolution +
-        k_fsp_irradiance_volume_guard_texel_count;
+        k_vsp_irradiance_volume_guard_texel_count;
     const float texture_depth = float(
-        padded_resolution.z * cb_instant_rdv.fsp_cascade_count *
-        k_fsp_irradiance_volume_sh_texture_count);
+        padded_resolution.z * cb_instant_rdv.vsp_cascade_count *
+        k_vsp_irradiance_volume_sh_texture_count);
     const float3 inv_texture_extent = rcp(float3(float2(padded_resolution.xy), texture_depth));
     const float3 sample_texel = float3(
         float2(physical_coord0.xy) + 0.5.xx + lerp_rate.xy,
@@ -203,35 +203,35 @@ void FspTrilinearSampleIrradianceVolumeSignals(
     float3 sample_uvw = sample_texel * inv_texture_extent;
     const float signal_uvw_z_step = float(padded_resolution.z) * inv_texture_extent.z;
 
-    sky_visibility = FspIrradianceVolumeSHTexture.SampleLevel(samp, sample_uvw, 0.0);
+    sky_visibility = VspIrradianceVolumeSHTexture.SampleLevel(samp, sample_uvw, 0.0);
     sample_uvw.z += signal_uvw_z_step;
-    irradiance_r = FspIrradianceVolumeSHTexture.SampleLevel(samp, sample_uvw, 0.0);
+    irradiance_r = VspIrradianceVolumeSHTexture.SampleLevel(samp, sample_uvw, 0.0);
     sample_uvw.z += signal_uvw_z_step;
-    irradiance_g = FspIrradianceVolumeSHTexture.SampleLevel(samp, sample_uvw, 0.0);
+    irradiance_g = VspIrradianceVolumeSHTexture.SampleLevel(samp, sample_uvw, 0.0);
     sample_uvw.z += signal_uvw_z_step;
-    irradiance_b = FspIrradianceVolumeSHTexture.SampleLevel(samp, sample_uvw, 0.0);
+    irradiance_b = VspIrradianceVolumeSHTexture.SampleLevel(samp, sample_uvw, 0.0);
 }
 
 // Dense IrradianceVolume 前提の固定コスト Trilinear 参照。
 // 論理座標をToroidalな物理座標へ変換し、正側Guardを含む各SHサブボリュームをハードウェア補間する。
 // Guardには物理座標0の値を複製しているため、境界でも隣の信号やCascadeへフィルタが漏れない。
-bool TrySampleFspIrradianceVolumeL1Interpolated(out FspIrradianceVolumeL1Sample result, float3 sample_pos_ws, float2 dither_seed)
+bool TrySampleVspIrradianceVolumeL1Interpolated(out VspIrradianceVolumeL1Sample result, float3 sample_pos_ws, float2 dither_seed)
 {
     uint cascade_index = 0;
-    if(!FspTrySelectLightingCascade(cascade_index, sample_pos_ws, dither_seed))
+    if(!VspTrySelectLightingCascade(cascade_index, sample_pos_ws, dither_seed))
     {
         return false;
     }
 
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     const float3 grid_coordf = (sample_pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv - float3(0.5, 0.5, 0.5);
     const int3 base_coord = clamp(int3(floor(grid_coordf)), int3(0, 0, 0), cascade.grid.grid_resolution - 2);
     const float3 lerp_rate = saturate(grid_coordf - float3(base_coord));
 
     const int3 physical_coord0 =
-        FspIrradianceVolumeToroidalPhysicalCoord(base_coord, cascade.grid);
+        VspIrradianceVolumeToroidalPhysicalCoord(base_coord, cascade.grid);
     // 各信号は正側Guardを含むサブボリュームから1回ずつハードウェアTrilinearサンプルする。
-    FspTrilinearSampleIrradianceVolumeSignals(
+    VspTrilinearSampleIrradianceVolumeSignals(
         cascade,
         physical_coord0,
         lerp_rate,
@@ -243,30 +243,30 @@ bool TrySampleFspIrradianceVolumeL1Interpolated(out FspIrradianceVolumeL1Sample 
     return true;
 }
 
-// FSP ライティングの入口。nearest / interpolated をここで切り替える。
-bool TrySampleFspIrradianceVolumeL1(out FspIrradianceVolumeL1Sample result, float3 sample_pos_ws, float2 dither_seed)
+// VSP ライティングの入口。nearest / interpolated をここで切り替える。
+bool TrySampleVspIrradianceVolumeL1(out VspIrradianceVolumeL1Sample result, float3 sample_pos_ws, float2 dither_seed)
 {
-    if(0 != cb_instant_rdv.fsp_lighting_interpolation_enable)
+    if(0 != cb_instant_rdv.vsp_lighting_interpolation_enable)
     {
-        return TrySampleFspIrradianceVolumeL1Interpolated(result, sample_pos_ws, dither_seed);
+        return TrySampleVspIrradianceVolumeL1Interpolated(result, sample_pos_ws, dither_seed);
     }
-    return TrySampleFspIrradianceVolumeL1Nearest(result, sample_pos_ws, dither_seed);
+    return TrySampleVspIrradianceVolumeL1Nearest(result, sample_pos_ws, dither_seed);
 }
 
-float3 EvalFspL1DiffuseIrradiance(FspIrradianceVolumeL1Sample fsp_probe_sh, float4 sh_basis)
+float3 EvalVspL1DiffuseIrradiance(VspIrradianceVolumeL1Sample vsp_probe_sh, float4 sh_basis)
 {
     return float3(
-        dot(fsp_probe_sh.irradiance_sh_r, sh_basis),
-        dot(fsp_probe_sh.irradiance_sh_g, sh_basis),
-        dot(fsp_probe_sh.irradiance_sh_b, sh_basis));
+        dot(vsp_probe_sh.irradiance_sh_r, sh_basis),
+        dot(vsp_probe_sh.irradiance_sh_g, sh_basis),
+        dot(vsp_probe_sh.irradiance_sh_b, sh_basis));
 }
 
-float EvalFspSkyVisibilityL1IblOcclusion(float4 sky_visibility_sh_coeff, float4 sh_basis)
+float EvalVspSkyVisibilityL1IblOcclusion(float4 sky_visibility_sh_coeff, float4 sh_basis)
 {
     return dot(ConvolveL1ShByNormalizedClampedCosine(sky_visibility_sh_coeff), sh_basis);
 }
 
-float EvalFspSkyVisibilityL1Directional(float4 sky_visibility_sh_coeff, float4 sh_basis)
+float EvalVspSkyVisibilityL1Directional(float4 sky_visibility_sh_coeff, float4 sh_basis)
 {
     return dot(sky_visibility_sh_coeff, sh_basis);
 }
@@ -506,7 +506,7 @@ uint2 calc_2d_position_from_index(uint index, uint tex_width)
 }
 uint2 calc_probe_octahedral_map_atlas_texel_base_pos(uint index, uint tex_width)
 {
-    return calc_2d_position_from_index(index, tex_width) * k_fsp_probe_octmap_width;
+    return calc_2d_position_from_index(index, tex_width) * k_vsp_probe_octmap_width;
 }
 
 float4 main_ps(VS_OUTPUT input) : SV_TARGET
@@ -587,17 +587,17 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
         const float3 reflected_view_dir = 2.0 * dot(V, gb_normal_ws) * gb_normal_ws - V;
         const float4 reflection_sh_basis = EvaluateL1ShBasis(reflected_view_dir);
 
-        if(cb_ngl_lighting_pass.gi_sample_mode == k_gi_sample_mode_fsp)
+        if(cb_ngl_lighting_pass.gi_sample_mode == k_gi_sample_mode_vsp)
         {
-            FspIrradianceVolumeL1Sample fsp_probe_sh;
-            if(TrySampleFspIrradianceVolumeL1(fsp_probe_sh, gi_sample_pos_ws, input.pos.xy))
+            VspIrradianceVolumeL1Sample vsp_probe_sh;
+            if(TrySampleVspIrradianceVolumeL1(vsp_probe_sh, gi_sample_pos_ws, input.pos.xy))
             {
                 if(cb_ngl_lighting_pass.is_enable_sky_visibility || cb_ngl_lighting_pass.dbg_view_instant_rdv_sky_visibility)
                 {
-                    const float diffuse_sh_sample = max(0.0, EvalFspSkyVisibilityL1IblOcclusion(fsp_probe_sh.sky_visibility_sh, sh_basis));
+                    const float diffuse_sh_sample = max(0.0, EvalVspSkyVisibilityL1IblOcclusion(vsp_probe_sh.sky_visibility_sh, sh_basis));
                     diffuse_sky_visibility = saturate(diffuse_sh_sample);
 
-                    const float directional_specular_sample = max(0.0, EvalFspSkyVisibilityL1Directional(fsp_probe_sh.sky_visibility_sh, reflection_sh_basis));
+                    const float directional_specular_sample = max(0.0, EvalVspSkyVisibilityL1Directional(vsp_probe_sh.sky_visibility_sh, reflection_sh_basis));
                     const float roughness_blend = saturate(gb_roughness * gb_roughness);
                     specular_sky_visibility = saturate(lerp(directional_specular_sample, diffuse_sky_visibility, roughness_blend));
                 }
@@ -605,7 +605,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET
                 {
                     gi_probe_diffuse_irradiance = max(
                         float3(0.0, 0.0, 0.0),
-                    EvalFspL1DiffuseIrradiance(fsp_probe_sh, sh_basis));
+                    EvalVspL1DiffuseIrradiance(vsp_probe_sh, sh_basis));
                 }
             }
         }

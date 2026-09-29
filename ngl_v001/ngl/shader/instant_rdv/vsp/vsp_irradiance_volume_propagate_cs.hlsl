@@ -1,17 +1,17 @@
 #if 0
 
-fsp_irradiance_volume_propagate_cs.hlsl
+vsp_irradiance_volume_propagate_cs.hlsl
 ファイル説明:
- ActiveProbeで直接更新されなかったFSP IrradianceVolumeセルへ、
+ ActiveProbeで直接更新されなかったVSP IrradianceVolumeセルへ、
  同一cascade内の6近傍からSHをcheckerboard伝播する。
 
 #endif
 
 #include "../instant_rdv_util.hlsli"
 
-bool FspIsCellCenterOccupied(uint cascade_index, int3 linear_coord)
+bool VspIsCellCenterOccupied(uint cascade_index, int3 linear_coord)
 {
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     const float3 cell_center_ws =
         (float3(linear_coord) + 0.5.xxx) * cascade.grid.cell_size + cascade.grid.grid_min_pos;
     return read_bbv_voxel_from_world_pos(
@@ -23,7 +23,7 @@ bool FspIsCellCenterOccupied(uint cascade_index, int3 linear_coord)
         cell_center_ws) != 0u;
 }
 
-bool FspTryLoadNeighborSignals(
+bool VspTryLoadNeighborSignals(
     out float4 out_sky_visibility,
     out float4 out_irradiance_r,
     out float4 out_irradiance_g,
@@ -38,31 +38,31 @@ bool FspTryLoadNeighborSignals(
     out_irradiance_b = 0.0.xxxx;
     out_is_active_probe = false;
 
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     if(any(neighbor_linear_coord < 0) || any(neighbor_linear_coord >= cascade.grid.grid_resolution))
     {
         return false;
     }
 
     const uint neighbor_irradiance_volume_cell_index =
-        FspIrradianceVolumeCellIndexFromLinearCoord(cascade_index, neighbor_linear_coord);
-    FspIrradianceVolumeLoadSignalsRw(
+        VspIrradianceVolumeCellIndexFromLinearCoord(cascade_index, neighbor_linear_coord);
+    VspIrradianceVolumeLoadSignalsRw(
         neighbor_irradiance_volume_cell_index,
         out_sky_visibility,
         out_irradiance_r,
         out_irradiance_g,
         out_irradiance_b);
-    const bool has_valid_signals = FspIrradianceVolumeHasValidSignals(
+    const bool has_valid_signals = VspIrradianceVolumeHasValidSignals(
         out_sky_visibility, out_irradiance_r, out_irradiance_g, out_irradiance_b);
     if(!has_valid_signals)
     {
         return false;
     }
 
-    if(0 != cb_instant_rdv.fsp_irradiance_volume_propagate_active_probe_weight_enable)
+    if(0 != cb_instant_rdv.vsp_irradiance_volume_propagate_active_probe_weight_enable)
     {
         // OFF時は比較基準の伝播負荷を維持し、追加のActiveProbe参照を発行しない。
-        out_is_active_probe = FspIsActiveProbeOwnedCell(neighbor_irradiance_volume_cell_index);
+        out_is_active_probe = VspIsActiveProbeOwnedCell(neighbor_irradiance_volume_cell_index);
     }
     return true;
 }
@@ -75,14 +75,14 @@ void main_cs(
     uint gindex : SV_GroupIndex)
 {
     const uint irradiance_volume_cell_index = dtid.x;
-    if(irradiance_volume_cell_index >= (uint)cb_instant_rdv.fsp_total_cell_count)
+    if(irradiance_volume_cell_index >= (uint)cb_instant_rdv.vsp_total_cell_count)
     {
         return;
     }
 
     uint cascade_index = 0u;
     uint irradiance_volume_local_cell_index = 0u;
-    if(!FspDecodeGlobalCellIndex(
+    if(!VspDecodeGlobalCellIndex(
         irradiance_volume_cell_index,
         cascade_index,
         irradiance_volume_local_cell_index))
@@ -90,13 +90,13 @@ void main_cs(
         return;
     }
 
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-    const int3 physical_coord = FspLocalCellIndexToPhysicalCoord(
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
+    const int3 physical_coord = VspLocalCellIndexToPhysicalCoord(
         irradiance_volume_local_cell_index,
         cascade.grid.grid_resolution);
     const int3 linear_coord =
         (physical_coord - cascade.grid.grid_toroidal_offset) & (cascade.grid.grid_resolution - 1);
-    if(FspIsActiveProbeOwnedCell(irradiance_volume_cell_index))
+    if(VspIsActiveProbeOwnedCell(irradiance_volume_cell_index))
     {
         // ActiveProbeのRT結果が最優先。伝播は未Activeの空間セルを埋めるだけで、観測セルは上書きしない。
         return;
@@ -109,7 +109,7 @@ void main_cs(
         return;
     }
 
-    if(FspIsCellCenterOccupied(cascade_index, linear_coord))
+    if(VspIsCellCenterOccupied(cascade_index, linear_coord))
     {
         // 不透明セル内部は注入点ではないため、近傍伝播でSHを作らない。
         return;
@@ -131,8 +131,8 @@ void main_cs(
     float4 accum_irradiance_b = 0.0.xxxx;
     float valid_neighbor_weight_sum = 0.0f;
     const float active_probe_neighbor_weight =
-        (0 != cb_instant_rdv.fsp_irradiance_volume_propagate_active_probe_weight_enable)
-        ? cb_instant_rdv.fsp_irradiance_volume_propagate_active_probe_weight_scale
+        (0 != cb_instant_rdv.vsp_irradiance_volume_propagate_active_probe_weight_enable)
+        ? cb_instant_rdv.vsp_irradiance_volume_propagate_active_probe_weight_scale
         : 1.0f;
 
     [unroll]
@@ -143,7 +143,7 @@ void main_cs(
         float4 irradiance_g = 0.0.xxxx;
         float4 irradiance_b = 0.0.xxxx;
         bool is_active_probe = false;
-        if(!FspTryLoadNeighborSignals(
+        if(!VspTryLoadNeighborSignals(
             sky_visibility,
             irradiance_r,
             irradiance_g,
@@ -170,7 +170,7 @@ void main_cs(
     }
 
     const float inv_count = rcp(valid_neighbor_weight_sum);
-    FspIrradianceVolumeStoreSignals(
+    VspIrradianceVolumeStoreSignals(
         irradiance_volume_cell_index,
         accum_sky_visibility * inv_count,
         accum_irradiance_r * inv_count,

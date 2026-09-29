@@ -1,19 +1,19 @@
 /*
-    fsp_surface_detect_reduced_cs.hlsl
+    vsp_surface_detect_reduced_cs.hlsl
 
-    ReducedSurfaceBufferからFSP SurfaceCellを検出する。
+    ReducedSurfaceBufferからVSP SurfaceCellを検出する。
 
     ActiveProbeの配置にはCell indexだけでなく、そのCellをActivateした
     実Surfaceの位置と法線が必要になる。そのprovenanceを失わないよう、
     Cellを初めて検出したthreadがCell indexと検出元Reduced texelを
     2つの並行リストの同一slotへ出力する。
 
-    後段のFspPreUpdateはこのtexelからSurface anchorを再構成し、
+    後段のVspPreUpdateはこのtexelからSurface anchorを再構成し、
     ActiveProbeをSurface法線の表面側へRelocationする。
 */
 
-#define FSP_SURFACE_DETECT_TILE_WIDTH 8
-#define FSP_SURFACE_DETECT_TILE_HEIGHT 8
+#define VSP_SURFACE_DETECT_TILE_WIDTH 8
+#define VSP_SURFACE_DETECT_TILE_HEIGHT 8
 
 #include "../instant_rdv_util.hlsli"
 #include "../../include/scene_view_struct.hlsli"
@@ -22,7 +22,7 @@ ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 Texture2D<float4> TexReducedSurfaceBuffer;
 RWBuffer<uint> RWSurfaceProbeSourceTexelList;
 
-void FspDetectSurfaceCellWave(
+void VspDetectSurfaceCellWave(
     bool has_cell,
     uint global_cell_index,
     uint mask_word_index,
@@ -30,7 +30,7 @@ void FspDetectSurfaceCellWave(
     uint reduced_surface_texel_index)
 {
     const uint capacity =
-        (uint)max(cb_instant_rdv.fsp_visible_voxel_buffer_size, 0);
+        (uint)max(cb_instant_rdv.vsp_visible_voxel_buffer_size, 0);
     uint4 pending_lanes = WaveActiveBallot(has_cell);
     while(ballot_any(pending_lanes))
     {
@@ -49,7 +49,7 @@ void FspDetectSurfaceCellWave(
         if(WaveGetLaneIndex() == leader_lane)
         {
             InterlockedOr(
-                RWFspSurfaceCellMaskBuffer[leader_word_index],
+                RWVspSurfaceCellMaskBuffer[leader_word_index],
                 merged_mask,
                 original_mask);
         }
@@ -116,8 +116,8 @@ void FspDetectSurfaceCellWave(
 }
 
 [numthreads(
-    FSP_SURFACE_DETECT_TILE_WIDTH,
-    FSP_SURFACE_DETECT_TILE_HEIGHT,
+    VSP_SURFACE_DETECT_TILE_WIDTH,
+    VSP_SURFACE_DETECT_TILE_HEIGHT,
     1)]
 void main_cs(uint3 dtid : SV_DispatchThreadID)
 {
@@ -155,23 +155,23 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
         cb_ngl_sceneview.cb_view_inv_mtx,
         float4(surface_pos_vs, 1.0));
 
-    uint2 owner_cell_indices = k_fsp_invalid_probe_index.xx;
+    uint2 owner_cell_indices = k_vsp_invalid_probe_index.xx;
     uint2 owner_mask_word_indices = 0u.xx;
     uint2 owner_mask_bits = 0u.xx;
-    const uint owner_count = FspGetSurfaceOwnerCellData(
+    const uint owner_count = VspGetSurfaceOwnerCellData(
         surface_pos_ws,
         owner_cell_indices,
         owner_mask_word_indices,
         owner_mask_bits);
     const uint reduced_surface_texel_index =
         dtid.x + dtid.y * reduced_width;
-    FspDetectSurfaceCellWave(
+    VspDetectSurfaceCellWave(
         owner_count > 0u,
         owner_cell_indices.x,
         owner_mask_word_indices.x,
         owner_mask_bits.x,
         reduced_surface_texel_index);
-    FspDetectSurfaceCellWave(
+    VspDetectSurfaceCellWave(
         owner_count > 1u,
         owner_cell_indices.y,
         owner_mask_word_indices.y,

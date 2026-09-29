@@ -68,7 +68,7 @@ VS_OUTPUT main_vs(VS_INPUT input)
     const uint global_cell_index = instance_id;
     uint cascade_index = 0;
     uint local_cell_index = 0;
-    if(!FspDecodeGlobalCellIndex(global_cell_index, cascade_index, local_cell_index))
+    if(!VspDecodeGlobalCellIndex(global_cell_index, cascade_index, local_cell_index))
     {
         output.pos = float4(0.0, 0.0, 0.0, 0.0);
         output.uv = 0.0.xx;
@@ -77,21 +77,21 @@ VS_OUTPUT main_vs(VS_INPUT input)
         output.voxel_probe_pos_ws = 0.0.xxx;
         output.relocated_probe_pos_ws = 0.0.xxx;
         output.cascade_index = 0;
-        output.global_cell_index = k_fsp_invalid_probe_index;
-        output.probe_index = k_fsp_invalid_probe_index;
+        output.global_cell_index = k_vsp_invalid_probe_index;
+        output.probe_index = k_vsp_invalid_probe_index;
         output.probe_flags = 0;
         return output;
     }
 
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-    uint probe_index = k_fsp_invalid_probe_index;
-    FspProbePoolData probe_pool_data = (FspProbePoolData)0;
-    const bool is_allocated = FspTryGetActiveProbeForCell(probe_index, probe_pool_data, global_cell_index);
-    const bool use_relocated_probe_pos = (0 != cb_instant_rdv.debug_fsp_probe_use_relocated_pos);
-    const float3 probe_offset = (is_allocated && use_relocated_probe_pos) ? decode_uint_to_range1_vec3(probe_pool_data.probe_offset_v3) * (cascade.grid.cell_size * cb_instant_rdv.fsp_relocation_offset_scale_for_cascade_cell_size) : float3(0.0, 0.0, 0.0);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
+    uint probe_index = k_vsp_invalid_probe_index;
+    VspProbePoolData probe_pool_data = (VspProbePoolData)0;
+    const bool is_allocated = VspTryGetActiveProbeForCell(probe_index, probe_pool_data, global_cell_index);
+    const bool use_relocated_probe_pos = (0 != cb_instant_rdv.debug_vsp_probe_use_relocated_pos);
+    const float3 probe_offset = (is_allocated && use_relocated_probe_pos) ? decode_uint_to_range1_vec3(probe_pool_data.probe_offset_v3) * (cascade.grid.cell_size * cb_instant_rdv.vsp_relocation_offset_scale_for_cascade_cell_size) : float3(0.0, 0.0, 0.0);
 
-    const bool is_irradiance_volume_debug = (0 <= cb_instant_rdv.debug_fsp_irradiance_volume_mode);
-    const float3 cell_center_ws = FspCalcCellCenterWs(cascade_index, local_cell_index);
+    const bool is_irradiance_volume_debug = (0 <= cb_instant_rdv.debug_vsp_irradiance_volume_mode);
+    const float3 cell_center_ws = VspCalcCellCenterWs(cascade_index, local_cell_index);
     // IrradianceVolume debugはActiveProbe配置ではなく、dense cell中心に有効SHセルを表示する。
     const float3 probe_pos_ws = is_irradiance_volume_debug ? cell_center_ws : (cell_center_ws + probe_offset);
 
@@ -100,12 +100,12 @@ VS_OUTPUT main_vs(VS_INPUT input)
 
     // 表示位置.
     const float3 instance_pos = probe_pos_ws;
-    const bool is_selected_cascade = (cb_instant_rdv.debug_fsp_probe_cascade < 0) || (cb_instant_rdv.debug_fsp_probe_cascade == int(cascade_index));
+    const bool is_selected_cascade = (cb_instant_rdv.debug_vsp_probe_cascade < 0) || (cb_instant_rdv.debug_vsp_probe_cascade == int(cascade_index));
     bool is_drawable = is_selected_cascade && is_allocated;
     if(is_irradiance_volume_debug)
     {
         // IrradianceVolume表示だけが有効SH判定を必要とする。通常のProbe表示での4回のTexture loadを避ける。
-        is_drawable = is_selected_cascade && FspIrradianceVolumeHasValidSignals(global_cell_index);
+        is_drawable = is_selected_cascade && VspIrradianceVolumeHasValidSignals(global_cell_index);
     }
     const float draw_scale = is_drawable ? cb_instant_rdv.debug_probe_radius : 0.0;
 
@@ -124,7 +124,7 @@ VS_OUTPUT main_vs(VS_INPUT input)
     output.pos_ws = pos_ws;
 
     output.voxel_probe_pos_ws = instance_pos;
-    output.relocated_probe_pos_ws = cell_center_ws + ((is_allocated) ? decode_uint_to_range1_vec3(probe_pool_data.probe_offset_v3) * (cascade.grid.cell_size * cb_instant_rdv.fsp_relocation_offset_scale_for_cascade_cell_size) : 0.0.xxx);
+    output.relocated_probe_pos_ws = cell_center_ws + ((is_allocated) ? decode_uint_to_range1_vec3(probe_pool_data.probe_offset_v3) * (cascade.grid.cell_size * cb_instant_rdv.vsp_relocation_offset_scale_for_cascade_cell_size) : 0.0.xxx);
     output.cascade_index = cascade_index;
     output.global_cell_index = global_cell_index;
     output.probe_index = probe_index;
@@ -145,16 +145,16 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     {
         discard;
     }
-    const bool is_irradiance_volume_debug = (0 <= cb_instant_rdv.debug_fsp_irradiance_volume_mode);
-    if((!is_irradiance_volume_debug) && input.probe_index == k_fsp_invalid_probe_index)
+    const bool is_irradiance_volume_debug = (0 <= cb_instant_rdv.debug_vsp_irradiance_volume_mode);
+    if((!is_irradiance_volume_debug) && input.probe_index == k_vsp_invalid_probe_index)
     {
         discard;
     }
-    FspProbePoolData probe_pool_data = (FspProbePoolData)0;
+    VspProbePoolData probe_pool_data = (VspProbePoolData)0;
     if(!is_irradiance_volume_debug)
     {
-        probe_pool_data = FspProbePoolBuffer[input.probe_index];
-        if(probe_pool_data.owner_cell_index == k_fsp_invalid_probe_index)
+        probe_pool_data = VspProbePoolBuffer[input.probe_index];
+        if(probe_pool_data.owner_cell_index == k_vsp_invalid_probe_index)
         {
             discard;
         }
@@ -173,13 +173,13 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
     float4 octmap_sample = 0.0.xxxx;
     if(!is_irradiance_volume_debug)
     {
-        const uint2 oct_cell_id = min(uint2(OctEncode(normal_ws) * k_fsp_probe_octmap_width), uint2(k_fsp_probe_octmap_width - 1, k_fsp_probe_octmap_width - 1));
-        const uint2 octmap_texel_pos = FspProbeAtlasTexelCoord(input.probe_index, oct_cell_id);
-        octmap_sample = FspProbeAtlasTex.Load(int3(octmap_texel_pos, 0));
+        const uint2 oct_cell_id = min(uint2(OctEncode(normal_ws) * k_vsp_probe_octmap_width), uint2(k_vsp_probe_octmap_width - 1, k_vsp_probe_octmap_width - 1));
+        const uint2 octmap_texel_pos = VspProbeAtlasTexelCoord(input.probe_index, oct_cell_id);
+        octmap_sample = VspProbeAtlasTex.Load(int3(octmap_texel_pos, 0));
     }
     const uint global_cell_index = input.global_cell_index;
-    const int debug_mode = cb_instant_rdv.debug_fsp_probe_mode;
-    const int irradiance_volume_mode = cb_instant_rdv.debug_fsp_irradiance_volume_mode;
+    const int debug_mode = cb_instant_rdv.debug_vsp_probe_mode;
+    const int irradiance_volume_mode = cb_instant_rdv.debug_vsp_irradiance_volume_mode;
     const bool needs_volume_sh =
         is_irradiance_volume_debug || debug_mode == 6 || debug_mode == 7;
     const bool needs_radiance_sh = debug_mode == 6 || irradiance_volume_mode == 0;
@@ -192,7 +192,7 @@ float4 main_ps(VS_OUTPUT input) : SV_TARGET0
         float4 sh_irradiance_r;
         float4 sh_irradiance_g;
         float4 sh_irradiance_b;
-        FspIrradianceVolumeLoadSignals(
+        VspIrradianceVolumeLoadSignals(
             global_cell_index,
             sh_sky_vis,
             sh_irradiance_r,

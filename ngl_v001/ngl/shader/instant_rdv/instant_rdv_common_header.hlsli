@@ -125,25 +125,25 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     #define k_bbv_per_voxel_resolution_inv (1.0 / float(k_bbv_per_voxel_resolution))
     #define k_bbv_per_voxel_resolution_vec3i int3(k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution, k_bbv_per_voxel_resolution)
 
-    // fsp probeあたりのOctahedralMapAtlas解像度.
-    #define k_fsp_probe_octmap_width (6)
-    // FSP SurfaceCell検出Maskの空間局所化単位。1 Brickは8x8x8 cell=512bit=16 uint。
-    #define k_fsp_surface_mask_brick_resolution (8)
-    #define k_fsp_surface_mask_brick_bit_count (k_fsp_surface_mask_brick_resolution * k_fsp_surface_mask_brick_resolution * k_fsp_surface_mask_brick_resolution)
-    #define k_fsp_surface_mask_brick_word_count ((k_fsp_surface_mask_brick_bit_count + 31) / 32)
-    // fsp
-    #define k_fsp_probe_distance_max (50.0)
-    // fsp
-    #define k_fsp_probe_distance_max_inv (1.0 / k_fsp_probe_distance_max)
-    // FSP IrradianceVolumeはSkyVisibilityとIrradiance RGBを4つの3Dサブボリュームへ格納する.
+    // vsp probeあたりのOctahedralMapAtlas解像度.
+    #define k_vsp_probe_octmap_width (6)
+    // VSP SurfaceCell検出Maskの空間局所化単位。1 Brickは8x8x8 cell=512bit=16 uint。
+    #define k_vsp_surface_mask_brick_resolution (8)
+    #define k_vsp_surface_mask_brick_bit_count (k_vsp_surface_mask_brick_resolution * k_vsp_surface_mask_brick_resolution * k_vsp_surface_mask_brick_resolution)
+    #define k_vsp_surface_mask_brick_word_count ((k_vsp_surface_mask_brick_bit_count + 31) / 32)
+    // vsp
+    #define k_vsp_probe_distance_max (50.0)
+    // vsp
+    #define k_vsp_probe_distance_max_inv (1.0 / k_vsp_probe_distance_max)
+    // VSP IrradianceVolumeはSkyVisibilityとIrradiance RGBを4つの3Dサブボリュームへ格納する.
     // 各RGBAはL1 SHの4係数(Y00, Y1-1, Y10, Y1+1)に対応する.
-    #define k_fsp_irradiance_volume_sh_texture_count (4)
-    #define k_fsp_irradiance_volume_sky_visibility_texture_index (0)
-    #define k_fsp_irradiance_volume_irradiance_r_texture_index (1)
-    #define k_fsp_irradiance_volume_irradiance_g_texture_index (2)
-    #define k_fsp_irradiance_volume_irradiance_b_texture_index (3)
+    #define k_vsp_irradiance_volume_sh_texture_count (4)
+    #define k_vsp_irradiance_volume_sky_visibility_texture_index (0)
+    #define k_vsp_irradiance_volume_irradiance_r_texture_index (1)
+    #define k_vsp_irradiance_volume_irradiance_g_texture_index (2)
+    #define k_vsp_irradiance_volume_irradiance_b_texture_index (3)
     // Toroidal境界をハードウェアTrilinear補間するため、各サブボリュームの正側に折り返し用Texelを1層持つ。
-    #define k_fsp_irradiance_volume_guard_texel_count (1)
+    #define k_vsp_irradiance_volume_guard_texel_count (1)
     
     // Bbv 全体更新のフレーム負荷軽減用スキップ数. 0: スキップせずに1Fで全要素処理. 1: 1つ飛ばしでスキップ(半分).
     #define BBV_ALL_ELEMENT_UPDATE_SKIP_COUNT 60
@@ -183,7 +183,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     {
         // BBVにSDF的な距離情報を持たせる検証用。表面を含むBrickへの相対ベクトルを
         // Brick単位で保持し、そのマンハッタン長を距離として扱う。符号付き距離そのものではない。
-        // FSPのProbe Relocation用ではなく、ReducedSurface方式のRelocationも参照しない。
+        // VSPのProbe Relocation用ではなく、ReducedSurface方式のRelocationも参照しない。
         // 現在は距離伝播を無効化しており、BbvCommonUpdateは固定値(1024,1024,1024)を書く。
         // Bbv Probe Mode 0の距離可視化は残っているが、現在の値は実際の表面距離を表さない。
         int3 to_surface_vector;
@@ -194,14 +194,14 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     };
 
 
-    static const uint k_fsp_invalid_probe_index = ~uint(0);
-    static const uint k_fsp_max_cascade_count = 8u;
+    static const uint k_vsp_invalid_probe_index = ~uint(0);
+    static const uint k_vsp_max_cascade_count = 8u;
 
-    // FSP V1 lifecycle 用の probe pool エントリ.
+    // VSP V1 lifecycle 用の probe pool エントリ.
     // cell 側は probe index だけを持ち、probe 側に状態を寄せる。
-    struct FspProbePoolData
+    struct VspProbePoolData
     {
-        // FSP共通global cell index。cascade offset + X-major physical local index。
+        // VSP共通global cell index。cascade offset + X-major physical local index。
         // BBVのMorton voxel indexとは異なるため、相互に流用しないこと。
         uint owner_cell_index;
         uint probe_offset_v3;// signed 10bit vector3 encode.
@@ -262,7 +262,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         int dummy2;
     };
 
-    struct NGL_CPP_ALIGN_16 FspCascadeGridParam
+    struct NGL_CPP_ALIGN_16 VspCascadeGridParam
     {
         InstantRdvToroidalGridParam grid;
         // 全cascadeは同じcubic power-of-two解像度を持ち、cell_sizeだけがcascadeごとに2倍になる。
@@ -328,32 +328,32 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         float ss_probe_spatial_filter_depth_exp_scale NGL_CPP_MEMBER_INIT({float(SCREEN_SPACE_PROBE_SPATIAL_FILTER_DEPTH_EXP_SCALE)});
         int dummy3_4 NGL_CPP_MEMBER_INIT({0});
         int main_view_reduced_surface_enable NGL_CPP_MEMBER_INIT({0});
-        int fsp_surface_mask_brick_axis NGL_CPP_MEMBER_INIT({0});
-        int fsp_surface_mask_words_per_cascade NGL_CPP_MEMBER_INIT({0});
-        int fsp_surface_mask_word_count NGL_CPP_MEMBER_INIT({0});
+        int vsp_surface_mask_brick_axis NGL_CPP_MEMBER_INIT({0});
+        int vsp_surface_mask_words_per_cascade NGL_CPP_MEMBER_INIT({0});
+        int vsp_surface_mask_word_count NGL_CPP_MEMBER_INIT({0});
 
-        // FSP ClipMap cascade情報.
-        FspCascadeGridParam fsp_cascade[k_fsp_max_cascade_count] NGL_CPP_MEMBER_INIT({});
+        // VSP ClipMap cascade情報.
+        VspCascadeGridParam vsp_cascade[k_vsp_max_cascade_count] NGL_CPP_MEMBER_INIT({});
         // IndirectArg計算のためにVoxel更新ComputeShaderのThreadGroupサイズを格納.
-        int3 fsp_indirect_cs_thread_group_size NGL_CPP_MEMBER_INIT({});
+        int3 vsp_indirect_cs_thread_group_size NGL_CPP_MEMBER_INIT({});
         // 更新プローブ用のワークサイズ.
-        int fsp_visible_voxel_buffer_size NGL_CPP_MEMBER_INIT({});
-        int fsp_probe_pool_size NGL_CPP_MEMBER_INIT({});
-        int fsp_active_probe_buffer_size NGL_CPP_MEMBER_INIT({});
-        int fsp_lighting_interpolation_enable NGL_CPP_MEMBER_INIT({1});
+        int vsp_visible_voxel_buffer_size NGL_CPP_MEMBER_INIT({});
+        int vsp_probe_pool_size NGL_CPP_MEMBER_INIT({});
+        int vsp_active_probe_buffer_size NGL_CPP_MEMBER_INIT({});
+        int vsp_lighting_interpolation_enable NGL_CPP_MEMBER_INIT({1});
         // IV伝播でActiveProbe近傍の重みを増やす比較用設定。
-        int fsp_irradiance_volume_propagate_active_probe_weight_enable NGL_CPP_MEMBER_INIT({0});
-        float fsp_irradiance_volume_propagate_active_probe_weight_scale NGL_CPP_MEMBER_INIT({4.0f});
-        int fsp_warm_start_enable NGL_CPP_MEMBER_INIT({1});
-        int fsp_dummy_padding1 NGL_CPP_MEMBER_INIT({});
-        int fsp_probe_lifecycle_enable NGL_CPP_MEMBER_INIT({1});
-        int fsp_cascade_count NGL_CPP_MEMBER_INIT({1});
-        int fsp_total_cell_count NGL_CPP_MEMBER_INIT({0});
-        int fsp_probe_atlas_tile_width NGL_CPP_MEMBER_INIT({0});
-        int fsp_probe_atlas_tile_height NGL_CPP_MEMBER_INIT({0});
-        int debug_fsp_probe_cascade NGL_CPP_MEMBER_INIT({-1});
-        float fsp_relocation_offset_scale_for_cascade_cell_size NGL_CPP_MEMBER_INIT({0.9f});// Probe再配置オフセットの最大距離を, 該当カスケードプローブ間隔の何倍まで許容するか.
-        int2 fsp_dummy_padding2 NGL_CPP_MEMBER_INIT({});
+        int vsp_irradiance_volume_propagate_active_probe_weight_enable NGL_CPP_MEMBER_INIT({0});
+        float vsp_irradiance_volume_propagate_active_probe_weight_scale NGL_CPP_MEMBER_INIT({4.0f});
+        int vsp_warm_start_enable NGL_CPP_MEMBER_INIT({1});
+        int vsp_dummy_padding1 NGL_CPP_MEMBER_INIT({});
+        int vsp_probe_lifecycle_enable NGL_CPP_MEMBER_INIT({1});
+        int vsp_cascade_count NGL_CPP_MEMBER_INIT({1});
+        int vsp_total_cell_count NGL_CPP_MEMBER_INIT({0});
+        int vsp_probe_atlas_tile_width NGL_CPP_MEMBER_INIT({0});
+        int vsp_probe_atlas_tile_height NGL_CPP_MEMBER_INIT({0});
+        int debug_vsp_probe_cascade NGL_CPP_MEMBER_INIT({-1});
+        float vsp_relocation_offset_scale_for_cascade_cell_size NGL_CPP_MEMBER_INIT({0.9f});// Probe再配置オフセットの最大距離を, 該当カスケードプローブ間隔の何倍まで許容するか.
+        int2 vsp_dummy_padding2 NGL_CPP_MEMBER_INIT({});
 
         // MainViewのDepthBuffer解像度.
         int2 tex_main_view_depth_size NGL_CPP_MEMBER_INIT({});
@@ -363,24 +363,24 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
         float3 main_light_dir_ws NGL_CPP_MEMBER_INIT({});
 
         int debug_view_category NGL_CPP_MEMBER_INIT({-1});
-        int debug_fsp_irradiance_volume_slice_scale NGL_CPP_MEMBER_INIT({2});
-        int debug_fsp_irradiance_volume_slice_scroll_x NGL_CPP_MEMBER_INIT({0});
-        int debug_fsp_irradiance_volume_slice_scroll_y NGL_CPP_MEMBER_INIT({0});
-        int debug_fsp_irradiance_volume_slice_padding NGL_CPP_MEMBER_INIT({0});
-        // Voxel DebugのFSP ShadingTest設定。Cascade -1は連続位置基準の自動選択。
-        int debug_fsp_shading_test_signal NGL_CPP_MEMBER_INIT({0});
-        int debug_fsp_shading_test_cascade NGL_CPP_MEMBER_INIT({-1});
-        int debug_fsp_shading_test_trilinear_enable NGL_CPP_MEMBER_INIT({1});
-        int debug_fsp_shading_test_cascade_interpolation_enable NGL_CPP_MEMBER_INIT({1});
-        float debug_fsp_shading_test_irradiance_ev NGL_CPP_MEMBER_INIT({0.0f});
-        float3 debug_fsp_shading_test_padding NGL_CPP_MEMBER_INIT({});
+        int debug_vsp_irradiance_volume_slice_scale NGL_CPP_MEMBER_INIT({2});
+        int debug_vsp_irradiance_volume_slice_scroll_x NGL_CPP_MEMBER_INIT({0});
+        int debug_vsp_irradiance_volume_slice_scroll_y NGL_CPP_MEMBER_INIT({0});
+        int debug_vsp_irradiance_volume_slice_padding NGL_CPP_MEMBER_INIT({0});
+        // Voxel DebugのVSP ShadingTest設定。Cascade -1は連続位置基準の自動選択。
+        int debug_vsp_shading_test_signal NGL_CPP_MEMBER_INIT({0});
+        int debug_vsp_shading_test_cascade NGL_CPP_MEMBER_INIT({-1});
+        int debug_vsp_shading_test_trilinear_enable NGL_CPP_MEMBER_INIT({1});
+        int debug_vsp_shading_test_cascade_interpolation_enable NGL_CPP_MEMBER_INIT({1});
+        float debug_vsp_shading_test_irradiance_ev NGL_CPP_MEMBER_INIT({0.0f});
+        float3 debug_vsp_shading_test_padding NGL_CPP_MEMBER_INIT({});
         
         int debug_bbv_probe_mode NGL_CPP_MEMBER_INIT({-1});
         int debug_bbv_depth_test_enable NGL_CPP_MEMBER_INIT({0});
-        int debug_fsp_probe_mode NGL_CPP_MEMBER_INIT({-1});
-        int debug_fsp_irradiance_volume_mode NGL_CPP_MEMBER_INIT({-1});
-        int debug_fsp_probe_use_relocated_pos NGL_CPP_MEMBER_INIT({1});
-        int debug_fsp_update_ray_jitter_enable NGL_CPP_MEMBER_INIT({1});
+        int debug_vsp_probe_mode NGL_CPP_MEMBER_INIT({-1});
+        int debug_vsp_irradiance_volume_mode NGL_CPP_MEMBER_INIT({-1});
+        int debug_vsp_probe_use_relocated_pos NGL_CPP_MEMBER_INIT({1});
+        int debug_vsp_update_ray_jitter_enable NGL_CPP_MEMBER_INIT({1});
 
         float debug_probe_radius NGL_CPP_MEMBER_INIT({0.0f});
         float debug_probe_near_geom_scale NGL_CPP_MEMBER_INIT({0.2f});
@@ -410,7 +410,7 @@ https://github.com/cgyurgyik/fast-voxel-traversal-algorithm/blob/master/overview
     static_assert((sizeof(BbvSurfaceInjectionViewInfo) % 16) == 0, "BbvSurfaceInjectionViewInfo size must be 16-byte aligned");
     static_assert((sizeof(InstantRdvToroidalGridParam) % 16) == 0, "InstantRdvToroidalGridParam size must be 16-byte aligned");
     static_assert((sizeof(InstantRdvParam) % 16) == 0, "InstantRdvParam size must be 16-byte aligned");
-    static_assert((offsetof(InstantRdvParam, fsp_cascade) % 16) == 0, "InstantRdvParam::fsp_cascade must start on a 16-byte boundary");
+    static_assert((offsetof(InstantRdvParam, vsp_cascade) % 16) == 0, "InstantRdvParam::vsp_cascade must start on a 16-byte boundary");
     static_assert((offsetof(InstantRdvParam, tex_main_view_depth_size) % 16) == 0, "InstantRdvParam::tex_main_view_depth_size must start on a 16-byte boundary");
 #endif
 

@@ -1,6 +1,6 @@
 InstantRDV TODO / 既知の課題
 
-- [ ] （進行中）FSPカスケード境界で、粗いCascadeのサーフェイス表面ProbeのSkyVisibilityが過大になる問題を調査・解決する。
+- [ ] （進行中）VSPカスケード境界で、粗いCascadeのサーフェイス表面ProbeのSkyVisibilityが過大になる問題を調査・解決する。
   - Cascade 0と1の境界付近で確認している。
   - カメラとProbe位置が不変の状態でも、SkyVisibility可視化とライティング評価の両方で確認する。
   - カメラ位置を連続値で用いるCascade選択・境界ディザ補間が、粗いCascadeの評価を不適切に選択または混在させていないか確認する。

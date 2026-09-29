@@ -1,9 +1,9 @@
 #if 0
 
-fsp_probe_sh_update_cs.hlsl
+vsp_probe_sh_update_cs.hlsl
 
 ファイル説明:
- FrustumSurfaceProbe の OctMap atlas から SkyVisibility + Radiance の L1 SH を作り、
+ Visibility Surface Probe の OctMap atlas から SkyVisibility + Radiance の L1 SH を作り、
  cascaded dense IrradianceVolume へ global cell index 直結で書き込む。
  coeff order:
    0 = Y00
@@ -28,21 +28,21 @@ void main_cs(
     uint gindex : SV_GroupIndex)
 {
     const uint active_probe_count =
-        FspActiveProbeListCurr[FspActiveProbeCurrentCounterSlot()];
+        VspActiveProbeListCurr[VspActiveProbeCurrentCounterSlot()];
     if(dtid.x >= active_probe_count)
     {
         return;
     }
 
     const uint probe_index =
-        FspActiveProbeListCurr[FspActiveProbeListAddress(dtid.x)];
-    if(probe_index >= cb_instant_rdv.fsp_probe_pool_size)
+        VspActiveProbeListCurr[VspActiveProbeListAddress(dtid.x)];
+    if(probe_index >= cb_instant_rdv.vsp_probe_pool_size)
     {
         return;
     }
 
-    const FspProbePoolData probe_pool_data = FspProbePoolBuffer[probe_index];
-    if(probe_pool_data.owner_cell_index == k_fsp_invalid_probe_index)
+    const VspProbePoolData probe_pool_data = VspProbePoolBuffer[probe_index];
+    if(probe_pool_data.owner_cell_index == k_vsp_invalid_probe_index)
     {
         return;
     }
@@ -53,16 +53,16 @@ void main_cs(
     float4 packed_sh_coeff3 = 0.0.xxxx;
 
     [unroll]
-    for(int oy = 0; oy < k_fsp_probe_octmap_width; ++oy)
+    for(int oy = 0; oy < k_vsp_probe_octmap_width; ++oy)
     {
         [unroll]
-        for(int ox = 0; ox < k_fsp_probe_octmap_width; ++ox)
+        for(int ox = 0; ox < k_vsp_probe_octmap_width; ++ox)
         {
-            const uint2 atlas_texel_pos = FspProbeAtlasTexelCoord(probe_index, uint2(ox, oy));
-            const float4 fsp_probe_value = FspProbeAtlasTex.Load(int3(atlas_texel_pos, 0));
-            const float4 packed_sample = float4(fsp_probe_value.a, fsp_probe_value.rgb);
+            const uint2 atlas_texel_pos = VspProbeAtlasTexelCoord(probe_index, uint2(ox, oy));
+            const float4 vsp_probe_value = VspProbeAtlasTex.Load(int3(atlas_texel_pos, 0));
+            const float4 packed_sample = float4(vsp_probe_value.a, vsp_probe_value.rgb);
 
-            const float2 oct_uv = (float2(float(ox), float(oy)) + 0.5.xx) / float(k_fsp_probe_octmap_width);
+            const float2 oct_uv = (float2(float(ox), float(oy)) + 0.5.xx) / float(k_vsp_probe_octmap_width);
             const float3 dir_ws = OctDecode(oct_uv);
             const float4 sh_basis = EvaluateL1ShBasis(dir_ws);
 
@@ -73,7 +73,7 @@ void main_cs(
         }
     }
 
-    const float texel_solid_angle = (4.0 * 3.14159265359) / float(k_fsp_probe_octmap_width * k_fsp_probe_octmap_width);
+    const float texel_solid_angle = (4.0 * 3.14159265359) / float(k_vsp_probe_octmap_width * k_vsp_probe_octmap_width);
     // Probe atlas はRT resolve用の中間履歴で、最終シェーディング用SHはowner cellのdense volumeへ集約する。
     // RGBは書き込み時にLambertのclamped-cosineを畳み込み、サンプリング側の評価を軽くする。
     const uint global_cell_index = probe_pool_data.owner_cell_index;
@@ -89,7 +89,7 @@ void main_cs(
         packed_sh_coeff0.b, packed_sh_coeff1.b, packed_sh_coeff2.b, packed_sh_coeff3.b));
     const float4 irradiance_sh_b = ConvolveL1ShByClampedCosine(float4(
         packed_sh_coeff0.a, packed_sh_coeff1.a, packed_sh_coeff2.a, packed_sh_coeff3.a));
-    FspIrradianceVolumeStoreSignals(
+    VspIrradianceVolumeStoreSignals(
         global_cell_index,
         sky_visibility_sh,
         irradiance_sh_r,

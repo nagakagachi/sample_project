@@ -9,29 +9,29 @@ ConstantBuffer<SceneViewInfo> cb_ngl_sceneview;
 Texture2D<float> TexHardwareDepth;
 Texture2D<float4> TexReducedSurfaceBuffer;
 SamplerState SmpReducedSurfaceBuffer;
-SamplerState SmpFspIrradianceVolume;
+SamplerState SmpVspIrradianceVolume;
 
 RWTexture2D<float4>	RWTexWork;
 
 // 固定Cascade指定以外は、ライティングと同じ実グリッド境界を使う。
-bool FspDebugSelectCascade(out uint cascade_index, float3 sample_pos_ws, float2 dither_seed)
+bool VspDebugSelectCascade(out uint cascade_index, float3 sample_pos_ws, float2 dither_seed)
 {
-    const uint cascade_count = FspCascadeCount();
-    const int requested_cascade = cb_instant_rdv.debug_fsp_shading_test_cascade;
+    const uint cascade_count = VspCascadeCount();
+    const int requested_cascade = cb_instant_rdv.debug_vsp_shading_test_cascade;
     if(requested_cascade >= 0)
     {
         cascade_index = min(uint(requested_cascade), cascade_count - 1u);
-        return FspIsWorldPosInsideCascade(sample_pos_ws, cascade_index);
+        return VspIsWorldPosInsideCascade(sample_pos_ws, cascade_index);
     }
-    return FspTrySelectIrradianceVolumeCascade(
+    return VspTrySelectIrradianceVolumeCascade(
         cascade_index,
         sample_pos_ws,
         GetViewOriginFromInverseViewMatrix(cb_ngl_sceneview.cb_view_inv_mtx),
-        cb_instant_rdv.debug_fsp_shading_test_cascade_interpolation_enable != 0,
+        cb_instant_rdv.debug_vsp_shading_test_cascade_interpolation_enable != 0,
         interleaved_gradient_noise(dither_seed));
 }
 
-float3 FspDebugCascadeColor(uint cascade_index)
+float3 VspDebugCascadeColor(uint cascade_index)
 {
     // 低いCascadeから赤、緑、青の順に識別し、以降も高彩度の色を循環させる。
     const float3 colors[6] =
@@ -46,8 +46,8 @@ float3 FspDebugCascadeColor(uint cascade_index)
     return colors[cascade_index % 6u];
 }
 
-void FspDebugSampleSignalsTrilinear(
-    FspCascadeGridParam cascade,
+void VspDebugSampleSignalsTrilinear(
+    VspCascadeGridParam cascade,
     int3 base_coord,
     float3 lerp_rate,
     out float4 sky_visibility,
@@ -55,25 +55,25 @@ void FspDebugSampleSignalsTrilinear(
     out float4 irradiance_g,
     out float4 irradiance_b)
 {
-    const int3 physical_coord0 = FspIrradianceVolumeToroidalPhysicalCoord(base_coord, cascade.grid);
-    const uint3 padded_resolution = cascade.grid.grid_resolution + k_fsp_irradiance_volume_guard_texel_count;
-    const float texture_depth = float(padded_resolution.z * FspCascadeCount() * k_fsp_irradiance_volume_sh_texture_count);
+    const int3 physical_coord0 = VspIrradianceVolumeToroidalPhysicalCoord(base_coord, cascade.grid);
+    const uint3 padded_resolution = cascade.grid.grid_resolution + k_vsp_irradiance_volume_guard_texel_count;
+    const float texture_depth = float(padded_resolution.z * VspCascadeCount() * k_vsp_irradiance_volume_sh_texture_count);
     const float3 inv_texture_extent = rcp(float3(float2(padded_resolution.xy), texture_depth));
     float3 sample_uvw = float3(
         float2(physical_coord0.xy) + 0.5.xx + lerp_rate.xy,
         float(cascade.irradiance_volume_texture_z_offset + physical_coord0.z) + 0.5 + lerp_rate.z) * inv_texture_extent;
     const float signal_uvw_z_step = float(padded_resolution.z) * inv_texture_extent.z;
 
-    sky_visibility = FspIrradianceVolumeSHTexture.SampleLevel(SmpFspIrradianceVolume, sample_uvw, 0.0);
+    sky_visibility = VspIrradianceVolumeSHTexture.SampleLevel(SmpVspIrradianceVolume, sample_uvw, 0.0);
     sample_uvw.z += signal_uvw_z_step;
-    irradiance_r = FspIrradianceVolumeSHTexture.SampleLevel(SmpFspIrradianceVolume, sample_uvw, 0.0);
+    irradiance_r = VspIrradianceVolumeSHTexture.SampleLevel(SmpVspIrradianceVolume, sample_uvw, 0.0);
     sample_uvw.z += signal_uvw_z_step;
-    irradiance_g = FspIrradianceVolumeSHTexture.SampleLevel(SmpFspIrradianceVolume, sample_uvw, 0.0);
+    irradiance_g = VspIrradianceVolumeSHTexture.SampleLevel(SmpVspIrradianceVolume, sample_uvw, 0.0);
     sample_uvw.z += signal_uvw_z_step;
-    irradiance_b = FspIrradianceVolumeSHTexture.SampleLevel(SmpFspIrradianceVolume, sample_uvw, 0.0);
+    irradiance_b = VspIrradianceVolumeSHTexture.SampleLevel(SmpVspIrradianceVolume, sample_uvw, 0.0);
 }
 
-bool FspDebugSampleSignals(
+bool VspDebugSampleSignals(
     float3 sample_pos_ws,
     float2 dither_seed,
     out float4 sky_visibility,
@@ -87,20 +87,20 @@ bool FspDebugSampleSignals(
     irradiance_b = 0.0.xxxx;
 
     uint cascade_index = 0u;
-    if(!FspDebugSelectCascade(cascade_index, sample_pos_ws, dither_seed))
+    if(!VspDebugSelectCascade(cascade_index, sample_pos_ws, dither_seed))
     {
         return false;
     }
 
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
-    if(0 == cb_instant_rdv.debug_fsp_shading_test_trilinear_enable)
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
+    if(0 == cb_instant_rdv.debug_vsp_shading_test_trilinear_enable)
     {
         const int3 linear_coord = clamp(
             int3(floor((sample_pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv)),
             0,
             cascade.grid.grid_resolution - 1);
-        FspIrradianceVolumeLoadSignals(
-            FspIrradianceVolumeCellIndexFromLinearCoord(cascade_index, linear_coord),
+        VspIrradianceVolumeLoadSignals(
+            VspIrradianceVolumeCellIndexFromLinearCoord(cascade_index, linear_coord),
             sky_visibility,
             irradiance_r,
             irradiance_g,
@@ -110,7 +110,7 @@ bool FspDebugSampleSignals(
 
     const float3 grid_coordf = (sample_pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv - 0.5.xxx;
     const int3 base_coord = clamp(int3(floor(grid_coordf)), 0, cascade.grid.grid_resolution - 2);
-    FspDebugSampleSignalsTrilinear(
+    VspDebugSampleSignalsTrilinear(
         cascade,
         base_coord,
         saturate(grid_coordf - float3(base_coord)),
@@ -122,7 +122,7 @@ bool FspDebugSampleSignals(
 }
 
 // ActiveProbe可視化は補間せず、サーフェイス位置を含む代表セルと同一カスケードの近傍セルを確認する。
-bool FspDebugGetRepresentativeCell(
+bool VspDebugGetRepresentativeCell(
     out uint cascade_index,
     out int3 linear_coord,
     float3 sample_pos_ws,
@@ -130,12 +130,12 @@ bool FspDebugGetRepresentativeCell(
 {
     cascade_index = 0u;
     linear_coord = 0;
-    if(!FspDebugSelectCascade(cascade_index, sample_pos_ws, dither_seed))
+    if(!VspDebugSelectCascade(cascade_index, sample_pos_ws, dither_seed))
     {
         return false;
     }
 
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     linear_coord = clamp(
         int3(floor((sample_pos_ws - cascade.grid.grid_min_pos) * cascade.grid.cell_size_inv)),
         0,
@@ -143,9 +143,9 @@ bool FspDebugGetRepresentativeCell(
     return true;
 }
 
-bool FspDebugHasNeighborActiveProbe(uint cascade_index, int3 center_linear_coord)
+bool VspDebugHasNeighborActiveProbe(uint cascade_index, int3 center_linear_coord)
 {
-    const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+    const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
     [unroll]
     for(int z = -1; z <= 1; ++z)
     {
@@ -167,8 +167,8 @@ bool FspDebugHasNeighborActiveProbe(uint cascade_index, int3 center_linear_coord
                 }
 
                 const uint neighbor_cell_index =
-                    FspIrradianceVolumeCellIndexFromLinearCoord(cascade_index, neighbor_linear_coord);
-                if(FspIsActiveProbeOwnedCell(neighbor_cell_index))
+                    VspIrradianceVolumeCellIndexFromLinearCoord(cascade_index, neighbor_linear_coord);
+                if(VspIsActiveProbeOwnedCell(neighbor_cell_index))
                 {
                     return true;
                 }
@@ -178,7 +178,7 @@ bool FspDebugHasNeighborActiveProbe(uint cascade_index, int3 center_linear_coord
     return false;
 }
 
-bool FspDebugReconstructSurfacePosition(int2 texel_pos, uint2 depth_size, out float3 position_ws)
+bool VspDebugReconstructSurfacePosition(int2 texel_pos, uint2 depth_size, out float3 position_ws)
 {
     const float depth = TexHardwareDepth.Load(int3(texel_pos, 0)).r;
     if(!isValidDepth(depth))
@@ -195,14 +195,14 @@ bool FspDebugReconstructSurfacePosition(int2 texel_pos, uint2 depth_size, out fl
     return true;
 }
 
-bool FspDebugReconstructSurfaceNormal(int2 texel_pos, uint2 depth_size, float3 center_pos_ws, out float3 normal_ws)
+bool VspDebugReconstructSurfaceNormal(int2 texel_pos, uint2 depth_size, float3 center_pos_ws, out float3 normal_ws)
 {
     const int2 right_texel = min(texel_pos + int2(1, 0), int2(depth_size) - 1);
     const int2 down_texel = min(texel_pos + int2(0, 1), int2(depth_size) - 1);
     float3 right_pos_ws;
     float3 down_pos_ws;
-    if(!FspDebugReconstructSurfacePosition(right_texel, depth_size, right_pos_ws) ||
-        !FspDebugReconstructSurfacePosition(down_texel, depth_size, down_pos_ws))
+    if(!VspDebugReconstructSurfacePosition(right_texel, depth_size, right_pos_ws) ||
+        !VspDebugReconstructSurfacePosition(down_texel, depth_size, down_pos_ws))
     {
         normal_ws = 0.0.xxx;
         return false;
@@ -474,47 +474,47 @@ void main_cs(
             RWTexWork[dtid.xy] = float4(debug_color, 1.0);
         }
     }
-    // Category 1: FSP.
+    // Category 1: VSP.
     else if(1 == debug_category)
     {
         if(0 == debug_sub_mode)
         {
-            // FSP OctahedralMap atlas raw RGBA.
+            // VSP OctahedralMap atlas raw RGBA.
             const int2 texel_pos = dtid.xy * 0.1;
             uint tex_width, tex_height;
-            FspProbeAtlasTex.GetDimensions(tex_width, tex_height);
+            VspProbeAtlasTex.GetDimensions(tex_width, tex_height);
             if(any(int2(tex_width, tex_height) <= texel_pos))
                 return;
 
-            RWTexWork[dtid.xy] = FspProbeAtlasTex.Load(uint3(texel_pos, 0));
+            RWTexWork[dtid.xy] = VspProbeAtlasTex.Load(uint3(texel_pos, 0));
         }
         else if(1 <= debug_sub_mode && debug_sub_mode <= 5)
         {
             // 各Cascadeを縦方向の1行とし、物理Zスライスを横方向へ並べる。
             // 表示座標を拡大率で戻してからスクロールを加え、仮想キャンバス上のセルを求める。
-            const uint3 grid_resolution = uint3(cb_instant_rdv.fsp_cascade[0].grid.grid_resolution);
+            const uint3 grid_resolution = uint3(cb_instant_rdv.vsp_cascade[0].grid.grid_resolution);
             const uint2 tile_stride = grid_resolution.xy + 1u;
             const uint display_scale = uint(max(
-                cb_instant_rdv.debug_fsp_irradiance_volume_slice_scale,
+                cb_instant_rdv.debug_vsp_irradiance_volume_slice_scale,
                 1));
             const uint2 scroll_offset = uint2(
-                max(cb_instant_rdv.debug_fsp_irradiance_volume_slice_scroll_x, 0),
-                max(cb_instant_rdv.debug_fsp_irradiance_volume_slice_scroll_y, 0));
+                max(cb_instant_rdv.debug_vsp_irradiance_volume_slice_scroll_x, 0),
+                max(cb_instant_rdv.debug_vsp_irradiance_volume_slice_scroll_y, 0));
             const uint2 virtual_coord = dtid.xy / display_scale + scroll_offset;
             const uint slice_z = virtual_coord.x / tile_stride.x;
             const uint cascade_index = virtual_coord.y / tile_stride.y;
             const uint2 physical_coord_xy = virtual_coord % tile_stride;
             if(any(physical_coord_xy >= grid_resolution.xy) ||
                 slice_z >= grid_resolution.z ||
-                cascade_index >= uint(cb_instant_rdv.fsp_cascade_count))
+                cascade_index >= uint(cb_instant_rdv.vsp_cascade_count))
             {
                 RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
                 return;
             }
 
-            const FspCascadeGridParam cascade = FspGetCascadeParam(cascade_index);
+            const VspCascadeGridParam cascade = VspGetCascadeParam(cascade_index);
             const uint irradiance_volume_cell_index = cascade.cell_offset +
-                FspPhysicalCellCoordToLocalIndex(
+                VspPhysicalCellCoordToLocalIndex(
                     int3(physical_coord_xy, slice_z),
                     cascade.grid.grid_resolution);
 
@@ -525,7 +525,7 @@ void main_cs(
                 float4 irradiance_r;
                 float4 irradiance_g;
                 float4 irradiance_b;
-                FspIrradianceVolumeLoadSignals(
+                VspIrradianceVolumeLoadSignals(
                     irradiance_volume_cell_index,
                     sky_visibility,
                     irradiance_r,
@@ -540,7 +540,7 @@ void main_cs(
             else
             {
                 // 新3D Textureの信号サブボリュームを格納RGBAのまま表示する。
-                RWTexWork[dtid.xy] = FspIrradianceVolumeLoadSignal(
+                RWTexWork[dtid.xy] = VspIrradianceVolumeLoadSignal(
                     irradiance_volume_cell_index,
                     uint(debug_sub_mode - 2));
             }
@@ -550,17 +550,17 @@ void main_cs(
             uint2 depth_size;
             TexHardwareDepth.GetDimensions(depth_size.x, depth_size.y);
             float3 surface_pos_ws;
-            if(!FspDebugReconstructSurfacePosition(texel_pos, depth_size, surface_pos_ws))
+            if(!VspDebugReconstructSurfacePosition(texel_pos, depth_size, surface_pos_ws))
             {
                 RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
                 return;
             }
 
-            if(2 == cb_instant_rdv.debug_fsp_shading_test_signal)
+            if(2 == cb_instant_rdv.debug_vsp_shading_test_signal)
             {
                 uint representative_cascade_index = 0u;
                 int3 representative_linear_coord = 0;
-                if(!FspDebugGetRepresentativeCell(
+                if(!VspDebugGetRepresentativeCell(
                     representative_cascade_index,
                     representative_linear_coord,
                     surface_pos_ws,
@@ -570,17 +570,17 @@ void main_cs(
                     return;
                 }
 
-                const uint representative_cell_index = FspIrradianceVolumeCellIndexFromLinearCoord(
+                const uint representative_cell_index = VspIrradianceVolumeCellIndexFromLinearCoord(
                     representative_cascade_index,
                     representative_linear_coord);
-                if(FspIsActiveProbeOwnedCell(representative_cell_index))
+                if(VspIsActiveProbeOwnedCell(representative_cell_index))
                 {
                     // 緑はサーフェイス位置を含む代表セルにActiveProbeがある状態。
                     RWTexWork[dtid.xy] = float4(0.0, 1.0, 0.0, 1.0);
                     return;
                 }
 
-                if(FspDebugHasNeighborActiveProbe(
+                if(VspDebugHasNeighborActiveProbe(
                     representative_cascade_index,
                     representative_linear_coord))
                 {
@@ -594,21 +594,21 @@ void main_cs(
                 return;
             }
 
-            if(3 == cb_instant_rdv.debug_fsp_shading_test_signal)
+            if(3 == cb_instant_rdv.debug_vsp_shading_test_signal)
             {
                 uint selected_cascade_index = 0u;
-                if(!FspDebugSelectCascade(selected_cascade_index, surface_pos_ws, screen_pos_f))
+                if(!VspDebugSelectCascade(selected_cascade_index, surface_pos_ws, screen_pos_f))
                 {
                     RWTexWork[dtid.xy] = float4(0.0, 0.0, 0.0, 1.0);
                     return;
                 }
 
-                RWTexWork[dtid.xy] = float4(FspDebugCascadeColor(selected_cascade_index), 1.0);
+                RWTexWork[dtid.xy] = float4(VspDebugCascadeColor(selected_cascade_index), 1.0);
                 return;
             }
 
             float3 surface_normal_ws;
-            if(!FspDebugReconstructSurfaceNormal(texel_pos, depth_size, surface_pos_ws, surface_normal_ws))
+            if(!VspDebugReconstructSurfaceNormal(texel_pos, depth_size, surface_pos_ws, surface_normal_ws))
             {
                 RWTexWork[dtid.xy] = float4(0.02, 0.02, 0.02, 1.0);
                 return;
@@ -618,7 +618,7 @@ void main_cs(
             float4 irradiance_r;
             float4 irradiance_g;
             float4 irradiance_b;
-            if(!FspDebugSampleSignals(
+            if(!VspDebugSampleSignals(
                 surface_pos_ws,
                 screen_pos_f,
                 sky_visibility,
@@ -632,13 +632,13 @@ void main_cs(
 
             const float4 sh_basis = EvaluateL1ShBasis(surface_normal_ws);
             float3 debug_color;
-            if(0 == cb_instant_rdv.debug_fsp_shading_test_signal)
+            if(0 == cb_instant_rdv.debug_vsp_shading_test_signal)
             {
                 const float3 irradiance = max(0.0.xxx, float3(
                     dot(irradiance_r, sh_basis),
                     dot(irradiance_g, sh_basis),
                     dot(irradiance_b, sh_basis)));
-                const float3 exposure_irradiance = irradiance * exp2(cb_instant_rdv.debug_fsp_shading_test_irradiance_ev);
+                const float3 exposure_irradiance = irradiance * exp2(cb_instant_rdv.debug_vsp_shading_test_irradiance_ev);
                 debug_color = exposure_irradiance / (1.0.xxx + exposure_irradiance);
                 debug_color = pow(debug_color, 1.0 / 2.2);
             }

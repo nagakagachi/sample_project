@@ -1,9 +1,9 @@
 /*
     bbv_occupancy_injection_apply_integrated_surface_cs.hlsl
-    BBV Occupancy InjectionとFSP SurfaceCell検出を統合したMainView用Injection。
+    BBV Occupancy InjectionとVSP SurfaceCell検出を統合したMainView用Injection。
 
     MainViewのDepth pixelでBBV占有を書き込み、同じパスで所有Cascadeの
-    FSP SurfaceCellMaskをSurface owner cellへ限定してマーキングし、
+    VSP SurfaceCellMaskをSurface owner cellへ限定してマーキングし、
     全Cascade走査を実行しない。
 */
 
@@ -18,11 +18,11 @@ ConstantBuffer<BbvSurfaceInjectionViewInfo> cb_injection_src_view_info;
 // ShadowViewやDepth Atlasを含むInjection元のハードウェア深度。
 Texture2D TexHardwareDepth;
 
-// BBV占有とSurface owner cell限定のFSP SurfaceCell検出を同じDepth走査で実行する。
+// BBV占有とSurface owner cell限定のVSP SurfaceCell検出を同じDepth走査で実行する。
 [numthreads(TILE_WIDTH, TILE_WIDTH, 1)]
 void main_cs(uint3 dtid : SV_DispatchThreadID)
 {
-    // Depth Atlasの対象範囲外は、BBVとFSPのどちらにも書き込まない。
+    // Depth Atlasの対象範囲外は、BBVとVSPのどちらにも書き込まない。
     if(any(dtid.xy >= cb_injection_src_view_info.cb_view_depth_buffer_offset_size.zw))
     {
         return;
@@ -43,7 +43,7 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
         const float3 pixel_pos_vs = CalcViewSpacePosition(
             screen_uv, view_z, cb_injection_src_view_info.cb_proj_mtx);
 
-        // 表面位置はFSPと同じDepth復元値を使い、逆ビュー変換を一度だけ行う。
+        // 表面位置はVSPと同じDepth復元値を使い、逆ビュー変換を一度だけ行う。
         surface_pos_ws = mul(
             cb_injection_src_view_info.cb_view_inv_mtx,
             float4(pixel_pos_vs, 1.0));
@@ -110,7 +110,7 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
         pending_lanes &= ~same_target_lanes;
     }
 
-    // FSP Surface候補はMainViewだけから生成する。
+    // VSP Surface候補はMainViewだけから生成する。
     if(cb_injection_src_view_info.cb_is_main_view == 0 ||
        !has_surface)
     {
@@ -120,10 +120,10 @@ void main_cs(uint3 dtid : SV_DispatchThreadID)
     // Surface owner cellとして最細Cascadeと境界帯の隣接Cascadeだけを対象にする。
     uint2 owner_mask_words = 0u.xx;
     uint2 owner_mask_bits = 0u.xx;
-    const uint owner_count = FspGetSurfaceOwnerMaskAddresses(
+    const uint owner_count = VspGetSurfaceOwnerMaskAddresses(
         surface_pos_ws,
         owner_mask_words,
         owner_mask_bits);
-    FspInjectCellMaskWave(owner_count > 0u, owner_mask_words.x, owner_mask_bits.x);
-    FspInjectCellMaskWave(owner_count > 1u, owner_mask_words.y, owner_mask_bits.y);
+    VspInjectCellMaskWave(owner_count > 0u, owner_mask_words.x, owner_mask_bits.x);
+    VspInjectCellMaskWave(owner_count > 1u, owner_mask_words.y, owner_mask_bits.y);
 }

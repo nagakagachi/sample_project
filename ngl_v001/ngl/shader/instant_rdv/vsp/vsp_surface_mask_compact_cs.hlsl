@@ -1,30 +1,30 @@
 #if 0
-fsp_surface_mask_compact_cs.hlsl
+vsp_surface_mask_compact_cs.hlsl
 
-FSP SurfaceCellMaskのコンパクションパス。
-立っているbitを SurfaceProbeCellList へ詰め、既存FSP更新パスへ合流させる。
+VSP SurfaceCellMaskのコンパクションパス。
+立っているbitを SurfaceProbeCellList へ詰め、既存VSP更新パスへ合流させる。
 #endif
 
-#define FSP_SURFACE_MASK_COMPACT_THREAD_GROUP_SIZE 128
+#define VSP_SURFACE_MASK_COMPACT_THREAD_GROUP_SIZE 128
 
 #include "../instant_rdv_util.hlsli"
 
-[numthreads(FSP_SURFACE_MASK_COMPACT_THREAD_GROUP_SIZE, 1, 1)]
+[numthreads(VSP_SURFACE_MASK_COMPACT_THREAD_GROUP_SIZE, 1, 1)]
 void main_cs(
     uint3 dtid : SV_DispatchThreadID,
     uint3 gtid : SV_GroupThreadID,
     uint3 gid : SV_GroupID,
     uint gindex : SV_GroupIndex)
 {
-    const uint total_cell_count = (uint)max(cb_instant_rdv.fsp_total_cell_count, 0);
-    const uint mask_word_count = FspSurfaceMaskWordCount();
+    const uint total_cell_count = (uint)max(cb_instant_rdv.vsp_total_cell_count, 0);
+    const uint mask_word_count = VspSurfaceMaskWordCount();
     const uint mask_word_index = dtid.x;
     if(mask_word_index >= mask_word_count)
     {
         return;
     }
 
-    const uint mask_bits = FspSurfaceCellMaskBuffer[mask_word_index];
+    const uint mask_bits = VspSurfaceCellMaskBuffer[mask_word_index];
     if(mask_bits == 0u)
     {
         return;
@@ -40,7 +40,7 @@ void main_cs(
     // element 0 is a counter and elements [1, max_visible_cell_count] are cells.
     // If the reservation overflowed, undo only the unwritable part so later passes
     // see a bounded count instead of reading past the allocated list.
-    const uint max_visible_cell_count = (uint)max(cb_instant_rdv.fsp_visible_voxel_buffer_size, 0);
+    const uint max_visible_cell_count = (uint)max(cb_instant_rdv.vsp_visible_voxel_buffer_size, 0);
     uint writable_count = 0u;
     if(append_base_index < max_visible_cell_count)
     {
@@ -61,9 +61,9 @@ void main_cs(
         const uint bit_index = firstbitlow(remaining_bits);
         remaining_bits &= (remaining_bits - 1u);
 
-        // Preserve the FSP X-major global address; no Morton conversion belongs on this path.
-        uint global_cell_index = k_fsp_invalid_probe_index;
-        if(!FspGetGlobalCellIndexFromSurfaceMaskBit(
+        // Preserve the VSP X-major global address; no Morton conversion belongs on this path.
+        uint global_cell_index = k_vsp_invalid_probe_index;
+        if(!VspGetGlobalCellIndexFromSurfaceMaskBit(
             mask_word_index,
             bit_index,
             global_cell_index) ||

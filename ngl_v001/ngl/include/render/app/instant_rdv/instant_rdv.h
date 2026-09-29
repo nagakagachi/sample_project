@@ -102,14 +102,14 @@ namespace ngl::render::app
             math::Vec3u voxel_resolution = math::Vec3u(32);
             float       voxel_size = 3.0f;
             
-            // FSP共通grid解像度。全cascadeで同一値を使用する。
+            // VSP共通grid解像度。全cascadeで同一値を使用する。
             // ActiveProbe/SurfaceMask/IrradianceVolumeはすべてX-major。
             // bit-mask Toroidal wrapと解析的cascade選択にはcubic power-of-twoかつ各軸4以上が必要。
             // Initializeで検証する。
             math::Vec3u probe_resolution = math::Vec3u(32);
             // Cascade 0のcell size。後続cascadeは厳密に2倍ずつ生成される。
             float       probe_cell_size = 3.0f;
-            // 1..k_fsp_max_cascade_count。shader constant-buffer配列長を超える値は拒否する。
+            // 1..k_vsp_max_cascade_count。shader constant-buffer配列長を超える値は拒否する。
             u32         probe_cascade_count = 5;
         };
         bool Initialize(ngl::rhi::DeviceDep* p_device, const InitArg& init_arg);
@@ -143,7 +143,7 @@ namespace ngl::render::app
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
             );
 
-        void Dispatch_Fsp(rhi::GraphicsCommandListDep* p_command_list,
+        void Dispatch_Vsp(rhi::GraphicsCommandListDep* p_command_list,
             rhi::ConstantBufferPooledHandle scene_cbv, 
             const ngl::render::task::RenderPassViewInfo& main_view_info, rhi::RefTextureDep hw_depth_tex, rhi::RefSrvDep hw_depth_srv
             );
@@ -158,14 +158,14 @@ namespace ngl::render::app
             rhi::RefTextureDep hw_depth_tex, rhi::RefDsvDep hw_depth_dsv,
             rhi::RefTextureDep lighting_tex, rhi::RefRtvDep lighting_rtv);
 
-        void UpdateFspDebugReadback();
+        void UpdateVspDebugReadback();
         void UpdateAsspDebugReadback();
 
         ngl::rhi::ConstantBufferPooledHandle GetDispatchCbh() const { return cbh_dispatch_; }
-        rhi::RefSrvDep GetFspProbeAtlasTex() const { return fsp_probe_atlas_tex_.srv; }
-        rhi::RefSrvDep GetFspIrradianceVolumeSHTexture() const { return fsp_irradiance_volume_sh_texture_.srv; }
-        rhi::RefSrvDep GetFspCellProbeIndexBuffer() const { return fsp_cell_probe_index_buffer_.srv; }
-        rhi::RefSrvDep GetFspProbePoolBuffer() const { return fsp_probe_pool_buffer_.srv; }
+        rhi::RefSrvDep GetVspProbeAtlasTex() const { return vsp_probe_atlas_tex_.srv; }
+        rhi::RefSrvDep GetVspIrradianceVolumeSHTexture() const { return vsp_irradiance_volume_sh_texture_.srv; }
+        rhi::RefSrvDep GetVspCellProbeIndexBuffer() const { return vsp_cell_probe_index_buffer_.srv; }
+        rhi::RefSrvDep GetVspProbePoolBuffer() const { return vsp_probe_pool_buffer_.srv; }
         rhi::RefSrvDep GetAsspProbeTex() const { return assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv; }
         rhi::RefSrvDep GetAsspProbeTileInfoTex() const { return assp_probe_tile_info_tex_[assp_tile_info_curr_frame_tex_index_].srv; }
         rhi::RefSrvDep GetAsspProbePackedShTex() const { return assp_probe_packed_sh_tex_.srv; }
@@ -206,29 +206,29 @@ namespace ngl::render::app
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_removal_carving_ = {};
 
 
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_clear_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_begin_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_debug_stats_collect_ = {};
-        // FSP SurfaceCell検出。
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_surface_mask_clear_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_surface_mask_compact_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_surface_detect_reduced_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_generate_indirect_arg_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_generate_prev_active_indirect_arg_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_generate_curr_active_indirect_arg_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_pre_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_probe_ray_request_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_probe_finalize_linear_indirect_arg_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_probe_ray_trace_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_probe_ray_resolve_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_sh_update_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_fsp_irradiance_volume_propagate_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_clear_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_begin_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_debug_stats_collect_ = {};
+        // VSP SurfaceCell検出。
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_surface_mask_clear_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_surface_mask_compact_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_surface_detect_reduced_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_generate_indirect_arg_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_generate_prev_active_indirect_arg_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_generate_curr_active_indirect_arg_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_pre_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_probe_ray_request_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_probe_finalize_linear_indirect_arg_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_probe_ray_trace_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_probe_ray_resolve_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_sh_update_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_vsp_irradiance_volume_propagate_ = {};
 
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_bbv_debug_visualize_ = {};
         ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_bbv_debug_probe_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_fsp_debug_probe_ = {};
-        ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_fsp_debug_probe_no_depth_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_vsp_debug_probe_ = {};
+        ngl::rhi::RhiRef<ngl::rhi::GraphicsPipelineStateDep> pso_vsp_debug_probe_no_depth_ = {};
 
 
         ngl::rhi::RhiRef<ngl::rhi::ComputePipelineStateDep> pso_assp_probe_clear_ = {};
@@ -264,38 +264,38 @@ namespace ngl::render::app
         ComputeBufferSet bbv_removal_frustum_indirect_arg_ = {};
 
 
-        // Frustum Surface Probe. Fsp.
+        // Visibility Surface Probe. Vsp.
         // ----------------------------------------------------------------
-        std::vector<ToroidalGridUpdater> fsp_grid_updaters_ = {};
-        std::vector<u32> fsp_cascade_cell_offset_array_ = {};
+        std::vector<ToroidalGridUpdater> vsp_grid_updaters_ = {};
+        std::vector<u32> vsp_cascade_cell_offset_array_ = {};
 
-        ngl::u32     fsp_visible_surface_buffer_size_ = {};
-        ngl::u32     fsp_probe_pool_size_ = {};
-        ngl::u32     fsp_cascade_count_ = {};
-        ngl::u32     fsp_total_cell_count_ = {};
-        ngl::u32     fsp_probe_atlas_tile_width_ = {};
-        ngl::u32     fsp_probe_atlas_tile_height_ = {};
-        ComputeBufferSet fsp_visible_surface_list_ = {};
-        ComputeBufferSet fsp_visible_surface_source_texel_list_ = {};
-        ComputeBufferSet fsp_indirect_arg_ = {};
-        ComputeBufferSet fsp_cell_probe_index_buffer_ = {};
-        ComputeBufferSet fsp_probe_pool_buffer_ = {};
-        ComputeBufferSet fsp_probe_free_stack_buffer_ = {};
+        ngl::u32     vsp_visible_surface_buffer_size_ = {};
+        ngl::u32     vsp_probe_pool_size_ = {};
+        ngl::u32     vsp_cascade_count_ = {};
+        ngl::u32     vsp_total_cell_count_ = {};
+        ngl::u32     vsp_probe_atlas_tile_width_ = {};
+        ngl::u32     vsp_probe_atlas_tile_height_ = {};
+        ComputeBufferSet vsp_visible_surface_list_ = {};
+        ComputeBufferSet vsp_visible_surface_source_texel_list_ = {};
+        ComputeBufferSet vsp_indirect_arg_ = {};
+        ComputeBufferSet vsp_cell_probe_index_buffer_ = {};
+        ComputeBufferSet vsp_probe_pool_buffer_ = {};
+        ComputeBufferSet vsp_probe_free_stack_buffer_ = {};
         // ActiveProbeListは各Bufferの先頭2ワードを交互counter、ワード2以降をProbe index listとして使用する。
-        ComputeBufferSet fsp_active_probe_list_[2] = {};
-        // FSP SurfaceCell重複排除用。Cascadeごとの8x8x8 Brick内16ワードへ格納する。
-        ComputeBufferSet fsp_surface_cell_mask_buffer_ = {};
-        ngl::u32 fsp_surface_mask_word_count_ = {};
-        // FSP update multipass 用ワーク:
+        ComputeBufferSet vsp_active_probe_list_[2] = {};
+        // VSP SurfaceCell重複排除用。Cascadeごとの8x8x8 Brick内16ワードへ格納する。
+        ComputeBufferSet vsp_surface_cell_mask_buffer_ = {};
+        ngl::u32 vsp_surface_mask_word_count_ = {};
+        // VSP update multipass 用ワーク:
         // request/result の 0番は atomic counter。1..N に payload を append する。
-        ComputeBufferSet fsp_probe_ray_request_buffer_ = {};
-        ComputeBufferSet fsp_probe_trace_indirect_arg_ = {};
-        ComputeBufferSet fsp_probe_resolve_indirect_arg_ = {};
-        ComputeBufferSet fsp_probe_ray_result_buffer_ = {};
-        ComputeTextureSet fsp_probe_atlas_tex_ = {};
-        ComputeTextureSet fsp_irradiance_volume_sh_texture_ = {};
-        ComputeBufferSet fsp_debug_stats_buffer_ = {};
-        rhi::RefBufferDep fsp_debug_stats_readback_buffer_ = {};
+        ComputeBufferSet vsp_probe_ray_request_buffer_ = {};
+        ComputeBufferSet vsp_probe_trace_indirect_arg_ = {};
+        ComputeBufferSet vsp_probe_resolve_indirect_arg_ = {};
+        ComputeBufferSet vsp_probe_ray_result_buffer_ = {};
+        ComputeTextureSet vsp_probe_atlas_tex_ = {};
+        ComputeTextureSet vsp_irradiance_volume_sh_texture_ = {};
+        ComputeBufferSet vsp_debug_stats_buffer_ = {};
+        rhi::RefBufferDep vsp_debug_stats_readback_buffer_ = {};
 
         
         ComputeTextureSet assp_probe_tile_info_tex_[2] = {}; // f16_rgba, 1/4解像度のASSPタイル情報.
@@ -318,27 +318,27 @@ namespace ngl::render::app
     public:
         static int dbg_view_category_;
         static int dbg_view_sub_mode_;
-        static int dbg_fsp_irradiance_volume_slice_scale_;
-        static int dbg_fsp_irradiance_volume_slice_scroll_x_;
-        static int dbg_fsp_irradiance_volume_slice_scroll_y_;
-        static int dbg_fsp_shading_test_signal_;
-        static int dbg_fsp_shading_test_cascade_;
-        static int dbg_fsp_shading_test_trilinear_enable_;
-        static int dbg_fsp_shading_test_cascade_interpolation_enable_;
-        static float dbg_fsp_shading_test_irradiance_ev_;
-        static math::Vec3u dbg_fsp_resolution_;
+        static int dbg_vsp_irradiance_volume_slice_scale_;
+        static int dbg_vsp_irradiance_volume_slice_scroll_x_;
+        static int dbg_vsp_irradiance_volume_slice_scroll_y_;
+        static int dbg_vsp_shading_test_signal_;
+        static int dbg_vsp_shading_test_cascade_;
+        static int dbg_vsp_shading_test_trilinear_enable_;
+        static int dbg_vsp_shading_test_cascade_interpolation_enable_;
+        static float dbg_vsp_shading_test_irradiance_ev_;
+        static math::Vec3u dbg_vsp_resolution_;
         
         
         static int dbg_bbv_probe_debug_mode_;
         static int dbg_bbv_depth_test_enable_;
-        static int dbg_fsp_probe_debug_mode_;
-        static int dbg_fsp_irradiance_volume_debug_mode_;
-        static int dbg_fsp_probe_depth_test_;
-        static int dbg_fsp_probe_use_relocated_pos_;
-        static int dbg_fsp_update_ray_jitter_enable_;
-        static int dbg_fsp_probe_debug_cascade_;
-        static int dbg_fsp_cascade_count_;
-        static float dbg_fsp_relocation_offset_scale_for_cascade_cell_size_;
+        static int dbg_vsp_probe_debug_mode_;
+        static int dbg_vsp_irradiance_volume_debug_mode_;
+        static int dbg_vsp_probe_depth_test_;
+        static int dbg_vsp_probe_use_relocated_pos_;
+        static int dbg_vsp_update_ray_jitter_enable_;
+        static int dbg_vsp_probe_debug_cascade_;
+        static int dbg_vsp_cascade_count_;
+        static float dbg_vsp_relocation_offset_scale_for_cascade_cell_size_;
         static float dbg_probe_scale_;
         static float dbg_probe_near_geom_scale_;
         static int assp_spatial_filter_enable_;
@@ -354,18 +354,18 @@ namespace ngl::render::app
         static float assp_ray_budget_no_history_bias_;
         static float assp_ray_budget_scale_;
         static int assp_debug_freeze_frame_random_enable_;
-        static int dbg_fsp_lighting_interpolation_enable_;
-        static int dbg_fsp_irradiance_volume_propagate_active_probe_weight_enable_;
-        static float dbg_fsp_irradiance_volume_propagate_active_probe_weight_scale_;
-        static int dbg_fsp_probe_lifecycle_enable_;
-        static int dbg_fsp_warm_start_enable_;
-        static int dbg_fsp_probe_pool_size_;
-        static int dbg_fsp_free_probe_count_;
-        static int dbg_fsp_allocated_probe_count_;
-        static int dbg_fsp_active_probe_count_;
-        static int dbg_fsp_visible_surface_cell_count_;
+        static int dbg_vsp_lighting_interpolation_enable_;
+        static int dbg_vsp_irradiance_volume_propagate_active_probe_weight_enable_;
+        static float dbg_vsp_irradiance_volume_propagate_active_probe_weight_scale_;
+        static int dbg_vsp_probe_lifecycle_enable_;
+        static int dbg_vsp_warm_start_enable_;
+        static int dbg_vsp_probe_pool_size_;
+        static int dbg_vsp_free_probe_count_;
+        static int dbg_vsp_allocated_probe_count_;
+        static int dbg_vsp_active_probe_count_;
+        static int dbg_vsp_visible_surface_cell_count_;
         static bool dbg_main_view_reduced_surface_enable_;
-        static bool dbg_fsp_debug_readback_enable_;
+        static bool dbg_vsp_debug_readback_enable_;
         static int dbg_assp_total_ray_count_;
         static int dbg_assp_probe_count_;
         static int dbg_gi_update_sample_mode_;
@@ -386,7 +386,7 @@ namespace ngl::render::app
         ~InstantRasterDerivedVoxelScene();
 
         // 初期化
-        bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u bbv_resolution, float bbv_cell_size, math::Vec3u fsp_resolution, float fsp_cell_size, u32 fsp_cascade_count = 5);
+        bool Initialize(ngl::rhi::DeviceDep* p_device, math::Vec3u bbv_resolution, float bbv_cell_size, math::Vec3u vsp_resolution, float vsp_cell_size, u32 vsp_cascade_count = 5);
         bool IsValid() const { return is_initialized_; }
         // 破棄
         void Finalize();
