@@ -1431,7 +1431,7 @@ bool AppGame::ExecuteApp()
                 ImGui::SliderFloat("Angle H", &dbgw_dlit_angle_h, 0.0f, ngl::math::k_pi_f * 2.0f);
                 ImGui::SliderFloat("Intensity", &dbgw_dlit_intensity, 0.0f, 50.0f);
             }
-            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/Lighting/Ibl", "IBL"))
+            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/Lighting/Ibl", "IBL##LightingIbl"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
                 ImGui::SliderFloat("Sky Light Intensity", &dbgw_skylight_intensity, 0.0f, 15.0f);
@@ -1483,7 +1483,7 @@ bool AppGame::ExecuteApp()
         if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/Sky", "Sky"))
         {
             NGL_IMGUI_SCOPED_INDENT(10.0f);
-            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/Sky/Ibl", "IBL"))
+            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/Sky/Ibl", "IBL##SkyIbl"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
                 bool param_prevent_aliasing_mode_diffuse  = skybox_.GetParam_PreventAliasingModeDiffuse();

@@ -539,7 +539,7 @@ namespace ngl::render::app
                 }
             }
 
-            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/Settings/Vsp", "Visibility Surface Probe"))
+            if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/Settings/Vsp", "Visibility Surface Probe##InstantRdvSettingsVsp"))
             {
                 NGL_IMGUI_SCOPED_INDENT(10.0f);
 
@@ -638,7 +638,7 @@ namespace ngl::render::app
                     }
                 }
 
-                if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/Settings/ProbeDebug/Vsp", "Visibility Surface Probe"))
+                if (ngl::imgui::PersistentCollapsingHeader("DebugWindow/InstantRdv/Settings/ProbeDebug/Vsp", "Visibility Surface Probe##InstantRdvProbeDebugVsp"))
                 {
                     NGL_IMGUI_SCOPED_INDENT(10.0f);
 
