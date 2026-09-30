@@ -1781,8 +1781,14 @@ namespace ngl::render::app
         const math::Vec3& important_pos,
         const math::Vec3& important_dir,
         const math::Vec3& main_light_dir,
-        const math::Vec2i& render_resolution)
+        const math::Vec2i& render_resolution,
+        int gi_sample_mode)
     {
+        // モード切替はRenderThread起動前に確定し、復帰するGIの時間的状態を破棄する。
+        const bool is_gi_sample_mode_changed =
+            (gi_sample_mode != selected_gi_sample_mode_);
+        selected_gi_sample_mode_ = gi_sample_mode;
+
         important_point_ = important_pos;
         important_dir_ = important_dir;
 
@@ -1825,8 +1831,10 @@ namespace ngl::render::app
 
         const math::Vec3 modified_important_point = important_point_;
 
+        bbv_grid_updater_.UpdateGrid(modified_important_point);
+        // 非選択中のVSPグリッドを進めない。復帰時は現カメラ位置から再構築する。
+        if(gi_sample_mode == static_cast<int>(InstantRdvGiSolutionMode::Vsp))
         {
-            bbv_grid_updater_.UpdateGrid(modified_important_point);
             for(auto& vsp_grid_updater : vsp_grid_updaters_)
             {
                 vsp_grid_updater.UpdateGrid(modified_important_point);
@@ -1982,6 +1990,11 @@ namespace ngl::render::app
         }
 
         dispatch_requires_initial_clear_ = is_first_dispatch;
+        // VSP復帰時は時間的状態を初期化し、非選択中の古いActiveProbeを参照しない。
+        dispatch_requires_vsp_clear_ =
+            is_first_dispatch ||
+            (is_gi_sample_mode_changed &&
+             gi_sample_mode == static_cast<int>(InstantRdvGiSolutionMode::Vsp));
         return true;
     }
 
@@ -2019,6 +2032,9 @@ namespace ngl::render::app
                 p_command_list->ResourceUavBarrier(bbv_radiance_accum_buffer_.buffer.Get());
                 p_command_list->ResourceUavBarrier(bbv_buffer_.buffer.Get());
             }
+        }
+        if(dispatch_requires_vsp_clear_)
+        {
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "VspInitClear");
 
@@ -2026,6 +2042,18 @@ namespace ngl::render::app
                     p_command_list,
                     rhi::EResourceState::UnorderedAccess);
                 vsp_probe_pool_buffer_.ResourceBarrier(
+                    p_command_list,
+                    rhi::EResourceState::UnorderedAccess);
+                vsp_probe_free_stack_buffer_.ResourceBarrier(
+                    p_command_list,
+                    rhi::EResourceState::UnorderedAccess);
+                vsp_active_probe_list_[0].ResourceBarrier(
+                    p_command_list,
+                    rhi::EResourceState::UnorderedAccess);
+                vsp_active_probe_list_[1].ResourceBarrier(
+                    p_command_list,
+                    rhi::EResourceState::UnorderedAccess);
+                vsp_visible_surface_list_.ResourceBarrier(
                     p_command_list,
                     rhi::EResourceState::UnorderedAccess);
 
@@ -2055,8 +2083,36 @@ namespace ngl::render::app
                 p_command_list->ResourceUavBarrier(vsp_visible_surface_list_.buffer.Get());
                 p_command_list->ResourceUavBarrier(vsp_irradiance_volume_sh_texture_.texture.Get());
             }
-
+            dispatch_requires_vsp_clear_ = false;
+        }
+        if(dispatch_requires_initial_clear_)
+        {
             {
+                // ASSPリソースは作成直後のCommonから、最初のUAV使用前に一度だけ遷移する。
+                for(int i = 0; i < 2; ++i)
+                {
+                    p_command_list->ResourceBarrier(
+                        assp_probe_tex_[i].texture.Get(),
+                        rhi::EResourceState::Common,
+                        rhi::EResourceState::UnorderedAccess);
+                    p_command_list->ResourceBarrier(
+                        assp_probe_variance_tex_[i].texture.Get(),
+                        rhi::EResourceState::Common,
+                        rhi::EResourceState::UnorderedAccess);
+                    p_command_list->ResourceBarrier(
+                        assp_probe_tile_info_tex_[i].texture.Get(),
+                        rhi::EResourceState::Common,
+                        rhi::EResourceState::UnorderedAccess);
+                }
+                p_command_list->ResourceBarrier(
+                    assp_probe_packed_sh_tex_.texture.Get(),
+                    rhi::EResourceState::Common,
+                    rhi::EResourceState::UnorderedAccess);
+                p_command_list->ResourceBarrier(
+                    assp_probe_best_prev_tile_tex_.texture.Get(),
+                    rhi::EResourceState::Common,
+                    rhi::EResourceState::UnorderedAccess);
+
                 p_command_list->SetPipelineState(pso_assp_probe_clear_.Get());
                 for(int i = 0; i < 2; ++i)
                 {
@@ -2065,18 +2121,11 @@ namespace ngl::render::app
                     pso_assp_probe_clear_->SetView(&desc_set, k_shader_bind_name_asspprobe_tile_info_uav.Get(), assp_probe_tile_info_tex_[i].uav.Get());
                     p_command_list->SetDescriptorSet(pso_assp_probe_clear_.Get(), &desc_set);
                     pso_assp_probe_clear_->DispatchHelper(p_command_list, assp_probe_tex_[i].texture->GetWidth(), assp_probe_tex_[i].texture->GetHeight(), 1);
-
-                    p_command_list->ResourceBarrier(assp_probe_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                    p_command_list->ResourceBarrier(assp_probe_variance_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                    p_command_list->ResourceBarrier(assp_probe_tile_info_tex_[i].texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
                 }
-                p_command_list->ResourceBarrier(assp_probe_packed_sh_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
-                p_command_list->ResourceBarrier(assp_probe_best_prev_tile_tex_.texture.Get(), rhi::EResourceState::Common, rhi::EResourceState::UnorderedAccess);
 
             }
-
-            dispatch_requires_initial_clear_ = false;
         }
+        dispatch_requires_initial_clear_ = false;
         // Bbv Begin Update Pass.
         {
             NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "BbvBeginUpdate");
@@ -2753,6 +2802,12 @@ namespace ngl::render::app
         const u32 vsp_active_probe_prev_list_index = 1u - vsp_active_probe_curr_list_index;
         auto& vsp_active_probe_curr_list = vsp_active_probe_list_[vsp_active_probe_curr_list_index];
         auto& vsp_active_probe_prev_list = vsp_active_probe_list_[vsp_active_probe_prev_list_index];
+        vsp_active_probe_prev_list.ResourceBarrier(
+            p_command_list,
+            rhi::EResourceState::ShaderRead);
+        vsp_active_probe_curr_list.ResourceBarrier(
+            p_command_list,
+            rhi::EResourceState::UnorderedAccess);
         // VSP.
         {
             // Vsp Prev Active IndirectArg生成.
@@ -2989,6 +3044,10 @@ namespace ngl::render::app
             // Vsp Current Active IndirectArg生成.
             {
                 NGL_RHI_GPU_SCOPED_EVENT_MARKER(p_command_list, "VspGenerateActiveIndirectArg");
+
+                vsp_active_probe_curr_list.ResourceBarrier(
+                    p_command_list,
+                    rhi::EResourceState::ShaderRead);
 
                 vsp_indirect_arg_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
 
@@ -3405,7 +3464,8 @@ namespace ngl::render::app
         const math::Vec3& important_pos,
         const math::Vec3& important_dir,
         const math::Vec3& main_light_dir,
-        const math::Vec2i& render_resolution)
+        const math::Vec2i& render_resolution,
+        int gi_sample_mode)
     {
         if(bbvgi_instance_)
         {
@@ -3419,7 +3479,8 @@ namespace ngl::render::app
                 important_pos,
                 important_dir,
                 main_light_dir,
-                render_resolution);
+                render_resolution,
+                gi_sample_mode);
         }
         return false;
     }

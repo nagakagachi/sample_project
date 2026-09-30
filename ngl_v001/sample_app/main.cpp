@@ -1229,7 +1229,8 @@ void AppGame::LaunchRender()
             render_param_->dlight_dir,
             ngl::math::Vec2i(
                 static_cast<int>(gfxfw_.swapchain_->GetWidth()),
-                static_cast<int>(gfxfw_.swapchain_->GetHeight())));
+                static_cast<int>(gfxfw_.swapchain_->GetHeight())),
+            dbgw_gi_sample_mode);
         assert(prepare_success);
         if(!prepare_success)
         {

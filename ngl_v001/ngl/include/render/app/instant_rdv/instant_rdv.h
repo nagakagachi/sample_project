@@ -120,7 +120,8 @@ namespace ngl::render::app
             const math::Vec3& important_pos,
             const math::Vec3& important_dir,
             const math::Vec3& main_light_dir,
-            const math::Vec2i& render_resolution);
+            const math::Vec2i& render_resolution,
+            int gi_sample_mode);
         // RTG Setupでフレーム用定数バッファを確保し、確定済みの値を書き込む。
         void UploadFrameConstants(rhi::DeviceDep* p_device);
 
@@ -175,6 +176,8 @@ namespace ngl::render::app
 
         bool is_first_dispatch_ = true;
         bool dispatch_requires_initial_clear_ = true;
+        bool dispatch_requires_vsp_clear_ = true;
+        int selected_gi_sample_mode_ = -1;
         u32 frame_count_{};
 
         math::Vec3 important_point_ = {0,0,0};
@@ -396,7 +399,8 @@ namespace ngl::render::app
             const math::Vec3& important_pos,
             const math::Vec3& important_dir,
             const math::Vec3& main_light_dir,
-            const math::Vec2i& render_resolution);
+            const math::Vec2i& render_resolution,
+            int gi_sample_mode);
         void UploadFrameConstants(rhi::DeviceDep* p_device);
 
         void DispatchBegin(rhi::GraphicsCommandListDep* p_command_list,
