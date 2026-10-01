@@ -345,6 +345,20 @@ namespace ngl::test
 					
                 
                     
+                    // VSP IrradianceVolumeは更新・Lighting・Debugで共有するためRTGに所有させる。
+                    ngl::rtg::RtgResourceHandle h_vsp_irradiance_volume_sh{};
+                    if(auto* p_instant_rdv = render_frame_desc.feature_config.gi.p_instant_rdv)
+                    {
+                        h_vsp_irradiance_volume_sh = rtg_builder.RegisterExternalResource(
+                            p_instant_rdv->GetVspIrradianceVolumeSHTextureResource(),
+                            {}, {},
+                            p_instant_rdv->GetVspIrradianceVolumeSHTexture(),
+                            p_instant_rdv->GetVspIrradianceVolumeSHTextureUav(),
+                            p_instant_rdv->GetVspIrradianceVolumeSHTextureState(),
+                            ngl::rhi::EResourceState::ShaderRead);
+                        p_instant_rdv->NotifyVspIrradianceVolumeSHTextureRtgManaged();
+                    }
+
                     // InstantRdv Begin Pass.
                     auto* task_instant_rdv_begin = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskInstantRdvBegin>();
                     {
@@ -356,6 +370,7 @@ namespace ngl::test
 							setup_desc.scene_cbv = scene_cb_h;
 
 							setup_desc.p_instant_rdv = render_frame_desc.feature_config.gi.p_instant_rdv;
+                            setup_desc.h_vsp_irradiance_volume_sh = h_vsp_irradiance_volume_sh;
                         }
                         task_instant_rdv_begin->Setup(rtg_builder, p_device, view_info, setup_desc);
                     }
@@ -418,6 +433,7 @@ namespace ngl::test
 
 							setup_desc.p_instant_rdv = render_frame_desc.feature_config.gi.p_instant_rdv;
                             setup_desc.gi_sample_mode = render_frame_desc.feature_config.gi.sample_mode;
+                            setup_desc.h_vsp_irradiance_volume_sh = h_vsp_irradiance_volume_sh;
                              
                             // main view.
 							setup_desc.h_depth = task_depth->h_depth_;
@@ -447,6 +463,7 @@ namespace ngl::test
                         setup_desc.sky_lit_intensity = render_frame_desc.feature_config.lighting.sky_light_intensity;
 
                         setup_desc.p_instant_rdv = render_frame_desc.feature_config.gi.p_instant_rdv;
+                        setup_desc.h_vsp_irradiance_volume_sh = h_vsp_irradiance_volume_sh;
                         setup_desc.gi_sample_mode = render_frame_desc.feature_config.gi.sample_mode;
                         setup_desc.is_enable_sky_visibility = render_frame_desc.feature_config.gi.enable_sky_visibility;
                         setup_desc.is_enable_radiance = render_frame_desc.feature_config.gi.enable_radiance;
@@ -480,6 +497,7 @@ namespace ngl::test
                             setup_desc.p_instant_rdv = render_frame_desc.feature_config.gi.p_instant_rdv;
                             setup_desc.h_depth = task_depth->h_depth_;
                             setup_desc.h_color = task_light->h_light_;
+                            setup_desc.h_vsp_irradiance_volume_sh = h_vsp_irradiance_volume_sh;
                         }
                         task_instant_rdv_debug->Setup(rtg_builder, p_device, view_info, setup_desc);
                     }
@@ -518,6 +536,7 @@ namespace ngl::test
 						setup_desc.scene_cbv = scene_cb_h;
 
                         setup_desc.p_instant_rdv = render_frame_desc.feature_config.gi.p_instant_rdv;
+                        setup_desc.h_vsp_irradiance_volume_sh = h_vsp_irradiance_volume_sh;
 					}
 					task_after_light->Setup(rtg_builder, p_device, view_info,
 					task_light->h_light_, task_depth->h_depth_,

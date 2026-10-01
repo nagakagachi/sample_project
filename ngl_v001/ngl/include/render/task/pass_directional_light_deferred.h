@@ -48,6 +48,7 @@ namespace ngl::render::task
             float sky_lit_intensity{1.0f};
 			
             render::app::InstantRasterDerivedVoxelScene* p_instant_rdv = {};
+            rtg::RtgResourceHandle h_vsp_irradiance_volume_sh{};
             int gi_sample_mode = 2;
             bool is_enable_sky_visibility = false;
             bool is_enable_radiance = false;
@@ -102,6 +103,10 @@ namespace ngl::render::task
                 if(!h_bent_normal.IsInvalid())
                 {
 					h_bent_normal_ = builder.RecordResourceAccess(*this, h_bent_normal, rtg::AccessType::SHADER_READ);
+                }
+                if(desc_.gi_sample_mode == 2 && !desc_.h_vsp_irradiance_volume_sh.IsInvalid())
+                {
+                    builder.RecordResourceAccess(*this, desc_.h_vsp_irradiance_volume_sh, rtg::AccessType::SHADER_READ);
                 }
 
 				if (h_light.IsInvalid())

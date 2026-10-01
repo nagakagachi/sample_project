@@ -2067,7 +2067,6 @@ namespace ngl::render::app
                 pso_vsp_clear_->SetView(&desc_set, "RWSurfaceProbeCellList", vsp_visible_surface_list_.uav.Get());
                 pso_vsp_clear_->SetView(&desc_set, k_shader_bind_name_vsp_atlas_uav.Get(), vsp_probe_atlas_tex_.uav.Get());
                 pso_vsp_clear_->SetView(&desc_set, k_shader_bind_name_vsp_irradiance_volume_sh_uav.Get(), vsp_irradiance_volume_sh_texture_.uav.Get());
-                vsp_irradiance_volume_sh_texture_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
                 vsp_probe_atlas_tex_.ResourceBarrier(
                     p_command_list,
                     rhi::EResourceState::UnorderedAccess);
@@ -2848,7 +2847,6 @@ namespace ngl::render::app
                 pso_vsp_begin_update_->SetView(&desc_set, "RWVspActiveProbeListCurr", vsp_active_probe_curr_list.uav.Get());
                 pso_vsp_begin_update_->SetView(&desc_set, "RWSurfaceProbeCellList", vsp_visible_surface_list_.uav.Get());
                 pso_vsp_begin_update_->SetView(&desc_set, k_shader_bind_name_vsp_irradiance_volume_sh_uav.Get(), vsp_irradiance_volume_sh_texture_.uav.Get());
-                vsp_irradiance_volume_sh_texture_.ResourceBarrier(p_command_list, rhi::EResourceState::UnorderedAccess);
                 pso_vsp_begin_update_->SetView(&desc_set, k_shader_bind_name_vsp_probe_ray_request_uav.Get(), vsp_probe_ray_request_buffer_.uav.Get());
                 pso_vsp_begin_update_->SetView(&desc_set, k_shader_bind_name_vsp_probe_ray_result_uav.Get(), vsp_probe_ray_result_buffer_.uav.Get());
 
@@ -3199,9 +3197,6 @@ namespace ngl::render::app
                 pso_vsp_irradiance_volume_propagate_->DispatchHelper(p_command_list, vsp_total_cell_count_, 1, 1);
 
                 p_command_list->ResourceUavBarrier(vsp_irradiance_volume_sh_texture_.texture.Get());
-                vsp_irradiance_volume_sh_texture_.ResourceBarrier(
-                    p_command_list,
-                    rhi::EResourceState::ShaderRead);
             }
             if(InstantRasterDerivedVoxelScene::dbg_vsp_debug_readback_enable_)
             {
@@ -3286,7 +3281,6 @@ namespace ngl::render::app
             vsp_probe_pool_buffer_.ResourceBarrier(p_command_list, rhi::EResourceState::ShaderRead);
             pso_bbv_debug_visualize_->SetView(&desc_set, "VspCellProbeIndexBuffer", vsp_cell_probe_index_buffer_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, "VspProbePoolBuffer", vsp_probe_pool_buffer_.srv.Get());
-            vsp_irradiance_volume_sh_texture_.ResourceBarrier(p_command_list, rhi::EResourceState::ShaderRead);
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_vsp_irradiance_volume_sh_srv.Get(), vsp_irradiance_volume_sh_texture_.srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_srv.Get(), assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv.Get());
             pso_bbv_debug_visualize_->SetView(&desc_set, k_shader_bind_name_asspprobe_variance_srv.Get(), assp_probe_variance_tex_[assp_variance_curr_frame_tex_index_].srv.Get());
@@ -3354,7 +3348,6 @@ namespace ngl::render::app
             pso_vsp_debug_probe->SetView(&desc_set, "VspProbePoolBuffer", vsp_probe_pool_buffer_.srv.Get());
             pso_vsp_debug_probe->SetView(&desc_set, "BitmaskBrickVoxel", bbv_buffer_.srv.Get());
             pso_vsp_debug_probe->SetView(&desc_set, k_shader_bind_name_vsp_atlas_srv.Get(), vsp_probe_atlas_tex_.srv.Get());
-            vsp_irradiance_volume_sh_texture_.ResourceBarrier(p_command_list, rhi::EResourceState::ShaderRead);
             pso_vsp_debug_probe->SetView(&desc_set, k_shader_bind_name_vsp_irradiance_volume_sh_srv.Get(), vsp_irradiance_volume_sh_texture_.srv.Get());
             p_command_list->SetDescriptorSet(pso_vsp_debug_probe, &desc_set);
 
@@ -3483,6 +3476,39 @@ namespace ngl::render::app
                 gi_sample_mode);
         }
         return false;
+    }
+
+    rhi::RefTextureDep InstantRasterDerivedVoxelScene::GetVspIrradianceVolumeSHTextureResource() const
+    {
+        return bbvgi_instance_ ? bbvgi_instance_->GetVspIrradianceVolumeSHTextureResource() : rhi::RefTextureDep{};
+    }
+
+    rhi::RefSrvDep InstantRasterDerivedVoxelScene::GetVspIrradianceVolumeSHTexture() const
+    {
+        return bbvgi_instance_ ? bbvgi_instance_->GetVspIrradianceVolumeSHTexture() : rhi::RefSrvDep{};
+    }
+
+    rhi::RefUavDep InstantRasterDerivedVoxelScene::GetVspIrradianceVolumeSHTextureUav() const
+    {
+        return bbvgi_instance_ ? bbvgi_instance_->GetVspIrradianceVolumeSHTextureUav() : rhi::RefUavDep{};
+    }
+
+    rhi::EResourceState InstantRasterDerivedVoxelScene::GetVspIrradianceVolumeSHTextureState() const
+    {
+        return bbvgi_instance_ ? bbvgi_instance_->GetVspIrradianceVolumeSHTextureState() : rhi::EResourceState::Common;
+    }
+
+    bool InstantRasterDerivedVoxelScene::RequiresVspClear() const
+    {
+        return bbvgi_instance_ && bbvgi_instance_->RequiresVspClear();
+    }
+
+    void InstantRasterDerivedVoxelScene::NotifyVspIrradianceVolumeSHTextureRtgManaged()
+    {
+        if(bbvgi_instance_)
+        {
+            bbvgi_instance_->NotifyVspIrradianceVolumeSHTextureRtgManaged();
+        }
     }
 
     void InstantRasterDerivedVoxelScene::UploadFrameConstants(rhi::DeviceDep* p_device)

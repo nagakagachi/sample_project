@@ -27,6 +27,7 @@ namespace ngl::render::task
 			rhi::ConstantBufferPooledHandle scene_cbv{};
 
             render::app::InstantRasterDerivedVoxelScene* p_instant_rdv = {};
+            rtg::RtgResourceHandle h_vsp_irradiance_volume_sh{};
 		} desc_{};
 		bool is_render_skip_debug_{};
 		
@@ -49,6 +50,10 @@ namespace ngl::render::task
 				// リソースアクセス定義.
 				h_depth_ = builder.RecordResourceAccess(*this, h_depth, rtg::AccessType::DEPTH_TARGET);
 				h_light_ = builder.RecordResourceAccess(*this, h_light, rtg::AccessType::RENDER_TARGET);
+                if(!desc_.h_vsp_irradiance_volume_sh.IsInvalid())
+                {
+                    builder.RecordResourceAccess(*this, desc_.h_vsp_irradiance_volume_sh, rtg::AccessType::SHADER_READ);
+                }
 			}
 			
 			// Render処理のLambdaをRTGに登録.

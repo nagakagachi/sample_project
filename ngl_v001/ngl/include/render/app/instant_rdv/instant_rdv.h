@@ -164,7 +164,13 @@ namespace ngl::render::app
 
         ngl::rhi::ConstantBufferPooledHandle GetDispatchCbh() const { return cbh_dispatch_; }
         rhi::RefSrvDep GetVspProbeAtlasTex() const { return vsp_probe_atlas_tex_.srv; }
+        rhi::RefTextureDep GetVspIrradianceVolumeSHTextureResource() const { return vsp_irradiance_volume_sh_texture_.texture; }
         rhi::RefSrvDep GetVspIrradianceVolumeSHTexture() const { return vsp_irradiance_volume_sh_texture_.srv; }
+        rhi::RefUavDep GetVspIrradianceVolumeSHTextureUav() const { return vsp_irradiance_volume_sh_texture_.uav; }
+        rhi::EResourceState GetVspIrradianceVolumeSHTextureState() const { return vsp_irradiance_volume_sh_texture_.resource_state; }
+        bool RequiresVspClear() const { return dispatch_requires_vsp_clear_; }
+        // RTGがフレーム終端をShaderReadへ遷移するため、次フレームの開始状態を同期する。
+        void NotifyVspIrradianceVolumeSHTextureRtgManaged() { vsp_irradiance_volume_sh_texture_.resource_state = rhi::EResourceState::ShaderRead; }
         rhi::RefSrvDep GetVspCellProbeIndexBuffer() const { return vsp_cell_probe_index_buffer_.srv; }
         rhi::RefSrvDep GetVspProbePoolBuffer() const { return vsp_probe_pool_buffer_.srv; }
         rhi::RefSrvDep GetAsspProbeTex() const { return assp_probe_tex_[assp_latest_filtered_frame_tex_index_].srv; }
@@ -432,6 +438,13 @@ namespace ngl::render::app
             rhi::RefTextureDep lighting_tex, rhi::RefRtvDep lighting_rtv);
         void SetDescriptor(rhi::PipelineStateBaseDep* p_pso, rhi::DescriptorSetDep* p_desc_set) const;
 
+        rhi::RefTextureDep GetVspIrradianceVolumeSHTextureResource() const;
+        rhi::RefSrvDep GetVspIrradianceVolumeSHTexture() const;
+        rhi::RefUavDep GetVspIrradianceVolumeSHTextureUav() const;
+        rhi::EResourceState GetVspIrradianceVolumeSHTextureState() const;
+        bool RequiresVspClear() const;
+        void NotifyVspIrradianceVolumeSHTextureRtgManaged();
+
     private:
             bool is_initialized_ = false;
             BitmaskBrickVoxelGi* bbvgi_instance_;
@@ -450,6 +463,7 @@ namespace ngl::render::app
 			
             rhi::ConstantBufferPooledHandle scene_cbv{};
             render::app::InstantRasterDerivedVoxelScene* p_instant_rdv = {};
+            ngl::rtg::RtgResourceHandle h_vsp_irradiance_volume_sh{};
 		};
 		SetupDesc desc_{};
 		
@@ -461,6 +475,12 @@ namespace ngl::render::app
                 return;
 
 			desc_ = desc;
+
+            // 初期化クリアがIrradianceVolumeへ書き込むフレームだけUAV使用を記録する。
+            if(desc_.p_instant_rdv->RequiresVspClear() && !desc_.h_vsp_irradiance_volume_sh.IsInvalid())
+            {
+                builder.RecordResourceAccess(*this, desc_.h_vsp_irradiance_volume_sh, ngl::rtg::AccessType::UAV);
+            }
             
 			// 定数値とリソースはMainThread側で確定済み。RTG側ではフレーム用CBだけを確保する。
 			desc_.p_instant_rdv->UploadFrameConstants(p_device);
@@ -617,6 +637,7 @@ namespace ngl::render::app
             int gi_sample_mode = 2;
 
             ngl::rtg::RtgResourceHandle h_depth{};
+            ngl::rtg::RtgResourceHandle h_vsp_irradiance_volume_sh{};
 		};
 		SetupDesc desc_{};
 		
@@ -634,6 +655,10 @@ namespace ngl::render::app
 				// リソース定義.
 				// リソースアクセス定義.
                 h_depth_ = builder.RecordResourceAccess(*this, desc.h_depth, rtg::AccessType::SHADER_READ);
+                if(desc.gi_sample_mode == 2 && !desc.h_vsp_irradiance_volume_sh.IsInvalid())
+                {
+                    builder.RecordResourceAccess(*this, desc.h_vsp_irradiance_volume_sh, rtg::AccessType::UAV);
+                }
 			}
 
 			// Render処理のLambdaをRTGに登録.
@@ -672,6 +697,7 @@ namespace ngl::render::app
 
             ngl::rtg::RtgResourceHandle h_depth{};
             ngl::rtg::RtgResourceHandle h_color{};
+            ngl::rtg::RtgResourceHandle h_vsp_irradiance_volume_sh{};
 		};
 		SetupDesc desc_{};
 
@@ -687,6 +713,10 @@ namespace ngl::render::app
                 ngl::rtg::RtgResourceDesc2D work_desc = ngl::rtg::RtgResourceDesc2D::CreateAsAbsoluteSize(desc.w, desc.h, rhi::EResourceFormat::Format_R32G32B32A32_FLOAT);
                 h_depth_ = builder.RecordResourceAccess(*this, desc.h_depth, rtg::AccessType::SHADER_READ);
                 h_color_ = builder.RecordResourceAccess(*this, desc.h_color, rtg::AccessType::SHADER_READ);
+                if(!desc.h_vsp_irradiance_volume_sh.IsInvalid())
+                {
+                    builder.RecordResourceAccess(*this, desc.h_vsp_irradiance_volume_sh, rtg::AccessType::SHADER_READ);
+                }
                 h_work_ = builder.RecordResourceAccess(*this, builder.CreateResource(work_desc), rtg::AccessType::UAV);
 			}
 
