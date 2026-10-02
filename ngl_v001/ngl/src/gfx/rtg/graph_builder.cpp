@@ -73,6 +73,14 @@ namespace ngl
 			rhi::RefTextureDep tex, rhi::RhiRef<rhi::SwapChainDep> swapchain, rhi::RefRtvDep rtv, rhi::RefDsvDep dsv, rhi::RefSrvDep srv, rhi::RefUavDep uav,
 			rhi::EResourceState curr_state, rhi::EResourceState nesesary_end_state)
 		{	
+			// 外部リソースはTaskの依存関係と状態遷移を構築する前に確定する.
+			if(!node_sequence_.empty())
+			{
+				std::cout << "[RenderTaskGraphBuilder][RegisterExternalResource] 外部リソースはAppendTaskNodeより前に登録する必要があります." << std::endl;
+				assert(false);
+				return {};
+			}
+
 			// 無効なリソースチェック.
 			if (!swapchain.IsValid() && !tex.IsValid())
 			{

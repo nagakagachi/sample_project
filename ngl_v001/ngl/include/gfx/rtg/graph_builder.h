@@ -205,6 +205,7 @@ namespace ngl
 			RtgResourceHandle PropagateResourceToNextFrame(RtgResourceHandle handle);
 
 			// 外部リソースを登録してハンドルを生成. 一般.
+			// AppendTaskNodeを呼ぶ前の外部リソース登録フェーズでのみ許可する.
 			//	rtv,dsv,srv,uavはそれぞれ登録するものだけ有効な参照を指定する.
 			// curr_state			: 外部リソースのGraph開始時点のステート.
 			// nesesary_end_state	: 外部リソースのGraph実行完了時点で遷移しているべきステート. 外部から要求する最終ステート遷移.
@@ -212,6 +213,7 @@ namespace ngl
 				rhi::EResourceState curr_state, rhi::EResourceState nesesary_end_state);
 			
 			// 外部リソースを登録してハンドルを生成. Swapchain用.
+			// AppendTaskNodeを呼ぶ前の外部リソース登録フェーズでのみ許可する.
 			// curr_state			: 外部リソースのGraph開始時点のステート.
 			// nesesary_end_state	: 外部リソースのGraph実行完了時点で遷移しているべきステート. 外部から要求する最終ステート遷移.
 			RtgResourceHandle RegisterSwapchainResource(rhi::RhiRef<rhi::SwapChainDep> swapchain, rhi::RefRtvDep swapchain_rtv,
