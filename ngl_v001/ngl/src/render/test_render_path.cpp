@@ -111,12 +111,26 @@ namespace ngl::test
 			ngl::rtg::RenderTaskGraphBuilder rtg_builder(screen_w, screen_h);
 				
 			ngl::rtg::RtgResourceHandle h_swapchain = {};
+			ngl::rtg::RtgResourceHandle h_vsp_irradiance_volume_sh = {};
 			// Rtgへ外部リソースの登録.
 			{
 				if(render_frame_desc.ref_swapchain.IsValid())
 				{
 					// このRtgの開始時点のStateと終了時にあるべきStateを指定.
 					h_swapchain = rtg_builder.RegisterSwapchainResource(render_frame_desc.ref_swapchain, render_frame_desc.ref_swapchain_rtv, render_frame_desc.swapchain_state_prev, render_frame_desc.swapchain_state_next);
+				}
+
+				// RDVのIrradianceVolumeは、RDV更新と後段の照明・デバッグで共有する外部リソース。
+				if(auto* p_instant_rdv = render_frame_desc.feature_config.gi.p_instant_rdv)
+				{
+					h_vsp_irradiance_volume_sh = rtg_builder.RegisterExternalResource(
+						p_instant_rdv->GetVspIrradianceVolumeSHTextureResource(),
+						{}, {},
+						p_instant_rdv->GetVspIrradianceVolumeSHTexture(),
+						p_instant_rdv->GetVspIrradianceVolumeSHTextureUav(),
+						p_instant_rdv->GetVspIrradianceVolumeSHTextureState(),
+						ngl::rhi::EResourceState::ShaderRead);
+					p_instant_rdv->NotifyVspIrradianceVolumeSHTextureRtgManaged();
 				}
 				// TODO. any other.
 				// ...
@@ -345,20 +359,6 @@ namespace ngl::test
 					
                 
                     
-                    // VSP IrradianceVolumeは更新・Lighting・Debugで共有するためRTGに所有させる。
-                    ngl::rtg::RtgResourceHandle h_vsp_irradiance_volume_sh{};
-                    if(auto* p_instant_rdv = render_frame_desc.feature_config.gi.p_instant_rdv)
-                    {
-                        h_vsp_irradiance_volume_sh = rtg_builder.RegisterExternalResource(
-                            p_instant_rdv->GetVspIrradianceVolumeSHTextureResource(),
-                            {}, {},
-                            p_instant_rdv->GetVspIrradianceVolumeSHTexture(),
-                            p_instant_rdv->GetVspIrradianceVolumeSHTextureUav(),
-                            p_instant_rdv->GetVspIrradianceVolumeSHTextureState(),
-                            ngl::rhi::EResourceState::ShaderRead);
-                        p_instant_rdv->NotifyVspIrradianceVolumeSHTextureRtgManaged();
-                    }
-
                     // InstantRdv Begin Pass.
                     auto* task_instant_rdv_begin = rtg_builder.AppendTaskNode<ngl::render::app::RenderTaskInstantRdvBegin>();
                     {

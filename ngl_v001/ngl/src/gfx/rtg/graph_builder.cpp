@@ -86,7 +86,8 @@ namespace ngl
 			{
 				for(const auto& e : imported_resource_)
 				{
-					if(e.tex_.Get() == tex.Get())
+					// テクスチャ外部リソースだけを比較する。Swapchain登録にはtex_が存在しない。
+					if(e.tex_.IsValid() && e.tex_.Get() == tex.Get())
 					{
 						// 二重登録されているのでERROR.
 						std::cout << "[RenderTaskGraphBuilder][RegisterExternalResource] 外部リソースの二重登録が検出されました(texture). " << tex.Get() << std::endl;
@@ -99,7 +100,8 @@ namespace ngl
 			{
 				for(const auto& e : imported_resource_)
 				{
-					if(e.swapchain_.Get() == swapchain.Get())
+					// Swapchain外部リソースだけを比較する。テクスチャ登録にはswapchain_が存在しない。
+					if(e.swapchain_.IsValid() && e.swapchain_.Get() == swapchain.Get())
 					{
 						// 二重登録されているのでERROR.
 						std::cout << "[RenderTaskGraphBuilder][RegisterExternalResource] 外部リソースの二重登録が検出されました(swapchain). " << swapchain.Get() << std::endl;
